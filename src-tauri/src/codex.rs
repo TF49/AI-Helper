@@ -70,7 +70,11 @@ pub fn get_codex_config() -> Result<CodexConfig, AppError> {
     })
 }
 
-pub fn set_codex_config(url: String, api_key: String, model: Option<String>) -> Result<(), AppError> {
+pub fn set_codex_config(
+    url: String,
+    api_key: String,
+    model: Option<String>,
+) -> Result<(), AppError> {
     let path = codex_config_path()?;
     let normalized = url.trim_end_matches('/');
     let base_url = format!("{}/v1", normalized);

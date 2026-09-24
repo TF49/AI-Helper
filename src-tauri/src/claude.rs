@@ -61,7 +61,11 @@ pub fn get_claude_config() -> Result<ClaudeConfig, AppError> {
     })
 }
 
-pub fn set_claude_config(url: String, api_key: String, model: Option<String>) -> Result<(), AppError> {
+pub fn set_claude_config(
+    url: String,
+    api_key: String,
+    model: Option<String>,
+) -> Result<(), AppError> {
     let path = claude_config_path()?;
 
     // 读取现有 JSON，保留所有其他字段
