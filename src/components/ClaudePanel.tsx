@@ -12,17 +12,10 @@ import { NodeCardSelector } from "./NodeCardSelector";
 import { ApiKeyInput } from "./ApiKeyInput";
 import { ModelInput } from "./ModelInput";
 import { Label } from "./ui/label";
-import { PRESET_URLS, CLAUDE_MODEL_SUGGESTIONS } from "../types";
+import { PRESET_URLS } from "../types";
 import { useModelFetch } from "../lib/useModelFetch";
 import { SpotlightCard } from "./react-bits/SpotlightCard";
 import { StarBorder } from "./react-bits/StarBorder";
-
-const EXTENDED_CLAUDE_PRESETS = [
-  "claude-3-7-sonnet-20250219",
-  "claude-3-5-sonnet-20241022",
-  "claude-3-5-haiku-20241022",
-  ...CLAUDE_MODEL_SUGGESTIONS,
-] as const;
 
 export function ClaudePanel() {
   const [url, setUrl] = useState<string>(PRESET_URLS[0]);
@@ -109,7 +102,7 @@ export function ClaudePanel() {
   }
 
   return (
-    <div className="space-y-4 pb-2">
+    <div className="space-y-4 pb-4">
       {/* 配置文件状态 */}
       <SpotlightCard
         className="p-4 rounded-xl border border-slate-200/90 dark:border-white/10 bg-white/80 dark:bg-[#161324]/60 shadow-sm dark:shadow-none"
@@ -188,7 +181,6 @@ export function ClaudePanel() {
           id="claude-models"
           onRefresh={() => void refreshModels()}
           refreshing={refreshingModels}
-          presetSuggestions={EXTENDED_CLAUDE_PRESETS}
           accentColor="purple"
         />
       </SpotlightCard>

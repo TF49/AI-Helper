@@ -5,7 +5,8 @@
       {
         "label": "main",
         "title": "BobAPI Tool",
-        "titleBarStyle": "Visible",
+        "decorations": false,
+        "shadow": true,
         "visible": false,
         "width": 460,
         "height": 500,

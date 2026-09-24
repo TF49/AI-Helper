@@ -299,7 +299,7 @@ function AppContent() {
       </div>
 
       {/* ── 内容区 (带流畅切换动效) ── */}
-      <div className="flex-1 overflow-y-auto px-4 py-2 relative z-10">
+      <div className="flex-1 min-h-0 overflow-y-auto px-4 py-2 relative z-10">
         <AnimatePresence mode="wait">
           {tab === "chatgpt" ? (
             <motion.div

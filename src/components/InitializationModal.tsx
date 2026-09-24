@@ -374,7 +374,7 @@ export function InitializationModal({
             </div>
 
             {/* ── 主体区域 (左侧竖直向下进度条 + 右侧环节详情卡片) ── */}
-            <div className="flex-1 overflow-hidden grid grid-cols-12 min-h-[460px]">
+            <div className="flex-1 min-h-0 overflow-hidden grid grid-cols-12">
               {/* ── 左侧: 竖直向下进度条步进器 ── */}
               <div className="col-span-4 p-5 border-r border-slate-200/80 dark:border-white/10 bg-slate-50/60 dark:bg-white/[0.01] flex flex-col justify-between">
                 <div className="space-y-6 relative">

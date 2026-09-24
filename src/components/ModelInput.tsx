@@ -7,7 +7,6 @@ import {
   Loader2,
   Search,
   Cpu,
-  Sparkles,
 } from "lucide-react";
 import type { FetchedModel } from "../types";
 import { Button } from "./ui/button";
@@ -22,7 +21,6 @@ export interface ModelInputProps {
   id: string;
   onRefresh: () => void;
   refreshing: boolean;
-  presetSuggestions?: readonly string[];
   accentColor?: "blue" | "purple";
 }
 
@@ -34,7 +32,6 @@ export function ModelInput({
   id,
   onRefresh,
   refreshing,
-  presetSuggestions = [],
   accentColor = "blue",
 }: ModelInputProps) {
   const [open, setOpen] = useState(false);
@@ -169,43 +166,6 @@ export function ModelInput({
           </Popover.Root>
         )}
       </div>
-
-      {/* 快捷推荐芯片标签 */}
-      {presetSuggestions.length > 0 && (
-        <div className="flex items-center gap-1.5 flex-wrap pt-0.5">
-          <span className="text-[10px] text-slate-500 dark:text-gray-400 flex items-center gap-1">
-            <Sparkles
-              size={11}
-              className={
-                isBlue
-                  ? "text-blue-500 dark:text-blue-400/80"
-                  : "text-purple-500 dark:text-purple-400/80"
-              }
-            />
-            推荐:
-          </span>
-          {presetSuggestions.map((m) => {
-            const isCurrent = value === m;
-            return (
-              <button
-                key={m}
-                type="button"
-                onClick={() => onChange(m)}
-                className={cn(
-                  "text-[10px] font-mono px-2 py-0.5 rounded-md border transition-all duration-150",
-                  isCurrent
-                    ? isBlue
-                      ? "border-blue-400 bg-blue-100 text-blue-800 dark:border-blue-500/60 dark:bg-blue-500/20 dark:text-blue-300 font-semibold shadow-xs"
-                      : "border-purple-400 bg-purple-100 text-purple-800 dark:border-purple-500/60 dark:bg-purple-500/20 dark:text-purple-300 font-semibold shadow-xs"
-                    : "border-slate-200 bg-slate-100/70 text-slate-600 hover:text-slate-900 hover:bg-slate-200/80 dark:border-white/5 dark:bg-white/[0.03] dark:text-gray-400 dark:hover:text-gray-200 dark:hover:border-white/20 dark:hover:bg-white/[0.07]",
-                )}
-              >
-                {m}
-              </button>
-            );
-          })}
-        </div>
-      )}
     </div>
   );
 }
