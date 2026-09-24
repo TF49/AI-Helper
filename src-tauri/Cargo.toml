@@ -1,6 +1,6 @@
 ﻿[package]
 name = "bobapi-tool"
-version = "1.0.2"
+version = "1.0.3"
 description = "BobAPI Tool - ChatGPT & Claude Code 配置管理工具"
 authors = []
 license = "MIT"
@@ -46,5 +46,6 @@ strip = "symbols"
 
 [dev-dependencies]
 tempfile = "3"
+
 
 
