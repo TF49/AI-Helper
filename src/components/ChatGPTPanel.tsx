@@ -49,6 +49,9 @@ export function ChatGPTPanel() {
         setUrl(PRESET_URLS[0]);
       }
       setApiKey(cfg.api_key || "");
+      if (cfg.model) {
+        setModel(cfg.model);
+      }
       setConfigExists(cfg.config_exists);
       setConfigPath(cfg.config_path);
     } catch (e) {
@@ -82,7 +85,7 @@ export function ChatGPTPanel() {
         toast.error(`测试失败: ${testResult.message}`);
         return;
       }
-      await setCodexConfig(url, apiKey.trim());
+      await setCodexConfig(url, apiKey.trim(), model.trim());
       setConfigExists(true);
       toast.success("测试通过，ChatGPT 配置已保存，请重启 Codex 生效");
     } catch (e) {

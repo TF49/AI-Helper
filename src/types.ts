@@ -1,12 +1,28 @@
 export interface AgentConfig {
   base_url: string;
   api_key: string;
+  model: string;
   config_exists: boolean;
   config_path: string;
 }
 
 export interface NetworkStatus {
   reachable: boolean;
+  target_url?: string;
+  status_code?: number;
+  latency_ms?: number;
+  error_message?: string;
+}
+
+export type InitStepId = "network" | "paths" | "config" | "confirm";
+export type StepStatus = "pending" | "running" | "success" | "error";
+
+export interface InitStepInfo {
+  id: InitStepId;
+  title: string;
+  description: string;
+  status: StepStatus;
+  error?: string;
 }
 
 export interface ApiTestResult {

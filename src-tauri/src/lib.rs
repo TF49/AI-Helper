@@ -14,8 +14,8 @@ fn get_codex_config() -> Result<codex::CodexConfig, error::AppError> {
 }
 
 #[tauri::command]
-fn set_codex_config(url: String, api_key: String) -> Result<(), error::AppError> {
-    codex::set_codex_config(url, api_key)
+fn set_codex_config(url: String, api_key: String, model: Option<String>) -> Result<(), error::AppError> {
+    codex::set_codex_config(url, api_key, model)
 }
 
 #[tauri::command]
@@ -24,8 +24,8 @@ fn get_claude_config() -> Result<claude::ClaudeConfig, error::AppError> {
 }
 
 #[tauri::command]
-fn set_claude_config(url: String, api_key: String) -> Result<(), error::AppError> {
-    claude::set_claude_config(url, api_key)
+fn set_claude_config(url: String, api_key: String, model: Option<String>) -> Result<(), error::AppError> {
+    claude::set_claude_config(url, api_key, model)
 }
 
 #[tauri::command]

@@ -13,8 +13,9 @@ export async function getCodexConfig(): Promise<AgentConfig> {
 export async function setCodexConfig(
   url: string,
   apiKey: string,
+  model?: string,
 ): Promise<void> {
-  return invoke("set_codex_config", { url, apiKey });
+  return invoke("set_codex_config", { url, apiKey, model });
 }
 
 export async function getClaudeConfig(): Promise<AgentConfig> {
@@ -24,8 +25,9 @@ export async function getClaudeConfig(): Promise<AgentConfig> {
 export async function setClaudeConfig(
   url: string,
   apiKey: string,
+  model?: string,
 ): Promise<void> {
-  return invoke("set_claude_config", { url, apiKey });
+  return invoke("set_claude_config", { url, apiKey, model });
 }
 
 export async function checkBobApiNetwork(): Promise<NetworkStatus> {

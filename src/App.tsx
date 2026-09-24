@@ -10,6 +10,7 @@ import {
   WifiOff,
   Sparkles,
   Wrench,
+  ShieldCheck,
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
@@ -17,6 +18,7 @@ import { getVersion } from "@tauri-apps/api/app";
 import { ChatGPTPanel } from "./components/ChatGPTPanel";
 import { ClaudePanel } from "./components/ClaudePanel";
 import { QuickToolsModal } from "./components/QuickToolsModal";
+import { InitializationModal } from "./components/InitializationModal";
 import { ThemeToggle } from "./components/ThemeToggle";
 import { useTheme } from "./components/theme-provider";
 import { AuroraBackground } from "./components/react-bits/AuroraBackground";
@@ -37,6 +39,7 @@ function AppContent() {
   const [tab, setTab] = useState<Tab>("chatgpt");
   const [networkState, setNetworkState] = useState<NetworkState>("checking");
   const [toolsOpen, setToolsOpen] = useState(false);
+  const [initModalOpen, setInitModalOpen] = useState(false);
   const [appVersion, setAppVersion] = useState("...");
   const { resolvedTheme } = useTheme();
   const win = getCurrentWindow();
@@ -74,6 +77,18 @@ function AppContent() {
   useEffect(() => {
     void getVersion().then((v) => setAppVersion(v));
   }, []);
+
+  // 软件启动后仅执行一次初始化流程
+  useEffect(() => {
+    const hasInitialized = sessionStorage.getItem("bobapi_init_completed");
+    if (!hasInitialized) {
+      setInitModalOpen(true);
+    }
+  }, []);
+
+  const handleInitFinish = () => {
+    sessionStorage.setItem("bobapi_init_completed", "true");
+  };
 
   const isChatGPT = tab === "chatgpt";
   const isDark = resolvedTheme === "dark";
@@ -127,6 +142,16 @@ function AppContent() {
         <div className="flex items-center gap-1.5">
           {/* 亮色/暗色快速切换按钮 (cc-switch 风格) */}
           <ThemeToggle />
+
+          {/* 初始化向导入口 */}
+          <button
+            onClick={() => setInitModalOpen(true)}
+            className="flex items-center gap-1 h-7 px-2.5 rounded-lg border text-xs transition-colors bg-slate-100 hover:bg-slate-200 border-slate-200 text-slate-700 dark:bg-white/5 dark:hover:bg-white/10 dark:border-white/10 dark:text-gray-400 dark:hover:text-white"
+            title="软件环境与配置初始化向导"
+          >
+            <ShieldCheck size={13} className="text-blue-500" />
+            <span className="text-[11px]">初始化</span>
+          </button>
 
           {/* 工具箱入口 */}
           <button
@@ -357,6 +382,13 @@ function AppContent() {
         onRestart={handleUpdateRestart}
         onClose={handleUpdateClose}
         onExit={handleUpdateExit}
+      />
+
+      {/* ── 软件启动初始化向导模态框 ── */}
+      <InitializationModal
+        open={initModalOpen}
+        onClose={() => setInitModalOpen(false)}
+        onFinish={handleInitFinish}
       />
 
       {/* ── Toast 通知 ── */}

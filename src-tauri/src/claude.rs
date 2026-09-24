@@ -2,10 +2,11 @@ use crate::error::AppError;
 use serde_json::Value;
 use std::path::PathBuf;
 
-#[derive(serde::Serialize, serde::Deserialize, Clone)]
+#[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
 pub struct ClaudeConfig {
     pub base_url: String,
     pub api_key: String,
+    pub model: String,
     pub config_exists: bool,
     pub config_path: String,
 }
@@ -22,10 +23,15 @@ pub fn get_claude_config() -> Result<ClaudeConfig, AppError> {
     let config_exists = path.exists();
     let mut base_url = String::new();
     let mut api_key = String::new();
+    let mut model = String::new();
 
     if config_exists {
         let content = std::fs::read_to_string(&path)?;
         let json: Value = serde_json::from_str(&content)?;
+
+        if let Some(m) = json.get("model").and_then(|v| v.as_str()) {
+            model = m.to_string();
+        }
 
         if let Some(env) = json.get("env") {
             if let Some(url) = env.get("ANTHROPIC_BASE_URL") {
@@ -34,18 +40,28 @@ pub fn get_claude_config() -> Result<ClaudeConfig, AppError> {
             if let Some(key) = env.get("ANTHROPIC_AUTH_TOKEN") {
                 api_key = key.as_str().unwrap_or("").to_string();
             }
+            if model.is_empty() {
+                if let Some(m) = env.get("ANTHROPIC_MODEL").and_then(|v| v.as_str()) {
+                    model = m.to_string();
+                }
+            }
         }
+    }
+
+    if model.is_empty() {
+        model = "claude-3-7-sonnet-20250219".to_string();
     }
 
     Ok(ClaudeConfig {
         base_url,
         api_key,
+        model,
         config_exists,
         config_path,
     })
 }
 
-pub fn set_claude_config(url: String, api_key: String) -> Result<(), AppError> {
+pub fn set_claude_config(url: String, api_key: String, model: Option<String>) -> Result<(), AppError> {
     let path = claude_config_path()?;
 
     // 读取现有 JSON，保留所有其他字段
@@ -61,9 +77,16 @@ pub fn set_claude_config(url: String, api_key: String) -> Result<(), AppError> {
         json["env"] = serde_json::json!({});
     }
 
-    // 只更新这两个字段
+    // 更新基础网络与密钥字段
     json["env"]["ANTHROPIC_BASE_URL"] = Value::String(url);
     json["env"]["ANTHROPIC_AUTH_TOKEN"] = Value::String(api_key);
+
+    if let Some(m) = model {
+        if !m.is_empty() {
+            json["model"] = Value::String(m.clone());
+            json["env"]["ANTHROPIC_MODEL"] = Value::String(m);
+        }
+    }
 
     // 创建父目录（如果不存在）
     if let Some(parent) = path.parent() {

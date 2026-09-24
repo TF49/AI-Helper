@@ -49,6 +49,9 @@ export function ClaudePanel() {
         setUrl(PRESET_URLS[0]);
       }
       setApiKey(cfg.api_key || "");
+      if (cfg.model) {
+        setModel(cfg.model);
+      }
       setConfigExists(cfg.config_exists);
       setConfigPath(cfg.config_path);
     } catch (e) {
@@ -82,7 +85,7 @@ export function ClaudePanel() {
         toast.error(`测试失败: ${testResult.message}`);
         return;
       }
-      await setClaudeConfig(url, apiKey.trim());
+      await setClaudeConfig(url, apiKey.trim(), model.trim());
       setConfigExists(true);
       toast.success(
         "测试通过，Claude Code 配置已保存，重启 Claude Code 后生效",

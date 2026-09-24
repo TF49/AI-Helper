@@ -1,6 +1,6 @@
 {
   "name": "bobapi-tool",
-  "version": "1.0.9",
+  "version": "1.0.10",
   "description": "BobAPI Tool - AI Agent 配置管理工具",
   "type": "module",
   "scripts": {

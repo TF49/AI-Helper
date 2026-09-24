@@ -2,10 +2,11 @@ use crate::error::AppError;
 use std::path::PathBuf;
 use toml_edit::DocumentMut;
 
-#[derive(serde::Serialize, serde::Deserialize, Clone)]
+#[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
 pub struct CodexConfig {
     pub base_url: String,
     pub api_key: String,
+    pub model: String,
     pub config_exists: bool,
     pub config_path: String,
 }
@@ -21,12 +22,23 @@ pub fn get_codex_config() -> Result<CodexConfig, AppError> {
     let config_path = path.display().to_string();
     let config_exists = path.exists();
     let mut base_url = String::new();
+    let mut model = String::new();
 
     if config_exists {
         let content = std::fs::read_to_string(&path)?;
         let doc = content
             .parse::<DocumentMut>()
             .map_err(|e| AppError::Toml(e.to_string()))?;
+
+        if let Some(m) = doc.get("model").and_then(|v| v.as_str()) {
+            model = m.to_string();
+        } else if let Some(profiles) = doc.get("profiles") {
+            if let Some(thirdparty) = profiles.get("thirdparty") {
+                if let Some(m) = thirdparty.get("model").and_then(|v| v.as_str()) {
+                    model = m.to_string();
+                }
+            }
+        }
 
         if let Some(providers) = doc.get("model_providers") {
             if let Some(custom) = providers.get("custom") {
@@ -43,17 +55,22 @@ pub fn get_codex_config() -> Result<CodexConfig, AppError> {
         }
     }
 
+    if model.is_empty() {
+        model = "gpt-4o".to_string();
+    }
+
     let api_key = read_registry_env("CUSTOM_OPENAI_API_KEY").unwrap_or_default();
 
     Ok(CodexConfig {
         base_url,
         api_key,
+        model,
         config_exists,
         config_path,
     })
 }
 
-pub fn set_codex_config(url: String, api_key: String) -> Result<(), AppError> {
+pub fn set_codex_config(url: String, api_key: String, model: Option<String>) -> Result<(), AppError> {
     let path = codex_config_path()?;
     let normalized = url.trim_end_matches('/');
     let base_url = format!("{}/v1", normalized);
@@ -70,6 +87,18 @@ pub fn set_codex_config(url: String, api_key: String) -> Result<(), AppError> {
     } else {
         DocumentMut::new()
     };
+
+    // 如果指定了 model，则更新顶层 model 与 profile model
+    if let Some(m) = model {
+        if !m.is_empty() {
+            doc["model"] = toml_edit::value(&m);
+            if let Some(profiles) = doc.get_mut("profiles") {
+                if let Some(thirdparty) = profiles.get_mut("thirdparty") {
+                    thirdparty["model"] = toml_edit::value(&m);
+                }
+            }
+        }
+    }
 
     // 确保默认 provider 指向 custom
     if doc.get("model_provider").is_none() {
