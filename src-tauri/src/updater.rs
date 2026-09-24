@@ -163,7 +163,7 @@ async fn check_for_updates_internal() -> Result<UpdateInfo, String> {
 
     // 4. 回退 jsDelivr CDN
     match check_static_url(JSDELIVR_URL, "jsDelivr").await {
-        Ok(info) => return Ok(info),
+        Ok(info) => Ok(info),
         Err(e) => {
             log::error!("All update checks failed. Last error: {}", e);
             Err(e)
