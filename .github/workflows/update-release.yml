@@ -72,15 +72,20 @@ jobs:
           RELEASE_TAG: ${{ steps.package.outputs.tag }}
         run: |
           $tag = $env:RELEASE_TAG
-          # try/catch cannot catch native command exit codes in PowerShell.
-          # GitHub Actions sets $ErrorActionPreference='Stop' by default, so gh returning
-          # exit code 1 (release not found) would abort the step before catch runs.
-          # Fix: temporarily allow non-zero exit codes and check $LASTEXITCODE directly.
+          # $ErrorActionPreference='Stop' is set by GitHub Actions by default.
+          # gh returning exit code 1 (release not found) must not abort the step.
+          # Fix 1: set Continue so non-zero native exit codes don't throw.
+          # Fix 2: use *>$null to suppress all streams (stdout, stderr, and
+          #         PowerShell Error Records that 2>$null | Out-Null misses).
+          # Fix 3: end with explicit 'exit 0' so pwsh doesn't propagate the
+          #         gh $LASTEXITCODE (1) as the process exit code when the
+          #         release doesn't exist yet.
           $ErrorActionPreference = 'Continue'
-          gh release view $tag --repo $env:GITHUB_REPOSITORY 2>$null | Out-Null
+          gh release view $tag --repo $env:GITHUB_REPOSITORY *>$null
           $exists = ($LASTEXITCODE -eq 0).ToString().ToLower()
           $ErrorActionPreference = 'Stop'
           "exists=$exists" >> $env:GITHUB_OUTPUT
+          exit 0
 
       - name: Delete old release assets
         if: steps.check_release.outputs.exists == 'true'
