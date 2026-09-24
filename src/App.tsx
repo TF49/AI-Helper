@@ -23,6 +23,7 @@ import { DecryptedText } from "./components/react-bits/DecryptedText";
 import { ShinyText } from "./components/react-bits/ShinyText";
 import { cn } from "./lib/utils";
 import { checkBobApiNetwork } from "./lib/api";
+import { ForceUpdateModal, useAppUpdater } from "./components/ForceUpdateModal";
 
 type Tab = "chatgpt" | "claude";
 type NetworkState = "checking" | "reachable" | "unreachable";
@@ -41,6 +42,13 @@ function AppContent() {
   const [toolsOpen, setToolsOpen] = useState(false);
   const { resolvedTheme } = useTheme();
   const win = getCurrentWindow();
+
+  const {
+    state: updateState,
+    checkForUpdates,
+    handleRetry: handleUpdateRetry,
+    handleExit: handleUpdateExit,
+  } = useAppUpdater();
 
   const checkNetwork = async () => {
     setNetworkState("checking");
@@ -289,13 +297,26 @@ function AppContent() {
         </div>
         <div className="flex items-center gap-3">
           <button
+            onClick={() => void checkForUpdates(true)}
+            disabled={updateState.isChecking}
+            className="hover:text-slate-800 dark:hover:text-white transition-colors flex items-center gap-1 cursor-pointer disabled:opacity-60"
+            title="检查新版本"
+          >
+            <RefreshCw
+              size={11}
+              className={updateState.isChecking ? "animate-spin text-blue-500" : ""}
+            />
+            <span>{updateState.isChecking ? "检查中..." : "检查更新"}</span>
+          </button>
+          <span className="text-slate-300 dark:text-white/20">|</span>
+          <button
             onClick={() => setToolsOpen(true)}
             className="hover:text-slate-800 dark:hover:text-white transition-colors"
           >
             使用帮助
           </button>
           <span className="font-mono text-slate-400 dark:text-gray-500">
-            v1.0.0
+            v1.0.1
           </span>
         </div>
       </div>
@@ -310,6 +331,13 @@ function AppContent() {
         currentModel={
           tab === "chatgpt" ? "gpt-4o" : "claude-3-7-sonnet-20250219"
         }
+      />
+
+      {/* ── 强制更新阻断遮罩模态框 ── */}
+      <ForceUpdateModal
+        state={updateState}
+        onRetry={handleUpdateRetry}
+        onExit={handleUpdateExit}
       />
 
       {/* ── Toast 通知 ── */}

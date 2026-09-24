@@ -39,6 +39,9 @@ jobs:
       - name: Test backend
         run: cargo test --manifest-path src-tauri/Cargo.toml --locked --lib
       - name: Build installer
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         run: pnpm tauri build --bundles nsis
       - name: Package release
         id: package
@@ -53,7 +56,9 @@ jobs:
           name: BobAPI-Tool-${{ steps.package.outputs.tag }}-Windows-x64
           path: |
             release/${{ steps.package.outputs.tag }}/*.exe
+            release/${{ steps.package.outputs.tag }}/*.sig
             release/${{ steps.package.outputs.tag }}/*.zip
+            release/${{ steps.package.outputs.tag }}/*.json
             release/${{ steps.package.outputs.tag }}/SHA256SUMS.txt
           if-no-files-found: error
       - name: Publish release

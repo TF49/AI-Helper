@@ -27,5 +27,7 @@ flatpak-repo/
 .spec-workflow/
 copilot-api
 .history
-CODEBUDDY.md
-mainWindow.js
+# Signing keys
+*.key
+*.key.pub
+updater.key*
