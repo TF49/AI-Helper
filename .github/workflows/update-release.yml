@@ -89,10 +89,22 @@ jobs:
           RELEASE_TAG: ${{ steps.package.outputs.tag }}
         run: |
           $tag = $env:RELEASE_TAG
-          $assets = gh release view $tag --repo $env:GITHUB_REPOSITORY --json assets -q '.assets[].name' | Where-Object { $_ -notlike 'Source code*' }
-          foreach ($asset in $assets) {
-            Write-Host "删除旧资产: $asset"
-            gh release delete-asset $tag $asset --repo $env:GITHUB_REPOSITORY --yes
+          # gh CLI non-zero exit codes must not abort the step; check $LASTEXITCODE manually.
+          $ErrorActionPreference = 'Continue'
+          $assets = gh release view $tag --repo $env:GITHUB_REPOSITORY --json assets -q '.assets[].name' 2>$null |
+                    Where-Object { $_ -and ($_ -notlike 'Source code*') }
+          if ($LASTEXITCODE -ne 0) { throw "Failed to list release assets for $tag" }
+          $ErrorActionPreference = 'Stop'
+          if (-not $assets) {
+            Write-Host "No assets to delete for release $tag"
+          } else {
+            foreach ($asset in $assets) {
+              Write-Host "删除旧资产: $asset"
+              $ErrorActionPreference = 'Continue'
+              gh release delete-asset $tag $asset --repo $env:GITHUB_REPOSITORY --yes
+              if ($LASTEXITCODE -ne 0) { Write-Warning "Failed to delete asset: $asset (exit code $LASTEXITCODE)" }
+              $ErrorActionPreference = 'Stop'
+            }
           }
 
       - name: Upload new assets to existing release
