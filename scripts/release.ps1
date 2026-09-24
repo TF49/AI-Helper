@@ -10,8 +10,8 @@ Set-Location $repoRoot
 # If there are already uncommitted changes in the working tree, we assume the
 # version was pre-bumped and skip the auto-bump step to avoid double-bumping.
 # ────────────────────────────────────────────────────────────────────────────
-$gitStatus = git status --porcelain
-$alreadyBumped = ($gitStatus.Trim() -ne '') -and (-not $Version)
+$gitStatus = (git status --porcelain | Out-String).Trim()
+$alreadyBumped = ($gitStatus -ne '') -and (-not $Version)
 
 if ($alreadyBumped) {
     Write-Host ""
