@@ -116,5 +116,5 @@ pub fn run() {
             open_url,
         ])
         .run(tauri::generate_context!())
-        .expect("error while running bobapi-tool");
+        .expect("error while running ai-helper");
 }

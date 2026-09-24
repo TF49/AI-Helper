@@ -28,14 +28,17 @@ const ThemeProviderContext = createContext<ThemeContextValue | undefined>(
 export function ThemeProvider({
   children,
   defaultTheme = "light",
-  storageKey = "bobapi-theme",
+  storageKey = "ai-helper-theme",
 }: ThemeProviderProps) {
   const getInitialTheme = (): Theme => {
     if (typeof window === "undefined") {
       return defaultTheme;
     }
 
-    const stored = window.localStorage.getItem(storageKey) as Theme | null;
+    const stored = (window.localStorage.getItem(storageKey) ||
+      (storageKey === "ai-helper-theme"
+        ? window.localStorage.getItem("bobapi-theme")
+        : null)) as Theme | null;
     if (stored === "light" || stored === "dark" || stored === "system") {
       return stored;
     }
@@ -120,13 +123,14 @@ export function useTheme() {
     const isDark =
       typeof window !== "undefined" &&
       (document.documentElement.classList.contains("dark") ||
+        window.localStorage.getItem("ai-helper-theme") === "dark" ||
         window.localStorage.getItem("bobapi-theme") === "dark");
     return {
       theme: (isDark ? "dark" : "light") as Theme,
       resolvedTheme: (isDark ? "dark" : "light") as "light" | "dark",
       setTheme: (t: Theme) => {
         if (typeof window === "undefined") return;
-        window.localStorage.setItem("bobapi-theme", t);
+        window.localStorage.setItem("ai-helper-theme", t);
         const dark =
           t === "dark" ||
           (t === "system" &&
@@ -138,7 +142,7 @@ export function useTheme() {
         if (typeof window === "undefined") return;
         const currentDark = document.documentElement.classList.contains("dark");
         const next = currentDark ? "light" : "dark";
-        window.localStorage.setItem("bobapi-theme", next);
+        window.localStorage.setItem("ai-helper-theme", next);
         document.documentElement.classList.toggle("dark", !currentDark);
         document.documentElement.classList.toggle("light", currentDark);
       },

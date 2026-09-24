@@ -7,7 +7,7 @@ $ErrorActionPreference = 'Stop'
 
 Write-Host @"
 ╔═══════════════════════════════════════════════════════════╗
-║       🚀 BobAPI Tool - Patch Version Release              ║
+║       🚀 AI Helper - Patch Version Release                ║
 ╚═══════════════════════════════════════════════════════════╝
 "@ -ForegroundColor Cyan
 

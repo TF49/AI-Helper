@@ -61,7 +61,7 @@ function formatBytes(bytes: number): string {
   return `${(bytes / Math.pow(k, i)).toFixed(1)} ${sizes[i]}`;
 }
 
-const GITHUB_RELEASES_URL = "https://github.com/TF49/Bobapi-Tool/releases/latest";
+const GITHUB_RELEASES_URL = "https://github.com/TF49/AI-Helper/releases/latest";
 
 // ── Hook ──────────────────────────────────────────────────────────────────────
 

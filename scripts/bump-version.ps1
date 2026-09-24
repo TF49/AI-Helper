@@ -49,14 +49,14 @@ $cargoContent = $cargoContent.TrimEnd("`r", "`n") + "`n"
 # Regenerate Cargo.lock to match the new version in Cargo.toml
 # (CI uses --locked, so lock file must be committed and up-to-date)
 Write-Host "Regenerating Cargo.lock..."
-cargo update --manifest-path $cargoPath --package bobapi-tool
+cargo update --manifest-path $cargoPath --package ai-helper
 if ($LASTEXITCODE -ne 0) { throw "cargo update failed" }
 
 # Check/create release notes file template if not existing
 $relNotesPath = Join-Path $repoRoot "docs/releases/v$NewVersion.md"
 if (-not (Test-Path -LiteralPath $relNotesPath)) {
     $lines = @(
-        "# BobAPI Tool v$NewVersion",
+        "# AI Helper v$NewVersion",
         "",
         "## What's Changed",
         "",

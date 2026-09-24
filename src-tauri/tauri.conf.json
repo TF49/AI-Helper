@@ -1,8 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "BobAPI Tool",
-  "version": "1.0.13",
-  "identifier": "com.bobapi.tool",
+  "productName": "AI Helper",
+  "version": "1.0.14",
+  "identifier": "com.aihelper.app",
   "build": {
     "frontendDist": "../dist",
     "devUrl": "http://localhost:3000",
@@ -13,7 +13,7 @@
     "windows": [
       {
         "label": "main",
-        "title": "BobAPI Tool",
+        "title": "AI Helper",
         "decorations": false,
         "shadow": true,
         "width": 1000,
@@ -60,7 +60,7 @@
     "updater": {
       "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDIyM0Q0OUM2QzJFRDA4NTUKUldSVkNPM0N4a2s5SW5OMUd4MlNIYmJ0SXI1aEx4a0JSSlQvd01UVmNUYkxPZzJJQ2VZb0JYRHoK",
       "endpoints": [
-        "https://github.com/TF49/Bobapi-Tool/releases/latest/download/latest.json"
+        "https://github.com/TF49/AI-Helper/releases/latest/download/latest.json"
       ],
       "windows": {
         "installMode": "passive"

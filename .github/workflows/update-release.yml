@@ -140,4 +140,4 @@ jobs:
             throw "Missing release notes: $notes"
           }
           $assets = @(Get-ChildItem -LiteralPath "release/$tag" -File | Select-Object -ExpandProperty FullName)
-          gh release create $tag @assets --repo $env:GITHUB_REPOSITORY --target $env:GITHUB_SHA --title "BobAPI Tool $tag" --notes-file $notes --latest
+          gh release create $tag @assets --repo $env:GITHUB_REPOSITORY --target $env:GITHUB_SHA --title "AI Helper $tag" --notes-file $notes --latest

@@ -500,7 +500,7 @@ export function InitializationModal({
       toast.warning("请先在步骤 4 完成配置信息的检查与确认");
       return;
     }
-    toast.success("软件初始化流程圆满完成，欢迎使用 BobAPI Tool！");
+    toast.success("软件初始化流程圆满完成，欢迎使用 AI Helper！");
     onFinish();
     onClose();
   };

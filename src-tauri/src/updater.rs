@@ -13,10 +13,10 @@ use std::time::Duration;
 
 const CURRENT_VERSION: &str = env!("CARGO_PKG_VERSION");
 const UPDATER_JSON_URL: &str =
-    "https://github.com/TF49/Bobapi-Tool/releases/latest/download/latest.json";
-const GITHUB_API_URL: &str = "https://api.github.com/repos/TF49/Bobapi-Tool/releases/latest";
-const GITHUB_RAW_URL: &str = "https://raw.githubusercontent.com/TF49/Bobapi-Tool/main/package.json";
-const JSDELIVR_URL: &str = "https://cdn.jsdelivr.net/gh/TF49/Bobapi-Tool@main/package.json";
+    "https://github.com/TF49/AI-Helper/releases/latest/download/latest.json";
+const GITHUB_API_URL: &str = "https://api.github.com/repos/TF49/AI-Helper/releases/latest";
+const GITHUB_RAW_URL: &str = "https://raw.githubusercontent.com/TF49/AI-Helper/main/package.json";
+const JSDELIVR_URL: &str = "https://cdn.jsdelivr.net/gh/TF49/AI-Helper@main/package.json";
 
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(10);
 
@@ -86,7 +86,7 @@ pub fn get_upstream_proxy_url() -> Option<String> {
 /// 创建带代理和超时的 HTTP 客户端
 async fn create_client() -> Result<reqwest::Client, String> {
     let mut builder = reqwest::Client::builder()
-        .user_agent(format!("BobAPI-Tool/{}", CURRENT_VERSION))
+        .user_agent(format!("AI-Helper/{}", CURRENT_VERSION))
         .timeout(REQUEST_TIMEOUT);
 
     if let Some(proxy_url) = get_upstream_proxy_url() {
@@ -212,7 +212,7 @@ async fn check_updater_json() -> Result<UpdateInfo, String> {
     }
 
     let download_url = format!(
-        "https://github.com/TF49/Bobapi-Tool/releases/tag/v{}",
+        "https://github.com/TF49/AI-Helper/releases/tag/v{}",
         latest_version
     );
 
@@ -323,7 +323,7 @@ async fn check_static_url(url: &str, source_name: &str) -> Result<UpdateInfo, St
         );
     }
 
-    let download_url = "https://github.com/TF49/Bobapi-Tool/releases/latest".to_string();
+    let download_url = "https://github.com/TF49/AI-Helper/releases/latest".to_string();
     let release_notes = format!(
         "New version detected via {}. Please check release page for details.",
         source_name

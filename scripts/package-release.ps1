@@ -12,8 +12,8 @@ if ($Tag -cne "v$($package.version)" -or $tauri.version -cne $package.version) {
 }
 
 $buildRoot = Join-Path $repoRoot 'src-tauri/target/release'
-$installer = Join-Path $buildRoot "bundle/nsis/BobAPI Tool_$($package.version)_x64-setup.exe"
-$binary = Join-Path $buildRoot 'bobapi-tool.exe'
+$installer = Join-Path $buildRoot "bundle/nsis/AI Helper_$($package.version)_x64-setup.exe"
+$binary = Join-Path $buildRoot 'ai-helper.exe'
 foreach ($required in @($installer, $binary)) {
     if (-not (Test-Path -LiteralPath $required -PathType Leaf)) {
         throw "Missing release build: $required. Run pnpm tauri build --bundles nsis first."
@@ -23,15 +23,15 @@ foreach ($required in @($installer, $binary)) {
 $assetRoot = Join-Path $repoRoot "release/$Tag"
 $standaloneRoot = Join-Path $assetRoot 'standalone'
 New-Item -ItemType Directory -Force -Path $standaloneRoot | Out-Null
-$installerName = "BobAPI-Tool-$Tag-Windows-x64-Setup.exe"
-$zipName = "BobAPI-Tool-$Tag-Windows-x64-Standalone.zip"
+$installerName = "AI-Helper-$Tag-Windows-x64-Setup.exe"
+$zipName = "AI-Helper-$Tag-Windows-x64-Standalone.zip"
 Copy-Item -LiteralPath $installer -Destination (Join-Path $assetRoot $installerName)
-Copy-Item -LiteralPath $binary -Destination (Join-Path $standaloneRoot 'bobapi-tool.exe')
+Copy-Item -LiteralPath $binary -Destination (Join-Path $standaloneRoot 'ai-helper.exe')
 Copy-Item -LiteralPath (Join-Path $repoRoot 'LICENSE') -Destination (Join-Path $standaloneRoot 'LICENSE.txt')
 Copy-Item -LiteralPath (Join-Path $repoRoot 'THIRD_PARTY_NOTICES.md') -Destination $standaloneRoot
 Copy-Item -LiteralPath (Join-Path $repoRoot 'docs/standalone-readme.txt') -Destination (Join-Path $standaloneRoot 'README.txt')
 Compress-Archive -LiteralPath @(
-    (Join-Path $standaloneRoot 'bobapi-tool.exe'),
+    (Join-Path $standaloneRoot 'ai-helper.exe'),
     (Join-Path $standaloneRoot 'LICENSE.txt'),
     (Join-Path $standaloneRoot 'THIRD_PARTY_NOTICES.md'),
     (Join-Path $standaloneRoot 'README.txt')
@@ -49,7 +49,7 @@ if ($hasSig) {
     $notes = if (Test-Path -LiteralPath $notesFile) {
         Get-Content -LiteralPath $notesFile -Raw -Encoding UTF8
     } else {
-        "BobAPI Tool $Tag"
+        "AI Helper $Tag"
     }
 
     $latestManifest = [ordered]@{
@@ -59,7 +59,7 @@ if ($hasSig) {
         platforms = @{
             "windows-x86_64" = @{
                 signature = $sigContent
-                url = "https://github.com/TF49/Bobapi-Tool/releases/download/$Tag/$installerName"
+                url = "https://github.com/TF49/AI-Helper/releases/download/$Tag/$installerName"
             }
         }
     }

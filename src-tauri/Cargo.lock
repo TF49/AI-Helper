@@ -29,6 +29,30 @@ dependencies = [
 ]
 
 [[package]]
+name = "ai-helper"
+version = "1.0.14"
+dependencies = [
+ "anyhow",
+ "dirs 5.0.1",
+ "log",
+ "opener",
+ "reqwest 0.12.28",
+ "serde",
+ "serde_json",
+ "tauri",
+ "tauri-build",
+ "tauri-plugin-log",
+ "tauri-plugin-process",
+ "tauri-plugin-store",
+ "tauri-plugin-updater",
+ "tempfile",
+ "thiserror 2.0.18",
+ "tokio",
+ "toml_edit 0.22.27",
+ "winreg 0.52.0",
+]
+
+[[package]]
 name = "alloc-no-stdlib"
 version = "2.0.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -195,30 +219,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cdeb9d870516001442e364c5220d3574d2da8dc765554b4a617230d33fa58ef5"
 dependencies = [
  "objc2",
-]
-
-[[package]]
-name = "bobapi-tool"
-version = "1.0.13"
-dependencies = [
- "anyhow",
- "dirs 5.0.1",
- "log",
- "opener",
- "reqwest 0.12.28",
- "serde",
- "serde_json",
- "tauri",
- "tauri-build",
- "tauri-plugin-log",
- "tauri-plugin-process",
- "tauri-plugin-store",
- "tauri-plugin-updater",
- "tempfile",
- "thiserror 2.0.18",
- "tokio",
- "toml_edit 0.22.27",
- "winreg 0.52.0",
 ]
 
 [[package]]

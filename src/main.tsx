@@ -6,7 +6,7 @@ import "./index.css";
 
 ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
   <React.StrictMode>
-    <ThemeProvider defaultTheme="light" storageKey="bobapi-theme">
+    <ThemeProvider defaultTheme="light" storageKey="ai-helper-theme">
       <App />
     </ThemeProvider>
   </React.StrictMode>,

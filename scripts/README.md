@@ -1,4 +1,4 @@
-# BobAPI Tool - 发布脚本使用指南
+# AI Helper - 发布脚本使用指南
 
 ## 📋 脚本列表
 
@@ -115,7 +115,7 @@
 
 **模板结构**:
 ```markdown
-# BobAPI Tool vX.X.X
+# AI Helper vX.X.X
 
 **发布日期**: YYYY-MM-DD
 
