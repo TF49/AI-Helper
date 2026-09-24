@@ -25,26 +25,32 @@ if (-not $NewVersion) {
 
 Write-Host "Updating version: $currentVer -> $NewVersion"
 
+# UTF-8 without BOM encoder (PowerShell 5.x Set-Content -Encoding UTF8 adds BOM)
+$utf8NoBom = [System.Text.UTF8Encoding]::new($false)
+
 # Update package.json
 $pkgContent = Get-Content -LiteralPath $pkgPath -Encoding UTF8 -Raw
 $pkgContent = $pkgContent -replace '"version":\s*"[^"]+"', "`"version`": `"$NewVersion`""
-Set-Content -LiteralPath $pkgPath -Value $pkgContent -Encoding UTF8
+$pkgContent = $pkgContent.TrimEnd("`r", "`n") + "`n"
+[System.IO.File]::WriteAllText($pkgPath, $pkgContent, $utf8NoBom)
 
 # Update src-tauri/tauri.conf.json
 $tauriContent = Get-Content -LiteralPath $tauriPath -Encoding UTF8 -Raw
 $tauriContent = $tauriContent -replace '"version":\s*"[^"]+"', "`"version`": `"$NewVersion`""
-Set-Content -LiteralPath $tauriPath -Value $tauriContent -Encoding UTF8
+$tauriContent = $tauriContent.TrimEnd("`r", "`n") + "`n"
+[System.IO.File]::WriteAllText($tauriPath, $tauriContent, $utf8NoBom)
 
 # Update src-tauri/Cargo.toml (only the [package] version)
 $cargoContent = Get-Content -LiteralPath $cargoPath -Encoding UTF8 -Raw
 $cargoContent = $cargoContent -replace '(?m)^(version\s*=\s*)"[^"]+"', "version = `"$NewVersion`""
-Set-Content -LiteralPath $cargoPath -Value $cargoContent -Encoding UTF8
+$cargoContent = $cargoContent.TrimEnd("`r", "`n") + "`n"
+[System.IO.File]::WriteAllText($cargoPath, $cargoContent, $utf8NoBom)
 
 # Check/create release notes file template if not existing
 $relNotesPath = Join-Path $repoRoot "docs/releases/v$NewVersion.md"
 if (-not (Test-Path -LiteralPath $relNotesPath)) {
     $template = "# BobAPI Tool v$NewVersion`n`n- 自动更新与功能增强`n"
-    Set-Content -LiteralPath $relNotesPath -Value $template -Encoding UTF8
+    [System.IO.File]::WriteAllText($relNotesPath, $template, $utf8NoBom)
     Write-Host "Created release notes draft: $relNotesPath"
 }
 
