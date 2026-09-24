@@ -9,6 +9,7 @@ import {
   KeyRound,
   FileCode,
   ShieldAlert,
+  ShieldCheck,
 } from "lucide-react";
 import {
   fetchClaudeModels,
@@ -108,7 +109,7 @@ export function ClaudePanel() {
 
   if (loading) {
     return (
-      <div className="flex flex-col items-center justify-center h-80 gap-3">
+      <div className="flex flex-col items-center justify-center flex-1 h-full min-h-[300px] gap-3">
         <Loader2 className="animate-spin text-purple-500" size={36} />
         <span className="text-xs text-slate-500 dark:text-gray-400 animate-pulse">
           正在读取 Claude Code 本地配置文件...
@@ -118,9 +119,9 @@ export function ClaudePanel() {
   }
 
   return (
-    <div className="space-y-5 pb-6">
+    <div className="w-full flex-1 flex flex-col justify-between min-h-0 gap-5 pb-2">
       {/* ── 顶部面板标题栏与快速概览 ── */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 pb-4 border-b border-slate-200/80 dark:border-white/10">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 pb-3.5 border-b border-slate-200/80 dark:border-white/10 flex-shrink-0">
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-xl bg-purple-100 text-purple-600 border border-purple-200 dark:bg-purple-500/20 dark:text-purple-400 dark:border-purple-500/30 flex items-center justify-center flex-shrink-0 shadow-xs">
             <Sparkles size={22} />
@@ -151,40 +152,41 @@ export function ClaudePanel() {
         </button>
       </div>
 
-      {/* ── 双列栅格配置区域 ── */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+      {/* ── 双列栅格配置区域 (垂直水平均匀铺满) ── */}
+      <div className="flex-1 grid grid-cols-1 lg:grid-cols-2 gap-5 min-h-0">
         {/* ── 左列：路由网络与本地配置文件 ── */}
-        <div className="flex flex-col gap-5">
+        <div className="flex flex-col gap-5 flex-1 min-h-0">
           {/* 卡片 1: API 服务节点选择 */}
           <SpotlightCard
-            className="p-5 rounded-2xl border border-slate-200/90 dark:border-white/10 bg-white/80 dark:bg-[#161324]/60 shadow-sm dark:shadow-none flex-1 flex flex-col justify-between"
+            className="p-5 rounded-2xl border border-slate-200/90 dark:border-white/10 bg-white/80 dark:bg-[#161324]/60 shadow-sm dark:shadow-none flex-1 flex flex-col justify-between min-h-[160px]"
             spotlightColor="rgba(168, 85, 247, 0.12)"
           >
-            <div className="space-y-3">
-              <div className="flex items-center justify-between">
-                <Label className="text-xs font-semibold text-slate-800 dark:text-gray-200 flex items-center gap-2">
-                  <Server size={14} className="text-purple-500" />
-                  API 服务网关节点
-                </Label>
-                <span className="text-[11px] text-slate-400 dark:text-gray-500">
-                  支持多线路故障切换
-                </span>
-              </div>
+            <div className="flex items-center justify-between mb-3 flex-shrink-0">
+              <Label className="text-xs font-semibold text-slate-800 dark:text-gray-200 flex items-center gap-2">
+                <Server size={14} className="text-purple-500" />
+                API 服务网关节点
+              </Label>
+              <span className="text-[11px] text-slate-400 dark:text-gray-500">
+                支持多线路故障切换
+              </span>
+            </div>
+            <div className="flex-1 flex flex-col justify-center min-h-0">
               <NodeCardSelector
                 value={url}
                 onChange={setUrl}
                 accentColor="purple"
+                className="h-full"
               />
             </div>
           </SpotlightCard>
 
           {/* 卡片 2: 本地配置文件管理 */}
           <SpotlightCard
-            className="p-5 rounded-2xl border border-slate-200/90 dark:border-white/10 bg-white/80 dark:bg-[#161324]/60 shadow-sm dark:shadow-none"
+            className="p-5 rounded-2xl border border-slate-200/90 dark:border-white/10 bg-white/80 dark:bg-[#161324]/60 shadow-sm dark:shadow-none flex-1 flex flex-col justify-between min-h-[160px]"
             spotlightColor="rgba(168, 85, 247, 0.12)"
           >
-            <div className="space-y-3">
-              <div className="flex items-center justify-between">
+            <div>
+              <div className="flex items-center justify-between mb-3">
                 <Label className="text-xs font-semibold text-slate-800 dark:text-gray-200 flex items-center gap-2">
                   <FileCode size={14} className="text-purple-500" />
                   本地配置文件路径
@@ -200,30 +202,35 @@ export function ClaudePanel() {
                 onReload={load}
                 accentColor="purple"
               />
+            </div>
 
+            <div className="mt-3">
               {!configExists ? (
                 <div className="flex items-start gap-1.5 p-2.5 rounded-lg bg-amber-500/10 border border-amber-500/20 text-amber-700 dark:text-amber-300 text-xs">
                   <ShieldAlert size={14} className="flex-shrink-0 mt-0.5" />
                   <span>未检测到 Claude 配置文件，点击保存将自动在用户主目录中创建。</span>
                 </div>
               ) : (
-                <p className="text-[11px] text-slate-400 dark:text-gray-500 leading-relaxed">
-                  Claude Code 启动时将读取此文件设置 ANTHROPIC_AUTH_TOKEN 与 API URL。
-                </p>
+                <div className="flex items-center gap-2 p-2.5 rounded-xl bg-slate-50/70 border border-slate-200/80 dark:bg-white/[0.03] dark:border-white/5 text-xs text-slate-500 dark:text-gray-400">
+                  <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 flex-shrink-0" />
+                  <span className="leading-relaxed">
+                    Claude Code 启动时将读取此文件设置 ANTHROPIC_AUTH_TOKEN 与 API URL。更新配置后重启相应终端即可生效。
+                  </span>
+                </div>
               )}
             </div>
           </SpotlightCard>
         </div>
 
         {/* ── 右列：认证密钥与测试模型 ── */}
-        <div className="flex flex-col gap-5">
+        <div className="flex flex-col gap-5 flex-1 min-h-0">
           {/* 卡片 3: Anthropic Auth Token / API Key */}
           <SpotlightCard
-            className="p-5 rounded-2xl border border-slate-200/90 dark:border-white/10 bg-white/80 dark:bg-[#161324]/60 shadow-sm dark:shadow-none"
+            className="p-5 rounded-2xl border border-slate-200/90 dark:border-white/10 bg-white/80 dark:bg-[#161324]/60 shadow-sm dark:shadow-none flex-1 flex flex-col justify-between min-h-[160px]"
             spotlightColor="rgba(168, 85, 247, 0.12)"
           >
-            <div className="space-y-3">
-              <div className="flex items-center justify-between">
+            <div>
+              <div className="flex items-center justify-between mb-3">
                 <Label className="text-xs font-semibold text-slate-800 dark:text-gray-200 flex items-center gap-2">
                   <KeyRound size={14} className="text-purple-500" />
                   Anthropic Auth Token / API Key
@@ -240,14 +247,21 @@ export function ClaudePanel() {
                 accentColor="purple"
               />
             </div>
+
+            <div className="mt-3 flex items-center gap-2 p-2.5 rounded-xl bg-slate-50/70 border border-slate-200/80 dark:bg-white/[0.03] dark:border-white/5 text-xs text-slate-500 dark:text-gray-400">
+              <ShieldCheck size={14} className="text-purple-500 dark:text-purple-400 flex-shrink-0" />
+              <span className="leading-relaxed">
+                凭据仅加密储存于本地配置与当前环境，直接与所选专线通信，绝不中转第三方。
+              </span>
+            </div>
           </SpotlightCard>
 
           {/* 卡片 4: 测试模型与快捷选项 */}
           <SpotlightCard
-            className="p-5 rounded-2xl border border-slate-200/90 dark:border-white/10 bg-white/80 dark:bg-[#161324]/60 shadow-sm dark:shadow-none flex-1 flex flex-col justify-between"
+            className="p-5 rounded-2xl border border-slate-200/90 dark:border-white/10 bg-white/80 dark:bg-[#161324]/60 shadow-sm dark:shadow-none flex-1 flex flex-col justify-between min-h-[160px]"
             spotlightColor="rgba(168, 85, 247, 0.12)"
           >
-            <div className="space-y-3">
+            <div>
               <ModelInput
                 value={model}
                 onChange={setModel}
@@ -258,28 +272,28 @@ export function ClaudePanel() {
                 refreshing={refreshingModels}
                 accentColor="purple"
               />
+            </div>
 
-              {/* 常用模型快捷填充芯片 */}
-              <div>
-                <span className="text-[10px] text-slate-400 dark:text-gray-500 uppercase tracking-wider block mb-1.5">
-                  常用模型推荐:
-                </span>
-                <div className="flex flex-wrap gap-1.5">
-                  {QUICK_MODELS.map((item) => (
-                    <button
-                      key={item}
-                      type="button"
-                      onClick={() => setModel(item)}
-                      className={`text-[11px] font-mono px-2 py-0.5 rounded-md border transition-all ${
-                        model === item
-                          ? "bg-purple-100 border-purple-300 text-purple-700 dark:bg-purple-500/20 dark:border-purple-500/40 dark:text-purple-300 font-semibold"
-                          : "bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100 hover:text-slate-900 dark:bg-white/5 dark:border-white/10 dark:text-gray-400 dark:hover:bg-white/10 dark:hover:text-white"
-                      }`}
-                    >
-                      {item}
-                    </button>
-                  ))}
-                </div>
+            {/* 常用模型快捷填充芯片 */}
+            <div className="mt-3 pt-3 border-t border-slate-100 dark:border-white/5">
+              <span className="text-[10px] text-slate-400 dark:text-gray-500 uppercase tracking-wider block mb-1.5 font-medium">
+                常用模型推荐:
+              </span>
+              <div className="flex flex-wrap gap-1.5">
+                {QUICK_MODELS.map((item) => (
+                  <button
+                    key={item}
+                    type="button"
+                    onClick={() => setModel(item)}
+                    className={`text-[11px] font-mono px-2 py-0.5 rounded-md border transition-all cursor-pointer ${
+                      model === item
+                        ? "bg-purple-100 border-purple-300 text-purple-700 dark:bg-purple-500/20 dark:border-purple-500/40 dark:text-purple-300 font-semibold"
+                        : "bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100 hover:text-slate-900 dark:bg-white/5 dark:border-white/10 dark:text-gray-400 dark:hover:bg-white/10 dark:hover:text-white"
+                    }`}
+                  >
+                    {item}
+                  </button>
+                ))}
               </div>
             </div>
           </SpotlightCard>
@@ -287,7 +301,7 @@ export function ClaudePanel() {
       </div>
 
       {/* ── 底部保存与联机验证操作栏 ── */}
-      <div className="pt-2">
+      <div className="pt-2 flex-shrink-0">
         <StarBorder
           className="w-full shadow-md"
           color="#a855f7"
@@ -316,7 +330,7 @@ export function ClaudePanel() {
             )}
           </div>
         </StarBorder>
-        <p className="text-[11px] text-center text-slate-500 dark:text-gray-400 pt-2.5">
+        <p className="text-[11px] text-center text-slate-500 dark:text-gray-400 pt-2">
           保存前将发送一次轻量测试请求，验证通过后写入本地 ~/.claude/settings.json
         </p>
       </div>

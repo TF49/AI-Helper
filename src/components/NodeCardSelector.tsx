@@ -7,6 +7,7 @@ interface NodeCardSelectorProps {
   customUrl?: string;
   onChange: (url: string) => void;
   accentColor?: "blue" | "purple";
+  className?: string;
 }
 
 const NODE_META: Record<
@@ -29,11 +30,12 @@ export function NodeCardSelector({
   value,
   onChange,
   accentColor = "blue",
+  className,
 }: NodeCardSelectorProps) {
   const isBlue = accentColor === "blue";
 
   return (
-    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+    <div className={cn("grid grid-cols-1 sm:grid-cols-2 gap-3", className)}>
       {PRESET_URLS.map((url) => {
         const selected = value === url;
         const meta = NODE_META[url] || {
@@ -48,7 +50,7 @@ export function NodeCardSelector({
             type="button"
             onClick={() => onChange(url)}
             className={cn(
-              "group relative w-full flex flex-col justify-between p-3.5 rounded-xl border text-left transition-all duration-200 cursor-pointer",
+              "group relative w-full h-full flex flex-col justify-between p-3.5 rounded-xl border text-left transition-all duration-200 cursor-pointer",
               selected
                 ? isBlue
                   ? "border-blue-500 bg-blue-50/90 dark:bg-blue-500/10 dark:border-blue-500/80 shadow-xs dark:shadow-[0_0_20px_rgba(59,130,246,0.15)] ring-1 ring-blue-500/30"

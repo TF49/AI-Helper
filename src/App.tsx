@@ -463,9 +463,9 @@ function AppContent() {
           </div>
         </aside>
 
-        {/* ── 右侧主工作台内容区 (宽广多列展台，不挤在屏幕中央) ── */}
-        <main className="flex-1 min-w-0 h-full overflow-y-auto px-6 py-6 lg:px-10 lg:py-8">
-          <div className="max-w-6xl w-full mx-auto">
+        {/* ── 右侧主工作台内容区 (占满右侧全部屏幕) ── */}
+        <main className="flex-1 min-w-0 h-full overflow-y-auto p-5 lg:p-6 xl:p-8 flex flex-col">
+          <div className="w-full flex-1 flex flex-col min-h-0">
             <AnimatePresence mode="wait">
               {tab === "chatgpt" ? (
                 <motion.div
@@ -474,6 +474,7 @@ function AppContent() {
                   animate={{ opacity: 1, y: 0 }}
                   exit={{ opacity: 0, y: -8 }}
                   transition={{ duration: 0.2, ease: "easeOut" }}
+                  className="w-full flex-1 flex flex-col min-h-0"
                 >
                   <ChatGPTPanel />
                 </motion.div>
@@ -484,6 +485,7 @@ function AppContent() {
                   animate={{ opacity: 1, y: 0 }}
                   exit={{ opacity: 0, y: -8 }}
                   transition={{ duration: 0.2, ease: "easeOut" }}
+                  className="w-full flex-1 flex flex-col min-h-0"
                 >
                   <ClaudePanel />
                 </motion.div>
