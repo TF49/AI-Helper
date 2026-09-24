@@ -46,6 +46,12 @@ $cargoContent = $cargoContent -replace '(?m)^(version\s*=\s*)"[^"]+"', "version 
 $cargoContent = $cargoContent.TrimEnd("`r", "`n") + "`n"
 [System.IO.File]::WriteAllText($cargoPath, $cargoContent, $utf8NoBom)
 
+# Regenerate Cargo.lock to match the new version in Cargo.toml
+# (CI uses --locked, so lock file must be committed and up-to-date)
+Write-Host "Regenerating Cargo.lock..."
+cargo update --manifest-path $cargoPath --package bobapi-tool
+if ($LASTEXITCODE -ne 0) { throw "cargo update failed" }
+
 # Check/create release notes file template if not existing
 $relNotesPath = Join-Path $repoRoot "docs/releases/v$NewVersion.md"
 if (-not (Test-Path -LiteralPath $relNotesPath)) {
