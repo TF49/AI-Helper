@@ -81,7 +81,7 @@ async (page) => {
 
   await page.evaluate(() => { window.modelTest.mode = 'success'; });
   await fetchButton.click();
-  for (const [width, height] of [[520, 640], [480, 580], [375, 812], [1280, 800]]) {
+  for (const [width, height] of [[460, 500], [520, 640], [480, 580], [375, 812], [1280, 800]]) {
     await page.setViewportSize({ width, height });
     await page.getByRole('button', { name: '选择模型', exact: true }).click();
     await page.getByPlaceholder('搜索模型...').waitFor();

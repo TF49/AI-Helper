@@ -7,8 +7,10 @@
         "title": "BobAPI Tool",
         "titleBarStyle": "Visible",
         "visible": false,
-        "minWidth": 480,
-        "minHeight": 580
+        "width": 460,
+        "height": 500,
+        "minWidth": 400,
+        "minHeight": 450
       }
     ]
   }

@@ -39,6 +39,6 @@ async (page) => {
       },
     };
   });
-  await page.setViewportSize({ width: 520, height: 640 });
+  await page.setViewportSize({ width: 460, height: 500 });
   await page.goto('http://127.0.0.1:3031/');
 }
