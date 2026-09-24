@@ -13,11 +13,12 @@ import {
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
+import { getVersion } from "@tauri-apps/api/app";
 import { ChatGPTPanel } from "./components/ChatGPTPanel";
 import { ClaudePanel } from "./components/ClaudePanel";
 import { QuickToolsModal } from "./components/QuickToolsModal";
 import { ThemeToggle } from "./components/ThemeToggle";
-import { ThemeProvider, useTheme } from "./components/theme-provider";
+import { useTheme } from "./components/theme-provider";
 import { AuroraBackground } from "./components/react-bits/AuroraBackground";
 import { DecryptedText } from "./components/react-bits/DecryptedText";
 import { ShinyText } from "./components/react-bits/ShinyText";
@@ -29,24 +30,29 @@ type Tab = "chatgpt" | "claude";
 type NetworkState = "checking" | "reachable" | "unreachable";
 
 export default function App() {
-  return (
-    <ThemeProvider defaultTheme="light" storageKey="bobapi-theme">
-      <AppContent />
-    </ThemeProvider>
-  );
+  return <AppContent />;
 }
 
 function AppContent() {
   const [tab, setTab] = useState<Tab>("chatgpt");
   const [networkState, setNetworkState] = useState<NetworkState>("checking");
   const [toolsOpen, setToolsOpen] = useState(false);
+  const [appVersion, setAppVersion] = useState("...");
   const { resolvedTheme } = useTheme();
   const win = getCurrentWindow();
 
   const {
-    state: updateState,
+    phase: updatePhase,
+    backendInfo: updateBackendInfo,
+    downloadProgress: updateDownloadProgress,
+    progressBytes: updateProgressBytes,
+    totalBytes: updateTotalBytes,
+    errorMessage: updateErrorMessage,
+    isManualChecking,
     checkForUpdates,
     handleRetry: handleUpdateRetry,
+    handleRestart: handleUpdateRestart,
+    handleClose: handleUpdateClose,
     handleExit: handleUpdateExit,
   } = useAppUpdater();
 
@@ -62,6 +68,11 @@ function AppContent() {
 
   useEffect(() => {
     void checkNetwork();
+  }, []);
+
+  // 读取真实版本号
+  useEffect(() => {
+    void getVersion().then((v) => setAppVersion(v));
   }, []);
 
   const isChatGPT = tab === "chatgpt";
@@ -296,17 +307,18 @@ function AppContent() {
           <span>Tauri v2 Desktop Engine</span>
         </div>
         <div className="flex items-center gap-3">
+          {/* 检查更新按钮：手动点击触发检查；仅在点击后检查过程中转圈，平时为静态按钮 */}
           <button
             onClick={() => void checkForUpdates(true)}
-            disabled={updateState.isChecking}
+            disabled={isManualChecking}
             className="hover:text-slate-800 dark:hover:text-white transition-colors flex items-center gap-1 cursor-pointer disabled:opacity-60"
             title="检查新版本"
           >
             <RefreshCw
               size={11}
-              className={updateState.isChecking ? "animate-spin text-blue-500" : ""}
+              className={isManualChecking ? "animate-spin text-blue-500" : ""}
             />
-            <span>{updateState.isChecking ? "检查中..." : "检查更新"}</span>
+            <span>{isManualChecking ? "检查中..." : "检查更新"}</span>
           </button>
           <span className="text-slate-300 dark:text-white/20">|</span>
           <button
@@ -316,7 +328,7 @@ function AppContent() {
             使用帮助
           </button>
           <span className="font-mono text-slate-400 dark:text-gray-500">
-            v1.0.1
+            v{appVersion}
           </span>
         </div>
       </div>
@@ -333,10 +345,17 @@ function AppContent() {
         }
       />
 
-      {/* ── 强制更新阻断遮罩模态框 ── */}
+      {/* ── 自动更新模态框 ── */}
       <ForceUpdateModal
-        state={updateState}
+        phase={updatePhase}
+        backendInfo={updateBackendInfo}
+        downloadProgress={updateDownloadProgress}
+        progressBytes={updateProgressBytes}
+        totalBytes={updateTotalBytes}
+        errorMessage={updateErrorMessage}
         onRetry={handleUpdateRetry}
+        onRestart={handleUpdateRestart}
+        onClose={handleUpdateClose}
         onExit={handleUpdateExit}
       />
 

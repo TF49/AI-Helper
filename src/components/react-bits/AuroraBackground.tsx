@@ -15,7 +15,7 @@ export const AuroraBackground: React.FC<AuroraBackgroundProps> = ({
 
   return (
     <div
-      className={`relative w-full h-full overflow-hidden transition-colors duration-300 bg-[#f8fafc] dark:bg-[#090a0f] ${className}`}
+      className={`relative flex-1 flex flex-col overflow-hidden transition-colors duration-300 bg-[#f8fafc] dark:bg-[#090a0f] ${className}`}
     >
       {/* 极光发光光晕层 */}
       <div
@@ -45,7 +45,7 @@ export const AuroraBackground: React.FC<AuroraBackgroundProps> = ({
       />
 
       {/* 前景内容 */}
-      <div className="relative z-10 w-full h-full flex flex-col">
+      <div className="flex-1 flex flex-col relative z-10">
         {children}
       </div>
     </div>

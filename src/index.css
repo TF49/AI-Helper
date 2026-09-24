@@ -8,11 +8,24 @@
   padding: 0;
 }
 
+html,
 body {
   font-family:
     -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-  background: #0f0f0f;
+  /* 背景色与应用主背景保持一致，防止大窗口/全屏时底部出现黑边 */
+  background: #f8fafc;
   color: #e5e5e5;
-  height: 100vh;
+  height: 100%;
   overflow: hidden;
+}
+
+/* ThemeProvider 只在 <html> 上切换 .dark class，body.dark 永远不触发 */
+html.dark {
+  background: #090a0f;
+}
+
+#root {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
 }

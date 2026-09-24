@@ -6,6 +6,7 @@ mod codex;
 mod error;
 mod model_fetch;
 mod network;
+mod updater;
 
 #[tauri::command]
 fn get_codex_config() -> Result<codex::CodexConfig, error::AppError> {
@@ -25,6 +26,11 @@ fn get_claude_config() -> Result<claude::ClaudeConfig, error::AppError> {
 #[tauri::command]
 fn set_claude_config(url: String, api_key: String) -> Result<(), error::AppError> {
     claude::set_claude_config(url, api_key)
+}
+
+#[tauri::command]
+async fn check_for_updates() -> Result<updater::UpdateInfo, String> {
+    updater::check_for_updates().await
 }
 
 #[tauri::command]
@@ -81,6 +87,7 @@ pub fn run() {
             set_codex_config,
             get_claude_config,
             set_claude_config,
+            check_for_updates,
             check_bob_api_network,
             test_codex_config,
             test_claude_config,
