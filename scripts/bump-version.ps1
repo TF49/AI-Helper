@@ -55,7 +55,15 @@ if ($LASTEXITCODE -ne 0) { throw "cargo update failed" }
 # Check/create release notes file template if not existing
 $relNotesPath = Join-Path $repoRoot "docs/releases/v$NewVersion.md"
 if (-not (Test-Path -LiteralPath $relNotesPath)) {
-    $template = "# BobAPI Tool v$NewVersion`n`n- 自动更新与功能增强`n"
+    $lines = @(
+        "# BobAPI Tool v$NewVersion",
+        "",
+        "## What's Changed",
+        "",
+        "- Automatic updates and feature enhancements",
+        ""
+    )
+    $template = $lines -join "`n"
     [System.IO.File]::WriteAllText($relNotesPath, $template, $utf8NoBom)
     Write-Host "Created release notes draft: $relNotesPath"
 }

@@ -1,0 +1,45 @@
+name: Update Release Notes
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'docs/releases/**'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: update-release-notes-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  update-notes:
+    name: Update release notes for current version
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Read current version and update release notes
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -e
+          PKG_VERSION=$(jq -r '.version' package.json)
+          TAG="v${PKG_VERSION}"
+          NOTES="docs/releases/${TAG}.md"
+
+          if [ ! -f "$NOTES" ]; then
+            echo "No release notes found at $NOTES, skipping."
+            exit 0
+          fi
+
+          # Check if release exists
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" > /dev/null 2>&1; then
+            echo "Updating release notes for $TAG"
+            gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --notes-file "$NOTES"
+            echo "Release notes updated successfully for $TAG"
+          else
+            echo "Release $TAG does not exist yet, skipping notes update."
+          fi
