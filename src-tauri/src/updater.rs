@@ -8,19 +8,15 @@
 ///      - Source 4: jsDelivr CDN (package.json)
 ///   3. 语义化版本比对 compare_versions
 ///   4. 返回携带 proxy_url 的 UpdateInfo 供前端及 Tauri updater 使用
-
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
 
 const CURRENT_VERSION: &str = env!("CARGO_PKG_VERSION");
 const UPDATER_JSON_URL: &str =
     "https://github.com/TF49/Bobapi-Tool/releases/latest/download/latest.json";
-const GITHUB_API_URL: &str =
-    "https://api.github.com/repos/TF49/Bobapi-Tool/releases/latest";
-const GITHUB_RAW_URL: &str =
-    "https://raw.githubusercontent.com/TF49/Bobapi-Tool/main/package.json";
-const JSDELIVR_URL: &str =
-    "https://cdn.jsdelivr.net/gh/TF49/Bobapi-Tool@main/package.json";
+const GITHUB_API_URL: &str = "https://api.github.com/repos/TF49/Bobapi-Tool/releases/latest";
+const GITHUB_RAW_URL: &str = "https://raw.githubusercontent.com/TF49/Bobapi-Tool/main/package.json";
+const JSDELIVR_URL: &str = "https://cdn.jsdelivr.net/gh/TF49/Bobapi-Tool@main/package.json";
 
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(10);
 
@@ -145,10 +141,7 @@ async fn check_for_updates_internal() -> Result<UpdateInfo, String> {
     match check_updater_json().await {
         Ok(info) => return Ok(info),
         Err(e) => {
-            log::warn!(
-                "updater.json check failed: {}. Trying GitHub API...",
-                e
-            );
+            log::warn!("updater.json check failed: {}. Trying GitHub API...", e);
         }
     }
 
@@ -156,10 +149,7 @@ async fn check_for_updates_internal() -> Result<UpdateInfo, String> {
     match check_github_api().await {
         Ok(info) => return Ok(info),
         Err(e) => {
-            log::warn!(
-                "GitHub API check failed: {}. Trying GitHub Raw...",
-                e
-            );
+            log::warn!("GitHub API check failed: {}. Trying GitHub Raw...", e);
         }
     }
 
@@ -167,10 +157,7 @@ async fn check_for_updates_internal() -> Result<UpdateInfo, String> {
     match check_static_url(GITHUB_RAW_URL, "GitHub Raw").await {
         Ok(info) => return Ok(info),
         Err(e) => {
-            log::warn!(
-                "GitHub Raw check failed: {}. Trying jsDelivr CDN...",
-                e
-            );
+            log::warn!("GitHub Raw check failed: {}. Trying jsDelivr CDN...", e);
         }
     }
 
@@ -213,12 +200,14 @@ async fn check_updater_json() -> Result<UpdateInfo, String> {
     if has_update {
         log::info!(
             "New version found (updater.json): {} (Current: {})",
-            latest_version, current_version
+            latest_version,
+            current_version
         );
     } else {
         log::info!(
             "Up to date (updater.json): {} (Matches {})",
-            current_version, latest_version
+            current_version,
+            latest_version
         );
     }
 
@@ -268,12 +257,14 @@ async fn check_github_api() -> Result<UpdateInfo, String> {
     if has_update {
         log::info!(
             "New version found (API): {} (Current: {})",
-            latest_version, current_version
+            latest_version,
+            current_version
         );
     } else {
         log::info!(
             "Up to date (API): {} (Matches {})",
-            current_version, latest_version
+            current_version,
+            latest_version
         );
     }
 
@@ -300,7 +291,11 @@ async fn check_static_url(url: &str, source_name: &str) -> Result<UpdateInfo, St
         .map_err(|e| format!("Request failed: {}", e))?;
 
     if !response.status().is_success() {
-        return Err(format!("{} returned status: {}", source_name, response.status()));
+        return Err(format!(
+            "{} returned status: {}",
+            source_name,
+            response.status()
+        ));
     }
 
     let package_json: PackageJson = response
@@ -315,12 +310,16 @@ async fn check_static_url(url: &str, source_name: &str) -> Result<UpdateInfo, St
     if has_update {
         log::info!(
             "New version found ({}): {} (Current: {})",
-            source_name, latest_version, current_version
+            source_name,
+            latest_version,
+            current_version
         );
     } else {
         log::info!(
             "Up to date ({}): {} (Matches {})",
-            source_name, current_version, latest_version
+            source_name,
+            current_version,
+            latest_version
         );
     }
 
