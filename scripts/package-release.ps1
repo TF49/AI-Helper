@@ -1,6 +1,8 @@
 param([string]$Tag)
 
 $ErrorActionPreference = 'Stop'
+# UTF-8 without BOM encoder (PowerShell 5.x Set-Content -Encoding UTF8 adds BOM)
+$utf8NoBom = [System.Text.UTF8Encoding]::new($false)
 $repoRoot = Split-Path -Parent $PSScriptRoot
 $package = Get-Content -LiteralPath (Join-Path $repoRoot 'package.json') -Encoding UTF8 -Raw | ConvertFrom-Json
 $tauri = Get-Content -LiteralPath (Join-Path $repoRoot 'src-tauri/tauri.conf.json') -Encoding UTF8 -Raw | ConvertFrom-Json
@@ -63,7 +65,8 @@ if ($hasSig) {
     }
 
     $latestJsonPath = Join-Path $assetRoot 'latest.json'
-    $latestManifest | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath $latestJsonPath -Encoding UTF8
+    $latestJsonContent = $latestManifest | ConvertTo-Json -Depth 5
+    [System.IO.File]::WriteAllText($latestJsonPath, $latestJsonContent, $utf8NoBom)
     Write-Host "Generated update manifest: $latestJsonPath"
 } else {
     Write-Warning "Signature file not found: $installerSig. (Updater latest.json will not be generated. Ensure TAURI_SIGNING_PRIVATE_KEY is set during build.)"
@@ -82,5 +85,6 @@ $checksums = foreach ($name in $filesToCheck) {
         "$($hash.Hash.ToLowerInvariant())  $name"
     }
 }
-$checksums | Set-Content -LiteralPath (Join-Path $assetRoot 'SHA256SUMS.txt') -Encoding UTF8
+$checksumContent = $checksums -join "`n"
+[System.IO.File]::WriteAllText((Join-Path $assetRoot 'SHA256SUMS.txt'), $checksumContent, $utf8NoBom)
 Get-ChildItem -LiteralPath $assetRoot -File | Select-Object Name, Length
