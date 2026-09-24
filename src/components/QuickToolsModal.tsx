@@ -11,6 +11,8 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { ThemeToggle } from "./ThemeToggle";
+import { openUrl } from "../lib/api";
+
 
 interface QuickToolsModalProps {
   open: boolean;
@@ -170,9 +172,14 @@ export function QuickToolsModal({
             <div className="grid grid-cols-2 gap-2">
               <a
                 href="https://bob-api.com"
+                onClick={(e) => {
+                  e.preventDefault();
+                  void openUrl("https://bob-api.com");
+                }}
                 target="_blank"
                 rel="noreferrer"
-                className="flex items-center justify-between p-2.5 rounded-xl bg-slate-50 hover:bg-slate-100 dark:bg-white/[0.03] dark:hover:bg-white/[0.07] border border-slate-200 dark:border-white/5 text-xs text-slate-700 dark:text-gray-300 hover:text-slate-900 dark:hover:text-white transition-colors"
+                title="在默认浏览器中打开 BobAPI 官方网站 (https://bob-api.com)"
+                className="flex items-center justify-between p-2.5 rounded-xl bg-slate-50 hover:bg-slate-100 dark:bg-white/[0.03] dark:hover:bg-white/[0.07] border border-slate-200 dark:border-white/5 text-xs text-slate-700 dark:text-gray-300 hover:text-slate-900 dark:hover:text-white transition-all active:scale-[0.98] cursor-pointer"
               >
                 <span>BobAPI 官方网站</span>
                 <ExternalLink
@@ -182,9 +189,14 @@ export function QuickToolsModal({
               </a>
               <a
                 href="https://taijiai.online"
+                onClick={(e) => {
+                  e.preventDefault();
+                  void openUrl("https://taijiai.online");
+                }}
                 target="_blank"
                 rel="noreferrer"
-                className="flex items-center justify-between p-2.5 rounded-xl bg-slate-50 hover:bg-slate-100 dark:bg-white/[0.03] dark:hover:bg-white/[0.07] border border-slate-200 dark:border-white/5 text-xs text-slate-700 dark:text-gray-300 hover:text-slate-900 dark:hover:text-white transition-colors"
+                title="在默认浏览器中打开 TaijiAI 备用专线 (https://taijiai.online)"
+                className="flex items-center justify-between p-2.5 rounded-xl bg-slate-50 hover:bg-slate-100 dark:bg-white/[0.03] dark:hover:bg-white/[0.07] border border-slate-200 dark:border-white/5 text-xs text-slate-700 dark:text-gray-300 hover:text-slate-900 dark:hover:text-white transition-all active:scale-[0.98] cursor-pointer"
               >
                 <span>TaijiAI 备用专线</span>
                 <ExternalLink

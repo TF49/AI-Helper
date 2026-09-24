@@ -76,6 +76,17 @@ async fn fetch_claude_models(
     model_fetch::fetch_models(&url, &api_key).await
 }
 
+#[tauri::command]
+async fn open_url(url: String) -> Result<(), String> {
+    let trimmed = url.trim().to_string();
+    if !trimmed.starts_with("http://") && !trimmed.starts_with("https://") {
+        return Err("Only http and https URLs are allowed".to_string());
+    }
+    tokio::task::spawn_blocking(move || opener::open(&trimmed).map_err(|e| e.to_string()))
+        .await
+        .map_err(|e| e.to_string())?
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -85,6 +96,7 @@ pub fn run() {
         .plugin(tauri_plugin_store::Builder::default().build())
         .setup(|app| {
             let window = app.get_webview_window("main").unwrap();
+            let _ = window.maximize();
             window.show().unwrap();
             #[cfg(debug_assertions)]
             window.open_devtools();
@@ -101,6 +113,7 @@ pub fn run() {
             test_claude_config,
             fetch_codex_models,
             fetch_claude_models,
+            open_url,
         ])
         .run(tauri::generate_context!())
         .expect("error while running bobapi-tool");

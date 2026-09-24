@@ -1,4 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
+import { toast } from "sonner";
 import type {
   AgentConfig,
   ApiTestResult,
@@ -71,3 +72,27 @@ export async function fetchClaudeModels(
 ): Promise<FetchedModel[]> {
   return invoke<FetchedModel[]>("fetch_claude_models", { url, apiKey });
 }
+
+let lastOpenTime = 0;
+let lastOpenUrl = "";
+
+export async function openUrl(url: string): Promise<boolean> {
+  const trimmed = url.trim();
+  const now = Date.now();
+  if (trimmed === lastOpenUrl && now - lastOpenTime < 800) {
+    return true;
+  }
+  lastOpenTime = now;
+  lastOpenUrl = trimmed;
+
+  try {
+    await invoke("open_url", { url: trimmed });
+    return true;
+  } catch (err) {
+    console.error("Failed to open URL in browser:", err);
+    toast.error(`无法打开外部浏览器: ${String(err)}`);
+    return false;
+  }
+}
+
+

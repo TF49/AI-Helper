@@ -28,6 +28,8 @@ import { check as tauriCheck, type DownloadEvent } from "@tauri-apps/plugin-upda
 import { relaunch, exit } from "@tauri-apps/plugin-process";
 import { invoke } from "@tauri-apps/api/core";
 import { toast } from "sonner";
+import { openUrl } from "../lib/api";
+
 
 // ── 类型定义 ─────────────────────────────────────────────────────────────────
 
@@ -417,9 +419,13 @@ export function ForceUpdateModal({
                 <div className="flex items-center gap-2">
                   <a
                     href={backendInfo?.download_url ?? GITHUB_RELEASES_URL}
+                    onClick={(e) => {
+                      e.preventDefault();
+                      void openUrl(backendInfo?.download_url ?? GITHUB_RELEASES_URL);
+                    }}
                     target="_blank"
                     rel="noreferrer"
-                    className="flex-1 flex items-center justify-center gap-1.5 py-2.5 px-4 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold transition-all active:scale-95"
+                    className="flex-1 flex items-center justify-center gap-1.5 py-2.5 px-4 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold transition-all active:scale-95 cursor-pointer"
                   >
                     <ExternalLink size={13} />
                     前往 GitHub 下载
@@ -456,9 +462,13 @@ export function ForceUpdateModal({
                   </button>
                   <a
                     href={backendInfo?.download_url ?? GITHUB_RELEASES_URL}
+                    onClick={(e) => {
+                      e.preventDefault();
+                      void openUrl(backendInfo?.download_url ?? GITHUB_RELEASES_URL);
+                    }}
                     target="_blank"
                     rel="noreferrer"
-                    className="flex items-center justify-center gap-1.5 py-2.5 px-3 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-slate-300 hover:text-white text-xs transition-colors"
+                    className="flex items-center justify-center gap-1.5 py-2.5 px-3 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-slate-300 hover:text-white text-xs transition-colors cursor-pointer"
                     title="在浏览器中手动下载新版安装包"
                   >
                     <ExternalLink size={13} />

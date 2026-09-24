@@ -2,6 +2,8 @@ import { useEffect, useState } from "react";
 import { Toaster } from "sonner";
 import {
   Minus,
+  Maximize2,
+  Minimize2,
   X,
   Bot,
   Loader2,
@@ -25,7 +27,7 @@ import { AuroraBackground } from "./components/react-bits/AuroraBackground";
 import { DecryptedText } from "./components/react-bits/DecryptedText";
 import { ShinyText } from "./components/react-bits/ShinyText";
 import { cn } from "./lib/utils";
-import { checkBobApiNetwork } from "./lib/api";
+import { checkBobApiNetwork, openUrl } from "./lib/api";
 import { ForceUpdateModal, useAppUpdater } from "./components/ForceUpdateModal";
 
 type Tab = "chatgpt" | "claude";
@@ -73,6 +75,32 @@ function AppContent() {
     void checkNetwork();
   }, []);
 
+  // 全局拦截外部链接点击，在系统默认浏览器中打开
+  useEffect(() => {
+    const handleAnchorClick = (event: MouseEvent) => {
+      if (event.defaultPrevented) return;
+
+      const anchor = (event.target as HTMLElement)?.closest("a");
+      if (!anchor || !anchor.href) return;
+
+      const href = anchor.href;
+      if (!href.startsWith("http://") && !href.startsWith("https://")) return;
+
+      const isExternal =
+        anchor.target === "_blank" || anchor.origin !== window.location.origin;
+
+      if (isExternal) {
+        event.preventDefault();
+        void openUrl(href);
+      }
+    };
+
+    document.addEventListener("click", handleAnchorClick);
+    return () => {
+      document.removeEventListener("click", handleAnchorClick);
+    };
+  }, []);
+
   // 读取真实版本号
   useEffect(() => {
     void getVersion().then((v) => setAppVersion(v));
@@ -93,6 +121,47 @@ function AppContent() {
   const isChatGPT = tab === "chatgpt";
   const isDark = resolvedTheme === "dark";
 
+  const [isWindowMaximized, setIsWindowMaximized] = useState(false);
+
+  // 监听并同步窗口最大化/还原状态
+  useEffect(() => {
+    let unlisten: (() => void) | undefined;
+    const updateMaximized = async () => {
+      try {
+        const isMax = await win.isMaximized();
+        setIsWindowMaximized(isMax);
+      } catch (err) {
+        console.error("Failed to check window maximized state:", err);
+      }
+    };
+    void updateMaximized();
+
+    const setupListener = async () => {
+      try {
+        unlisten = await win.onResized(() => {
+          void updateMaximized();
+        });
+      } catch (err) {
+        console.error("Failed to listen to window resize:", err);
+      }
+    };
+    void setupListener();
+
+    return () => {
+      if (unlisten) unlisten();
+    };
+  }, [win]);
+
+  const handleToggleMaximize = async () => {
+    try {
+      await win.toggleMaximize();
+      const isMax = await win.isMaximized();
+      setIsWindowMaximized(isMax);
+    } catch (err) {
+      console.error("Failed to toggle maximize:", err);
+    }
+  };
+
   return (
     <AuroraBackground
       theme={tab}
@@ -100,8 +169,18 @@ function AppContent() {
     >
       {/* ── 现代高颜值标题栏 ── */}
       <div
-        className="flex items-center justify-between h-12 px-4 border-b flex-shrink-0 z-20 backdrop-blur-xl transition-colors duration-200 bg-white/80 border-slate-200/90 dark:bg-[#0e101a]/80 dark:border-white/10"
+        className="flex items-center justify-between h-12 px-4 border-b flex-shrink-0 z-20 backdrop-blur-xl transition-colors duration-200 bg-white/80 border-slate-200/90 dark:bg-[#0e101a]/80 dark:border-white/10 select-none cursor-default"
         data-tauri-drag-region
+        onDoubleClick={(e) => {
+          const target = e.target as HTMLElement;
+          if (
+            !target.closest("button") &&
+            !target.closest("input") &&
+            !target.closest("a")
+          ) {
+            void handleToggleMaximize();
+          }
+        }}
       >
         {/* Logo + 解密动效标题 */}
         <div className="flex items-center gap-2.5 pointer-events-none">
@@ -167,14 +246,29 @@ function AppContent() {
 
           {/* 窗口最小化 */}
           <button
+            type="button"
             onClick={() => win.minimize()}
             className="w-7 h-7 flex items-center justify-center rounded-lg transition-colors hover:bg-slate-200/80 text-slate-500 hover:text-slate-800 dark:hover:bg-white/10 dark:text-gray-400 dark:hover:text-gray-200"
             title="最小化"
           >
             <Minus size={13} />
           </button>
+          {/* 窗口最大化/向下还原 */}
+          <button
+            type="button"
+            onClick={() => void handleToggleMaximize()}
+            className="w-7 h-7 flex items-center justify-center rounded-lg transition-colors hover:bg-slate-200/80 text-slate-500 hover:text-slate-800 dark:hover:bg-white/10 dark:text-gray-400 dark:hover:text-gray-200"
+            title={isWindowMaximized ? "向下还原" : "最大化"}
+          >
+            {isWindowMaximized ? (
+              <Minimize2 size={13} />
+            ) : (
+              <Maximize2 size={13} />
+            )}
+          </button>
           {/* 窗口关闭 */}
           <button
+            type="button"
             onClick={() => win.close()}
             className="w-7 h-7 flex items-center justify-center rounded-lg transition-colors hover:bg-red-500 hover:text-white text-slate-500 dark:hover:bg-red-500/90 dark:text-gray-400 dark:hover:text-white"
             title="关闭"
@@ -186,175 +280,183 @@ function AppContent() {
 
       {/* ── 胶囊 Tab 切换栏 ── */}
       <div className="px-4 pt-3 pb-2 flex-shrink-0 z-10">
-        <div className="flex p-1 rounded-xl border backdrop-blur-md transition-colors bg-slate-200/70 border-slate-200/90 dark:bg-[#121524]/80 dark:border-white/10">
-          {(
-            [
-              { key: "chatgpt", label: "ChatGPT (Codex)", icon: Bot },
-              { key: "claude", label: "Claude Code", icon: Sparkles },
-            ] as const
-          ).map(({ key, label, icon: Icon }) => {
-            const isActive = tab === key;
-            return (
-              <button
-                key={key}
-                onClick={() => setTab(key)}
-                className={cn(
-                  "relative flex-1 flex items-center justify-center gap-2 py-2 text-xs font-medium rounded-lg transition-colors z-10",
-                  isActive
-                    ? key === "chatgpt"
-                      ? "text-blue-700 dark:text-blue-100 font-semibold"
-                      : "text-purple-700 dark:text-purple-100 font-semibold"
-                    : "text-slate-600 dark:text-gray-400 hover:text-slate-900 dark:hover:text-gray-200",
-                )}
-              >
-                {/* 活跃指示滑块 (Framer Motion layoutId) */}
-                {isActive && (
-                  <motion.div
-                    layoutId="activeTabPill"
-                    className={cn(
-                      "absolute inset-0 rounded-lg shadow-sm border",
-                      key === "chatgpt"
-                        ? "bg-white border-slate-200 dark:bg-gradient-to-r dark:from-blue-600/40 dark:to-blue-500/30 dark:border-blue-500/50 dark:shadow-blue-500/20"
-                        : "bg-white border-slate-200 dark:bg-gradient-to-r dark:from-purple-600/40 dark:to-purple-500/30 dark:border-purple-500/50 dark:shadow-purple-500/20",
-                    )}
-                    transition={{ type: "spring", stiffness: 380, damping: 30 }}
-                  />
-                )}
-                <Icon
-                  size={14}
+        <div className="max-w-4xl mx-auto w-full">
+          <div className="flex p-1 rounded-xl border backdrop-blur-md transition-colors bg-slate-200/70 border-slate-200/90 dark:bg-[#121524]/80 dark:border-white/10">
+            {(
+              [
+                { key: "chatgpt", label: "ChatGPT (Codex)", icon: Bot },
+                { key: "claude", label: "Claude Code", icon: Sparkles },
+              ] as const
+            ).map(({ key, label, icon: Icon }) => {
+              const isActive = tab === key;
+              return (
+                <button
+                  key={key}
+                  onClick={() => setTab(key)}
                   className={cn(
-                    "relative z-10 transition-colors",
+                    "relative flex-1 flex items-center justify-center gap-2 py-2 text-xs font-medium rounded-lg transition-colors z-10",
                     isActive
                       ? key === "chatgpt"
-                        ? "text-blue-600 dark:text-blue-400"
-                        : "text-purple-600 dark:text-purple-400"
-                      : "text-slate-400 dark:text-gray-500",
+                        ? "text-blue-700 dark:text-blue-100 font-semibold"
+                        : "text-purple-700 dark:text-purple-100 font-semibold"
+                      : "text-slate-600 dark:text-gray-400 hover:text-slate-900 dark:hover:text-gray-200",
                   )}
-                />
-                <span className="relative z-10">{label}</span>
-              </button>
-            );
-          })}
+                >
+                  {/* 活跃指示滑块 (Framer Motion layoutId) */}
+                  {isActive && (
+                    <motion.div
+                      layoutId="activeTabPill"
+                      className={cn(
+                        "absolute inset-0 rounded-lg shadow-sm border",
+                        key === "chatgpt"
+                          ? "bg-white border-slate-200 dark:bg-gradient-to-r dark:from-blue-600/40 dark:to-blue-500/30 dark:border-blue-500/50 dark:shadow-blue-500/20"
+                          : "bg-white border-slate-200 dark:bg-gradient-to-r dark:from-purple-600/40 dark:to-purple-500/30 dark:border-purple-500/50 dark:shadow-purple-500/20",
+                      )}
+                      transition={{ type: "spring", stiffness: 380, damping: 30 }}
+                    />
+                  )}
+                  <Icon
+                    size={14}
+                    className={cn(
+                      "relative z-10 transition-colors",
+                      isActive
+                        ? key === "chatgpt"
+                          ? "text-blue-600 dark:text-blue-400"
+                          : "text-purple-600 dark:text-purple-400"
+                        : "text-slate-400 dark:text-gray-500",
+                    )}
+                  />
+                  <span className="relative z-10">{label}</span>
+                </button>
+              );
+            })}
+          </div>
         </div>
       </div>
 
       {/* ── 网络环境诊断横条 ── */}
       <div className="px-4 py-1 flex-shrink-0 z-10">
-        <div
-          className={cn(
-            "flex items-center gap-2 px-3 py-1.5 rounded-xl text-xs border backdrop-blur-sm transition-all duration-300",
-            networkState === "reachable" &&
-              "bg-emerald-50 border-emerald-200 text-emerald-800 dark:bg-emerald-500/10 dark:border-emerald-500/20 dark:text-emerald-300",
-            networkState === "unreachable" &&
-              "bg-amber-50 border-amber-200 text-amber-800 dark:bg-amber-500/10 dark:border-amber-500/20 dark:text-amber-300",
-            networkState === "checking" &&
-              "bg-slate-100 border-slate-200 text-slate-600 dark:bg-white/5 dark:border-white/10 dark:text-gray-400",
-          )}
-        >
-          {/* 状态图标 */}
-          {networkState === "checking" ? (
-            <Loader2
-              size={13}
-              className="animate-spin text-blue-500 flex-shrink-0"
-            />
-          ) : networkState === "reachable" ? (
-            <div className="relative flex items-center justify-center flex-shrink-0">
-              <span className="animate-ping absolute inline-flex h-2 w-2 rounded-full bg-emerald-400 opacity-60" />
-              <Wifi
-                size={13}
-                className="text-emerald-600 dark:text-emerald-400"
-              />
-            </div>
-          ) : (
-            <WifiOff
-              size={13}
-              className="text-amber-600 dark:text-amber-400 flex-shrink-0"
-            />
-          )}
-
-          {/* 状态文案 */}
-          <span className="flex-1 text-[11px] truncate">
-            {networkState === "checking" &&
-              "正在检测 bob-api.com 网络环境连通性..."}
-            {networkState === "reachable" &&
-              "已连接至 bob-api.com 官方网络（正常）"}
-            {networkState === "unreachable" &&
-              "无法连接 bob-api.com，请检查网络或开启科学代理"}
-          </span>
-
-          {/* 刷新检测 */}
-          <button
-            type="button"
-            onClick={() => void checkNetwork()}
-            disabled={networkState === "checking"}
-            className="p-1 rounded-md transition-colors flex-shrink-0 hover:bg-slate-200/60 text-slate-500 dark:text-gray-400 dark:hover:bg-white/10 dark:hover:text-white"
-            title="重新检测网络"
+        <div className="max-w-4xl mx-auto w-full">
+          <div
+            className={cn(
+              "flex items-center gap-2 px-3 py-1.5 rounded-xl text-xs border backdrop-blur-sm transition-all duration-300",
+              networkState === "reachable" &&
+                "bg-emerald-50 border-emerald-200 text-emerald-800 dark:bg-emerald-500/10 dark:border-emerald-500/20 dark:text-emerald-300",
+              networkState === "unreachable" &&
+                "bg-amber-50 border-amber-200 text-amber-800 dark:bg-amber-500/10 dark:border-amber-500/20 dark:text-amber-300",
+              networkState === "checking" &&
+                "bg-slate-100 border-slate-200 text-slate-600 dark:bg-white/5 dark:border-white/10 dark:text-gray-400",
+            )}
           >
-            <RefreshCw
-              size={12}
-              className={networkState === "checking" ? "animate-spin" : ""}
-            />
-          </button>
+            {/* 状态图标 */}
+            {networkState === "checking" ? (
+              <Loader2
+                size={13}
+                className="animate-spin text-blue-500 flex-shrink-0"
+              />
+            ) : networkState === "reachable" ? (
+              <div className="relative flex items-center justify-center flex-shrink-0">
+                <span className="animate-ping absolute inline-flex h-2 w-2 rounded-full bg-emerald-400 opacity-60" />
+                <Wifi
+                  size={13}
+                  className="text-emerald-600 dark:text-emerald-400"
+                />
+              </div>
+            ) : (
+              <WifiOff
+                size={13}
+                className="text-amber-600 dark:text-amber-400 flex-shrink-0"
+              />
+            )}
+
+            {/* 状态文案 */}
+            <span className="flex-1 text-[11px] truncate">
+              {networkState === "checking" &&
+                "正在检测 bob-api.com 网络环境连通性..."}
+              {networkState === "reachable" &&
+                "已连接至 bob-api.com 官方网络（正常）"}
+              {networkState === "unreachable" &&
+                "无法连接 bob-api.com，请检查网络或开启科学代理"}
+            </span>
+
+            {/* 刷新检测 */}
+            <button
+              type="button"
+              onClick={() => void checkNetwork()}
+              disabled={networkState === "checking"}
+              className="p-1 rounded-md transition-colors flex-shrink-0 hover:bg-slate-200/60 text-slate-500 dark:text-gray-400 dark:hover:bg-white/10 dark:hover:text-white"
+              title="重新检测网络"
+            >
+              <RefreshCw
+                size={12}
+                className={networkState === "checking" ? "animate-spin" : ""}
+              />
+            </button>
+          </div>
         </div>
       </div>
 
       {/* ── 内容区 (带流畅切换动效) ── */}
       <div className="flex-1 min-h-0 overflow-y-auto px-4 py-2 relative z-10">
-        <AnimatePresence mode="wait">
-          {tab === "chatgpt" ? (
-            <motion.div
-              key="chatgpt"
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -10 }}
-              transition={{ duration: 0.18, ease: "easeOut" }}
-            >
-              <ChatGPTPanel />
-            </motion.div>
-          ) : (
-            <motion.div
-              key="claude"
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -10 }}
-              transition={{ duration: 0.18, ease: "easeOut" }}
-            >
-              <ClaudePanel />
-            </motion.div>
-          )}
-        </AnimatePresence>
+        <div className="max-w-4xl mx-auto w-full">
+          <AnimatePresence mode="wait">
+            {tab === "chatgpt" ? (
+              <motion.div
+                key="chatgpt"
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -10 }}
+                transition={{ duration: 0.18, ease: "easeOut" }}
+              >
+                <ChatGPTPanel />
+              </motion.div>
+            ) : (
+              <motion.div
+                key="claude"
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -10 }}
+                transition={{ duration: 0.18, ease: "easeOut" }}
+              >
+                <ClaudePanel />
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
       </div>
 
       {/* ── 底部状态栏 ── */}
-      <div className="flex-shrink-0 px-4 py-2 border-t flex items-center justify-between text-[11px] z-20 backdrop-blur-md transition-colors bg-white/80 border-slate-200/90 text-slate-500 dark:bg-[#0c0e17]/80 dark:border-white/10 dark:text-gray-400">
-        <div className="flex items-center gap-2">
-          <span className="inline-block w-1.5 h-1.5 rounded-full bg-emerald-500" />
-          <span>Tauri v2 Desktop Engine</span>
-        </div>
-        <div className="flex items-center gap-3">
-          {/* 检查更新按钮：手动点击触发检查；仅在点击后检查过程中转圈，平时为静态按钮 */}
-          <button
-            onClick={() => void checkForUpdates(true)}
-            disabled={isManualChecking}
-            className="hover:text-slate-800 dark:hover:text-white transition-colors flex items-center gap-1 cursor-pointer disabled:opacity-60"
-            title="检查新版本"
-          >
-            <RefreshCw
-              size={11}
-              className={isManualChecking ? "animate-spin text-blue-500" : ""}
-            />
-            <span>{isManualChecking ? "检查中..." : "检查更新"}</span>
-          </button>
-          <span className="text-slate-300 dark:text-white/20">|</span>
-          <button
-            onClick={() => setToolsOpen(true)}
-            className="hover:text-slate-800 dark:hover:text-white transition-colors"
-          >
-            使用帮助
-          </button>
-          <span className="font-mono text-slate-400 dark:text-gray-500">
-            v{appVersion}
-          </span>
+      <div className="flex-shrink-0 px-4 py-2 border-t z-20 backdrop-blur-md transition-colors bg-white/80 border-slate-200/90 text-slate-500 dark:bg-[#0c0e17]/80 dark:border-white/10 dark:text-gray-400">
+        <div className="max-w-4xl mx-auto w-full flex items-center justify-between text-[11px]">
+          <div className="flex items-center gap-2">
+            <span className="inline-block w-1.5 h-1.5 rounded-full bg-emerald-500" />
+            <span>Tauri v2 Desktop Engine</span>
+          </div>
+          <div className="flex items-center gap-3">
+            {/* 检查更新按钮：手动点击触发检查；仅在点击后检查过程中转圈，平时为静态按钮 */}
+            <button
+              onClick={() => void checkForUpdates(true)}
+              disabled={isManualChecking}
+              className="hover:text-slate-800 dark:hover:text-white transition-colors flex items-center gap-1 cursor-pointer disabled:opacity-60"
+              title="检查新版本"
+            >
+              <RefreshCw
+                size={11}
+                className={isManualChecking ? "animate-spin text-blue-500" : ""}
+              />
+              <span>{isManualChecking ? "检查中..." : "检查更新"}</span>
+            </button>
+            <span className="text-slate-300 dark:text-white/20">|</span>
+            <button
+              onClick={() => setToolsOpen(true)}
+              className="hover:text-slate-800 dark:hover:text-white transition-colors"
+            >
+              使用帮助
+            </button>
+            <span className="font-mono text-slate-400 dark:text-gray-500">
+              v{appVersion}
+            </span>
+          </div>
         </div>
       </div>
 

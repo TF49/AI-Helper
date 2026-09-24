@@ -35,7 +35,7 @@ export function NodeCardSelector({
   return (
     <div className="space-y-2.5">
       {/* 预设节点卡片列表 */}
-      <div className="grid grid-cols-1 gap-2">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
         {PRESET_URLS.map((url) => {
           const selected = value === url;
           const meta = NODE_META[url] || {
