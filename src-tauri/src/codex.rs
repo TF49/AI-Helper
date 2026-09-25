@@ -9,6 +9,8 @@ pub struct CodexConfig {
     pub model: String,
     pub config_exists: bool,
     pub config_path: String,
+    pub is_installed: bool,
+    pub app_path: Option<String>,
 }
 
 pub fn codex_config_path() -> Result<PathBuf, AppError> {
@@ -22,6 +24,8 @@ fn parse_codex_content(
     config_path: &str,
     config_exists: bool,
     api_key: String,
+    is_installed: bool,
+    app_path: Option<String>,
 ) -> CodexConfig {
     let mut base_url = String::new();
     let mut model = String::new();
@@ -69,13 +73,48 @@ fn parse_codex_content(
         model,
         config_exists,
         config_path: config_path.to_string(),
+        is_installed,
+        app_path,
     }
 }
 
 pub fn get_codex_config() -> Result<CodexConfig, AppError> {
     let path = codex_config_path()?;
-    let config_path = path.display().to_string();
     let config_exists = path.exists();
+
+    // 检查本地是否已安装 Codex CLI 或 ChatGPT 桌面客户端，或已保存自定义路径
+    let codex_cli = crate::app_paths::detect_codex_cli_path();
+    let chatgpt_client = crate::app_paths::detect_chatgpt_client_path();
+    let saved_paths = crate::app_paths::load_app_paths();
+
+    let has_saved_path = saved_paths
+        .codex_cli_path
+        .as_deref()
+        .map_or(false, |p| !p.is_empty() && std::path::Path::new(p).exists())
+        || saved_paths
+            .chatgpt_client_path
+            .as_deref()
+            .map_or(false, |p| !p.is_empty() && std::path::Path::new(p).exists());
+
+    let is_installed = config_exists || codex_cli.exists || chatgpt_client.exists || has_saved_path;
+
+    let app_path = if codex_cli.exists {
+        Some(codex_cli.path)
+    } else if chatgpt_client.exists {
+        Some(chatgpt_client.path)
+    } else if has_saved_path {
+        saved_paths.codex_cli_path.or(saved_paths.chatgpt_client_path)
+    } else {
+        None
+    };
+
+    // 仅当配置文件真实存在或应用已确认安装时才提供有效路径，避免未安装时误导呈现虚假路径
+    let config_path = if config_exists || is_installed {
+        path.display().to_string()
+    } else {
+        String::new()
+    };
+
     let content = if config_exists {
         std::fs::read_to_string(&path)?
     } else {
@@ -88,6 +127,8 @@ pub fn get_codex_config() -> Result<CodexConfig, AppError> {
         &config_path,
         config_exists,
         api_key,
+        is_installed,
+        app_path,
     ))
 }
 
@@ -215,9 +256,10 @@ mod tests {
 
     #[test]
     fn test_parse_codex_content_empty_string() {
-        let cfg = parse_codex_content("", "C:/path/config.toml", true, "test-key".to_string());
+        let cfg = parse_codex_content("", "C:/path/config.toml", true, "test-key".to_string(), true, None);
         assert_eq!(cfg.config_path, "C:/path/config.toml");
         assert!(cfg.config_exists);
+        assert!(cfg.is_installed);
         assert_eq!(cfg.base_url, "");
         assert_eq!(cfg.api_key, "test-key");
         assert_eq!(cfg.model, "");
@@ -225,7 +267,7 @@ mod tests {
 
     #[test]
     fn test_parse_codex_content_whitespace_only() {
-        let cfg = parse_codex_content("   \r\n\t  ", "C:/path/config.toml", true, "".to_string());
+        let cfg = parse_codex_content("   \r\n\t  ", "C:/path/config.toml", true, "".to_string(), true, None);
         assert_eq!(cfg.config_path, "C:/path/config.toml");
         assert!(cfg.config_exists);
         assert_eq!(cfg.base_url, "");
@@ -240,6 +282,8 @@ mod tests {
             "C:/path/config.toml",
             true,
             "".to_string(),
+            true,
+            None,
         );
         assert_eq!(cfg.config_path, "C:/path/config.toml");
         assert!(cfg.config_exists);
@@ -256,7 +300,7 @@ model = "o3-mini"
 name = "Custom"
 base_url = "https://api.openai.com/v1"
 "#;
-        let cfg = parse_codex_content(raw, "C:/path/config.toml", true, "test-key".to_string());
+        let cfg = parse_codex_content(raw, "C:/path/config.toml", true, "test-key".to_string(), true, None);
         assert_eq!(cfg.model, "o3-mini");
         assert_eq!(cfg.base_url, "https://api.openai.com/");
         assert_eq!(cfg.api_key, "test-key");

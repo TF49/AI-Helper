@@ -204,7 +204,7 @@ function AppContent() {
   return (
     <AuroraBackground
       theme={tab === "claude" ? "claude" : "chatgpt"}
-      className="select-none text-slate-800 dark:text-gray-200 transition-colors duration-200 h-screen w-screen overflow-hidden flex flex-col"
+      className="text-slate-800 dark:text-gray-200 transition-colors duration-200 h-screen w-screen overflow-hidden flex flex-col"
     >
       {/* ── 顶部无缝桌面标题栏 ── */}
       <div

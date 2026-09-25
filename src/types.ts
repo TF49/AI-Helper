@@ -4,6 +4,8 @@ export interface AgentConfig {
   model: string;
   config_exists: boolean;
   config_path: string;
+  is_installed: boolean;
+  app_path?: string | null;
 }
 
 export interface NetworkStatus {

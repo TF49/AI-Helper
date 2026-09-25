@@ -226,19 +226,19 @@ export function InitializationModal({
     if (!(await delay(800))) return false;
     setCheckpoints((prev) => ({ ...prev, env_profile: "done", scan_codex: "scanning" }));
     setStepSubProgress(30);
-    setStepSubPhaseText("深度遍历系统磁盘，扫描 %USERPROFILE%/.codex/ 目录树...");
+    setStepSubPhaseText("深度遍历系统磁盘，扫描 %USERPROFILE%/.codex/ 目录树与运行入口...");
     addLog("FS:CODEX", "检索本地 ChatGPT (Codex) 运行环境与工作空间路径...", "scan");
 
     if (!(await delay(900))) return false;
     setStepSubProgress(48);
-    setStepSubPhaseText("正在捕获 Codex CLI 本地配置载荷与文件属性...");
+    setStepSubPhaseText("正在捕获 Codex CLI 本地配置载荷与运行环境属性...");
 
     let codex: AgentConfig;
     try {
       codex = await getCodexConfig();
       setConfigData((prev) => ({ ...prev, codex }));
     } catch (e) {
-      const msg = `Codex 路径获取失败: ${e}`;
+      const msg = `Codex 检索失败: ${e}`;
       setStep2Status("error");
       setPathError(msg);
       setCheckpoints((prev) => ({ ...prev, scan_codex: "error" }));
@@ -246,16 +246,25 @@ export function InitializationModal({
       return false;
     }
 
-    addLog(
-      "FS:CODEX",
-      `锁定 Codex 本机配置: ${codex.config_path || "未定位"} [状态: ${codex.config_exists ? "已就绪" : "待初始化"}]`,
-      "match",
-    );
-    setCheckpoints((prev) => ({ ...prev, scan_codex: "done", scan_claude: "scanning" }));
+    if (codex.is_installed) {
+      addLog(
+        "FS:CODEX",
+        `锁定 ChatGPT (Codex) 运行环境: ${codex.app_path || "已安装"} [配置文件: ${codex.config_exists ? "已就绪" : "待初始化"}]`,
+        "match",
+      );
+      setCheckpoints((prev) => ({ ...prev, scan_codex: "done", scan_claude: "scanning" }));
+    } else {
+      addLog(
+        "FS:CODEX",
+        "未在系统检索到 ChatGPT (Codex) 运行环境或配置文件",
+        "warn",
+      );
+      setCheckpoints((prev) => ({ ...prev, scan_codex: "error", scan_claude: "scanning" }));
+    }
 
     if (!(await delay(900))) return false;
     setStepSubProgress(68);
-    setStepSubPhaseText("深度检索 %USERPROFILE%/.claude/ 环境变量与软链接...");
+    setStepSubPhaseText("深度检索 %USERPROFILE%/.claude/ 环境变量与运行入口...");
     addLog("FS:CLAUDE", "检索本地 Claude Code 运行环境与 settings.json...", "scan");
 
     if (!(await delay(900))) return false;
@@ -267,7 +276,7 @@ export function InitializationModal({
       claude = await getClaudeConfig();
       setConfigData((prev) => ({ ...prev, claude }));
     } catch (e) {
-      const msg = `Claude 路径获取失败: ${e}`;
+      const msg = `Claude 检索失败: ${e}`;
       setStep2Status("error");
       setPathError(msg);
       setCheckpoints((prev) => ({ ...prev, scan_claude: "error" }));
@@ -275,18 +284,30 @@ export function InitializationModal({
       return false;
     }
 
-    addLog(
-      "FS:CLAUDE",
-      `锁定 Claude Code 本机配置: ${claude.config_path || "未定位"} [状态: ${claude.config_exists ? "已就绪" : "待初始化"}]`,
-      "match",
-    );
-    setCheckpoints((prev) => ({ ...prev, scan_claude: "done", acl_verify: "scanning" }));
+    if (claude.is_installed) {
+      addLog(
+        "FS:CLAUDE",
+        `锁定 Claude Code 运行环境: ${claude.app_path || "已安装"} [配置文件: ${claude.config_exists ? "已就绪" : "待初始化"}]`,
+        "match",
+      );
+      setCheckpoints((prev) => ({ ...prev, scan_claude: "done", acl_verify: "scanning" }));
+    } else {
+      addLog(
+        "FS:CLAUDE",
+        "未在系统检索到 Claude Code 运行环境或配置文件",
+        "warn",
+      );
+      setCheckpoints((prev) => ({ ...prev, scan_claude: "error", acl_verify: "scanning" }));
+    }
 
-    if (!codex.config_path && !claude.config_path) {
+    const anyInstalled = codex.is_installed || claude.is_installed;
+    if (!anyInstalled) {
       setStep2Status("error");
-      setPathError("未能准确定位系统中的配置文件路径，请检查用户主目录权限。");
+      setPathError(
+        "未在当前电脑检测到 Claude Code 或 ChatGPT (Codex) 的安装程序与配置文件。AI Helper 需要配合已安装的 Agent 运行环境使用，请先安装对应 Agent 或在路径管理中指定。",
+      );
       setCheckpoints((prev) => ({ ...prev, acl_verify: "error" }));
-      addLog("FS:ERR", "未能准确定位系统配置文件路径", "error");
+      addLog("FS:ERR", "未检测到任何本地 Agent 运行环境与配置文件，初始化流程已暂停", "error");
       return false;
     }
 
@@ -298,9 +319,19 @@ export function InitializationModal({
     if (!(await delay(600))) return false;
     setCheckpoints((prev) => ({ ...prev, acl_verify: "done" }));
     setStepSubProgress(100);
-    setStepSubPhaseText("本机环境扫描完成，成功定位本地配置文件");
+    setStepSubPhaseText("本机环境扫描完成，成功定位本地配置文件与运行环境");
     setStep2Status("success");
-    addLog("HOST:DONE", "本机扫描完成，已锁定 2 处本地 Agent 核心配置文件与环境上下文", "success");
+    const count = (codex.is_installed ? 1 : 0) + (claude.is_installed ? 1 : 0);
+    addLog("HOST:DONE", `本机扫描完成，已锁定 ${count} 处本地 Agent 运行环境与配置上下文`, "success");
+
+    // 默认展示已安装的 tab
+    if (!codex.is_installed && claude.is_installed) {
+      setActiveConfigTab("claude");
+      setEditTab("claude");
+    } else if (codex.is_installed && !claude.is_installed) {
+      setActiveConfigTab("chatgpt");
+      setEditTab("chatgpt");
+    }
 
     await delay(500);
     return true;
@@ -493,6 +524,15 @@ export function InitializationModal({
     setStep4Status("success");
     toast.success("已确认当前配置信息有效");
     addLog("CONFIRM:OK", "用户已确认当前本机环境核心参数有效", "success");
+  };
+
+  // 用户在未检测到本地 Agent 环境时，选择跳过检测并强行预先写入配置
+  const handleForceContinueStep2 = () => {
+    setStep2Status("success");
+    addLog("HOST:OVERRIDE", "用户选择跳过环境安装检测，强制进入配置初始化流程", "warn");
+    toast.info("已跳过安装检测，将为您预先配置 Agent 核心参数");
+    setCurrentStep(3);
+    void runPipeline(3);
   };
 
   // 点击底部【完成初始化并进入软件】按钮
@@ -860,25 +900,29 @@ export function InitializationModal({
                             status: checkpoints.scan_codex || (step2Status === "success" ? "done" : "pending"),
                             detail:
                               checkpoints.scan_codex === "error"
-                                ? "检索失败"
+                                ? "未检测到安装"
                                 : configData.codex?.config_exists
-                                  ? "已锁定 config.toml"
-                                  : checkpoints.scan_codex === "done"
-                                    ? "配置文件待初始化"
-                                    : "正在检索磁盘路径...",
+                                  ? "已就绪 (config.toml)"
+                                  : configData.codex?.is_installed
+                                    ? "CLI 已就绪，待初始化"
+                                    : checkpoints.scan_codex === "done"
+                                      ? "已就绪"
+                                      : "正在检索运行环境...",
                           },
                           {
                             key: "scan_claude",
-                            label: "Claude Code 本地配置文件",
+                            label: "Claude Code 运行环境与配置",
                             status: checkpoints.scan_claude || (step2Status === "success" ? "done" : "pending"),
                             detail:
                               checkpoints.scan_claude === "error"
-                                ? "检索失败"
+                                ? "未检测到安装"
                                 : configData.claude?.config_exists
-                                  ? "已锁定 settings.json"
-                                  : checkpoints.scan_claude === "done"
-                                    ? "配置文件待初始化"
-                                    : "正在检索磁盘路径...",
+                                  ? "已就绪 (settings.json)"
+                                  : configData.claude?.is_installed
+                                    ? "CLI 已就绪，待初始化"
+                                    : checkpoints.scan_claude === "done"
+                                      ? "已就绪"
+                                      : "正在检索运行环境...",
                           },
                           {
                             key: "acl_verify",
@@ -903,14 +947,16 @@ export function InitializationModal({
                             <span
                               className={cn(
                                 "px-2 py-0.5 rounded text-[10px] font-semibold flex items-center gap-1",
-                                step2Status === "running" && !configData.codex?.config_path
+                                step2Status === "running" && !configData.codex
                                   ? "bg-blue-100 text-blue-700 dark:bg-blue-500/20 dark:text-blue-300"
                                   : configData.codex?.config_exists
                                     ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-500/20 dark:text-emerald-300"
-                                    : "bg-amber-100 text-amber-800 dark:bg-amber-500/20 dark:text-amber-300",
+                                    : configData.codex?.is_installed
+                                      ? "bg-amber-100 text-amber-800 dark:bg-amber-500/20 dark:text-amber-300"
+                                      : "bg-rose-100 text-rose-800 dark:bg-rose-500/20 dark:text-rose-300",
                               )}
                             >
-                              {step2Status === "running" && !configData.codex?.config_path ? (
+                              {step2Status === "running" && !configData.codex ? (
                                 <>
                                   <Loader2 size={10} className="animate-spin" />
                                   扫描磁盘中
@@ -920,31 +966,47 @@ export function InitializationModal({
                                   <CheckCircle2 size={10} />
                                   已锁定路径
                                 </>
+                              ) : configData.codex?.is_installed ? (
+                                <>
+                                  <AlertCircle size={10} />
+                                  待初始化 (CLI已就绪)
+                                </>
                               ) : (
-                                "待初始化"
+                                <>
+                                  <XCircle size={10} />
+                                  未安装
+                                </>
                               )}
                             </span>
                           </div>
                           <div className="flex items-center justify-between gap-2 p-2 rounded-lg bg-slate-100 dark:bg-black/30 border border-slate-200/60 dark:border-white/5">
                             <code className="text-[11px] font-mono text-slate-700 dark:text-gray-300 break-all select-all">
-                              {configData.codex?.config_path || (step2Status === "running" ? "正在遍历磁盘检索 Codex 路径..." : "未定位到路径")}
+                              {configData.codex?.config_path
+                                ? configData.codex.config_path
+                                : step2Status === "running"
+                                  ? "正在遍历磁盘检索 Codex 路径..."
+                                  : configData.codex?.is_installed
+                                    ? "CLI 已检测，待生成 ~/.codex/config.toml"
+                                    : "未检测到安装环境，暂无配置文件"}
                             </code>
-                            <button
-                              onClick={() =>
-                                copyToClipboard(
-                                  configData.codex?.config_path || "",
-                                  "Codex 路径",
-                                )
-                              }
-                              className="p-1 rounded hover:bg-slate-200 dark:hover:bg-white/10 text-slate-500 dark:text-gray-400 flex-shrink-0"
-                              title="复制路径"
-                            >
-                              {copiedKey === "Codex 路径" ? (
-                                <Check size={12} className="text-emerald-500" />
-                              ) : (
-                                <Copy size={12} />
-                              )}
-                            </button>
+                            {configData.codex?.config_path ? (
+                              <button
+                                onClick={() =>
+                                  copyToClipboard(
+                                    configData.codex?.config_path || "",
+                                    "Codex 路径",
+                                  )
+                                }
+                                className="p-1 rounded hover:bg-slate-200 dark:hover:bg-white/10 text-slate-500 dark:text-gray-400 flex-shrink-0 cursor-pointer"
+                                title="复制路径"
+                              >
+                                {copiedKey === "Codex 路径" ? (
+                                  <Check size={12} className="text-emerald-500" />
+                                ) : (
+                                  <Copy size={12} />
+                                )}
+                              </button>
+                            ) : null}
                           </div>
                         </div>
 
@@ -958,14 +1020,16 @@ export function InitializationModal({
                             <span
                               className={cn(
                                 "px-2 py-0.5 rounded text-[10px] font-semibold flex items-center gap-1",
-                                step2Status === "running" && !configData.claude?.config_path
+                                step2Status === "running" && !configData.claude
                                   ? "bg-blue-100 text-blue-700 dark:bg-blue-500/20 dark:text-blue-300"
                                   : configData.claude?.config_exists
                                     ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-500/20 dark:text-emerald-300"
-                                    : "bg-amber-100 text-amber-800 dark:bg-amber-500/20 dark:text-amber-300",
+                                    : configData.claude?.is_installed
+                                      ? "bg-amber-100 text-amber-800 dark:bg-amber-500/20 dark:text-amber-300"
+                                      : "bg-rose-100 text-rose-800 dark:bg-rose-500/20 dark:text-rose-300",
                               )}
                             >
-                              {step2Status === "running" && !configData.claude?.config_path ? (
+                              {step2Status === "running" && !configData.claude ? (
                                 <>
                                   <Loader2 size={10} className="animate-spin" />
                                   扫描磁盘中
@@ -975,31 +1039,47 @@ export function InitializationModal({
                                   <CheckCircle2 size={10} />
                                   已锁定路径
                                 </>
+                              ) : configData.claude?.is_installed ? (
+                                <>
+                                  <AlertCircle size={10} />
+                                  待初始化 (CLI已就绪)
+                                </>
                               ) : (
-                                "待初始化"
+                                <>
+                                  <XCircle size={10} />
+                                  未安装
+                                </>
                               )}
                             </span>
                           </div>
                           <div className="flex items-center justify-between gap-2 p-2 rounded-lg bg-slate-100 dark:bg-black/30 border border-slate-200/60 dark:border-white/5">
                             <code className="text-[11px] font-mono text-slate-700 dark:text-gray-300 break-all select-all">
-                              {configData.claude?.config_path || (step2Status === "running" ? "正在遍历磁盘检索 Claude 路径..." : "未定位到路径")}
+                              {configData.claude?.config_path
+                                ? configData.claude.config_path
+                                : step2Status === "running"
+                                  ? "正在遍历磁盘检索 Claude 路径..."
+                                  : configData.claude?.is_installed
+                                    ? "CLI 已检测，待生成 ~/.claude/settings.json"
+                                    : "未检测到安装环境，暂无配置文件"}
                             </code>
-                            <button
-                              onClick={() =>
-                                copyToClipboard(
-                                  configData.claude?.config_path || "",
-                                  "Claude 路径",
-                                )
-                              }
-                              className="p-1 rounded hover:bg-slate-200 dark:hover:bg-white/10 text-slate-500 dark:text-gray-400 flex-shrink-0"
-                              title="复制路径"
-                            >
-                              {copiedKey === "Claude 路径" ? (
-                                <Check size={12} className="text-emerald-500" />
-                              ) : (
-                                <Copy size={12} />
-                              )}
-                            </button>
+                            {configData.claude?.config_path ? (
+                              <button
+                                onClick={() =>
+                                  copyToClipboard(
+                                    configData.claude?.config_path || "",
+                                    "Claude 路径",
+                                  )
+                                }
+                                className="p-1 rounded hover:bg-slate-200 dark:hover:bg-white/10 text-slate-500 dark:text-gray-400 flex-shrink-0 cursor-pointer"
+                                title="复制路径"
+                              >
+                                {copiedKey === "Claude 路径" ? (
+                                  <Check size={12} className="text-emerald-500" />
+                                ) : (
+                                  <Copy size={12} />
+                                )}
+                              </button>
+                            ) : null}
                           </div>
                         </div>
                       </div>
@@ -1008,11 +1088,25 @@ export function InitializationModal({
                         <div className="p-3 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 dark:bg-emerald-500/10 dark:border-emerald-500/20 dark:text-emerald-300 text-xs flex items-center justify-between">
                           <div className="flex items-center gap-2">
                             <CheckCircle2 size={16} className="text-emerald-600 flex-shrink-0" />
-                            <span>本机环境扫描完成！已准确定位 2 处本地 Agent 配置文件。</span>
+                            <span>
+                              {configData.codex?.is_installed && configData.claude?.is_installed
+                                ? "本机环境扫描完成！已准确定位 2 处本地 Agent 运行环境与配置文件。"
+                                : configData.claude?.is_installed
+                                  ? "本机扫描完成！已检测到 Claude Code 运行环境（ChatGPT / Codex 未安装）"
+                                  : configData.codex?.is_installed
+                                    ? "本机扫描完成！已检测到 ChatGPT (Codex) 运行环境（Claude 未安装）"
+                                    : "本机扫描通过！已准备预先配置 Agent 核心参数。"}
+                            </span>
                           </div>
                           <button
-                            onClick={() => setCurrentStep(3)}
-                            className="flex items-center gap-1 px-2.5 py-1 rounded bg-emerald-600 text-white font-medium text-[11px] hover:bg-emerald-700 transition"
+                            onClick={() => {
+                              if (!configData.codex?.is_installed && configData.claude?.is_installed) {
+                                setActiveConfigTab("claude");
+                                setEditTab("claude");
+                              }
+                              setCurrentStep(3);
+                            }}
+                            className="flex items-center gap-1 px-2.5 py-1 rounded bg-emerald-600 text-white font-medium text-[11px] hover:bg-emerald-700 transition cursor-pointer"
                           >
                             前往解析核心配置
                             <ArrowRight size={11} />
@@ -1022,22 +1116,70 @@ export function InitializationModal({
 
                       {step2Status === "error" && (
                         <div className="space-y-3">
-                          <div className="p-3.5 rounded-xl bg-red-50 border border-red-200 text-red-800 dark:bg-red-500/10 dark:border-red-500/20 dark:text-red-300 text-xs space-y-1">
+                          <div className="p-3.5 rounded-xl bg-rose-50 border border-rose-200 text-rose-900 dark:bg-rose-500/10 dark:border-rose-500/20 dark:text-rose-300 text-xs space-y-2">
                             <div className="flex items-center gap-1.5 font-bold">
-                              <XCircle size={15} className="text-red-600" />
-                              本机扫描与配置文件定位失败，流程已中断
+                              <XCircle size={15} className="text-rose-600 dark:text-rose-400 flex-shrink-0" />
+                              未检测到本地 Agent 运行环境与配置文件
                             </div>
-                            <p className="text-[11px] leading-relaxed text-red-700 dark:text-red-400">
+                            <p className="text-[11px] leading-relaxed text-rose-700 dark:text-rose-300/90 whitespace-pre-line">
                               {pathError}
                             </p>
+                            <div className="pt-1 border-t border-rose-200/60 dark:border-rose-500/20 text-[11px] text-slate-600 dark:text-gray-300 space-y-1.5">
+                              <div className="font-semibold text-slate-800 dark:text-gray-200 flex items-center gap-1">
+                                <Terminal size={12} className="text-slate-500" />
+                                常见快速安装指引：
+                              </div>
+                              <div className="flex flex-col sm:flex-row gap-2 font-mono text-[10px]">
+                                <div className="flex items-center justify-between gap-2 px-2.5 py-1 rounded bg-white dark:bg-black/30 border border-rose-200/60 dark:border-rose-500/20 flex-1">
+                                  <span className="truncate">Claude: npm i -g @anthropic-ai/claude-code@latest</span>
+                                  <button
+                                    onClick={() => copyToClipboard("npm install -g @anthropic-ai/claude-code@latest", "Claude 安装命令")}
+                                    className="p-0.5 text-slate-400 hover:text-slate-700 dark:hover:text-white cursor-pointer"
+                                    title="复制命令"
+                                  >
+                                    <Copy size={11} />
+                                  </button>
+                                </div>
+                                <div className="flex items-center justify-between gap-2 px-2.5 py-1 rounded bg-white dark:bg-black/30 border border-rose-200/60 dark:border-rose-500/20 flex-1">
+                                  <span className="truncate">Codex: npm i -g @openai/codex@latest</span>
+                                  <button
+                                    onClick={() => copyToClipboard("npm install -g @openai/codex@latest", "Codex 安装命令")}
+                                    className="p-0.5 text-slate-400 hover:text-slate-700 dark:hover:text-white cursor-pointer"
+                                    title="复制命令"
+                                  >
+                                    <Copy size={11} />
+                                  </button>
+                                </div>
+                              </div>
+                            </div>
                           </div>
-                          <button
-                            onClick={() => void runPipeline(2)}
-                            className="flex items-center gap-2 px-3.5 py-2 rounded-lg text-xs font-medium bg-blue-600 text-white hover:bg-blue-700 transition shadow-sm"
-                          >
-                            <RefreshCw size={13} />
-                            重新扫描本机配置文件
-                          </button>
+
+                          <div className="flex flex-wrap items-center gap-2 pt-1">
+                            <button
+                              onClick={() => void runPipeline(2)}
+                              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-blue-600 text-white hover:bg-blue-700 transition shadow-xs cursor-pointer"
+                            >
+                              <RefreshCw size={12} />
+                              重新检测本机环境
+                            </button>
+
+                            <button
+                              onClick={handleForceContinueStep2}
+                              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border border-amber-300 text-amber-800 bg-amber-50 hover:bg-amber-100 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-300 dark:hover:bg-amber-500/20 transition cursor-pointer"
+                              title="即使未检测到运行环境，仍强制进入配置并生成初始配置文件"
+                            >
+                              <Sparkles size={12} />
+                              跳过检测，强制预配置
+                            </button>
+
+                            <button
+                              onClick={() => void exit(0)}
+                              className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-medium text-slate-500 hover:text-red-600 hover:bg-red-50 dark:text-gray-400 dark:hover:text-red-400 dark:hover:bg-red-500/10 transition cursor-pointer ml-auto"
+                            >
+                              <Power size={12} />
+                              退出软件
+                            </button>
+                          </div>
                         </div>
                       )}
                     </div>
@@ -1064,7 +1206,11 @@ export function InitializationModal({
                       </div>
 
                       <p className="text-xs text-slate-500 dark:text-gray-400">
-                        成功解析本机配置文件内容，清晰展示核心三大参数：接口地址 (url)、认证密钥 (apikey) 及默认模型 (model)。
+                        {activeCfg?.config_exists
+                          ? "成功解析本机配置文件内容，清晰展示核心三大参数：接口地址 (url)、认证密钥 (apikey) 及默认模型 (model)。"
+                          : activeCfg?.is_installed
+                            ? "已检测到 CLI 运行环境，当前尚未生成配置文件，展示默认预设模板参数。"
+                            : "当前系统未安装该 Agent，展示默认配置模板。保存后将为您预先创建配置文件。"}
                       </p>
 
                       {/* 扫描子进度指示 */}
@@ -1080,9 +1226,9 @@ export function InitializationModal({
                         checkpoints={[
                           {
                             key: "load_binary",
-                            label: "装载本地配置文件二进制流",
+                            label: activeCfg?.config_exists ? "装载本地配置文件二进制流" : "载入默认配置规范模板",
                             status: checkpoints.load_binary || (step3Status === "success" ? "done" : "pending"),
-                            detail: "语法树语法校验",
+                            detail: activeCfg?.config_exists ? "语法树语法校验" : "空配置结构模板",
                           },
                           {
                             key: "parse_url",
@@ -1113,7 +1259,7 @@ export function InitializationModal({
                             setEditTab("chatgpt");
                           }}
                           className={cn(
-                            "flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition",
+                            "flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition cursor-pointer",
                             activeConfigTab === "chatgpt"
                               ? "bg-white text-blue-600 shadow-sm dark:bg-blue-500/20 dark:text-blue-300 font-bold"
                               : "text-slate-600 dark:text-gray-400 hover:text-slate-900 dark:hover:text-white",
@@ -1121,6 +1267,11 @@ export function InitializationModal({
                         >
                           <Bot size={13} />
                           ChatGPT (Codex)
+                          {!configData.codex?.is_installed && (
+                            <span className="text-[9px] px-1 py-0.2 rounded bg-slate-200 dark:bg-white/10 text-slate-500 dark:text-gray-400">
+                              未安装
+                            </span>
+                          )}
                         </button>
                         <button
                           onClick={() => {
@@ -1128,7 +1279,7 @@ export function InitializationModal({
                             setEditTab("claude");
                           }}
                           className={cn(
-                            "flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition",
+                            "flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition cursor-pointer",
                             activeConfigTab === "claude"
                               ? "bg-white text-purple-600 shadow-sm dark:bg-purple-500/20 dark:text-purple-300 font-bold"
                               : "text-slate-600 dark:text-gray-400 hover:text-slate-900 dark:hover:text-white",
@@ -1136,6 +1287,11 @@ export function InitializationModal({
                         >
                           <Sparkles size={13} />
                           Claude Code
+                          {!configData.claude?.is_installed && (
+                            <span className="text-[9px] px-1 py-0.2 rounded bg-slate-200 dark:bg-white/10 text-slate-500 dark:text-gray-400">
+                              未安装
+                            </span>
+                          )}
                         </button>
                       </div>
 
@@ -1379,24 +1535,34 @@ export function InitializationModal({
                               <button
                                 onClick={() => handleSwitchEditTab("chatgpt")}
                                 className={cn(
-                                  "px-2.5 py-1 rounded font-medium transition cursor-pointer",
+                                  "px-2.5 py-1 rounded font-medium transition cursor-pointer flex items-center gap-1",
                                   editTab === "chatgpt"
                                     ? "bg-white text-blue-600 shadow-xs dark:bg-blue-600 dark:text-white"
                                     : "text-slate-600 dark:text-gray-400",
                                 )}
                               >
                                 ChatGPT
+                                {!configData.codex?.is_installed && (
+                                  <span className="text-[9px] opacity-75">
+                                    (未安装)
+                                  </span>
+                                )}
                               </button>
                               <button
                                 onClick={() => handleSwitchEditTab("claude")}
                                 className={cn(
-                                  "px-2.5 py-1 rounded font-medium transition cursor-pointer",
+                                  "px-2.5 py-1 rounded font-medium transition cursor-pointer flex items-center gap-1",
                                   editTab === "claude"
                                     ? "bg-white text-purple-600 shadow-xs dark:bg-purple-600 dark:text-white"
                                     : "text-slate-600 dark:text-gray-400",
                                 )}
                               >
                                 Claude Code
+                                {!configData.claude?.is_installed && (
+                                  <span className="text-[9px] opacity-75">
+                                    (未安装)
+                                  </span>
+                                )}
                               </button>
                             </div>
                           </div>

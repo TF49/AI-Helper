@@ -166,4 +166,9 @@ export async function openUrl(url: string): Promise<boolean> {
   }
 }
 
+export async function executeInTerminal(command: string): Promise<string> {
+  return invoke<string>("execute_in_terminal", { command });
+}
+
+
 

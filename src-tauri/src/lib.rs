@@ -58,6 +58,16 @@ async fn restart_target_app(
 }
 
 #[tauri::command]
+async fn execute_in_terminal(command: String) -> Result<String, String> {
+    tokio::task::spawn_blocking(move || {
+        process_manager::execute_in_terminal(&command)
+    })
+    .await
+    .map_err(|e| format!("终端启动异常: {}", e))?
+}
+
+
+#[tauri::command]
 fn get_codex_config() -> Result<codex::CodexConfig, error::AppError> {
     codex::get_codex_config()
 }
@@ -192,6 +202,7 @@ pub fn run() {
             browse_app_path,
             check_app_process_status,
             restart_target_app,
+            execute_in_terminal,
         ])
         .run(tauri::generate_context!())
         .expect("error while running ai-helper");

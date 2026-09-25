@@ -58,7 +58,7 @@ export function StatusBadge({
             className="font-mono text-xs text-slate-800 dark:text-gray-200 block truncate select-all"
             title={path}
           >
-            {path || "未指定配置文件路径"}
+            {path || "未检测到安装或配置文件"}
           </span>
         </div>
       </div>
@@ -71,7 +71,9 @@ export function StatusBadge({
             "flex items-center gap-1.5 px-2 py-0.5 rounded-md text-[11px] font-medium border",
             exists
               ? "bg-emerald-50 border-emerald-200 text-emerald-700 dark:bg-emerald-500/10 dark:border-emerald-500/30 dark:text-emerald-400"
-              : "bg-amber-50 border-amber-200 text-amber-700 dark:bg-amber-500/10 dark:border-amber-500/30 dark:text-amber-400",
+              : path
+                ? "bg-amber-50 border-amber-200 text-amber-700 dark:bg-amber-500/10 dark:border-amber-500/30 dark:text-amber-400"
+                : "bg-rose-50 border-rose-200 text-rose-700 dark:bg-rose-500/10 dark:border-rose-500/30 dark:text-rose-400",
           )}
         >
           {exists ? (
@@ -79,10 +81,15 @@ export function StatusBadge({
               <CheckCircle2 size={12} className="text-emerald-500" />
               <span>已检测到配置</span>
             </>
-          ) : (
+          ) : path ? (
             <>
               <AlertCircle size={12} className="text-amber-500" />
               <span>待初始化</span>
+            </>
+          ) : (
+            <>
+              <AlertCircle size={12} className="text-rose-500" />
+              <span>未检测到环境</span>
             </>
           )}
         </div>

@@ -9,6 +9,8 @@ pub struct ClaudeConfig {
     pub model: String,
     pub config_exists: bool,
     pub config_path: String,
+    pub is_installed: bool,
+    pub app_path: Option<String>,
 }
 
 pub fn claude_config_path() -> Result<PathBuf, AppError> {
@@ -17,7 +19,13 @@ pub fn claude_config_path() -> Result<PathBuf, AppError> {
     Ok(home.join(".claude").join("settings.json"))
 }
 
-fn parse_claude_content(content: &str, config_path: &str, config_exists: bool) -> ClaudeConfig {
+fn parse_claude_content(
+    content: &str,
+    config_path: &str,
+    config_exists: bool,
+    is_installed: bool,
+    app_path: Option<String>,
+) -> ClaudeConfig {
     let mut base_url = String::new();
     let mut api_key = String::new();
     let mut model = String::new();
@@ -58,20 +66,54 @@ fn parse_claude_content(content: &str, config_path: &str, config_exists: bool) -
         model,
         config_exists,
         config_path: config_path.to_string(),
+        is_installed,
+        app_path,
     }
 }
 
 pub fn get_claude_config() -> Result<ClaudeConfig, AppError> {
     let path = claude_config_path()?;
-    let config_path = path.display().to_string();
     let config_exists = path.exists();
+
+    // 检查本地是否已安装 Claude Code CLI 或保存了自定义路径
+    let claude_cli = crate::app_paths::detect_claude_cli_path();
+    let saved_paths = crate::app_paths::load_app_paths();
+
+    let has_saved_path = saved_paths
+        .claude_cli_path
+        .as_deref()
+        .map_or(false, |p| !p.is_empty() && std::path::Path::new(p).exists());
+
+    let is_installed = config_exists || claude_cli.exists || has_saved_path;
+
+    let app_path = if claude_cli.exists {
+        Some(claude_cli.path)
+    } else if has_saved_path {
+        saved_paths.claude_cli_path
+    } else {
+        None
+    };
+
+    // 仅当配置文件真实存在或应用已确认安装时才提供有效路径，避免未安装时误导呈现虚假路径
+    let config_path = if config_exists || is_installed {
+        path.display().to_string()
+    } else {
+        String::new()
+    };
+
     let content = if config_exists {
         std::fs::read_to_string(&path)?
     } else {
         String::new()
     };
 
-    Ok(parse_claude_content(&content, &config_path, config_exists))
+    Ok(parse_claude_content(
+        &content,
+        &config_path,
+        config_exists,
+        is_installed,
+        app_path,
+    ))
 }
 
 fn prepare_claude_json(
@@ -142,9 +184,10 @@ mod tests {
 
     #[test]
     fn test_parse_claude_content_empty_string() {
-        let cfg = parse_claude_content("", "C:/path/settings.json", true);
+        let cfg = parse_claude_content("", "C:/path/settings.json", true, true, None);
         assert_eq!(cfg.config_path, "C:/path/settings.json");
         assert!(cfg.config_exists);
+        assert!(cfg.is_installed);
         assert_eq!(cfg.base_url, "");
         assert_eq!(cfg.api_key, "");
         assert_eq!(cfg.model, "");
@@ -152,7 +195,7 @@ mod tests {
 
     #[test]
     fn test_parse_claude_content_whitespace_only() {
-        let cfg = parse_claude_content("   \r\n\t  ", "C:/path/settings.json", true);
+        let cfg = parse_claude_content("   \r\n\t  ", "C:/path/settings.json", true, true, None);
         assert_eq!(cfg.config_path, "C:/path/settings.json");
         assert!(cfg.config_exists);
         assert_eq!(cfg.base_url, "");
@@ -162,7 +205,7 @@ mod tests {
 
     #[test]
     fn test_parse_claude_content_malformed_json() {
-        let cfg = parse_claude_content("{ broken json: ", "C:/path/settings.json", true);
+        let cfg = parse_claude_content("{ broken json: ", "C:/path/settings.json", true, true, None);
         assert_eq!(cfg.config_path, "C:/path/settings.json");
         assert!(cfg.config_exists);
         assert_eq!(cfg.base_url, "");
@@ -179,7 +222,7 @@ mod tests {
                 "ANTHROPIC_AUTH_TOKEN": "sk-ant-test"
             }
         }"#;
-        let cfg = parse_claude_content(raw, "C:/path/settings.json", true);
+        let cfg = parse_claude_content(raw, "C:/path/settings.json", true, true, None);
         assert_eq!(cfg.base_url, "https://api.example.com");
         assert_eq!(cfg.api_key, "sk-ant-test");
         assert_eq!(cfg.model, "claude-3-5-sonnet-20241022");

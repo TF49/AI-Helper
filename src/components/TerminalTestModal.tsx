@@ -276,7 +276,7 @@ export function TerminalTestModal({
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/65 backdrop-blur-sm animate-fade-in select-none">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/65 backdrop-blur-sm animate-fade-in">
       <div className="relative w-full max-w-2xl rounded-2xl border border-slate-700/80 dark:border-white/10 bg-[#0d1117] text-slate-100 shadow-2xl overflow-hidden flex flex-col max-h-[85vh] animate-slide-up">
         {/* ── 顶部终端装饰标题栏 (macOS 风格) ── */}
         <div className="flex items-center justify-between px-4 py-3 bg-[#161b22] border-b border-[#30363d] flex-shrink-0">

@@ -259,3 +259,33 @@ pub fn restart_target_app(app_type: &str, custom_path: Option<&str>) -> Result<S
         Ok(msg)
     }
 }
+
+/// 在独立控制台终端中执行指定的安装与更新命令 (Windows 下开启独立 CMD 窗口，使用 /k 保持终端开启以方便查看执行结果)
+pub fn execute_in_terminal(command: &str) -> Result<String, String> {
+    let trimmed = command.trim();
+    if trimmed.is_empty() {
+        return Err("执行命令不能为空".to_string());
+    }
+
+    #[cfg(target_os = "windows")]
+    {
+        let mut cmd = Command::new("cmd");
+        cmd.args([
+            "/c",
+            "start",
+            "AI Helper - CLI 手动安装与更新终端",
+            "cmd.exe",
+            "/k",
+            trimmed,
+        ]);
+        cmd.spawn()
+            .map_err(|e| format!("拉起外部终端失败: {}", e))?;
+        Ok(format!("已在独立终端窗口中启动安装: {}", trimmed))
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    {
+        Err("当前操作系统暂不支持自动唤起外部终端，请手动复制命令到终端中执行".to_string())
+    }
+}
+
