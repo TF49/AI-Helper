@@ -61,6 +61,27 @@ async fn test_claude_config(
 }
 
 #[tauri::command]
+async fn test_codex_stream(
+    url: String,
+    api_key: String,
+    model: String,
+    on_event: tauri::ipc::Channel<api_test::TestStreamEvent>,
+) -> api_test::ApiTestResult {
+    api_test::test_codex_stream(url, api_key, model, on_event).await
+}
+
+#[tauri::command]
+async fn test_claude_stream(
+    url: String,
+    api_key: String,
+    model: String,
+    on_event: tauri::ipc::Channel<api_test::TestStreamEvent>,
+) -> api_test::ApiTestResult {
+    api_test::test_claude_stream(url, api_key, model, on_event).await
+}
+
+
+#[tauri::command]
 async fn fetch_codex_models(
     url: String,
     api_key: String,
@@ -111,6 +132,8 @@ pub fn run() {
             check_bob_api_network,
             test_codex_config,
             test_claude_config,
+            test_codex_stream,
+            test_claude_stream,
             fetch_codex_models,
             fetch_claude_models,
             open_url,

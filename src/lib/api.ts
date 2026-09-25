@@ -1,10 +1,11 @@
-import { invoke } from "@tauri-apps/api/core";
+import { invoke, Channel } from "@tauri-apps/api/core";
 import { toast } from "sonner";
 import type {
   AgentConfig,
   ApiTestResult,
   FetchedModel,
   NetworkStatus,
+  TestStreamEvent,
 } from "../types";
 
 export async function getCodexConfig(): Promise<AgentConfig> {
@@ -58,6 +59,37 @@ export async function testClaudeConfig(
     model,
   });
 }
+
+export async function testCodexStream(
+  url: string,
+  apiKey: string,
+  model: string,
+  onEvent: (event: TestStreamEvent) => void,
+): Promise<ApiTestResult> {
+  const channel = new Channel<TestStreamEvent>(onEvent);
+  return invoke<ApiTestResult>("test_codex_stream", {
+    url,
+    apiKey,
+    model,
+    onEvent: channel,
+  });
+}
+
+export async function testClaudeStream(
+  url: string,
+  apiKey: string,
+  model: string,
+  onEvent: (event: TestStreamEvent) => void,
+): Promise<ApiTestResult> {
+  const channel = new Channel<TestStreamEvent>(onEvent);
+  return invoke<ApiTestResult>("test_claude_stream", {
+    url,
+    apiKey,
+    model,
+    onEvent: channel,
+  });
+}
+
 
 export async function fetchCodexModels(
   url: string,

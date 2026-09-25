@@ -28,7 +28,35 @@ export interface InitStepInfo {
 export interface ApiTestResult {
   success: boolean;
   message: string;
+  statusCode?: number;
+  latencyMs?: number;
+  responsePreview?: string;
 }
+
+export type TestStreamEvent =
+  | {
+      type: "log";
+      data: {
+        text: string;
+        level: "info" | "success" | "warn" | "error" | "response" | "dim";
+      };
+    }
+  | {
+      type: "chunk";
+      data: {
+        delta: string;
+      };
+    }
+  | {
+      type: "finish";
+      data: {
+        success: boolean;
+        message: string;
+        latency_ms: number;
+        status_code?: number;
+      };
+    };
+
 
 export interface FetchedModel {
   id: string;

@@ -14,8 +14,6 @@ import {
 import {
   fetchCodexModels,
   getCodexConfig,
-  setCodexConfig,
-  testCodexConfig,
 } from "../lib/api";
 import { StatusBadge } from "./StatusBadge";
 import { NodeCardSelector } from "./NodeCardSelector";
@@ -26,6 +24,7 @@ import { PRESET_URLS } from "../types";
 import { useModelFetch } from "../lib/useModelFetch";
 import { SpotlightCard } from "./react-bits/SpotlightCard";
 import { StarBorder } from "./react-bits/StarBorder";
+import { TerminalTestModal } from "./TerminalTestModal";
 
 const QUICK_MODELS = [
   "gpt-4o",
@@ -42,7 +41,7 @@ export function ChatGPTPanel() {
   const [configExists, setConfigExists] = useState(false);
   const [configPath, setConfigPath] = useState("");
   const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
+  const [testModalOpen, setTestModalOpen] = useState(false);
   const { models, refreshingModels, refreshModels } = useModelFetch(
     url,
     apiKey,
@@ -76,7 +75,7 @@ export function ChatGPTPanel() {
     load();
   }, []);
 
-  const handleSave = async () => {
+  const handleSave = () => {
     if (!apiKey.trim()) {
       toast.warning("请输入 API Key");
       return;
@@ -85,26 +84,9 @@ export function ChatGPTPanel() {
       toast.warning("请选择或输入测试模型");
       return;
     }
-    setSaving(true);
-    try {
-      const testResult = await testCodexConfig(
-        url,
-        apiKey.trim(),
-        model.trim(),
-      );
-      if (!testResult.success) {
-        toast.error(`测试失败: ${testResult.message}`);
-        return;
-      }
-      await setCodexConfig(url, apiKey.trim(), model.trim());
-      setConfigExists(true);
-      toast.success("测试通过，ChatGPT 配置已保存，请重启 Codex 生效");
-    } catch (e) {
-      toast.error(`保存失败: ${e}`);
-    } finally {
-      setSaving(false);
-    }
+    setTestModalOpen(true);
   };
+
 
   if (loading) {
     return (
@@ -306,35 +288,36 @@ export function ChatGPTPanel() {
           color="#3b82f6"
           speed="3.5s"
           onClick={handleSave}
-          disabled={saving}
-          innerClassName="bg-blue-600 hover:bg-blue-700 text-white dark:bg-[#0e1726] dark:text-blue-100 py-3"
+          disabled={testModalOpen}
+          innerClassName="bg-blue-600 hover:bg-blue-700 text-white dark:bg-[#0e1726] dark:text-blue-100 py-3 cursor-pointer"
         >
           <div className="flex items-center justify-center gap-2 font-semibold tracking-wide">
-            {saving ? (
-              <>
-                <Loader2
-                  className="animate-spin text-white dark:text-blue-400"
-                  size={18}
-                />
-                <span>正在联机验证并保存配置...</span>
-              </>
-            ) : (
-              <>
-                <Save
-                  size={18}
-                  className="text-white dark:text-blue-400 group-hover:scale-110 transition-transform"
-                />
-                <span className="text-sm">保存并应用 Codex 配置</span>
-              </>
-            )}
+            <Save
+              size={18}
+              className="text-white dark:text-blue-400 group-hover:scale-110 transition-transform"
+            />
+            <span className="text-sm">保存并应用 Codex 配置</span>
           </div>
         </StarBorder>
         <p className="text-[11px] text-center text-slate-500 dark:text-gray-400 pt-2">
-          保存前将发送一次轻量测试请求，验证通过后自动写入本地 ~/.codex/config.toml 并设置环境变量
+          点击将唤起终端进行连通性测试，验证通过后自动写入本地 ~/.codex/config.toml 并设置环境变量
         </p>
       </div>
+
+      <TerminalTestModal
+        open={testModalOpen}
+        onClose={() => setTestModalOpen(false)}
+        type="codex"
+        url={url}
+        apiKey={apiKey}
+        model={model}
+        onSuccess={() => {
+          setConfigExists(true);
+        }}
+      />
     </div>
   );
 }
 
 export default ChatGPTPanel;
+
