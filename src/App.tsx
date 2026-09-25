@@ -56,12 +56,18 @@ function AppContent() {
     totalBytes: updateTotalBytes,
     errorMessage: updateErrorMessage,
     isManualChecking,
+    isBootCheckComplete,
     checkForUpdates,
     handleRetry: handleUpdateRetry,
     handleRestart: handleUpdateRestart,
     handleClose: handleUpdateClose,
     handleExit: handleUpdateExit,
   } = useAppUpdater();
+
+  const isInitialized = Boolean(
+    localStorage.getItem("ai_helper_init_completed") ||
+      localStorage.getItem("bobapi_init_completed"),
+  );
 
   const checkNetwork = async () => {
     setNetworkState("checking");
@@ -108,15 +114,28 @@ function AppContent() {
     void getVersion().then((v) => setAppVersion(v));
   }, []);
 
-  // 软件初次启动仅执行一次初始化流程（使用 localStorage 持久化，后续启动不再重复弹出）
+  // 严格执行启动时序：优先更新检查与自动更新，当更新检查结束且未处于更新重启中时，再判定并弹出初始化向导
   useEffect(() => {
-    const hasInitialized =
+    // 1. 若启动检查更新尚未结束，不进行初始化判定
+    if (!isBootCheckComplete) return;
+
+    // 2. 若当前正处于更新流程（下载中、安装中、安装完毕等待重启），决不唤起初始化
+    if (
+      updatePhase === "downloading" ||
+      updatePhase === "installing" ||
+      updatePhase === "ready"
+    ) {
+      return;
+    }
+
+    // 3. 检查更新确认无可用更新（或用户选择跳过），且未初始化过，此时才正式唤起初始化向导
+    const hasInit =
       localStorage.getItem("ai_helper_init_completed") ||
       localStorage.getItem("bobapi_init_completed");
-    if (!hasInitialized) {
+    if (!hasInit) {
       setInitModalOpen(true);
     }
-  }, []);
+  }, [isBootCheckComplete, updatePhase]);
 
   const handleInitFinish = () => {
     localStorage.setItem("ai_helper_init_completed", "true");
@@ -532,6 +551,21 @@ function AppContent() {
         onClose={handleInitClose}
         onFinish={handleInitFinish}
       />
+
+      {/* ── 首次使用未初始化时，启动检查更新阶段的全屏过渡层 ── */}
+      {!isInitialized && !isBootCheckComplete && updatePhase === "idle" && (
+        <div className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-slate-950/80 backdrop-blur-xl select-none">
+          <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-blue-600/30 to-purple-600/30 border border-blue-500/40 flex items-center justify-center shadow-lg shadow-blue-500/20 mb-4">
+            <RefreshCw className="w-7 h-7 text-blue-400 animate-spin" />
+          </div>
+          <h2 className="text-sm font-semibold text-white tracking-wide">
+            正在检查软件版本与更新...
+          </h2>
+          <p className="text-xs text-slate-400 mt-1.5">
+            优先确认最新版本与运行环境，请稍候
+          </p>
+        </div>
+      )}
 
       {/* ── 全局 Toast 通知 ── */}
       <Toaster

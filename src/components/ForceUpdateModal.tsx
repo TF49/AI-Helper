@@ -73,6 +73,7 @@ export function useAppUpdater() {
   const [totalBytes, setTotalBytes] = useState(0);
   const [errorMessage, setErrorMessage] = useState("");
   const [isManualChecking, setIsManualChecking] = useState(false);
+  const [isBootCheckComplete, setIsBootCheckComplete] = useState(false);
 
   const downloadStarted = useRef(false);
   const hasBootChecked = useRef(false);
@@ -96,6 +97,7 @@ export function useAppUpdater() {
 
         if (!info.has_update) {
           setPhase("idle");
+          setIsBootCheckComplete(true);
           if (manual) {
             setIsManualChecking(false);
             toast.success(`当前已是最新版本 (v${info.current_version})，无需更新`);
@@ -161,10 +163,11 @@ export function useAppUpdater() {
         }
         const msg = err instanceof Error ? err.message : String(err);
 
-        // 启动时的静默检查如果只是网络不通且无更新，不打扰用户
+        // 启动时的静默检查如果只是网络不通且无更新，不打扰用户并放行后续初始化
         if (!downloadStarted.current && !manual) {
           console.warn("Silent update check skipped:", msg);
           setPhase("idle");
+          setIsBootCheckComplete(true);
           return;
         }
 
@@ -175,16 +178,31 @@ export function useAppUpdater() {
     [],
   );
 
-  // 应用启动时延迟 1.5 秒执行静默检测，确保主界面秒开
+  // 应用启动时快速执行静默检测，确保先检查更新，再决定是否进入初始化
   useEffect(() => {
     if (hasBootChecked.current) return;
     hasBootChecked.current = true;
 
+    // 100ms 轻微延时，等待首帧挂载后立即开始检测
     const timer = setTimeout(() => {
       void checkForUpdates(false);
-    }, 1500);
+    }, 100);
 
-    return () => clearTimeout(timer);
+    // 6秒超时兜底：即使极端网络环境卡住检测请求，也确保超时后放行进入主界面/初始化
+    const safetyTimer = setTimeout(() => {
+      setIsBootCheckComplete((prev) => {
+        if (!prev) {
+          console.warn("Boot update check safety timeout reached, unlocking init/dashboard.");
+          return true;
+        }
+        return prev;
+      });
+    }, 6000);
+
+    return () => {
+      clearTimeout(timer);
+      clearTimeout(safetyTimer);
+    };
   }, [checkForUpdates]);
 
   const handleRetry = useCallback(() => {
@@ -202,6 +220,7 @@ export function useAppUpdater() {
 
   const handleClose = useCallback(() => {
     setPhase("idle");
+    setIsBootCheckComplete(true);
   }, []);
 
   const handleExit = useCallback(async () => {
@@ -220,6 +239,7 @@ export function useAppUpdater() {
     totalBytes,
     errorMessage,
     isManualChecking,
+    isBootCheckComplete,
     checkForUpdates,
     handleRetry,
     handleRestart,
@@ -255,6 +275,28 @@ export function ForceUpdateModal({
   onClose,
   onExit,
 }: ForceUpdateModalProps) {
+  const [restartCountdown, setRestartCountdown] = useState<number | null>(null);
+
+  // 当更新安装完毕就绪时，启动 2 秒倒计时自动重启应用生效（亦可点击立即重启或选择稍后）
+  useEffect(() => {
+    if (phase === "ready") {
+      setRestartCountdown(2);
+      const interval = setInterval(() => {
+        setRestartCountdown((prev) => {
+          if (prev === null || prev <= 1) {
+            clearInterval(interval);
+            onRestart();
+            return 0;
+          }
+          return prev - 1;
+        });
+      }, 1000);
+      return () => clearInterval(interval);
+    } else {
+      setRestartCountdown(null);
+    }
+  }, [phase, onRestart]);
+
   const visible =
     phase === "downloading" ||
     phase === "installing" ||
@@ -288,7 +330,7 @@ export function ForceUpdateModal({
           {(phase === "ready" || phase === "error" || phase === "manual") && (
             <button
               onClick={onClose}
-              className="absolute top-3 right-3 p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-white/10 transition-colors z-20"
+              className="absolute top-3 right-3 p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-white/10 transition-colors z-20 cursor-pointer"
               title="稍后处理"
             >
               <X size={15} />
@@ -321,7 +363,9 @@ export function ForceUpdateModal({
             </h2>
             <p className="text-xs text-slate-400 mt-1 max-w-xs">
               {phase === "ready"
-                ? "重启客户端即可立即使用最新特性与优化修复。"
+                ? restartCountdown !== null && restartCountdown > 0
+                  ? `客户端将在 ${restartCountdown} 秒后自动重启生效...`
+                  : "正在重启客户端生效..."
                 : "系统正在通过高速通道获取更新资源，稍候即可完成。"}
             </p>
 
@@ -390,14 +434,19 @@ export function ForceUpdateModal({
               <div className="flex gap-2">
                 <button
                   onClick={onRestart}
-                  className="flex-1 flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-500 hover:to-emerald-500 text-white font-medium text-xs shadow-lg shadow-green-500/25 transition-all active:scale-95"
+                  className="flex-1 flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-500 hover:to-emerald-500 text-white font-medium text-xs shadow-lg shadow-green-500/25 transition-all active:scale-95 cursor-pointer"
                 >
                   <RotateCcw size={14} />
-                  <span>立即重启生效</span>
+                  <span>
+                    立即重启生效
+                    {restartCountdown !== null && restartCountdown > 0
+                      ? ` (${restartCountdown}s)`
+                      : ""}
+                  </span>
                 </button>
                 <button
                   onClick={onClose}
-                  className="px-4 py-2.5 rounded-xl text-slate-400 hover:text-white bg-white/5 hover:bg-white/10 text-xs transition-colors"
+                  className="px-4 py-2.5 rounded-xl text-slate-400 hover:text-white bg-white/5 hover:bg-white/10 text-xs transition-colors cursor-pointer"
                 >
                   稍后
                 </button>

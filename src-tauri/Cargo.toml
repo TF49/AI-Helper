@@ -1,6 +1,6 @@
 [package]
 name = "ai-helper"
-version = "1.0.18"
+version = "1.0.19"
 description = "AI Helper - ChatGPT & Claude Code 配置管理工具"
 authors = []
 license = "MIT"

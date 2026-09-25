@@ -18,7 +18,7 @@ const GITHUB_API_URL: &str = "https://api.github.com/repos/TF49/AI-Helper/releas
 const GITHUB_RAW_URL: &str = "https://raw.githubusercontent.com/TF49/AI-Helper/main/package.json";
 const JSDELIVR_URL: &str = "https://cdn.jsdelivr.net/gh/TF49/AI-Helper@main/package.json";
 
-const REQUEST_TIMEOUT: Duration = Duration::from_secs(10);
+const REQUEST_TIMEOUT: Duration = Duration::from_secs(5);
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UpdateInfo {
