@@ -63,17 +63,28 @@ if ($isPlaceholder) {
     Write-Host "  Release notes look good: $relNotesPath" -ForegroundColor Green
 }
 
-# Step 4: git commit
+# Step 4: auto-format & pre-flight checks
 Write-Host ""
-Write-Host "==== Step 3: git commit ====" -ForegroundColor Cyan
+Write-Host "==== Step 3: auto-format & verify code ====" -ForegroundColor Cyan
+Write-Host "  Formatting Rust code..." -ForegroundColor DarkGray
+cargo fmt --manifest-path (Join-Path $repoRoot 'src-tauri/Cargo.toml')
+if ($LASTEXITCODE -ne 0) { throw "cargo fmt failed" }
+
+Write-Host "  Running Clippy check..." -ForegroundColor DarkGray
+cargo clippy --manifest-path (Join-Path $repoRoot 'src-tauri/Cargo.toml') -- -D warnings
+if ($LASTEXITCODE -ne 0) { throw "cargo clippy failed" }
+
+# Step 5: git commit
+Write-Host ""
+Write-Host "==== Step 4: git commit ====" -ForegroundColor Cyan
 git add -A
 git status --short
 git commit -m "release: $tag"
 if ($LASTEXITCODE -ne 0) { throw "git commit failed" }
 
-# Step 5: git push
+# Step 6: git push
 Write-Host ""
-Write-Host "==== Step 4: git push ====" -ForegroundColor Cyan
+Write-Host "==== Step 5: git push ====" -ForegroundColor Cyan
 git push origin main
 if ($LASTEXITCODE -ne 0) { throw "git push failed" }
 

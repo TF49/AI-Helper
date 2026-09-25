@@ -146,7 +146,10 @@ async fn check_for_updates_internal() -> Result<UpdateInfo, String> {
     match check_updater_json(UPDATER_JSON_MIRROR_URL, "updater.json (ghfast)").await {
         Ok(info) => return Ok(info),
         Err(e) => {
-            log::warn!("ghfast updater.json check failed: {}. Trying gh-proxy backup...", e);
+            log::warn!(
+                "ghfast updater.json check failed: {}. Trying gh-proxy backup...",
+                e
+            );
         }
     }
 
@@ -154,7 +157,10 @@ async fn check_for_updates_internal() -> Result<UpdateInfo, String> {
     match check_updater_json(UPDATER_JSON_MIRROR_BACKUP_URL, "updater.json (gh-proxy)").await {
         Ok(info) => return Ok(info),
         Err(e) => {
-            log::warn!("gh-proxy updater.json check failed: {}. Trying official GitHub...", e);
+            log::warn!(
+                "gh-proxy updater.json check failed: {}. Trying official GitHub...",
+                e
+            );
         }
     }
 
@@ -162,7 +168,10 @@ async fn check_for_updates_internal() -> Result<UpdateInfo, String> {
     match check_updater_json(UPDATER_JSON_OFFICIAL_URL, "updater.json (GitHub)").await {
         Ok(info) => return Ok(info),
         Err(e) => {
-            log::warn!("Official GitHub updater.json check failed: {}. Trying jsDelivr CDN...", e);
+            log::warn!(
+                "Official GitHub updater.json check failed: {}. Trying jsDelivr CDN...",
+                e
+            );
         }
     }
 
@@ -178,7 +187,10 @@ async fn check_for_updates_internal() -> Result<UpdateInfo, String> {
     match check_static_url(GITHUB_RAW_MIRROR_URL, "GitHub Raw (ghfast)").await {
         Ok(info) => return Ok(info),
         Err(e) => {
-            log::warn!("GitHub Raw Mirror check failed: {}. Trying GitHub API...", e);
+            log::warn!(
+                "GitHub Raw Mirror check failed: {}. Trying GitHub API...",
+                e
+            );
         }
     }
 

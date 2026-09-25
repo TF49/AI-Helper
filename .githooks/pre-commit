@@ -1,0 +1,6 @@
+#!/bin/sh
+# Pre-commit hook: Auto format Rust code if any .rs file is staged
+if git diff --cached --name-only | grep -q '\.rs$'; then
+    cargo fmt --manifest-path src-tauri/Cargo.toml
+    git add -u src-tauri/
+fi
