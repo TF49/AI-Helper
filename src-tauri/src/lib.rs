@@ -1,12 +1,58 @@
 use tauri::Manager;
 
 mod api_test;
+mod app_paths;
 mod claude;
 mod codex;
 mod error;
 mod model_fetch;
 mod network;
+mod process_manager;
 mod updater;
+
+#[tauri::command]
+fn get_app_paths() -> app_paths::AppPathsConfig {
+    app_paths::load_app_paths()
+}
+
+#[tauri::command]
+fn save_app_paths(config: app_paths::AppPathsConfig) -> Result<(), error::AppError> {
+    app_paths::save_app_paths(&config)
+}
+
+#[tauri::command]
+fn detect_app_path(app_type: String) -> Result<app_paths::DetectedPathInfo, String> {
+    match app_type.as_str() {
+        "claude" => Ok(app_paths::detect_claude_cli_path()),
+        "codex" => Ok(app_paths::detect_codex_cli_path()),
+        "chatgpt" => Ok(app_paths::detect_chatgpt_client_path()),
+        _ => Err(format!("未知应用类型: {}", app_type)),
+    }
+}
+
+#[tauri::command]
+fn detect_all_app_paths() -> Vec<app_paths::DetectedPathInfo> {
+    app_paths::detect_all_app_paths()
+}
+
+#[tauri::command]
+fn browse_app_path(app_type: String) -> Result<Option<String>, String> {
+    app_paths::browse_path_dialog(&app_type)
+}
+
+#[tauri::command]
+fn check_app_process_status(app_type: String) -> bool {
+    app_paths::is_target_running(&app_type)
+}
+
+#[tauri::command]
+async fn restart_target_app(app_type: String, custom_path: Option<String>) -> Result<String, String> {
+    tokio::task::spawn_blocking(move || {
+        process_manager::restart_target_app(&app_type, custom_path.as_deref())
+    })
+    .await
+    .map_err(|e| format!("进程任务执行异常: {}", e))?
+}
 
 #[tauri::command]
 fn get_codex_config() -> Result<codex::CodexConfig, error::AppError> {
@@ -136,6 +182,13 @@ pub fn run() {
             fetch_codex_models,
             fetch_claude_models,
             open_url,
+            get_app_paths,
+            save_app_paths,
+            detect_app_path,
+            detect_all_app_paths,
+            browse_app_path,
+            check_app_process_status,
+            restart_target_app,
         ])
         .run(tauri::generate_context!())
         .expect("error while running ai-helper");

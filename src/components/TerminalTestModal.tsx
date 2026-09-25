@@ -9,6 +9,9 @@ import {
   Loader2,
   X,
   Clock,
+  RotateCcw,
+  Bot,
+  Sparkles,
 } from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -16,6 +19,8 @@ import {
   setClaudeConfig,
   testCodexStream,
   testClaudeStream,
+  checkAppProcessStatus,
+  restartTargetApp,
 } from "../lib/api";
 import type { TestStreamEvent } from "../types";
 
@@ -52,6 +57,13 @@ export function TerminalTestModal({
   const [statusCode, setStatusCode] = useState<number | null>(null);
   const [copied, setCopied] = useState(false);
   const [countdown, setCountdown] = useState<number | null>(null);
+
+  // 重启与进程检测状态
+  const [chatgptRunning, setChatgptRunning] = useState(false);
+  const [codexRunning, setCodexRunning] = useState(false);
+  const [claudeRunning, setClaudeRunning] = useState(false);
+  const [restartingTarget, setRestartingTarget] = useState<string | null>(null);
+  const [showRestartCard, setShowRestartCard] = useState(false);
 
   const terminalRef = useRef<HTMLDivElement | null>(null);
   const countdownTimerRef = useRef<number | null>(null);
@@ -101,6 +113,32 @@ export function TerminalTestModal({
     };
   }, [countdown, onClose]);
 
+  const handleRestart = async (target: "chatgpt" | "codex" | "claude") => {
+    setRestartingTarget(target);
+    const targetName =
+      target === "chatgpt"
+        ? "ChatGPT 桌面客户端"
+        : target === "codex"
+          ? "Codex CLI"
+          : "Claude Code CLI";
+
+    addLog(`🚀 正在执行 ${targetName} 重启/拉起流程...`, "info");
+    try {
+      const result = await restartTargetApp(target);
+      addLog(`✓ ${result}`, "success");
+      addLog(`💡 目标应用已拉起，您可以继续测试重启其他应用或点击下方“完成”退出`, "dim");
+      if (target === "chatgpt") setChatgptRunning(true);
+      if (target === "codex") setCodexRunning(true);
+      if (target === "claude") setClaudeRunning(true);
+      toast.success(`${targetName} 操作成功！`);
+    } catch (err) {
+      addLog(`❌ 重启失败: ${err}`, "error");
+      toast.error(`重启失败: ${err}`);
+    } finally {
+      setRestartingTarget(null);
+    }
+  };
+
   const runTestAndSave = async () => {
     // 重置状态
     if (countdownTimerRef.current) {
@@ -109,6 +147,8 @@ export function TerminalTestModal({
     }
     setCountdown(null);
     setStatus("running");
+    setShowRestartCard(false);
+    setRestartingTarget(null);
     setLogs([]);
     setStreamingText("");
     setLatency(null);
@@ -154,21 +194,38 @@ export function TerminalTestModal({
           await setCodexConfig(url, apiKey.trim(), model.trim());
           addLog(`✓ 配置文件 ~/.codex/config.toml 已成功写入`, "success");
           addLog(`✓ 系统环境变量 CUSTOM_OPENAI_API_KEY 已更新`, "success");
-          addLog(`🎉 Codex 配置部署成功！请重启 VS Code / Codex 终端生效`, "success");
         } else {
           await setClaudeConfig(url, apiKey.trim(), model.trim());
           addLog(`✓ 配置文件 ~/.claude/settings.json 已成功写入`, "success");
           addLog(`✓ 系统环境变量 ANTHROPIC_BASE_URL 与 Token 已更新`, "success");
-          addLog(`🎉 Claude Code 配置部署成功！请重启 Claude 终端生效`, "success");
         }
 
+        // 探测目标客户端运行状态
+        addLog(`🔍 正在检查目标应用与 CLI 运行状态...`, "dim");
+        if (type === "codex") {
+          const [gRun, xRun] = await Promise.all([
+            checkAppProcessStatus("chatgpt").catch(() => false),
+            checkAppProcessStatus("codex").catch(() => false),
+          ]);
+          setChatgptRunning(gRun);
+          setCodexRunning(xRun);
+          if (gRun) addLog(`💡 检测到 ChatGPT 桌面客户端正在运行中`, "info");
+          if (xRun) addLog(`💡 检测到 Codex CLI 正在运行中`, "info");
+          if (!gRun && !xRun) addLog(`💡 当前未检测到运行中的 ChatGPT 客户端或 Codex 进程`, "dim");
+        } else {
+          const cRun = await checkAppProcessStatus("claude").catch(() => false);
+          setClaudeRunning(cRun);
+          if (cRun) addLog(`💡 检测到 Claude Code CLI 正在运行中`, "info");
+          else addLog(`💡 当前未检测到运行中的 Claude Code 进程`, "dim");
+        }
+
+        addLog(`👉 配置部署成功！请在下方确认是否立即重启客户端生效`, "info");
         setStatus("success");
+        setShowRestartCard(true);
         onSuccess?.();
         toast.success(
           `${platformName} 连通性测试通过，配置已成功保存！`,
         );
-        // 4秒后自动倒计时关闭
-        setCountdown(4);
       } else {
         setStatus("error");
         addLog(`✗ 连通性测试未通过，本地配置未修改。请根据提示调整配置后重试。`, "error");
@@ -186,6 +243,18 @@ export function TerminalTestModal({
   useEffect(() => {
     if (open) {
       runTestAndSave();
+    } else {
+      setShowRestartCard(false);
+      setRestartingTarget(null);
+      setCountdown(null);
+      setLogs([]);
+      setStreamingText("");
+      setLatency(null);
+      setStatusCode(null);
+      if (countdownTimerRef.current) {
+        clearTimeout(countdownTimerRef.current);
+        countdownTimerRef.current = null;
+      }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
@@ -327,6 +396,99 @@ export function TerminalTestModal({
           </div>
         </div>
 
+        {/* ── 客户端重启确认引导面板 ── */}
+        {status === "success" && showRestartCard && (
+          <div className="bg-[#161b22] border-t border-[#30363d] px-5 py-3.5 flex flex-col gap-2.5 flex-shrink-0 animate-fade-in">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <RotateCcw size={14} className="text-amber-400" />
+                <span className="text-xs font-semibold text-slate-200">
+                  配置已部署成功，是否立即重启客户端应用新配置？
+                </span>
+              </div>
+              <span className="text-[11px] text-slate-400">
+                {type === "codex"
+                  ? chatgptRunning || codexRunning
+                    ? "检测到客户端/CLI 运行中"
+                    : "当前未运行"
+                  : claudeRunning
+                    ? "检测到 CLI 运行中"
+                    : "当前未运行"}
+              </span>
+            </div>
+
+            <div className="flex flex-wrap items-center justify-between gap-2 pt-1 border-t border-white/5">
+              <div className="flex items-center gap-2 flex-wrap">
+                {type === "codex" ? (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => void handleRestart("chatgpt")}
+                      disabled={restartingTarget !== null}
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-medium transition-colors shadow-xs cursor-pointer disabled:opacity-60"
+                      title="安全终止并重新拉起 ChatGPT 客户端"
+                    >
+                      {restartingTarget === "chatgpt" ? (
+                        <Loader2 size={13} className="animate-spin" />
+                      ) : (
+                        <Bot size={13} />
+                      )}
+                      <span>
+                        {chatgptRunning ? "重启 ChatGPT 客户端" : "启动 ChatGPT 客户端"}
+                      </span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => void handleRestart("codex")}
+                      disabled={restartingTarget !== null}
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs font-medium transition-colors shadow-xs cursor-pointer disabled:opacity-60"
+                      title="在独立终端窗口启动/重启 Codex CLI"
+                    >
+                      {restartingTarget === "codex" ? (
+                        <Loader2 size={13} className="animate-spin" />
+                      ) : (
+                        <Terminal size={13} />
+                      )}
+                      <span>
+                        {codexRunning ? "重启 Codex CLI 终端" : "启动 Codex CLI 终端"}
+                      </span>
+                    </button>
+                  </>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => void handleRestart("claude")}
+                    disabled={restartingTarget !== null}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-purple-600 hover:bg-purple-700 text-white text-xs font-medium transition-colors shadow-xs cursor-pointer disabled:opacity-60"
+                    title="在独立终端窗口启动/重启 Claude Code"
+                  >
+                    {restartingTarget === "claude" ? (
+                      <Loader2 size={13} className="animate-spin" />
+                    ) : (
+                      <Sparkles size={13} />
+                    )}
+                    <span>
+                      {claudeRunning ? "重启 Claude Code 终端" : "启动 Claude Code 终端"}
+                    </span>
+                  </button>
+                )}
+              </div>
+
+              <button
+                type="button"
+                onClick={() => {
+                  toast.info("已保存配置，请稍后手动重启客户端生效");
+                  onClose();
+                }}
+                className="px-3 py-1.5 rounded-lg text-xs font-medium text-slate-400 hover:text-white hover:bg-white/10 transition-colors cursor-pointer"
+              >
+                稍后自行重启
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* ── 底部操作与状态状态栏 ── */}
         <div className="flex items-center justify-between px-5 py-3.5 bg-[#161b22] border-t border-[#30363d] flex-shrink-0">
           <div className="flex items-center gap-2 text-xs">
@@ -369,11 +531,7 @@ export function TerminalTestModal({
             <button
               type="button"
               onClick={onClose}
-              className={`px-4 py-1.5 rounded-lg text-xs font-medium transition-colors ${
-                status === "success"
-                  ? "bg-emerald-600 hover:bg-emerald-700 text-white font-semibold"
-                  : "bg-[#21262d] hover:bg-[#30363d] text-slate-300 hover:text-white border border-[#30363d]"
-              }`}
+              className="px-4 py-1.5 rounded-lg text-xs font-medium transition-colors bg-[#21262d] hover:bg-[#30363d] text-slate-300 hover:text-white border border-[#30363d] cursor-pointer"
             >
               {status === "success"
                 ? countdown !== null

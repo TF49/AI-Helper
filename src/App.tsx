@@ -15,12 +15,14 @@ import {
   ShieldCheck,
   ChevronRight,
   Layers,
+  FolderGit2,
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { getVersion } from "@tauri-apps/api/app";
 import { ChatGPTPanel } from "./components/ChatGPTPanel";
 import { ClaudePanel } from "./components/ClaudePanel";
+import { AppPathsPanel } from "./components/AppPathsPanel";
 import { QuickToolsModal } from "./components/QuickToolsModal";
 import { InitializationModal } from "./components/InitializationModal";
 import { ThemeToggle } from "./components/ThemeToggle";
@@ -32,7 +34,7 @@ import { cn } from "./lib/utils";
 import { checkBobApiNetwork, openUrl } from "./lib/api";
 import { ForceUpdateModal, useAppUpdater } from "./components/ForceUpdateModal";
 
-type Tab = "chatgpt" | "claude";
+type Tab = "chatgpt" | "claude" | "paths";
 type NetworkState = "checking" | "reachable" | "unreachable";
 
 export default function App() {
@@ -41,12 +43,20 @@ export default function App() {
 
 function AppContent() {
   const [tab, setTab] = useState<Tab>("chatgpt");
+  const [lastAgentTab, setLastAgentTab] = useState<"chatgpt" | "claude">("chatgpt");
   const [networkState, setNetworkState] = useState<NetworkState>("checking");
   const [toolsOpen, setToolsOpen] = useState(false);
   const [initModalOpen, setInitModalOpen] = useState(false);
   const [appVersion, setAppVersion] = useState("...");
   const { resolvedTheme } = useTheme();
   const win = getCurrentWindow();
+
+  const switchTab = (newTab: Tab) => {
+    setTab(newTab);
+    if (newTab === "chatgpt" || newTab === "claude") {
+      setLastAgentTab(newTab);
+    }
+  };
 
   const {
     phase: updatePhase,
@@ -148,7 +158,6 @@ function AppContent() {
     setInitModalOpen(false);
   };
 
-  const isChatGPT = tab === "chatgpt";
   const isDark = resolvedTheme === "dark";
 
   const [isWindowMaximized, setIsWindowMaximized] = useState(false);
@@ -194,7 +203,7 @@ function AppContent() {
 
   return (
     <AuroraBackground
-      theme={tab}
+      theme={tab === "claude" ? "claude" : "chatgpt"}
       className="select-none text-slate-800 dark:text-gray-200 transition-colors duration-200 h-screen w-screen overflow-hidden flex flex-col"
     >
       {/* ── 顶部无缝桌面标题栏 ── */}
@@ -217,12 +226,20 @@ function AppContent() {
           <div
             className={cn(
               "w-6 h-6 rounded-lg flex items-center justify-center transition-all shadow-xs",
-              isChatGPT
+              tab === "chatgpt"
                 ? "bg-blue-100 text-blue-600 border border-blue-200 dark:bg-blue-500/20 dark:text-blue-400 dark:border-blue-500/30"
-                : "bg-purple-100 text-purple-600 border border-purple-200 dark:bg-purple-500/20 dark:text-purple-400 dark:border-purple-500/30",
+                : tab === "claude"
+                  ? "bg-purple-100 text-purple-600 border border-purple-200 dark:bg-purple-500/20 dark:text-purple-400 dark:border-purple-500/30"
+                  : "bg-teal-100 text-teal-600 border border-teal-200 dark:bg-teal-500/20 dark:text-teal-400 dark:border-teal-500/30",
             )}
           >
-            {isChatGPT ? <Bot size={14} /> : <Sparkles size={13} />}
+            {tab === "chatgpt" ? (
+              <Bot size={14} />
+            ) : tab === "claude" ? (
+              <Sparkles size={13} />
+            ) : (
+              <FolderGit2 size={13} />
+            )}
           </div>
           <div className="flex items-center gap-2">
             <div className="flex items-center gap-1 leading-none">
@@ -305,7 +322,7 @@ function AppContent() {
                 {/* ChatGPT (Codex) 选项 */}
                 <button
                   type="button"
-                  onClick={() => setTab("chatgpt")}
+                  onClick={() => switchTab("chatgpt")}
                   className={cn(
                     "relative w-full flex items-center justify-between p-2.5 rounded-xl border text-left transition-all cursor-pointer",
                     tab === "chatgpt"
@@ -341,7 +358,7 @@ function AppContent() {
                 {/* Claude Code 选项 */}
                 <button
                   type="button"
-                  onClick={() => setTab("claude")}
+                  onClick={() => switchTab("claude")}
                   className={cn(
                     "relative w-full flex items-center justify-between p-2.5 rounded-xl border text-left transition-all cursor-pointer",
                     tab === "claude"
@@ -371,6 +388,42 @@ function AppContent() {
                   </div>
                   {tab === "claude" && (
                     <ChevronRight size={14} className="text-purple-600 dark:text-purple-400 flex-shrink-0" />
+                  )}
+                </button>
+
+                {/* 应用与 CLI 路径选项 */}
+                <button
+                  type="button"
+                  onClick={() => switchTab("paths")}
+                  className={cn(
+                    "relative w-full flex items-center justify-between p-2.5 rounded-xl border text-left transition-all cursor-pointer",
+                    tab === "paths"
+                      ? "border-teal-500/70 bg-teal-50/80 text-teal-900 dark:bg-teal-500/15 dark:border-teal-500/50 dark:text-teal-100 shadow-xs"
+                      : "border-transparent text-slate-600 dark:text-gray-400 hover:bg-slate-100/80 dark:hover:bg-white/5 hover:text-slate-900 dark:hover:text-gray-200",
+                  )}
+                >
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <div
+                      className={cn(
+                        "w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 transition-colors",
+                        tab === "paths"
+                          ? "bg-teal-600 text-white dark:bg-teal-500 dark:text-white"
+                          : "bg-slate-100 text-slate-500 dark:bg-white/5 dark:text-gray-400",
+                      )}
+                    >
+                      <FolderGit2 size={15} />
+                    </div>
+                    <div className="min-w-0">
+                      <div className="text-xs font-semibold truncate leading-tight">
+                        应用与 CLI 路径
+                      </div>
+                      <div className="text-[10px] font-mono text-slate-400 dark:text-gray-500 truncate mt-0.5">
+                        app_paths.json
+                      </div>
+                    </div>
+                  </div>
+                  {tab === "paths" && (
+                    <ChevronRight size={14} className="text-teal-600 dark:text-teal-400 flex-shrink-0" />
                   )}
                 </button>
               </div>
@@ -504,7 +557,7 @@ function AppContent() {
                 >
                   <ChatGPTPanel />
                 </motion.div>
-              ) : (
+              ) : tab === "claude" ? (
                 <motion.div
                   key="claude"
                   initial={{ opacity: 0, y: 8 }}
@@ -514,6 +567,17 @@ function AppContent() {
                   className="w-full flex-1 flex flex-col min-h-0"
                 >
                   <ClaudePanel />
+                </motion.div>
+              ) : (
+                <motion.div
+                  key="paths"
+                  initial={{ opacity: 0, y: 8 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -8 }}
+                  transition={{ duration: 0.2, ease: "easeOut" }}
+                  className="w-full flex-1 flex flex-col min-h-0"
+                >
+                  <AppPathsPanel />
                 </motion.div>
               )}
             </AnimatePresence>
@@ -525,11 +589,11 @@ function AppContent() {
       <QuickToolsModal
         open={toolsOpen}
         onClose={() => setToolsOpen(false)}
-        activeTab={tab}
+        activeTab={lastAgentTab}
         currentUrl="https://bob-api.com/"
         currentKey=""
         currentModel={
-          tab === "chatgpt" ? "gpt-4o" : "claude-3-7-sonnet-20250219"
+          lastAgentTab === "claude" ? "claude-3-7-sonnet-20250219" : "gpt-4o"
         }
       />
 

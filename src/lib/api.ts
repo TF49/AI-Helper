@@ -3,10 +3,49 @@ import { toast } from "sonner";
 import type {
   AgentConfig,
   ApiTestResult,
+  AppPathsConfig,
+  DetectedPathInfo,
   FetchedModel,
   NetworkStatus,
   TestStreamEvent,
 } from "../types";
+
+export async function getAppPaths(): Promise<AppPathsConfig> {
+  return invoke<AppPathsConfig>("get_app_paths");
+}
+
+export async function saveAppPaths(config: AppPathsConfig): Promise<void> {
+  return invoke("save_app_paths", { config });
+}
+
+export async function detectAppPath(
+  appType: "claude" | "codex" | "chatgpt",
+): Promise<DetectedPathInfo> {
+  return invoke<DetectedPathInfo>("detect_app_path", { appType });
+}
+
+export async function detectAllAppPaths(): Promise<DetectedPathInfo[]> {
+  return invoke<DetectedPathInfo[]>("detect_all_app_paths");
+}
+
+export async function browseAppPath(
+  appType: "claude" | "codex" | "chatgpt",
+): Promise<string | null> {
+  return invoke<string | null>("browse_app_path", { appType });
+}
+
+export async function checkAppProcessStatus(
+  appType: "claude" | "codex" | "chatgpt",
+): Promise<boolean> {
+  return invoke<boolean>("check_app_process_status", { appType });
+}
+
+export async function restartTargetApp(
+  appType: "claude" | "codex" | "chatgpt",
+  customPath?: string,
+): Promise<string> {
+  return invoke<string>("restart_target_app", { appType, customPath });
+}
 
 export async function getCodexConfig(): Promise<AgentConfig> {
   return invoke<AgentConfig>("get_codex_config");

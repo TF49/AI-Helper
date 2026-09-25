@@ -14,6 +14,21 @@ export interface NetworkStatus {
   error_message?: string;
 }
 
+export interface AppPathsConfig {
+  claude_cli_path?: string | null;
+  codex_cli_path?: string | null;
+  chatgpt_client_path?: string | null;
+}
+
+export interface DetectedPathInfo {
+  app_type: "claude" | "codex" | "chatgpt";
+  path: string;
+  exists: boolean;
+  source: string;
+  is_running: boolean;
+  extra_info?: string | null;
+}
+
 export type InitStepId = "network" | "paths" | "config" | "confirm";
 export type StepStatus = "pending" | "running" | "success" | "error";
 

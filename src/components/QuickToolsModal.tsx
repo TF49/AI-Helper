@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   X,
   Terminal,
@@ -12,7 +12,6 @@ import {
 import { toast } from "sonner";
 import { ThemeToggle } from "./ThemeToggle";
 import { openUrl } from "../lib/api";
-
 
 interface QuickToolsModalProps {
   open: boolean;
@@ -32,17 +31,22 @@ export function QuickToolsModal({
   currentModel,
 }: QuickToolsModalProps) {
   const [copiedCurl, setCopiedCurl] = useState(false);
+  const [selectedProtocol, setSelectedProtocol] = useState<"chatgpt" | "claude">(activeTab);
+
+  useEffect(() => {
+    setSelectedProtocol(activeTab);
+  }, [activeTab, open]);
 
   if (!open) return null;
 
   const effectiveKey = currentKey || "YOUR_API_KEY";
   const effectiveModel =
     currentModel ||
-    (activeTab === "chatgpt" ? "gpt-4o" : "claude-3-7-sonnet-20250219");
+    (selectedProtocol === "chatgpt" ? "gpt-4o" : "claude-3-7-sonnet-20250219");
   const base = currentUrl.endsWith("/") ? currentUrl : `${currentUrl}/`;
 
   const curlCommand =
-    activeTab === "chatgpt"
+    selectedProtocol === "chatgpt"
       ? `curl ${base}v1/chat/completions \\\n  -H "Content-Type: application/json" \\\n  -H "Authorization: Bearer ${effectiveKey}" \\\n  -d '{\n    "model": "${effectiveModel}",\n    "messages": [{"role": "user", "content": "Hi!"}]\n  }'`
       : `curl ${base}v1/messages \\\n  -H "Content-Type: application/json" \\\n  -H "x-api-key: ${effectiveKey}" \\\n  -H "anthropic-version: 2023-06-01" \\\n  -d '{\n    "model": "${effectiveModel}",\n    "max_tokens": 100,\n    "messages": [{"role": "user", "content": "Hi!"}]\n  }'`;
 
@@ -100,23 +104,49 @@ export function QuickToolsModal({
                   size={13}
                   className="text-emerald-600 dark:text-emerald-400"
                 />
-                终端快速测试命令 (cURL)
+                终端测试命令 (cURL)
               </span>
-              <button
-                type="button"
-                onClick={handleCopyCurl}
-                className="flex items-center gap-1 text-[11px] px-2 py-1 rounded bg-slate-100 hover:bg-slate-200 text-slate-700 dark:bg-white/5 dark:hover:bg-white/10 dark:text-gray-300 dark:hover:text-white transition-colors border border-slate-200 dark:border-white/10"
-              >
-                {copiedCurl ? (
-                  <Check
-                    size={12}
-                    className="text-emerald-600 dark:text-emerald-400"
-                  />
-                ) : (
-                  <Copy size={12} />
-                )}
-                {copiedCurl ? "已复制" : "复制命令"}
-              </button>
+              <div className="flex items-center gap-1.5">
+                <div className="flex items-center p-0.5 rounded-lg bg-slate-100 dark:bg-white/5 border border-slate-200 dark:border-white/10 text-[10px]">
+                  <button
+                    type="button"
+                    onClick={() => setSelectedProtocol("chatgpt")}
+                    className={`px-2 py-0.5 rounded-md font-medium transition-colors cursor-pointer ${
+                      selectedProtocol === "chatgpt"
+                        ? "bg-blue-600 text-white shadow-2xs"
+                        : "text-slate-600 dark:text-gray-400 hover:text-slate-900 dark:hover:text-white"
+                    }`}
+                  >
+                    OpenAI
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setSelectedProtocol("claude")}
+                    className={`px-2 py-0.5 rounded-md font-medium transition-colors cursor-pointer ${
+                      selectedProtocol === "claude"
+                        ? "bg-purple-600 text-white shadow-2xs"
+                        : "text-slate-600 dark:text-gray-400 hover:text-slate-900 dark:hover:text-white"
+                    }`}
+                  >
+                    Claude
+                  </button>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleCopyCurl}
+                  className="flex items-center gap-1 text-[11px] px-2 py-1 rounded bg-slate-100 hover:bg-slate-200 text-slate-700 dark:bg-white/5 dark:hover:bg-white/10 dark:text-gray-300 dark:hover:text-white transition-colors border border-slate-200 dark:border-white/10 cursor-pointer"
+                >
+                  {copiedCurl ? (
+                    <Check
+                      size={12}
+                      className="text-emerald-600 dark:text-emerald-400"
+                    />
+                  ) : (
+                    <Copy size={12} />
+                  )}
+                  {copiedCurl ? "已复制" : "复制命令"}
+                </button>
+              </div>
             </div>
             <pre className="p-3 rounded-xl bg-slate-100 dark:bg-black/60 border border-slate-200 dark:border-white/5 font-mono text-[11px] text-slate-800 dark:text-gray-300 overflow-x-auto leading-relaxed">
               {curlCommand}
