@@ -129,7 +129,7 @@ fn inspect_target_process_with_system(target: &str, system: &System) -> (bool, O
     let mut is_running = false;
     let mut exe_path = None;
 
-    for (_pid, proc) in system.processes() {
+    for proc in system.processes().values() {
         let name_lower = proc.name().to_string_lossy().to_lowercase();
         let cmd_line = proc
             .cmd()
