@@ -25,9 +25,7 @@ pub enum TestStreamEvent {
         level: String, // "info" | "success" | "warn" | "error" | "response" | "dim"
     },
     #[serde(rename = "chunk")]
-    Chunk {
-        delta: String,
-    },
+    Chunk { delta: String },
     #[serde(rename = "finish")]
     Finish {
         success: bool,
@@ -109,7 +107,10 @@ pub async fn test_codex_stream(
 
             if status.is_success() {
                 let _ = on_event.send(TestStreamEvent::Log {
-                    text: format!("HTTP {} OK - 连接成功 (往返延迟: {}ms)", status_code, latency_ms),
+                    text: format!(
+                        "HTTP {} OK - 连接成功 (往返延迟: {}ms)",
+                        status_code, latency_ms
+                    ),
                     level: "success".to_string(),
                 });
 
@@ -145,7 +146,12 @@ pub async fn test_codex_stream(
                 let body = response.text().await.unwrap_or_default();
                 let cleaned_body = sanitize_error(&body, &api_key);
                 let _ = on_event.send(TestStreamEvent::Log {
-                    text: format!("HTTP {} {} - 服务端返回异常 (耗时: {}ms)", status_code, status.canonical_reason().unwrap_or(""), latency_ms),
+                    text: format!(
+                        "HTTP {} {} - 服务端返回异常 (耗时: {}ms)",
+                        status_code,
+                        status.canonical_reason().unwrap_or(""),
+                        latency_ms
+                    ),
                     level: "error".to_string(),
                 });
                 if !cleaned_body.is_empty() {
@@ -199,7 +205,8 @@ pub async fn test_codex_stream(
                 level: "error".to_string(),
             });
             let _ = on_event.send(TestStreamEvent::Log {
-                text: "建议: 请检查服务节点 URL 是否拼写正确、本地网络连通性及代理设置。".to_string(),
+                text: "建议: 请检查服务节点 URL 是否拼写正确、本地网络连通性及代理设置。"
+                    .to_string(),
                 level: "warn".to_string(),
             });
             let _ = on_event.send(TestStreamEvent::Finish {
@@ -270,7 +277,10 @@ pub async fn test_claude_stream(
 
             if status.is_success() {
                 let _ = on_event.send(TestStreamEvent::Log {
-                    text: format!("HTTP {} OK - 连接成功 (往返延迟: {}ms)", status_code, latency_ms),
+                    text: format!(
+                        "HTTP {} OK - 连接成功 (往返延迟: {}ms)",
+                        status_code, latency_ms
+                    ),
                     level: "success".to_string(),
                 });
 
@@ -305,7 +315,12 @@ pub async fn test_claude_stream(
                 let body = response.text().await.unwrap_or_default();
                 let cleaned_body = sanitize_error(&body, &api_key);
                 let _ = on_event.send(TestStreamEvent::Log {
-                    text: format!("HTTP {} {} - 服务端返回异常 (耗时: {}ms)", status_code, status.canonical_reason().unwrap_or(""), latency_ms),
+                    text: format!(
+                        "HTTP {} {} - 服务端返回异常 (耗时: {}ms)",
+                        status_code,
+                        status.canonical_reason().unwrap_or(""),
+                        latency_ms
+                    ),
                     level: "error".to_string(),
                 });
                 if !cleaned_body.is_empty() {
@@ -316,11 +331,17 @@ pub async fn test_claude_stream(
                 }
 
                 let hint = match status {
-                    StatusCode::UNAUTHORIZED => "建议: 身份认证失败，请检查 x-api-key / ANTHROPIC_AUTH_TOKEN 是否正确。",
-                    StatusCode::FORBIDDEN => "建议: 访问受限，可能当前账号权限不足或节点进行了访问管控。",
+                    StatusCode::UNAUTHORIZED => {
+                        "建议: 身份认证失败，请检查 x-api-key / ANTHROPIC_AUTH_TOKEN 是否正确。"
+                    }
+                    StatusCode::FORBIDDEN => {
+                        "建议: 访问受限，可能当前账号权限不足或节点进行了访问管控。"
+                    }
                     StatusCode::NOT_FOUND => "建议: 端点 404 未找到，请检查 Base URL 配置。",
                     StatusCode::TOO_MANY_REQUESTS => "建议: 触发速率限制或配额耗尽，请稍后再试。",
-                    _ if status.is_server_error() => "建议: 上游 Anthropic 服务端或代理节点异常 (5xx)，请稍后重试。",
+                    _ if status.is_server_error() => {
+                        "建议: 上游 Anthropic 服务端或代理节点异常 (5xx)，请稍后重试。"
+                    }
                     _ => "建议: 请检查 Base URL、API Key 与 Model 配置。",
                 };
                 let _ = on_event.send(TestStreamEvent::Log {
@@ -358,7 +379,8 @@ pub async fn test_claude_stream(
                 level: "error".to_string(),
             });
             let _ = on_event.send(TestStreamEvent::Log {
-                text: "建议: 请检查服务节点 URL 是否拼写正确、本地网络连通性及代理设置。".to_string(),
+                text: "建议: 请检查服务节点 URL 是否拼写正确、本地网络连通性及代理设置。"
+                    .to_string(),
                 level: "warn".to_string(),
             });
             let _ = on_event.send(TestStreamEvent::Finish {
@@ -395,11 +417,17 @@ fn mask_api_key(key: &str) -> String {
 fn extract_response_text(body: &str) -> Option<String> {
     if let Ok(val) = serde_json::from_str::<serde_json::Value>(body) {
         // 尝试从 responses API 提取: output[0].content[0].text
-        if let Some(text) = val.pointer("/output/0/content/0/text").and_then(|v| v.as_str()) {
+        if let Some(text) = val
+            .pointer("/output/0/content/0/text")
+            .and_then(|v| v.as_str())
+        {
             return Some(text.trim().to_string());
         }
         // 尝试从 chat completions 提取: choices[0].message.content
-        if let Some(text) = val.pointer("/choices/0/message/content").and_then(|v| v.as_str()) {
+        if let Some(text) = val
+            .pointer("/choices/0/message/content")
+            .and_then(|v| v.as_str())
+        {
             return Some(text.trim().to_string());
         }
     }
@@ -478,4 +506,3 @@ async fn send_test_request(request: reqwest::RequestBuilder) -> ApiTestResult {
         },
     }
 }
-

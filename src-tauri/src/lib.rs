@@ -80,7 +80,6 @@ async fn test_claude_stream(
     api_test::test_claude_stream(url, api_key, model, on_event).await
 }
 
-
 #[tauri::command]
 async fn fetch_codex_models(
     url: String,
