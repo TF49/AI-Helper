@@ -52,6 +52,9 @@ if ($hasSig) {
         "AI Helper $Tag"
     }
 
+    # 国内高速 GitHub 反代镜像，彻底解决无 VPN 环境下直连 objects.githubusercontent.com 出现丢包、超时或无法下载的问题
+    $downloadUrl = "https://ghfast.top/https://github.com/TF49/AI-Helper/releases/download/$Tag/$installerName"
+
     $latestManifest = [ordered]@{
         version = $package.version
         notes = $notes.Trim()
@@ -59,7 +62,7 @@ if ($hasSig) {
         platforms = @{
             "windows-x86_64" = @{
                 signature = $sigContent
-                url = "https://github.com/TF49/AI-Helper/releases/download/$Tag/$installerName"
+                url = $downloadUrl
             }
         }
     }

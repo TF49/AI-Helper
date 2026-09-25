@@ -1131,9 +1131,9 @@ export function InitializationModal({
                               </div>
                               <div className="flex flex-col sm:flex-row gap-2 font-mono text-[10px]">
                                 <div className="flex items-center justify-between gap-2 px-2.5 py-1 rounded bg-white dark:bg-black/30 border border-rose-200/60 dark:border-rose-500/20 flex-1">
-                                  <span className="truncate">Claude: npm i -g @anthropic-ai/claude-code@latest</span>
+                                  <span className="truncate">Claude: npm i -g @anthropic-ai/claude-code</span>
                                   <button
-                                    onClick={() => copyToClipboard("npm install -g @anthropic-ai/claude-code@latest", "Claude 安装命令")}
+                                    onClick={() => copyToClipboard("npm i -g @anthropic-ai/claude-code", "Claude 安装命令")}
                                     className="p-0.5 text-slate-400 hover:text-slate-700 dark:hover:text-white cursor-pointer"
                                     title="复制命令"
                                   >
@@ -1141,9 +1141,9 @@ export function InitializationModal({
                                   </button>
                                 </div>
                                 <div className="flex items-center justify-between gap-2 px-2.5 py-1 rounded bg-white dark:bg-black/30 border border-rose-200/60 dark:border-rose-500/20 flex-1">
-                                  <span className="truncate">Codex: npm i -g @openai/codex@latest</span>
+                                  <span className="truncate">Codex: npm i -g @openai/codex</span>
                                   <button
-                                    onClick={() => copyToClipboard("npm install -g @openai/codex@latest", "Codex 安装命令")}
+                                    onClick={() => copyToClipboard("npm i -g @openai/codex", "Codex 安装命令")}
                                     className="p-0.5 text-slate-400 hover:text-slate-700 dark:hover:text-white cursor-pointer"
                                     title="复制命令"
                                   >

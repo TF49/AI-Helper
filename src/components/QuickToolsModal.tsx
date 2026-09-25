@@ -82,7 +82,7 @@ export function QuickToolsModal({
 
         {/* Content */}
         <div className="p-5 space-y-4 max-h-[75vh] overflow-y-auto">
-          {/* Section 0: Theme Switcher (cc-switch style) */}
+          {/* Section 0: Theme Switcher */}
           <div className="space-y-2">
             <div className="flex items-center justify-between">
               <span className="text-xs font-semibold text-slate-700 dark:text-gray-300 flex items-center gap-1.5">

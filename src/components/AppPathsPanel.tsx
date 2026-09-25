@@ -48,32 +48,11 @@ export interface CliInstallOption {
 export const CLAUDE_INSTALL_OPTIONS: CliInstallOption[] = [
   {
     id: "npm_latest",
-    name: "npm 官方最新版",
+    name: "npm 官方推荐",
     badge: "推荐",
-    command: "npm install -g @anthropic-ai/claude-code@latest",
-    desc: "Anthropic 官方推荐安装命令，获取最新版本与功能特性 (要求系统已配置 Node.js 18+ 环境)",
+    command: "npm i -g @anthropic-ai/claude-code",
+    desc: "Anthropic 官方推荐全局安装命令 (要求系统已配置 Node.js 18+ 环境)",
     recommended: true,
-  },
-  {
-    id: "npm_mirror",
-    name: "npm 国内镜像加速",
-    badge: "国内加速",
-    command:
-      "npm install -g @anthropic-ai/claude-code@latest --registry=https://registry.npmmirror.com",
-    desc: "使用淘宝/npmmirror 镜像源加速下载，适合中国大陆网络环境，避免安装超时失败",
-  },
-  {
-    id: "pnpm",
-    name: "pnpm 全局安装",
-    command: "pnpm add -g @anthropic-ai/claude-code@latest",
-    desc: "通过 pnpm 包管理器进行快速全局安装与版本管理",
-  },
-  {
-    id: "powershell_native",
-    name: "Windows 原生脚本",
-    badge: "免全局 Node",
-    command: 'powershell -c "irm https://claude.ai/install.ps1 | iex"',
-    desc: "Anthropic 官方针对 Windows 系统提供的 PowerShell 自动化原生独立安装脚本",
   },
   {
     id: "curl_native",
@@ -86,25 +65,11 @@ export const CLAUDE_INSTALL_OPTIONS: CliInstallOption[] = [
 export const CODEX_INSTALL_OPTIONS: CliInstallOption[] = [
   {
     id: "npm_latest",
-    name: "npm 官方最新版",
+    name: "npm 官方推荐",
     badge: "推荐",
-    command: "npm install -g @openai/codex@latest",
-    desc: "OpenAI 官方 Codex CLI 全局安装，支持代码交互生成与终端代理 (要求系统已配置 Node.js 18+ 环境)",
+    command: "npm i -g @openai/codex",
+    desc: "OpenAI 官方 Codex CLI 全局安装命令 (要求系统已配置 Node.js 18+ 环境)",
     recommended: true,
-  },
-  {
-    id: "npm_mirror",
-    name: "npm 国内镜像加速",
-    badge: "国内加速",
-    command:
-      "npm install -g @openai/codex@latest --registry=https://registry.npmmirror.com",
-    desc: "使用国内 npmmirror 镜像源高速下载依赖，彻底解决国外源连接超时与断联问题",
-  },
-  {
-    id: "pnpm",
-    name: "pnpm 全局安装",
-    command: "pnpm add -g @openai/codex@latest",
-    desc: "使用 pnpm 包管理器进行全局安装与依赖复用",
   },
   {
     id: "brew_mac",
@@ -151,7 +116,7 @@ export function AppPathsPanel() {
   const [detectingType, setDetectingType] = useState<string | null>(null);
   const [launchingType, setLaunchingType] = useState<string | null>(null);
 
-  // 手动安装与命令管理状态 (参考 cc-switch 规范)
+  // 手动安装与命令管理状态
   const [showManualInstallGuide, setShowManualInstallGuide] = useState(false);
   const [guideActiveTab, setGuideActiveTab] = useState<"claude" | "codex" | "nodejs">("claude");
   const [expandedCardInstall, setExpandedCardInstall] = useState<"claude" | "codex" | null>(null);
@@ -396,7 +361,7 @@ export function AppPathsPanel() {
                 ? "bg-purple-600 text-white border-purple-600 dark:bg-purple-600"
                 : "bg-purple-50 hover:bg-purple-100/80 border-purple-200 text-purple-700 dark:bg-purple-500/10 dark:hover:bg-purple-500/20 dark:border-purple-500/30 dark:text-purple-300",
             )}
-            title="展开/折叠 CLI 手动安装与更新命令中心 (参考 cc-switch 规范)"
+            title="展开/折叠 CLI 手动安装与更新命令中心"
           >
             <Terminal size={13} />
             <span>手动安装命令</span>
@@ -431,14 +396,14 @@ export function AppPathsPanel() {
 
       {/* ── 主配置列表 ── */}
       <div className="flex-1 flex flex-col gap-4 overflow-y-auto pr-1 min-h-0">
-        {/* ── CLI 手动安装与更新命令全集中心 (参考 cc-switch 规范) ── */}
+        {/* ── CLI 手动安装与更新命令中心 ── */}
         {showManualInstallGuide && (
           <SpotlightCard
             className="p-5 rounded-2xl border border-purple-300/80 dark:border-purple-500/30 bg-purple-50/30 dark:bg-[#15132a]/80 shadow-md animate-fade-in flex-shrink-0"
             spotlightColor="rgba(168, 85, 247, 0.15)"
           >
             <div className="flex flex-col gap-4">
-              {/* 标题栏与开源项目参考来源 */}
+              {/* 标题栏 */}
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 pb-2.5 border-b border-purple-200/60 dark:border-purple-500/20">
                 <div className="flex items-center gap-2.5">
                   <div className="w-8 h-8 rounded-lg bg-purple-100 text-purple-600 dark:bg-purple-500/20 dark:text-purple-400 flex items-center justify-center flex-shrink-0">
@@ -449,20 +414,9 @@ export function AppPathsPanel() {
                       <span className="text-xs font-bold text-slate-900 dark:text-white">
                         CLI 手动安装与更新命令中心
                       </span>
-                      <button
-                        type="button"
-                        onClick={() =>
-                          void openUrl("https://github.com/farion1231/cc-switch")
-                        }
-                        className="inline-flex items-center gap-1 text-[10px] font-mono px-2 py-0.5 rounded-full bg-white dark:bg-white/10 border border-purple-200 dark:border-white/10 text-purple-700 dark:text-purple-300 hover:bg-purple-100/60 dark:hover:bg-white/20 transition-colors cursor-pointer"
-                        title="打开 cc-switch 开源项目 GitHub 页面"
-                      >
-                        <span>参考: cc-switch</span>
-                        <ExternalLink size={9} />
-                      </button>
                     </div>
                     <p className="text-[11px] text-slate-500 dark:text-gray-400 mt-0.5">
-                      基于 cc-switch 开源项目安装规范，支持官方源、国内镜像源 (npmmirror) 与独立脚本一键复制及终端安装
+                      支持官方 CLI 推荐安装命令一键复制及在终端直接运行安装与版本更新
                     </p>
                   </div>
                 </div>
@@ -513,7 +467,7 @@ export function AppPathsPanel() {
                 <div className="space-y-2.5">
                   <div className="flex items-center justify-between text-[11px] text-slate-500 dark:text-gray-400">
                     <span>
-                      官方包名: <code className="font-mono text-purple-600 dark:text-purple-400 select-text">@anthropic-ai/claude-code</code> (加 @latest 即可更新至最新版本)
+                      官方包名: <code className="font-mono text-purple-600 dark:text-purple-400 select-text">@anthropic-ai/claude-code</code>
                     </span>
                     <button
                       type="button"
@@ -611,7 +565,7 @@ export function AppPathsPanel() {
                 <div className="space-y-2.5">
                   <div className="flex items-center justify-between text-[11px] text-slate-500 dark:text-gray-400">
                     <span>
-                      官方包名: <code className="font-mono text-blue-600 dark:text-blue-400 select-text">@openai/codex</code> (加 @latest 即可更新至最新版本)
+                      官方包名: <code className="font-mono text-blue-600 dark:text-blue-400 select-text">@openai/codex</code>
                     </span>
                     <button
                       type="button"
@@ -713,7 +667,7 @@ export function AppPathsPanel() {
                     </div>
                     <p className="text-[11px] leading-relaxed">
                       Claude Code 与 Codex CLI 基于 Node.js 全局模块运行，系统必须预先安装 <strong>Node.js 18.0.0 LTS 或更高版本</strong>。
-                      国内用户如果遇到 npm 下载缓慢或卡死，可选择上方提供的 <strong>npmmirror 国内镜像加速命令</strong>。
+                      安装完成后即可在终端直接执行 npm 全局安装命令。
                     </p>
                   </div>
 
@@ -906,9 +860,6 @@ export function AppPathsPanel() {
                   <div className="flex items-center gap-1.5 text-xs font-semibold text-purple-900 dark:text-purple-300">
                     <Terminal size={13} className="text-purple-600 dark:text-purple-400" />
                     <span>Claude Code 手动安装与版本更新</span>
-                  </div>
-                  <div className="flex items-center gap-1 text-[11px] text-slate-500 dark:text-gray-400">
-                    <span>参考 cc-switch 规范</span>
                   </div>
                 </div>
 
@@ -1162,9 +1113,6 @@ export function AppPathsPanel() {
                   <div className="flex items-center gap-1.5 text-xs font-semibold text-blue-900 dark:text-blue-300">
                     <Terminal size={13} className="text-blue-600 dark:text-blue-400" />
                     <span>Codex CLI 手动安装与版本更新</span>
-                  </div>
-                  <div className="flex items-center gap-1 text-[11px] text-slate-500 dark:text-gray-400">
-                    <span>参考 cc-switch 规范</span>
                   </div>
                 </div>
 

@@ -63,6 +63,12 @@ function formatBytes(bytes: number): string {
 
 const GITHUB_RELEASES_URL = "https://github.com/TF49/AI-Helper/releases/latest";
 
+function getAcceleratedDownloadUrl(version?: string): string {
+  if (!version) return GITHUB_RELEASES_URL;
+  const cleanVer = version.replace(/^v/, "");
+  return `https://ghfast.top/https://github.com/TF49/AI-Helper/releases/download/v${cleanVer}/AI-Helper-v${cleanVer}-Windows-x64-Setup.exe`;
+}
+
 // ── Hook ──────────────────────────────────────────────────────────────────────
 
 export function useAppUpdater() {
@@ -326,16 +332,14 @@ export function ForceUpdateModal({
           {/* 顶部流光色条 */}
           <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-blue-500 via-indigo-500 to-purple-500" />
 
-          {/* 右上角关闭按钮（仅在已就绪或错误时可用） */}
-          {(phase === "ready" || phase === "error" || phase === "manual") && (
-            <button
-              onClick={onClose}
-              className="absolute top-3 right-3 p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-white/10 transition-colors z-20 cursor-pointer"
-              title="稍后处理"
-            >
-              <X size={15} />
-            </button>
-          )}
+          {/* 右上角关闭按钮 */}
+          <button
+            onClick={onClose}
+            className="absolute top-3 right-3 p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-white/10 transition-colors z-20 cursor-pointer"
+            title="稍后处理"
+          >
+            <X size={15} />
+          </button>
 
           {/* 头部图标与版本展示 */}
           <div className="p-6 pb-4 flex flex-col items-center text-center">
@@ -414,9 +418,17 @@ export function ForceUpdateModal({
                     transition={{ ease: "easeOut", duration: 0.2 }}
                   />
                 </div>
-                <div className="flex justify-between text-[11px] text-slate-500 font-mono">
+                <div className="flex justify-between items-center text-[11px] text-slate-500 font-mono">
                   <span>已下载: {formatBytes(progressBytes)}</span>
                   <span>总大小: {formatBytes(totalBytes)}</span>
+                </div>
+                <div className="flex justify-end pt-0.5">
+                  <button
+                    onClick={onClose}
+                    className="text-[11px] text-slate-400 hover:text-slate-200 transition-colors cursor-pointer py-1 px-2.5 rounded-lg hover:bg-white/5"
+                  >
+                    稍后更新（后台放行）
+                  </button>
                 </div>
               </div>
             )}
@@ -462,10 +474,24 @@ export function ForceUpdateModal({
                     自动安装包暂未就绪
                   </div>
                   <p className="text-[11px] text-amber-300/80 leading-relaxed">
-                    最新版本安装包可在 GitHub Releases 页面直接下载体验。
+                    最新版本安装包可直接通过国内高速通道或前往 GitHub Releases 下载。
                   </p>
                 </div>
                 <div className="flex items-center gap-2">
+                  <a
+                    href={getAcceleratedDownloadUrl(backendInfo?.latest_version)}
+                    onClick={(e) => {
+                      e.preventDefault();
+                      void openUrl(getAcceleratedDownloadUrl(backendInfo?.latest_version));
+                    }}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="flex-1 flex items-center justify-center gap-1.5 py-2.5 px-3 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold transition-all active:scale-95 cursor-pointer"
+                    title="通过国内镜像加速下载安装包"
+                  >
+                    <ExternalLink size={13} />
+                    国内高速下载
+                  </a>
                   <a
                     href={backendInfo?.download_url ?? GITHUB_RELEASES_URL}
                     onClick={(e) => {
@@ -474,14 +500,15 @@ export function ForceUpdateModal({
                     }}
                     target="_blank"
                     rel="noreferrer"
-                    className="flex-1 flex items-center justify-center gap-1.5 py-2.5 px-4 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold transition-all active:scale-95 cursor-pointer"
+                    className="flex items-center justify-center gap-1.5 py-2.5 px-3 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-slate-300 hover:text-white text-xs transition-colors cursor-pointer"
+                    title="在 GitHub Releases 页面查看"
                   >
                     <ExternalLink size={13} />
-                    前往 GitHub 下载
+                    GitHub
                   </a>
                   <button
                     onClick={onClose}
-                    className="px-4 py-2.5 rounded-xl text-slate-400 hover:text-white bg-white/5 hover:bg-white/10 text-xs transition-colors"
+                    className="px-3.5 py-2.5 rounded-xl text-slate-400 hover:text-white bg-white/5 hover:bg-white/10 text-xs transition-colors cursor-pointer"
                   >
                     稍后
                   </button>
@@ -504,28 +531,34 @@ export function ForceUpdateModal({
                 <div className="flex items-center gap-2">
                   <button
                     onClick={onRetry}
-                    className="flex-1 flex items-center justify-center gap-1.5 py-2.5 px-4 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold shadow-lg shadow-blue-600/30 transition-all active:scale-95"
+                    className="flex-1 flex items-center justify-center gap-1.5 py-2.5 px-3 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold shadow-lg shadow-blue-600/30 transition-all active:scale-95 cursor-pointer"
                   >
                     <RefreshCw size={13} />
                     重试下载
                   </button>
                   <a
-                    href={backendInfo?.download_url ?? GITHUB_RELEASES_URL}
+                    href={getAcceleratedDownloadUrl(backendInfo?.latest_version)}
                     onClick={(e) => {
                       e.preventDefault();
-                      void openUrl(backendInfo?.download_url ?? GITHUB_RELEASES_URL);
+                      void openUrl(getAcceleratedDownloadUrl(backendInfo?.latest_version));
                     }}
                     target="_blank"
                     rel="noreferrer"
-                    className="flex items-center justify-center gap-1.5 py-2.5 px-3 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-slate-300 hover:text-white text-xs transition-colors cursor-pointer"
-                    title="在浏览器中手动下载新版安装包"
+                    className="flex items-center justify-center gap-1.5 py-2.5 px-3 rounded-xl bg-emerald-600/20 hover:bg-emerald-600/30 border border-emerald-500/30 text-emerald-300 hover:text-emerald-200 text-xs transition-colors cursor-pointer"
+                    title="通过国内镜像加速下载安装包"
                   >
                     <ExternalLink size={13} />
-                    手动下载
+                    国内高速下载
                   </a>
                   <button
+                    onClick={onClose}
+                    className="px-3 py-2.5 rounded-xl text-slate-400 hover:text-white bg-white/5 hover:bg-white/10 text-xs transition-colors cursor-pointer"
+                  >
+                    稍后
+                  </button>
+                  <button
                     onClick={onExit}
-                    className="flex items-center justify-center p-2.5 rounded-xl bg-white/5 hover:bg-red-500/20 hover:text-red-300 border border-white/10 text-slate-400 transition-colors"
+                    className="flex items-center justify-center p-2.5 rounded-xl bg-white/5 hover:bg-red-500/20 hover:text-red-300 border border-white/10 text-slate-400 transition-colors cursor-pointer"
                     title="退出软件"
                   >
                     <Power size={14} />

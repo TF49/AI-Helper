@@ -12,11 +12,16 @@ use serde::{Deserialize, Serialize};
 use std::time::Duration;
 
 const CURRENT_VERSION: &str = env!("CARGO_PKG_VERSION");
-const UPDATER_JSON_URL: &str =
+const UPDATER_JSON_MIRROR_URL: &str =
+    "https://ghfast.top/https://github.com/TF49/AI-Helper/releases/latest/download/latest.json";
+const UPDATER_JSON_MIRROR_BACKUP_URL: &str =
+    "https://gh-proxy.com/https://github.com/TF49/AI-Helper/releases/latest/download/latest.json";
+const UPDATER_JSON_OFFICIAL_URL: &str =
     "https://github.com/TF49/AI-Helper/releases/latest/download/latest.json";
-const GITHUB_API_URL: &str = "https://api.github.com/repos/TF49/AI-Helper/releases/latest";
-const GITHUB_RAW_URL: &str = "https://raw.githubusercontent.com/TF49/AI-Helper/main/package.json";
 const JSDELIVR_URL: &str = "https://cdn.jsdelivr.net/gh/TF49/AI-Helper@main/package.json";
+const GITHUB_RAW_MIRROR_URL: &str =
+    "https://ghfast.top/https://raw.githubusercontent.com/TF49/AI-Helper/main/package.json";
+const GITHUB_API_URL: &str = "https://api.github.com/repos/TF49/AI-Helper/releases/latest";
 
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(5);
 
@@ -137,32 +142,48 @@ pub async fn check_for_updates() -> Result<UpdateInfo, String> {
 }
 
 async fn check_for_updates_internal() -> Result<UpdateInfo, String> {
-    // 1. 优先 updater.json (latest.json)
-    match check_updater_json().await {
+    // 1. 优先 ghfast.top 镜像 updater.json (国内高速通道)
+    match check_updater_json(UPDATER_JSON_MIRROR_URL, "updater.json (ghfast)").await {
         Ok(info) => return Ok(info),
         Err(e) => {
-            log::warn!("updater.json check failed: {}. Trying GitHub API...", e);
+            log::warn!("ghfast updater.json check failed: {}. Trying gh-proxy backup...", e);
         }
     }
 
-    // 2. 回退 GitHub Releases API
-    match check_github_api().await {
+    // 2. 备用 gh-proxy.com 镜像 updater.json
+    match check_updater_json(UPDATER_JSON_MIRROR_BACKUP_URL, "updater.json (gh-proxy)").await {
         Ok(info) => return Ok(info),
         Err(e) => {
-            log::warn!("GitHub API check failed: {}. Trying GitHub Raw...", e);
+            log::warn!("gh-proxy updater.json check failed: {}. Trying official GitHub...", e);
         }
     }
 
-    // 3. 回退 GitHub Raw (package.json)
-    match check_static_url(GITHUB_RAW_URL, "GitHub Raw").await {
+    // 3. 官方 GitHub updater.json (适合海外用户或已配置系统代理/VPN环境)
+    match check_updater_json(UPDATER_JSON_OFFICIAL_URL, "updater.json (GitHub)").await {
         Ok(info) => return Ok(info),
         Err(e) => {
-            log::warn!("GitHub Raw check failed: {}. Trying jsDelivr CDN...", e);
+            log::warn!("Official GitHub updater.json check failed: {}. Trying jsDelivr CDN...", e);
         }
     }
 
-    // 4. 回退 jsDelivr CDN
+    // 4. 回退 jsDelivr CDN (package.json)
     match check_static_url(JSDELIVR_URL, "jsDelivr").await {
+        Ok(info) => return Ok(info),
+        Err(e) => {
+            log::warn!("jsDelivr check failed: {}. Trying GitHub Raw Mirror...", e);
+        }
+    }
+
+    // 5. 回退 GitHub Raw 镜像 (package.json)
+    match check_static_url(GITHUB_RAW_MIRROR_URL, "GitHub Raw (ghfast)").await {
+        Ok(info) => return Ok(info),
+        Err(e) => {
+            log::warn!("GitHub Raw Mirror check failed: {}. Trying GitHub API...", e);
+        }
+    }
+
+    // 6. 回退 GitHub Releases API
+    match check_github_api().await {
         Ok(info) => Ok(info),
         Err(e) => {
             log::error!("All update checks failed. Last error: {}", e);
@@ -171,19 +192,20 @@ async fn check_for_updates_internal() -> Result<UpdateInfo, String> {
     }
 }
 
-async fn check_updater_json() -> Result<UpdateInfo, String> {
+async fn check_updater_json(url: &str, source_name: &str) -> Result<UpdateInfo, String> {
     let client = create_client().await?;
-    log::info!("Checking for updates via updater.json...");
+    log::info!("Checking for updates via {}...", source_name);
 
     let response = client
-        .get(UPDATER_JSON_URL)
+        .get(url)
         .send()
         .await
         .map_err(|e| format!("Request failed: {}", e))?;
 
     if !response.status().is_success() {
         return Err(format!(
-            "updater.json returned status: {}",
+            "{} returned status: {}",
+            source_name,
             response.status()
         ));
     }
@@ -199,13 +221,15 @@ async fn check_updater_json() -> Result<UpdateInfo, String> {
 
     if has_update {
         log::info!(
-            "New version found (updater.json): {} (Current: {})",
+            "New version found ({}): {} (Current: {})",
+            source_name,
             latest_version,
             current_version
         );
     } else {
         log::info!(
-            "Up to date (updater.json): {} (Matches {})",
+            "Up to date ({}): {} (Matches {})",
+            source_name,
             current_version,
             latest_version
         );
@@ -225,7 +249,7 @@ async fn check_updater_json() -> Result<UpdateInfo, String> {
             .notes
             .unwrap_or_else(|| "Release notes available on GitHub.".to_string()),
         published_at: updater_info.pub_date.unwrap_or_default(),
-        source: Some("updater.json".to_string()),
+        source: Some(source_name.to_string()),
         proxy_url: None,
     })
 }
