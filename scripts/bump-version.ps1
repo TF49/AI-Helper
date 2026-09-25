@@ -52,6 +52,16 @@ Write-Host "Regenerating Cargo.lock..."
 cargo update --manifest-path $cargoPath --package ai-helper
 if ($LASTEXITCODE -ne 0) { throw "cargo update failed" }
 
+# Sync README.md with the new version
+$readmePath = Join-Path $repoRoot 'README.md'
+if (Test-Path -LiteralPath $readmePath) {
+    $readmeContent = Get-Content -LiteralPath $readmePath -Encoding UTF8 -Raw
+    # Replace any explicit static version badge if present, and ensure roadmap has the entry
+    $readmeContent = $readmeContent -replace 'version-(\d+\.\d+\.\d+)-', "version-$NewVersion-"
+    [System.IO.File]::WriteAllText($readmePath, $readmeContent, $utf8NoBom)
+    Write-Host "Synced version $NewVersion into README.md"
+}
+
 # Check/create release notes file template if not existing
 $relNotesPath = Join-Path $repoRoot "docs/releases/v$NewVersion.md"
 if (-not (Test-Path -LiteralPath $relNotesPath)) {
