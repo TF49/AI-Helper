@@ -10,9 +10,8 @@ import {
   X,
   Clock,
   RotateCcw,
-  Bot,
-  Sparkles,
 } from "lucide-react";
+import { OpenAIIcon, ClaudeIcon } from "./BrandIcons";
 import { toast } from "sonner";
 import {
   setCodexConfig,
@@ -431,7 +430,7 @@ export function TerminalTestModal({
                       {restartingTarget === "chatgpt" ? (
                         <Loader2 size={13} className="animate-spin" />
                       ) : (
-                        <Bot size={13} />
+                        <OpenAIIcon size={13} />
                       )}
                       <span>
                         {chatgptRunning ? "重启 ChatGPT 客户端" : "启动 ChatGPT 客户端"}
@@ -466,7 +465,7 @@ export function TerminalTestModal({
                     {restartingTarget === "claude" ? (
                       <Loader2 size={13} className="animate-spin" />
                     ) : (
-                      <Sparkles size={13} />
+                      <ClaudeIcon size={13} />
                     )}
                     <span>
                       {claudeRunning ? "重启 Claude Code 终端" : "启动 Claude Code 终端"}

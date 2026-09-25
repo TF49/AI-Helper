@@ -10,8 +10,9 @@ import {
   Palette,
 } from "lucide-react";
 import { toast } from "sonner";
-import { ThemeToggle } from "./ThemeToggle";
 import { openUrl } from "../lib/api";
+import { OpenAIIcon, ClaudeIcon } from "./BrandIcons";
+import { ThemeToggle } from "./ThemeToggle";
 
 interface QuickToolsModalProps {
   open: boolean;
@@ -111,23 +112,25 @@ export function QuickToolsModal({
                   <button
                     type="button"
                     onClick={() => setSelectedProtocol("chatgpt")}
-                    className={`px-2 py-0.5 rounded-md font-medium transition-colors cursor-pointer ${
+                    className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md font-medium transition-colors cursor-pointer ${
                       selectedProtocol === "chatgpt"
                         ? "bg-blue-600 text-white shadow-2xs"
                         : "text-slate-600 dark:text-gray-400 hover:text-slate-900 dark:hover:text-white"
                     }`}
                   >
+                    <OpenAIIcon size={11} />
                     OpenAI
                   </button>
                   <button
                     type="button"
                     onClick={() => setSelectedProtocol("claude")}
-                    className={`px-2 py-0.5 rounded-md font-medium transition-colors cursor-pointer ${
+                    className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md font-medium transition-colors cursor-pointer ${
                       selectedProtocol === "claude"
                         ? "bg-purple-600 text-white shadow-2xs"
                         : "text-slate-600 dark:text-gray-400 hover:text-slate-900 dark:hover:text-white"
                     }`}
                   >
+                    <ClaudeIcon size={11} />
                     Claude
                   </button>
                 </div>

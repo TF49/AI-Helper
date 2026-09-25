@@ -19,7 +19,6 @@ import {
   Check,
   ShieldCheck,
   ArrowRight,
-  Bot,
   Sparkles,
   Save,
   Power,
@@ -30,6 +29,7 @@ import {
   ChevronUp,
   X,
 } from "lucide-react";
+import { OpenAIIcon, ClaudeIcon } from "./BrandIcons";
 import { motion, AnimatePresence } from "motion/react";
 import { toast } from "sonner";
 import { exit } from "@tauri-apps/plugin-process";
@@ -941,7 +941,7 @@ export function InitializationModal({
                         <div className="p-3.5 rounded-xl border bg-slate-50/80 dark:bg-white/[0.02] border-slate-200 dark:border-white/10 space-y-2 relative">
                           <div className="flex items-center justify-between">
                             <span className="text-xs font-semibold text-slate-800 dark:text-gray-200 flex items-center gap-1.5">
-                              <Bot size={14} className="text-blue-500" />
+                              <OpenAIIcon size={14} className="text-blue-500" />
                               ChatGPT (Codex) 配置文件
                             </span>
                             <span
@@ -1014,7 +1014,7 @@ export function InitializationModal({
                         <div className="p-3.5 rounded-xl border bg-slate-50/80 dark:bg-white/[0.02] border-slate-200 dark:border-white/10 space-y-2 relative">
                           <div className="flex items-center justify-between">
                             <span className="text-xs font-semibold text-slate-800 dark:text-gray-200 flex items-center gap-1.5">
-                              <Sparkles size={14} className="text-purple-500" />
+                              <ClaudeIcon size={14} className="text-purple-500" />
                               Claude Code 配置文件
                             </span>
                             <span
@@ -1265,7 +1265,7 @@ export function InitializationModal({
                               : "text-slate-600 dark:text-gray-400 hover:text-slate-900 dark:hover:text-white",
                           )}
                         >
-                          <Bot size={13} />
+                          <OpenAIIcon size={13} />
                           ChatGPT (Codex)
                           {!configData.codex?.is_installed && (
                             <span className="text-[9px] px-1 py-0.2 rounded bg-slate-200 dark:bg-white/10 text-slate-500 dark:text-gray-400">
@@ -1285,7 +1285,7 @@ export function InitializationModal({
                               : "text-slate-600 dark:text-gray-400 hover:text-slate-900 dark:hover:text-white",
                           )}
                         >
-                          <Sparkles size={13} />
+                          <ClaudeIcon size={13} />
                           Claude Code
                           {!configData.claude?.is_installed && (
                             <span className="text-[9px] px-1 py-0.2 rounded bg-slate-200 dark:bg-white/10 text-slate-500 dark:text-gray-400">

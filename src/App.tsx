@@ -5,12 +5,10 @@ import {
   Maximize2,
   Minimize2,
   X,
-  Bot,
   Loader2,
   RefreshCw,
   Wifi,
   WifiOff,
-  Sparkles,
   Wrench,
   ShieldCheck,
   ChevronRight,
@@ -20,6 +18,7 @@ import {
 import { motion, AnimatePresence } from "motion/react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { getVersion } from "@tauri-apps/api/app";
+import { BrandLogo, OpenAIIcon, ClaudeIcon } from "./components/BrandIcons";
 import { ChatGPTPanel } from "./components/ChatGPTPanel";
 import { ClaudePanel } from "./components/ClaudePanel";
 import { AppPathsPanel } from "./components/AppPathsPanel";
@@ -223,24 +222,7 @@ function AppContent() {
       >
         {/* 左侧：Logo + 标题与版本 */}
         <div className="flex items-center gap-2.5 pointer-events-none pl-1">
-          <div
-            className={cn(
-              "w-6 h-6 rounded-lg flex items-center justify-center transition-all shadow-xs",
-              tab === "chatgpt"
-                ? "bg-blue-100 text-blue-600 border border-blue-200 dark:bg-blue-500/20 dark:text-blue-400 dark:border-blue-500/30"
-                : tab === "claude"
-                  ? "bg-purple-100 text-purple-600 border border-purple-200 dark:bg-purple-500/20 dark:text-purple-400 dark:border-purple-500/30"
-                  : "bg-teal-100 text-teal-600 border border-teal-200 dark:bg-teal-500/20 dark:text-teal-400 dark:border-teal-500/30",
-            )}
-          >
-            {tab === "chatgpt" ? (
-              <Bot size={14} />
-            ) : tab === "claude" ? (
-              <Sparkles size={13} />
-            ) : (
-              <FolderGit2 size={13} />
-            )}
-          </div>
+          <BrandLogo size={22} className="w-5.5 h-5.5 drop-shadow-xs" />
           <div className="flex items-center gap-2">
             <div className="flex items-center gap-1 leading-none">
               <DecryptedText
@@ -339,7 +321,7 @@ function AppContent() {
                           : "bg-slate-100 text-slate-500 dark:bg-white/5 dark:text-gray-400",
                       )}
                     >
-                      <Bot size={16} />
+                      <OpenAIIcon size={16} />
                     </div>
                     <div className="min-w-0">
                       <div className="text-xs font-semibold truncate leading-tight">
@@ -375,7 +357,7 @@ function AppContent() {
                           : "bg-slate-100 text-slate-500 dark:bg-white/5 dark:text-gray-400",
                       )}
                     >
-                      <Sparkles size={15} />
+                      <ClaudeIcon size={16} />
                     </div>
                     <div className="min-w-0">
                       <div className="text-xs font-semibold truncate leading-tight">

@@ -4,13 +4,13 @@ import {
   Loader2,
   Save,
   RefreshCw,
-  Sparkles,
   Server,
   KeyRound,
   FileCode,
   ShieldAlert,
   ShieldCheck,
 } from "lucide-react";
+import { ClaudeIcon } from "./BrandIcons";
 import {
   fetchClaudeModels,
   getClaudeConfig,
@@ -102,7 +102,7 @@ export function ClaudePanel() {
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 pb-3.5 border-b border-slate-200/80 dark:border-white/10 flex-shrink-0">
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-xl bg-purple-100 text-purple-600 border border-purple-200 dark:bg-purple-500/20 dark:text-purple-400 dark:border-purple-500/30 flex items-center justify-center flex-shrink-0 shadow-xs">
-            <Sparkles size={22} />
+            <ClaudeIcon size={22} />
           </div>
           <div>
             <div className="flex items-center gap-2">

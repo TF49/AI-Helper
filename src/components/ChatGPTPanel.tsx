@@ -9,8 +9,8 @@ import {
   FileCode,
   ShieldAlert,
   ShieldCheck,
-  Bot,
 } from "lucide-react";
+import { OpenAIIcon } from "./BrandIcons";
 import {
   fetchCodexModels,
   getCodexConfig,
@@ -103,7 +103,7 @@ export function ChatGPTPanel() {
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 pb-3.5 border-b border-slate-200/80 dark:border-white/10 flex-shrink-0">
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-xl bg-blue-100 text-blue-600 border border-blue-200 dark:bg-blue-500/20 dark:text-blue-400 dark:border-blue-500/30 flex items-center justify-center flex-shrink-0 shadow-xs">
-            <Bot size={22} />
+            <OpenAIIcon size={22} />
           </div>
           <div>
             <div className="flex items-center gap-2">

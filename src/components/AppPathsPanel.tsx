@@ -9,10 +9,8 @@ import {
   Save,
   CheckCircle2,
   AlertCircle,
-  Sparkles,
   Terminal,
   Loader2,
-  Bot,
   Copy,
   Check,
   ChevronDown,
@@ -20,6 +18,7 @@ import {
   ExternalLink,
   DownloadCloud,
 } from "lucide-react";
+import { ClaudeIcon, OpenAIIcon } from "./BrandIcons";
 import {
   browseAppPath,
   checkAppProcessStatus,
@@ -126,6 +125,39 @@ export function AppPathsPanel() {
   const [runningCmd, setRunningCmd] = useState<string | null>(null);
 
   const refreshTimersRef = useRef<Record<string, number>>({});
+  const topGuideRef = useRef<HTMLDivElement>(null);
+  const claudeDrawerRef = useRef<HTMLDivElement>(null);
+  const codexDrawerRef = useRef<HTMLDivElement>(null);
+
+  // 展开抽屉时自动平滑滚动以确保完整命令面板可见，避免被视口截断
+  useEffect(() => {
+    if (expandedCardInstall === "claude") {
+      requestAnimationFrame(() => {
+        claudeDrawerRef.current?.scrollIntoView({
+          behavior: "smooth",
+          block: "nearest",
+        });
+      });
+    } else if (expandedCardInstall === "codex") {
+      requestAnimationFrame(() => {
+        codexDrawerRef.current?.scrollIntoView({
+          behavior: "smooth",
+          block: "nearest",
+        });
+      });
+    }
+  }, [expandedCardInstall]);
+
+  useEffect(() => {
+    if (showManualInstallGuide) {
+      requestAnimationFrame(() => {
+        topGuideRef.current?.scrollIntoView({
+          behavior: "smooth",
+          block: "nearest",
+        });
+      });
+    }
+  }, [showManualInstallGuide]);
 
 
   // 加载已保存配置与探测运行状态
@@ -395,13 +427,14 @@ export function AppPathsPanel() {
       </div>
 
       {/* ── 主配置列表 ── */}
-      <div className="flex-1 flex flex-col gap-4 overflow-y-auto pr-1 min-h-0">
+      <div className="flex-1 flex flex-col gap-4 overflow-y-auto pr-1 pb-2 min-h-0 scroll-smooth">
         {/* ── CLI 手动安装与更新命令中心 ── */}
         {showManualInstallGuide && (
-          <SpotlightCard
-            className="p-5 rounded-2xl border border-purple-300/80 dark:border-purple-500/30 bg-purple-50/30 dark:bg-[#15132a]/80 shadow-md animate-fade-in flex-shrink-0"
-            spotlightColor="rgba(168, 85, 247, 0.15)"
-          >
+          <div ref={topGuideRef} className="flex-shrink-0 min-h-fit">
+            <SpotlightCard
+              className="p-5 rounded-2xl border border-purple-300/80 dark:border-purple-500/30 bg-purple-50/30 dark:bg-[#15132a]/80 shadow-md animate-fade-in flex-shrink-0 min-h-fit"
+              spotlightColor="rgba(168, 85, 247, 0.15)"
+            >
             <div className="flex flex-col gap-4">
               {/* 标题栏 */}
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 pb-2.5 border-b border-purple-200/60 dark:border-purple-500/20">
@@ -736,18 +769,19 @@ export function AppPathsPanel() {
               )}
             </div>
           </SpotlightCard>
+          </div>
         )}
 
         {/* 卡片 1: Claude Code CLI */}
         <SpotlightCard
-          className="p-5 rounded-2xl border border-slate-200/90 dark:border-white/10 bg-white/80 dark:bg-[#121524]/60 shadow-sm dark:shadow-none"
+          className="p-5 rounded-2xl border border-slate-200/90 dark:border-white/10 bg-white/80 dark:bg-[#121524]/60 shadow-sm dark:shadow-none flex-shrink-0 min-h-fit"
           spotlightColor="rgba(168, 85, 247, 0.12)"
         >
           <div className="flex flex-col gap-3">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2.5">
                 <div className="w-8 h-8 rounded-lg bg-purple-100 text-purple-600 dark:bg-purple-500/20 dark:text-purple-400 flex items-center justify-center flex-shrink-0">
-                  <Sparkles size={16} />
+                  <ClaudeIcon size={16} />
                 </div>
                 <div>
                   <div className="flex items-center gap-2">
@@ -855,7 +889,10 @@ export function AppPathsPanel() {
 
             {/* Claude 卡片专属手动安装命令抽屉 */}
             {expandedCardInstall === "claude" && (
-              <div className="p-3.5 rounded-xl border border-purple-200/80 dark:border-purple-500/20 bg-purple-50/40 dark:bg-purple-950/20 space-y-3 animate-fade-in">
+              <div
+                ref={claudeDrawerRef}
+                className="p-3.5 rounded-xl border border-purple-200/80 dark:border-purple-500/20 bg-purple-50/40 dark:bg-purple-950/20 space-y-3 animate-fade-in"
+              >
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <div className="flex items-center gap-1.5 text-xs font-semibold text-purple-900 dark:text-purple-300">
                     <Terminal size={13} className="text-purple-600 dark:text-purple-400" />
@@ -993,7 +1030,7 @@ export function AppPathsPanel() {
 
         {/* 卡片 2: Codex CLI */}
         <SpotlightCard
-          className="p-5 rounded-2xl border border-slate-200/90 dark:border-white/10 bg-white/80 dark:bg-[#121524]/60 shadow-sm dark:shadow-none"
+          className="p-5 rounded-2xl border border-slate-200/90 dark:border-white/10 bg-white/80 dark:bg-[#121524]/60 shadow-sm dark:shadow-none flex-shrink-0 min-h-fit"
           spotlightColor="rgba(59, 130, 246, 0.12)"
         >
           <div className="flex flex-col gap-3">
@@ -1108,7 +1145,10 @@ export function AppPathsPanel() {
 
             {/* Codex 卡片专属手动安装命令抽屉 */}
             {expandedCardInstall === "codex" && (
-              <div className="p-3.5 rounded-xl border border-blue-200/80 dark:border-blue-500/20 bg-blue-50/40 dark:bg-blue-950/20 space-y-3 animate-fade-in">
+              <div
+                ref={codexDrawerRef}
+                className="p-3.5 rounded-xl border border-blue-200/80 dark:border-blue-500/20 bg-blue-50/40 dark:bg-blue-950/20 space-y-3 animate-fade-in"
+              >
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <div className="flex items-center gap-1.5 text-xs font-semibold text-blue-900 dark:text-blue-300">
                     <Terminal size={13} className="text-blue-600 dark:text-blue-400" />
@@ -1246,14 +1286,14 @@ export function AppPathsPanel() {
 
         {/* 卡片 3: ChatGPT 桌面客户端 */}
         <SpotlightCard
-          className="p-5 rounded-2xl border border-slate-200/90 dark:border-white/10 bg-white/80 dark:bg-[#121524]/60 shadow-sm dark:shadow-none"
+          className="p-5 rounded-2xl border border-slate-200/90 dark:border-white/10 bg-white/80 dark:bg-[#121524]/60 shadow-sm dark:shadow-none flex-shrink-0 min-h-fit"
           spotlightColor="rgba(16, 185, 129, 0.12)"
         >
           <div className="flex flex-col gap-3">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2.5">
                 <div className="w-8 h-8 rounded-lg bg-emerald-100 text-emerald-600 dark:bg-emerald-500/20 dark:text-emerald-400 flex items-center justify-center flex-shrink-0">
-                  <Bot size={16} />
+                  <OpenAIIcon size={16} />
                 </div>
                 <div>
                   <div className="flex items-center gap-2">
