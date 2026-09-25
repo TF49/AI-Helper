@@ -90,11 +90,11 @@ pub fn get_codex_config() -> Result<CodexConfig, AppError> {
     let has_saved_path = saved_paths
         .codex_cli_path
         .as_deref()
-        .map_or(false, |p| !p.is_empty() && std::path::Path::new(p).exists())
+        .is_some_and(|p| !p.is_empty() && std::path::Path::new(p).exists())
         || saved_paths
             .chatgpt_client_path
             .as_deref()
-            .map_or(false, |p| !p.is_empty() && std::path::Path::new(p).exists());
+            .is_some_and(|p| !p.is_empty() && std::path::Path::new(p).exists());
 
     let is_installed = config_exists || codex_cli.exists || chatgpt_client.exists || has_saved_path;
 
