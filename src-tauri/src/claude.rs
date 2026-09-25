@@ -205,7 +205,8 @@ mod tests {
 
     #[test]
     fn test_parse_claude_content_malformed_json() {
-        let cfg = parse_claude_content("{ broken json: ", "C:/path/settings.json", true, true, None);
+        let cfg =
+            parse_claude_content("{ broken json: ", "C:/path/settings.json", true, true, None);
         assert_eq!(cfg.config_path, "C:/path/settings.json");
         assert!(cfg.config_exists);
         assert_eq!(cfg.base_url, "");

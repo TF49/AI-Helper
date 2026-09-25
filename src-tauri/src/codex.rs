@@ -103,7 +103,9 @@ pub fn get_codex_config() -> Result<CodexConfig, AppError> {
     } else if chatgpt_client.exists {
         Some(chatgpt_client.path)
     } else if has_saved_path {
-        saved_paths.codex_cli_path.or(saved_paths.chatgpt_client_path)
+        saved_paths
+            .codex_cli_path
+            .or(saved_paths.chatgpt_client_path)
     } else {
         None
     };
@@ -256,7 +258,14 @@ mod tests {
 
     #[test]
     fn test_parse_codex_content_empty_string() {
-        let cfg = parse_codex_content("", "C:/path/config.toml", true, "test-key".to_string(), true, None);
+        let cfg = parse_codex_content(
+            "",
+            "C:/path/config.toml",
+            true,
+            "test-key".to_string(),
+            true,
+            None,
+        );
         assert_eq!(cfg.config_path, "C:/path/config.toml");
         assert!(cfg.config_exists);
         assert!(cfg.is_installed);
@@ -267,7 +276,14 @@ mod tests {
 
     #[test]
     fn test_parse_codex_content_whitespace_only() {
-        let cfg = parse_codex_content("   \r\n\t  ", "C:/path/config.toml", true, "".to_string(), true, None);
+        let cfg = parse_codex_content(
+            "   \r\n\t  ",
+            "C:/path/config.toml",
+            true,
+            "".to_string(),
+            true,
+            None,
+        );
         assert_eq!(cfg.config_path, "C:/path/config.toml");
         assert!(cfg.config_exists);
         assert_eq!(cfg.base_url, "");
@@ -300,7 +316,14 @@ model = "o3-mini"
 name = "Custom"
 base_url = "https://api.openai.com/v1"
 "#;
-        let cfg = parse_codex_content(raw, "C:/path/config.toml", true, "test-key".to_string(), true, None);
+        let cfg = parse_codex_content(
+            raw,
+            "C:/path/config.toml",
+            true,
+            "test-key".to_string(),
+            true,
+            None,
+        );
         assert_eq!(cfg.model, "o3-mini");
         assert_eq!(cfg.base_url, "https://api.openai.com/");
         assert_eq!(cfg.api_key, "test-key");

@@ -288,4 +288,3 @@ pub fn execute_in_terminal(command: &str) -> Result<String, String> {
         Err("当前操作系统暂不支持自动唤起外部终端，请手动复制命令到终端中执行".to_string())
     }
 }
-
