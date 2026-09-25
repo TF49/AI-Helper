@@ -52,10 +52,6 @@ fn parse_claude_content(content: &str, config_path: &str, config_exists: bool) -
         }
     }
 
-    if model.is_empty() {
-        model = "claude-3-7-sonnet-20250219".to_string();
-    }
-
     ClaudeConfig {
         base_url,
         api_key,
@@ -151,7 +147,7 @@ mod tests {
         assert!(cfg.config_exists);
         assert_eq!(cfg.base_url, "");
         assert_eq!(cfg.api_key, "");
-        assert_eq!(cfg.model, "claude-3-7-sonnet-20250219");
+        assert_eq!(cfg.model, "");
     }
 
     #[test]
@@ -161,7 +157,7 @@ mod tests {
         assert!(cfg.config_exists);
         assert_eq!(cfg.base_url, "");
         assert_eq!(cfg.api_key, "");
-        assert_eq!(cfg.model, "claude-3-7-sonnet-20250219");
+        assert_eq!(cfg.model, "");
     }
 
     #[test]
@@ -171,7 +167,7 @@ mod tests {
         assert!(cfg.config_exists);
         assert_eq!(cfg.base_url, "");
         assert_eq!(cfg.api_key, "");
-        assert_eq!(cfg.model, "claude-3-7-sonnet-20250219");
+        assert_eq!(cfg.model, "");
     }
 
     #[test]

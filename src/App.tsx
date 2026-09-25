@@ -108,18 +108,25 @@ function AppContent() {
     void getVersion().then((v) => setAppVersion(v));
   }, []);
 
-  // 软件启动后仅执行一次初始化流程
+  // 软件初次启动仅执行一次初始化流程（使用 localStorage 持久化，后续启动不再重复弹出）
   useEffect(() => {
     const hasInitialized =
-      sessionStorage.getItem("ai_helper_init_completed") ||
-      sessionStorage.getItem("bobapi_init_completed");
+      localStorage.getItem("ai_helper_init_completed") ||
+      localStorage.getItem("bobapi_init_completed");
     if (!hasInitialized) {
       setInitModalOpen(true);
     }
   }, []);
 
   const handleInitFinish = () => {
+    localStorage.setItem("ai_helper_init_completed", "true");
     sessionStorage.setItem("ai_helper_init_completed", "true");
+  };
+
+  const handleInitClose = () => {
+    // 关闭时无论是否走完全部向导，都持久化标记已处理，防止后续重启重复弹窗打扰
+    localStorage.setItem("ai_helper_init_completed", "true");
+    setInitModalOpen(false);
   };
 
   const isChatGPT = tab === "chatgpt";
@@ -522,7 +529,7 @@ function AppContent() {
 
       <InitializationModal
         open={initModalOpen}
-        onClose={() => setInitModalOpen(false)}
+        onClose={handleInitClose}
         onFinish={handleInitFinish}
       />
 

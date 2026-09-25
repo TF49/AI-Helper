@@ -30,7 +30,7 @@ dependencies = [
 
 [[package]]
 name = "ai-helper"
-version = "1.0.17"
+version = "1.0.18"
 dependencies = [
  "anyhow",
  "dirs 5.0.1",

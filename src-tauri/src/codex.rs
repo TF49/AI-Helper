@@ -63,10 +63,6 @@ fn parse_codex_content(
         }
     }
 
-    if model.is_empty() {
-        model = "gpt-4o".to_string();
-    }
-
     CodexConfig {
         base_url,
         api_key,
@@ -224,7 +220,7 @@ mod tests {
         assert!(cfg.config_exists);
         assert_eq!(cfg.base_url, "");
         assert_eq!(cfg.api_key, "test-key");
-        assert_eq!(cfg.model, "gpt-4o");
+        assert_eq!(cfg.model, "");
     }
 
     #[test]
@@ -234,7 +230,7 @@ mod tests {
         assert!(cfg.config_exists);
         assert_eq!(cfg.base_url, "");
         assert_eq!(cfg.api_key, "");
-        assert_eq!(cfg.model, "gpt-4o");
+        assert_eq!(cfg.model, "");
     }
 
     #[test]
@@ -248,7 +244,7 @@ mod tests {
         assert_eq!(cfg.config_path, "C:/path/config.toml");
         assert!(cfg.config_exists);
         assert_eq!(cfg.base_url, "");
-        assert_eq!(cfg.model, "gpt-4o");
+        assert_eq!(cfg.model, "");
     }
 
     #[test]

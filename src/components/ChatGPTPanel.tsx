@@ -37,7 +37,7 @@ const QUICK_MODELS = [
 export function ChatGPTPanel() {
   const [url, setUrl] = useState<string>(PRESET_URLS[0]);
   const [apiKey, setApiKey] = useState("");
-  const [model, setModel] = useState("gpt-4o");
+  const [model, setModel] = useState("");
   const [configExists, setConfigExists] = useState(false);
   const [configPath, setConfigPath] = useState("");
   const [loading, setLoading] = useState(true);
@@ -59,9 +59,7 @@ export function ChatGPTPanel() {
         setUrl(PRESET_URLS[0]);
       }
       setApiKey(cfg.api_key || "");
-      if (cfg.model) {
-        setModel(cfg.model);
-      }
+      setModel(cfg.model || "");
       setConfigExists(cfg.config_exists);
       setConfigPath(cfg.config_path);
     } catch (e) {

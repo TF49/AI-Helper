@@ -28,6 +28,7 @@ import {
   Scan,
   ChevronDown,
   ChevronUp,
+  X,
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { toast } from "sonner";
@@ -332,7 +333,7 @@ export function InitializationModal({
       setConfigData({ codex, claude });
       setEditUrl(codex.base_url || "https://bob-api.com/");
       setEditApiKey(codex.api_key || "");
-      setEditModel(codex.model || "gpt-4o");
+      setEditModel(codex.model || "");
     } catch (err) {
       setStep3Status("error");
       const msg = err instanceof Error ? err.message : String(err);
@@ -356,8 +357,8 @@ export function InitializationModal({
     if (!(await delay(750))) return false;
     setCheckpoints((prev) => ({ ...prev, verify_key: "done", map_model: "scanning" }));
     setStepSubProgress(95);
-    setStepSubPhaseText("映射核心推荐模型 (Model) 预设与调用链配置...");
-    addLog("PARSE:MODEL", `映射核心模型: Codex -> ${codex.model || "gpt-4o"}, Claude -> ${claude.model || "claude-3-7-sonnet"}`, "match");
+    setStepSubPhaseText("读取核心模型 (Model) 配置与调用链参数...");
+    addLog("PARSE:MODEL", `读取核心模型: Codex -> ${codex.model || "未配置 (空)"}, Claude -> ${claude.model || "未配置 (空)"}`, "match");
 
     if (!(await delay(600))) return false;
     setCheckpoints((prev) => ({ ...prev, map_model: "done" }));
@@ -446,11 +447,11 @@ export function InitializationModal({
     if (tab === "chatgpt") {
       setEditUrl(configData.codex?.base_url || "https://bob-api.com/");
       setEditApiKey(configData.codex?.api_key || "");
-      setEditModel(configData.codex?.model || "gpt-4o");
+      setEditModel(configData.codex?.model || "");
     } else {
       setEditUrl(configData.claude?.base_url || "https://bob-api.com/");
       setEditApiKey(configData.claude?.api_key || "");
-      setEditModel(configData.claude?.model || "claude-3-7-sonnet-20250219");
+      setEditModel(configData.claude?.model || "");
     }
   };
 
@@ -549,14 +550,25 @@ export function InitializationModal({
                   </p>
                 </div>
               </div>
-              {/* 右上角进度标识 */}
-              <div className="text-right">
-                <span className="text-xs font-mono font-semibold text-blue-600 dark:text-cyan-400">
-                  {calculateOverallProgress()}%
-                </span>
-                <span className="text-[10px] text-slate-400 dark:text-gray-500 ml-1">
-                  完成度
-                </span>
+              {/* 右上角进度标识与关闭按钮 */}
+              <div className="flex items-center gap-3">
+                <div className="text-right">
+                  <span className="text-xs font-mono font-semibold text-blue-600 dark:text-cyan-400">
+                    {calculateOverallProgress()}%
+                  </span>
+                  <span className="text-[10px] text-slate-400 dark:text-gray-500 ml-1">
+                    完成度
+                  </span>
+                </div>
+                <div className="h-4 w-[1px] bg-slate-200 dark:bg-white/10" />
+                <button
+                  type="button"
+                  onClick={onClose}
+                  className="w-7 h-7 flex items-center justify-center rounded-lg hover:bg-slate-200/80 text-slate-400 hover:text-slate-700 dark:hover:bg-white/10 dark:text-gray-400 dark:hover:text-white transition-colors cursor-pointer"
+                  title="关闭向导"
+                >
+                  <X size={15} />
+                </button>
               </div>
             </div>
 
@@ -1086,9 +1098,9 @@ export function InitializationModal({
                           },
                           {
                             key: "map_model",
-                            label: "映射核心预设推理模型 (Model)",
+                            label: "读取核心推理模型 (Model)",
                             status: checkpoints.map_model || (step3Status === "success" ? "done" : "pending"),
-                            detail: "模型预设上下文",
+                            detail: "模型配置合规性",
                           },
                         ]}
                       />
@@ -1207,18 +1219,27 @@ export function InitializationModal({
                             核心模型 (model):
                           </span>
                           <div className="flex-1 flex items-center justify-between px-2.5 py-1.5 rounded-lg bg-white dark:bg-black/40 border border-slate-200/80 dark:border-white/10 font-mono text-[11px]">
-                            <span className="font-semibold text-purple-700 dark:text-purple-300">
-                              {activeCfg?.model || "默认预设"}
-                            </span>
-                            <button
-                              onClick={() =>
-                                copyToClipboard(activeCfg?.model || "", "模型名称")
-                              }
-                              className="ml-2 text-slate-400 hover:text-slate-700 dark:hover:text-white"
-                              title="复制"
+                            <span
+                              className={cn(
+                                "truncate",
+                                activeCfg?.model
+                                  ? "font-semibold text-purple-700 dark:text-purple-300"
+                                  : "text-slate-400 dark:text-gray-500",
+                              )}
                             >
-                              <Copy size={12} />
-                            </button>
+                              {activeCfg?.model || "未配置 (空)"}
+                            </span>
+                            {activeCfg?.model ? (
+                              <button
+                                onClick={() =>
+                                  copyToClipboard(activeCfg?.model || "", "模型名称")
+                                }
+                                className="ml-2 text-slate-400 hover:text-slate-700 dark:hover:text-white"
+                                title="复制"
+                              >
+                                <Copy size={12} />
+                              </button>
+                            ) : null}
                           </div>
                         </div>
                       </div>
@@ -1480,6 +1501,18 @@ export function InitializationModal({
 
               {/* 右侧主操作按钮 */}
               <div className="flex items-center gap-3">
+                <button
+                  type="button"
+                  onClick={() => {
+                    onFinish();
+                    onClose();
+                  }}
+                  className="px-3.5 py-2.5 rounded-xl text-xs font-medium text-slate-500 hover:text-slate-800 hover:bg-slate-200/60 dark:text-gray-400 dark:hover:text-gray-200 dark:hover:bg-white/5 transition cursor-pointer"
+                  title="跳过初始化向导，直接进入软件主界面"
+                >
+                  跳过向导直接进入
+                </button>
+
                 {(step1Status === "error" ||
                   step2Status === "error" ||
                   step3Status === "error") && (
