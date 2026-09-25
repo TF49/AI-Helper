@@ -6,6 +6,7 @@ pub enum AppError {
     Io(#[from] std::io::Error),
     #[error("JSON 解析错误: {0}")]
     Json(#[from] serde_json::Error),
+    #[allow(dead_code)]
     #[error("TOML 解析错误: {0}")]
     Toml(String),
     #[error("配置文件未找到: {0}")]

@@ -74,7 +74,7 @@ pub async fn test_codex_stream(
     let masked_key = mask_api_key(&api_key);
 
     let _ = on_event.send(TestStreamEvent::Log {
-        text: format!("正在初始化测试连接 (OpenAI Responses 协议)..."),
+        text: "正在初始化测试连接 (OpenAI Responses 协议)...".to_string(),
         level: "info".to_string(),
     });
     let _ = on_event.send(TestStreamEvent::Log {
@@ -86,7 +86,7 @@ pub async fn test_codex_stream(
         level: "dim".to_string(),
     });
     let _ = on_event.send(TestStreamEvent::Log {
-        text: format!("发送轻量握手消息: [POST /v1/responses] payload: \"Hi\"..."),
+        text: "发送轻量握手消息: [POST /v1/responses] payload: \"Hi\"...".to_string(),
         level: "info".to_string(),
     });
 
@@ -120,7 +120,7 @@ pub async fn test_codex_stream(
 
                 if let Some(ref reply) = reply_preview {
                     let _ = on_event.send(TestStreamEvent::Log {
-                        text: format!("上游模型响应:"),
+                        text: "上游模型响应:".to_string(),
                         level: "response".to_string(),
                     });
                     let _ = on_event.send(TestStreamEvent::Chunk {
@@ -193,9 +193,9 @@ pub async fn test_codex_stream(
         }
         Err(err) => {
             let msg = if err.is_timeout() {
-                format!("请求超时 (超过 20 秒未收到响应)")
+                "请求超时 (超过 20 秒未收到响应)".to_string()
             } else if err.is_connect() {
-                format!("网络连接失败: 无法连接至服务节点")
+                "网络连接失败: 无法连接至服务节点".to_string()
             } else {
                 format!("请求异常: {}", err)
             };
@@ -238,7 +238,7 @@ pub async fn test_claude_stream(
     let masked_key = mask_api_key(&api_key);
 
     let _ = on_event.send(TestStreamEvent::Log {
-        text: format!("正在初始化测试连接 (Anthropic Messages 协议)..."),
+        text: "正在初始化测试连接 (Anthropic Messages 协议)...".to_string(),
         level: "info".to_string(),
     });
     let _ = on_event.send(TestStreamEvent::Log {
@@ -250,7 +250,7 @@ pub async fn test_claude_stream(
         level: "dim".to_string(),
     });
     let _ = on_event.send(TestStreamEvent::Log {
-        text: format!("发送轻量探测消息: [POST /v1/messages] max_tokens: 16..."),
+        text: "发送轻量探测消息: [POST /v1/messages] max_tokens: 16...".to_string(),
         level: "info".to_string(),
     });
 
@@ -289,7 +289,7 @@ pub async fn test_claude_stream(
 
                 if let Some(ref reply) = reply_preview {
                     let _ = on_event.send(TestStreamEvent::Log {
-                        text: format!("上游 Claude 响应:"),
+                        text: "上游 Claude 响应:".to_string(),
                         level: "response".to_string(),
                     });
                     let _ = on_event.send(TestStreamEvent::Chunk {
@@ -367,9 +367,9 @@ pub async fn test_claude_stream(
         }
         Err(err) => {
             let msg = if err.is_timeout() {
-                format!("请求超时 (超过 20 秒未收到响应)")
+                "请求超时 (超过 20 秒未收到响应)".to_string()
             } else if err.is_connect() {
-                format!("网络连接失败: 无法连接至服务节点")
+                "网络连接失败: 无法连接至服务节点".to_string()
             } else {
                 format!("请求异常: {}", err)
             };

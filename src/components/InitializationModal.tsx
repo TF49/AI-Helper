@@ -846,13 +846,27 @@ export function InitializationModal({
                             key: "scan_codex",
                             label: "ChatGPT (Codex) 本地配置文件",
                             status: checkpoints.scan_codex || (step2Status === "success" ? "done" : "pending"),
-                            detail: configData.codex?.config_exists ? "已锁定 config.toml" : "正在检索磁盘路径...",
+                            detail:
+                              checkpoints.scan_codex === "error"
+                                ? "检索失败"
+                                : configData.codex?.config_exists
+                                  ? "已锁定 config.toml"
+                                  : checkpoints.scan_codex === "done"
+                                    ? "配置文件待初始化"
+                                    : "正在检索磁盘路径...",
                           },
                           {
                             key: "scan_claude",
                             label: "Claude Code 本地配置文件",
                             status: checkpoints.scan_claude || (step2Status === "success" ? "done" : "pending"),
-                            detail: configData.claude?.config_exists ? "已锁定 settings.json" : "正在检索磁盘路径...",
+                            detail:
+                              checkpoints.scan_claude === "error"
+                                ? "检索失败"
+                                : configData.claude?.config_exists
+                                  ? "已锁定 settings.json"
+                                  : checkpoints.scan_claude === "done"
+                                    ? "配置文件待初始化"
+                                    : "正在检索磁盘路径...",
                           },
                           {
                             key: "acl_verify",

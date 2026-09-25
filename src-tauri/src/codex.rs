@@ -17,40 +17,48 @@ pub fn codex_config_path() -> Result<PathBuf, AppError> {
     Ok(home.join(".codex").join("config.toml"))
 }
 
-pub fn get_codex_config() -> Result<CodexConfig, AppError> {
-    let path = codex_config_path()?;
-    let config_path = path.display().to_string();
-    let config_exists = path.exists();
+fn parse_codex_content(
+    content: &str,
+    config_path: &str,
+    config_exists: bool,
+    api_key: String,
+) -> CodexConfig {
     let mut base_url = String::new();
     let mut model = String::new();
 
     if config_exists {
-        let content = std::fs::read_to_string(&path)?;
-        let doc = content
-            .parse::<DocumentMut>()
-            .map_err(|e| AppError::Toml(e.to_string()))?;
-
-        if let Some(m) = doc.get("model").and_then(|v| v.as_str()) {
-            model = m.to_string();
-        } else if let Some(profiles) = doc.get("profiles") {
-            if let Some(thirdparty) = profiles.get("thirdparty") {
-                if let Some(m) = thirdparty.get("model").and_then(|v| v.as_str()) {
+        let trimmed = content.trim();
+        if !trimmed.is_empty() {
+            if let Ok(doc) = trimmed.parse::<DocumentMut>() {
+                if let Some(m) = doc.get("model").and_then(|v| v.as_str()) {
                     model = m.to_string();
-                }
-            }
-        }
-
-        if let Some(providers) = doc.get("model_providers") {
-            if let Some(custom) = providers.get("custom") {
-                if let Some(url_item) = custom.get("base_url") {
-                    if let Some(url_str) = url_item.as_str() {
-                        let trimmed = url_str.trim_end_matches('/');
-                        let stripped = trimmed.strip_suffix("/v1").unwrap_or(trimmed);
-                        if !stripped.is_empty() {
-                            base_url = format!("{}/", stripped);
+                } else if let Some(profiles) = doc.get("profiles") {
+                    if let Some(thirdparty) = profiles.get("thirdparty") {
+                        if let Some(m) = thirdparty.get("model").and_then(|v| v.as_str()) {
+                            model = m.to_string();
                         }
                     }
                 }
+
+                if let Some(providers) = doc.get("model_providers") {
+                    if let Some(custom) = providers.get("custom") {
+                        if let Some(url_item) = custom.get("base_url") {
+                            if let Some(url_str) = url_item.as_str() {
+                                let trimmed_url = url_str.trim_end_matches('/');
+                                let stripped =
+                                    trimmed_url.strip_suffix("/v1").unwrap_or(trimmed_url);
+                                if !stripped.is_empty() {
+                                    base_url = format!("{}/", stripped);
+                                }
+                            }
+                        }
+                    }
+                }
+            } else {
+                eprintln!(
+                    "警告: 配置文件 {} 格式非有效 TOML，使用默认配置载荷",
+                    config_path
+                );
             }
         }
     }
@@ -59,35 +67,48 @@ pub fn get_codex_config() -> Result<CodexConfig, AppError> {
         model = "gpt-4o".to_string();
     }
 
-    let api_key = read_registry_env("CUSTOM_OPENAI_API_KEY").unwrap_or_default();
-
-    Ok(CodexConfig {
+    CodexConfig {
         base_url,
         api_key,
         model,
         config_exists,
-        config_path,
-    })
+        config_path: config_path.to_string(),
+    }
 }
 
-pub fn set_codex_config(
-    url: String,
-    api_key: String,
-    model: Option<String>,
-) -> Result<(), AppError> {
+pub fn get_codex_config() -> Result<CodexConfig, AppError> {
     let path = codex_config_path()?;
-    let normalized = url.trim_end_matches('/');
-    let base_url = format!("{}/v1", normalized);
+    let config_path = path.display().to_string();
+    let config_exists = path.exists();
+    let content = if config_exists {
+        std::fs::read_to_string(&path)?
+    } else {
+        String::new()
+    };
 
-    if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent)?;
-    }
+    let api_key = read_registry_env("CUSTOM_OPENAI_API_KEY").unwrap_or_default();
+    Ok(parse_codex_content(
+        &content,
+        &config_path,
+        config_exists,
+        api_key,
+    ))
+}
 
-    let mut doc = if path.exists() {
-        let content = std::fs::read_to_string(&path)?;
-        content
-            .parse::<DocumentMut>()
-            .map_err(|e| AppError::Toml(e.to_string()))?
+fn prepare_codex_doc(
+    existing_content: Option<&str>,
+    base_url: &str,
+    model: Option<&str>,
+) -> DocumentMut {
+    let mut doc = if let Some(content) = existing_content {
+        let trimmed = content.trim();
+        if trimmed.is_empty() {
+            DocumentMut::new()
+        } else {
+            trimmed
+                .parse::<DocumentMut>()
+                .unwrap_or_else(|_| DocumentMut::new())
+        }
     } else {
         DocumentMut::new()
     };
@@ -95,10 +116,10 @@ pub fn set_codex_config(
     // 如果指定了 model，则更新顶层 model 与 profile model
     if let Some(m) = model {
         if !m.is_empty() {
-            doc["model"] = toml_edit::value(&m);
+            doc["model"] = toml_edit::value(m);
             if let Some(profiles) = doc.get_mut("profiles") {
                 if let Some(thirdparty) = profiles.get_mut("thirdparty") {
-                    thirdparty["model"] = toml_edit::value(&m);
+                    thirdparty["model"] = toml_edit::value(m);
                 }
             }
         }
@@ -129,6 +150,30 @@ pub fn set_codex_config(
     if doc["model_providers"]["custom"].get("env_key").is_none() {
         doc["model_providers"]["custom"]["env_key"] = toml_edit::value("CUSTOM_OPENAI_API_KEY");
     }
+
+    doc
+}
+
+pub fn set_codex_config(
+    url: String,
+    api_key: String,
+    model: Option<String>,
+) -> Result<(), AppError> {
+    let path = codex_config_path()?;
+    let normalized = url.trim_end_matches('/');
+    let base_url = format!("{}/v1", normalized);
+
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+
+    let existing_content = if path.exists() {
+        Some(std::fs::read_to_string(&path)?)
+    } else {
+        None
+    };
+
+    let doc = prepare_codex_doc(existing_content.as_deref(), &base_url, model.as_deref());
 
     std::fs::write(&path, doc.to_string())?;
     write_registry_env("CUSTOM_OPENAI_API_KEY", &api_key)?;
@@ -166,4 +211,82 @@ fn write_registry_env(name: &str, value: &str) -> Result<(), AppError> {
 fn write_registry_env(name: &str, value: &str) -> Result<(), AppError> {
     std::env::set_var(name, value);
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_parse_codex_content_empty_string() {
+        let cfg = parse_codex_content("", "C:/path/config.toml", true, "test-key".to_string());
+        assert_eq!(cfg.config_path, "C:/path/config.toml");
+        assert!(cfg.config_exists);
+        assert_eq!(cfg.base_url, "");
+        assert_eq!(cfg.api_key, "test-key");
+        assert_eq!(cfg.model, "gpt-4o");
+    }
+
+    #[test]
+    fn test_parse_codex_content_whitespace_only() {
+        let cfg = parse_codex_content("   \r\n\t  ", "C:/path/config.toml", true, "".to_string());
+        assert_eq!(cfg.config_path, "C:/path/config.toml");
+        assert!(cfg.config_exists);
+        assert_eq!(cfg.base_url, "");
+        assert_eq!(cfg.api_key, "");
+        assert_eq!(cfg.model, "gpt-4o");
+    }
+
+    #[test]
+    fn test_parse_codex_content_malformed_toml() {
+        let cfg = parse_codex_content(
+            "[invalid toml syntax",
+            "C:/path/config.toml",
+            true,
+            "".to_string(),
+        );
+        assert_eq!(cfg.config_path, "C:/path/config.toml");
+        assert!(cfg.config_exists);
+        assert_eq!(cfg.base_url, "");
+        assert_eq!(cfg.model, "gpt-4o");
+    }
+
+    #[test]
+    fn test_parse_codex_content_valid_toml() {
+        let raw = r#"
+model = "o3-mini"
+
+[model_providers.custom]
+name = "Custom"
+base_url = "https://api.openai.com/v1"
+"#;
+        let cfg = parse_codex_content(raw, "C:/path/config.toml", true, "test-key".to_string());
+        assert_eq!(cfg.model, "o3-mini");
+        assert_eq!(cfg.base_url, "https://api.openai.com/");
+        assert_eq!(cfg.api_key, "test-key");
+    }
+
+    #[test]
+    fn test_prepare_codex_doc_empty_existing() {
+        let doc = prepare_codex_doc(Some(""), "https://api.example.com/v1", Some("o1"));
+        assert_eq!(doc["model"].as_str(), Some("o1"));
+        assert_eq!(
+            doc["model_providers"]["custom"]["base_url"].as_str(),
+            Some("https://api.example.com/v1")
+        );
+    }
+
+    #[test]
+    fn test_prepare_codex_doc_malformed_existing() {
+        let doc = prepare_codex_doc(
+            Some("[broken toml"),
+            "https://api.example.com/v1",
+            Some("gpt-4o"),
+        );
+        assert_eq!(doc["model"].as_str(), Some("gpt-4o"));
+        assert_eq!(
+            doc["model_providers"]["custom"]["base_url"].as_str(),
+            Some("https://api.example.com/v1")
+        );
+    }
 }
