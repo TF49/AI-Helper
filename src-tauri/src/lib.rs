@@ -46,7 +46,10 @@ fn check_app_process_status(app_type: String) -> bool {
 }
 
 #[tauri::command]
-async fn restart_target_app(app_type: String, custom_path: Option<String>) -> Result<String, String> {
+async fn restart_target_app(
+    app_type: String,
+    custom_path: Option<String>,
+) -> Result<String, String> {
     tokio::task::spawn_blocking(move || {
         process_manager::restart_target_app(&app_type, custom_path.as_deref())
     })

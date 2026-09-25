@@ -321,7 +321,11 @@ pub fn detect_chatgpt_client_path_internal(
             app_type: "chatgpt".to_string(),
             path: path.to_string_lossy().to_string(),
             exists: true,
-            source: if is_store { "windows_apps".to_string() } else { "running_process".to_string() },
+            source: if is_store {
+                "windows_apps".to_string()
+            } else {
+                "running_process".to_string()
+            },
             is_running,
             extra_info: Some(if is_store {
                 "探测自运行中实例 (Microsoft Store 商店版)".to_string()
@@ -377,11 +381,15 @@ pub fn detect_chatgpt_client_path_internal(
                     exists: true,
                     source: "standard_dir".to_string(),
                     is_running,
-                    extra_info: Some("标准用户安装目录 (%LOCALAPPDATA%\\Programs\\ChatGPT)".to_string()),
+                    extra_info: Some(
+                        "标准用户安装目录 (%LOCALAPPDATA%\\Programs\\ChatGPT)".to_string(),
+                    ),
                 };
             }
 
-            let direct_install = PathBuf::from(&local_appdata).join("ChatGPT").join("ChatGPT.exe");
+            let direct_install = PathBuf::from(&local_appdata)
+                .join("ChatGPT")
+                .join("ChatGPT.exe");
             if direct_install.exists() {
                 return DetectedPathInfo {
                     app_type: "chatgpt".to_string(),
@@ -396,7 +404,9 @@ pub fn detect_chatgpt_client_path_internal(
 
         // 4. 检查 Program Files
         if let Ok(prog_files) = std::env::var("ProgramFiles") {
-            let pf_install = PathBuf::from(prog_files).join("ChatGPT").join("ChatGPT.exe");
+            let pf_install = PathBuf::from(prog_files)
+                .join("ChatGPT")
+                .join("ChatGPT.exe");
             if pf_install.exists() {
                 return DetectedPathInfo {
                     app_type: "chatgpt".to_string(),
@@ -491,7 +501,13 @@ pub fn browse_path_dialog(app_type: &str) -> Result<Option<String>, String> {
     );
 
     let output = Command::new("powershell")
-        .args(["-NoProfile", "-WindowStyle", "Hidden", "-Command", &ps_script])
+        .args([
+            "-NoProfile",
+            "-WindowStyle",
+            "Hidden",
+            "-Command",
+            &ps_script,
+        ])
         .creation_flags(0x08000000)
         .output()
         .map_err(|e| format!("唤起文件选择对话框失败: {}", e))?;

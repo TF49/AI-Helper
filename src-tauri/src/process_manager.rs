@@ -174,7 +174,10 @@ pub fn launch_app(app_type: &str, custom_path: Option<&str>) -> Result<String, S
                     }
                 }
 
-                Err("未找到有效的 ChatGPT 桌面客户端路径，请在路径管理中配置或执行自动探测".to_string())
+                Err(
+                    "未找到有效的 ChatGPT 桌面客户端路径，请在路径管理中配置或执行自动探测"
+                        .to_string(),
+                )
             }
 
             #[cfg(not(target_os = "windows"))]
@@ -233,7 +236,11 @@ pub fn restart_target_app(app_type: &str, custom_path: Option<&str>) -> Result<S
     let was_running = is_target_running(app_type);
     if was_running {
         let killed_count = kill_app_processes(app_type)?;
-        log::info!("正在安全终止目标应用 {} (清理 {} 个进程)...", app_type, killed_count);
+        log::info!(
+            "正在安全终止目标应用 {} (清理 {} 个进程)...",
+            app_type,
+            killed_count
+        );
         // 最多等待 2.5 秒确保退出
         let exited = wait_for_app_exit(app_type, 2500);
         if !exited {
