@@ -12,9 +12,18 @@ import {
   Cpu,
   Sliders,
   HelpCircle,
+  Plus,
+  Trash2,
+  Sparkles,
+  Layers,
+  Info,
 } from "lucide-react";
 import { WorkbuddyIcon } from "./BrandIcons";
-import { fetchCodexModels, getWorkbuddyConfig } from "../lib/api";
+import {
+  deleteWorkbuddyModel,
+  fetchCodexModels,
+  getWorkbuddyConfig,
+} from "../lib/api";
 import { StatusBadge } from "./StatusBadge";
 import { NodeCardSelector } from "./NodeCardSelector";
 import { ApiKeyInput } from "./ApiKeyInput";
@@ -22,6 +31,7 @@ import { ModelInput } from "./ModelInput";
 import { Label } from "./ui/label";
 import {
   PRESET_URLS,
+  type WorkbuddyModelItem,
   type WorkbuddySavePayload,
 } from "../types";
 import { useModelFetch } from "../lib/useModelFetch";
@@ -59,6 +69,10 @@ export function WorkbuddyPanel() {
   const [configPath, setConfigPath] = useState("");
   const [loading, setLoading] = useState(true);
   const [testModalOpen, setTestModalOpen] = useState(false);
+  const [configuredModels, setConfiguredModels] = useState<WorkbuddyModelItem[]>(
+    [],
+  );
+  const [deletingModelId, setDeletingModelId] = useState<string | null>(null);
 
   // 高级能力开关
   const [supportsToolCall, setSupportsToolCall] = useState(true);
@@ -84,6 +98,39 @@ export function WorkbuddyPanel() {
     fetchCodexModels,
   );
 
+  const applyModelConfig = (item: WorkbuddyModelItem) => {
+    setModel(item.id);
+    if (item.apiKey) {
+      setApiKey(item.apiKey);
+    }
+    if (item.url) {
+      const rawUrl = item.url.replace(/\/+$/, "");
+      const stripped = rawUrl.endsWith("/v1") ? rawUrl.slice(0, -3) : rawUrl;
+      if (stripped.startsWith("https://bob-api.com")) {
+        setUrl("https://bob-api.com/");
+      } else if (stripped.startsWith("https://taijiai.online")) {
+        setUrl("https://taijiai.online/");
+      } else if (stripped) {
+        setUrl(`${stripped}/`);
+      }
+    }
+    setSupportsToolCall(item.supportsToolCall ?? true);
+    setSupportsImages(item.supportsImages ?? true);
+    setSupportsReasoning(item.supportsReasoning ?? true);
+    setOnlyReasoning(item.onlyReasoning ?? false);
+    setUseCustomProtocol(item.useCustomProtocol ?? false);
+    setCanDisableThinking(item.reasoning?.canDisableThinking ?? true);
+    setDefaultEffort(item.reasoning?.defaultEffort ?? "");
+    setSupportedEfforts(
+      item.reasoning?.supportedEfforts &&
+        item.reasoning.supportedEfforts.length > 0
+        ? item.reasoning.supportedEfforts
+        : ["medium"],
+    );
+    setMaxInputTokens(item.maxInputTokens ?? 32768);
+    setMaxOutputTokens(item.maxOutputTokens ?? 32768);
+  };
+
   const load = async () => {
     setLoading(true);
     try {
@@ -98,6 +145,7 @@ export function WorkbuddyPanel() {
       setModel(cfg.model || "gpt-5.6-sol");
       setConfigExists(cfg.config_exists);
       setConfigPath(cfg.config_path);
+      setConfiguredModels(cfg.configured_models || []);
 
       setSupportsToolCall(cfg.supports_tool_call);
       setSupportsImages(cfg.supports_images);
@@ -132,17 +180,50 @@ export function WorkbuddyPanel() {
     );
   };
 
+  const handleAddNewModel = () => {
+    setModel("");
+    toast.info("已切换至新增模型模式，请选择或输入新模型名称后保存并新增");
+  };
+
+  const handleDeleteModel = async (e: React.MouseEvent, modelId: string) => {
+    e.stopPropagation();
+    if (!window.confirm(`确定要从 WorkBuddy 中移除模型 "${modelId}" 吗？`)) {
+      return;
+    }
+    setDeletingModelId(modelId);
+    try {
+      const updated = await deleteWorkbuddyModel(modelId);
+      setConfiguredModels(updated);
+      toast.success(`已从 WorkBuddy 成功移除模型 "${modelId}"`);
+      if (model.trim() === modelId.trim()) {
+        if (updated.length > 0) {
+          applyModelConfig(updated[0]);
+        } else {
+          setModel("");
+        }
+      }
+    } catch (err) {
+      toast.error(`删除模型失败: ${err}`);
+    } finally {
+      setDeletingModelId(null);
+    }
+  };
+
   const handleSave = () => {
     if (!apiKey.trim()) {
       toast.warning("请输入 API Key");
       return;
     }
     if (!model.trim()) {
-      toast.warning("请选择或输入测试模型");
+      toast.warning("请选择或输入模型名称");
       return;
     }
     setTestModalOpen(true);
   };
+
+  const isExistingModel = configuredModels.some(
+    (m) => m.id.trim().toLowerCase() === model.trim().toLowerCase(),
+  );
 
   const currentPayload: WorkbuddySavePayload = {
     url,
@@ -185,12 +266,11 @@ export function WorkbuddyPanel() {
                 WorkBuddy 接入配置
               </h1>
               <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 dark:bg-emerald-500/10 dark:text-emerald-300 dark:border-emerald-500/30">
-                Custom Provider (OpenAI Protocol)
+                多模型拼接模式 (Array Config)
               </span>
             </div>
             <p className="text-xs text-slate-500 dark:text-gray-400 mt-0.5">
-              为 WorkBuddy 自定义服务商配置高可用反代节点、认证凭据、思考模式与
-              Token 上限
+              为 WorkBuddy 自定义服务商以数组形式拼接追加多个模型，支持独立路由节点与认证凭据
             </p>
           </div>
         </div>
@@ -263,15 +343,18 @@ export function WorkbuddyPanel() {
                 <div className="flex items-start gap-1.5 p-2.5 rounded-lg bg-amber-500/10 border border-amber-500/20 text-amber-700 dark:text-amber-300 text-xs">
                   <ShieldAlert size={14} className="flex-shrink-0 mt-0.5" />
                   <span>
-                    未检测到 WorkBuddy models.json 文件，点击保存后将自动创建。
+                    未检测到 WorkBuddy models.json 文件，保存新模型后将自动创建。
                   </span>
                 </div>
               ) : (
                 <div className="flex items-center gap-2 p-2.5 rounded-xl bg-slate-50/70 border border-slate-200/80 dark:bg-white/[0.03] dark:border-white/5 text-xs text-slate-500 dark:text-gray-400">
                   <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 flex-shrink-0" />
                   <span className="leading-relaxed">
-                    WorkBuddy
-                    内置实时文件监听，保存修改后将自动热重载，无需手动重启。
+                    当前 models.json 已存储{" "}
+                    <strong className="text-emerald-600 dark:text-emerald-400 font-mono">
+                      {configuredModels.length}
+                    </strong>{" "}
+                    个独立模型。WorkBuddy 支持内部热重载，无需重启即可感知。
                   </span>
                 </div>
               )}
@@ -290,7 +373,7 @@ export function WorkbuddyPanel() {
                   高级配置与能力开关
                 </Label>
                 <span className="text-[11px] text-slate-400 dark:text-gray-500">
-                  自定义服务商特性
+                  当前模型特性
                 </span>
               </div>
 
@@ -388,7 +471,7 @@ export function WorkbuddyPanel() {
           </SpotlightCard>
         </div>
 
-        {/* ── 右列：密钥、模型参数、思考强度与 Token 限制 ── */}
+        {/* ── 右列：密钥、模型管理与拼接、思考强度与 Token 限制 ── */}
         <div className="flex flex-col gap-5 flex-1 min-h-0">
           {/* 卡片 4: OpenAI API Key */}
           <SpotlightCard
@@ -420,27 +503,112 @@ export function WorkbuddyPanel() {
                 className="text-emerald-500 dark:text-emerald-400 flex-shrink-0"
               />
               <span className="leading-relaxed">
-                凭据将以明文形式直接保存在本地
-                models.json，无需配置系统环境变量，直连服务商网关。
+                凭据将以明文形式直接保存在本地 models.json，直连服务商网关。
               </span>
             </div>
           </SpotlightCard>
 
-          {/* 卡片 5: 测试模型 */}
+          {/* 卡片 5: 模型管理与多模型列表 */}
           <SpotlightCard
-            className="p-5 rounded-2xl border border-slate-200/90 dark:border-white/10 bg-white/80 dark:bg-[#121524]/60 shadow-sm dark:shadow-none"
+            className="p-5 rounded-2xl border border-slate-200/90 dark:border-white/10 bg-white/80 dark:bg-[#121524]/60 shadow-sm dark:shadow-none space-y-4"
             spotlightColor="rgba(16, 185, 129, 0.12)"
           >
-            <ModelInput
-              value={model}
-              onChange={setModel}
-              models={models}
-              placeholder="选择或输入模型名称 (如 gpt-5.6-sol)"
-              id="workbuddy-models"
-              onRefresh={() => void refreshModels()}
-              refreshing={refreshingModels}
-              accentColor="emerald"
-            />
+            {/* 已配置模型标签组与切换 */}
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <Label className="text-xs font-semibold text-slate-800 dark:text-gray-200 flex items-center gap-2">
+                  <Layers size={14} className="text-emerald-500" />
+                  已配置模型列表 ({configuredModels.length})
+                </Label>
+                <button
+                  type="button"
+                  onClick={handleAddNewModel}
+                  className="flex items-center gap-1 px-2 py-0.5 text-[11px] font-medium text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/20 rounded-md transition-colors cursor-pointer"
+                  title="清空当前输入，准备新增模型"
+                >
+                  <Plus size={12} />
+                  <span>新增模型</span>
+                </button>
+              </div>
+
+              {configuredModels.length > 0 ? (
+                <div className="flex flex-wrap gap-1.5 p-2 rounded-xl bg-slate-50/70 dark:bg-white/[0.02] border border-slate-200/70 dark:border-white/5 max-h-[110px] overflow-y-auto">
+                  {configuredModels.map((item) => {
+                    const isSelected =
+                      item.id.trim().toLowerCase() ===
+                      model.trim().toLowerCase();
+                    const isDeleting = deletingModelId === item.id;
+                    return (
+                      <div
+                        key={item.id}
+                        onClick={() => applyModelConfig(item)}
+                        className={`group relative flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs cursor-pointer border transition-all ${
+                          isSelected
+                            ? "bg-emerald-500/15 border-emerald-500/60 text-emerald-800 dark:text-emerald-300 font-semibold shadow-xs"
+                            : "bg-white dark:bg-white/5 border-slate-200 dark:border-white/10 text-slate-700 dark:text-gray-300 hover:border-slate-300 dark:hover:border-white/20"
+                        }`}
+                        title={`点击查看并编辑 ${item.id} 的配置参数`}
+                      >
+                        <span className="truncate max-w-[140px] font-mono">
+                          {item.id}
+                        </span>
+
+                        <button
+                          type="button"
+                          onClick={(e) => void handleDeleteModel(e, item.id)}
+                          disabled={isDeleting}
+                          className="opacity-40 group-hover:opacity-100 hover:text-red-500 transition-opacity p-0.5 rounded ml-0.5"
+                          title={`从 WorkBuddy 中移除模型 ${item.id}`}
+                        >
+                          {isDeleting ? (
+                            <Loader2 size={11} className="animate-spin" />
+                          ) : (
+                            <Trash2 size={11} />
+                          )}
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div className="text-[11px] text-slate-400 dark:text-gray-500 py-1 italic">
+                  尚未配置模型，点击下方保存即可新增首个模型。
+                </div>
+              )}
+            </div>
+
+            {/* 当前目标模型输入与选择 */}
+            <div className="pt-2 border-t border-slate-100 dark:border-white/5">
+              <ModelInput
+                value={model}
+                onChange={setModel}
+                models={models}
+                placeholder="选择或输入模型名称 (如 gpt-5.6-sol / gpt-6-sol)"
+                id="workbuddy-models"
+                onRefresh={() => void refreshModels()}
+                refreshing={refreshingModels}
+                accentColor="emerald"
+              />
+
+              {/* 动态模式指示条 */}
+              <div className="mt-2.5">
+                {isExistingModel ? (
+                  <div className="flex items-center gap-1.5 p-2 rounded-lg bg-blue-500/10 border border-blue-500/20 text-blue-700 dark:text-blue-300 text-xs">
+                    <Info size={13} className="flex-shrink-0" />
+                    <span>
+                      当前模型已存在于 models.json 中，保存将更新此模型的各项配置参数。
+                    </span>
+                  </div>
+                ) : model.trim() ? (
+                  <div className="flex items-center gap-1.5 p-2 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-emerald-700 dark:text-emerald-300 text-xs">
+                    <Sparkles size={13} className="flex-shrink-0" />
+                    <span>
+                      新增模型模式：保存将作为新模型追加（拼接）至 models.json 末尾，不覆盖现有模型。
+                    </span>
+                  </div>
+                ) : null}
+              </div>
+            </div>
           </SpotlightCard>
 
           {/* 卡片 6: 思考强度与 Token 上限设置 */}
@@ -600,16 +768,28 @@ export function WorkbuddyPanel() {
           innerClassName="bg-emerald-600 hover:bg-emerald-700 text-white dark:bg-[#0c1c18] dark:text-emerald-100 py-3 cursor-pointer"
         >
           <div className="flex items-center justify-center gap-2 font-semibold tracking-wide">
-            <Save
-              size={18}
-              className="text-white dark:text-emerald-400 group-hover:scale-110 transition-transform"
-            />
-            <span className="text-sm">保存并应用 WorkBuddy 配置</span>
+            {isExistingModel ? (
+              <Save
+                size={18}
+                className="text-white dark:text-emerald-400 group-hover:scale-110 transition-transform"
+              />
+            ) : (
+              <Plus
+                size={18}
+                className="text-white dark:text-emerald-400 group-hover:scale-110 transition-transform"
+              />
+            )}
+            <span className="text-sm">
+              {isExistingModel
+                ? `保存并更新模型配置 (${model})`
+                : `保存并新增到 WorkBuddy (${model.trim() || "新模型"})`}
+            </span>
           </div>
         </StarBorder>
         <p className="text-[11px] text-center text-slate-500 dark:text-gray-400 pt-2">
-          点击将唤起终端进行连通性测试，验证通过后自动写入本地
-          ~/.workbuddy-ai/models.json 并即时生效
+          {isExistingModel
+            ? `点击将唤起终端进行连通性测试，验证通过后更新本地 ~/.workbuddy-ai/models.json 中模型 "${model}" 的配置`
+            : `点击将唤起终端进行连通性测试，验证通过后以数组格式自动拼接追加至本地 ~/.workbuddy-ai/models.json 并即时生效`}
         </p>
       </div>
 
@@ -623,6 +803,7 @@ export function WorkbuddyPanel() {
         workbuddyPayload={currentPayload}
         onSuccess={() => {
           setConfigExists(true);
+          load();
         }}
       />
     </div>

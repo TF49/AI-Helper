@@ -247,7 +247,7 @@ export function TerminalTestModal({
           addLog(`✓ 配置文件 ~/.codex/config.toml 已成功写入`, "success");
           addLog(`✓ 系统环境变量 CUSTOM_OPENAI_API_KEY 已更新`, "success");
         } else if (type === "workbuddy") {
-          addLog(`💾 正在将配置明文保存至本地 models.json...`, "info");
+          addLog(`💾 正在将配置保存至本地 models.json (多模型拼接保存)...`, "info");
           if (workbuddyPayload) {
             await setWorkbuddyConfig(workbuddyPayload);
           } else {
@@ -268,7 +268,7 @@ export function TerminalTestModal({
             });
           }
           addLog(
-            `✓ 配置文件 ~/.workbuddy-ai/models.json 已成功写入 (明文密钥，无需环境变量)`,
+            `✓ 配置文件 ~/.workbuddy-ai/models.json 已成功写入 (支持多模型共存，自动拼接追加)`,
             "success",
           );
           addLog(`💡 WorkBuddy 已通过内部热重载机制自动感知新模型`, "info");

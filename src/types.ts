@@ -109,6 +109,29 @@ export const WORKBUDDY_MODEL_SUGGESTIONS = [
   "chatgpt-4o-latest",
 ] as const;
 
+export interface WorkbuddyModelItem {
+  id: string;
+  name: string;
+  vendor: string;
+  url: string;
+  api?: string;
+  apiKey?: string;
+  supportsToolCall?: boolean;
+  supportsImages?: boolean;
+  supportsReasoning?: boolean;
+  onlyReasoning?: boolean;
+  useCustomProtocol?: boolean;
+  reasoning?: {
+    supportedEfforts?: string[];
+    defaultEffort?: string;
+    canDisableThinking?: boolean;
+  };
+  maxInputTokens?: number | null;
+  maxOutputTokens?: number | null;
+  temperature?: number | null;
+  disabled?: boolean;
+}
+
 export interface WorkbuddyUIConfig extends AgentConfig {
   supports_tool_call: boolean;
   supports_images: boolean;
@@ -120,6 +143,7 @@ export interface WorkbuddyUIConfig extends AgentConfig {
   supported_efforts: string[];
   max_input_tokens?: number | null;
   max_output_tokens?: number | null;
+  configured_models: WorkbuddyModelItem[];
 }
 
 export interface WorkbuddySavePayload {

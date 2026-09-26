@@ -105,6 +105,13 @@ fn set_workbuddy_config(payload: workbuddy::WorkbuddySavePayload) -> Result<(), 
 }
 
 #[tauri::command]
+fn delete_workbuddy_model(
+    model_id: String,
+) -> Result<Vec<workbuddy::WorkbuddyModelEntry>, error::AppError> {
+    workbuddy::delete_workbuddy_model(model_id)
+}
+
+#[tauri::command]
 async fn check_for_updates() -> Result<updater::UpdateInfo, String> {
     updater::check_for_updates().await
 }
@@ -208,6 +215,7 @@ pub fn run() {
             set_claude_config,
             get_workbuddy_config,
             set_workbuddy_config,
+            delete_workbuddy_model,
             check_for_updates,
             check_bob_api_network,
             test_codex_config,

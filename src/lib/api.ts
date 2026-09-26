@@ -10,6 +10,7 @@ import type {
   TestStreamEvent,
   WorkbuddyUIConfig,
   WorkbuddySavePayload,
+  WorkbuddyModelItem,
 } from "../types";
 
 export async function getAppPaths(): Promise<AppPathsConfig> {
@@ -81,6 +82,12 @@ export async function setWorkbuddyConfig(
   payload: WorkbuddySavePayload,
 ): Promise<void> {
   return invoke("set_workbuddy_config", { payload });
+}
+
+export async function deleteWorkbuddyModel(
+  modelId: string,
+): Promise<WorkbuddyModelItem[]> {
+  return invoke<WorkbuddyModelItem[]>("delete_workbuddy_model", { modelId });
 }
 
 export async function checkBobApiNetwork(): Promise<NetworkStatus> {
