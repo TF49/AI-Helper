@@ -73,6 +73,12 @@ export function TerminalTestModal({
 
   const terminalRef = useRef<HTMLDivElement | null>(null);
   const countdownTimerRef = useRef<number | null>(null);
+  const hasStartedRef = useRef(false);
+  const openRef = useRef(open);
+
+  useEffect(() => {
+    openRef.current = open;
+  }, [open]);
 
   const getNowTime = () => {
     const now = new Date();
@@ -155,6 +161,7 @@ export function TerminalTestModal({
   };
 
   const runTestAndSave = async () => {
+    hasStartedRef.current = true;
     // 重置状态
     if (countdownTimerRef.current) {
       clearTimeout(countdownTimerRef.current);
@@ -320,6 +327,8 @@ export function TerminalTestModal({
           else addLog(`💡 当前未检测到运行中的 Claude Code 进程`, "dim");
         }
 
+        if (!openRef.current) return;
+
         if (!anyRunning) {
           // 当前未在运行客户端，无需强制重启，8秒后自动关闭
           setCountdown(8);
@@ -331,6 +340,7 @@ export function TerminalTestModal({
         onSuccess?.();
         toast.success(`${platformName} 连通性测试通过，配置已成功保存！`);
       } else {
+        if (!openRef.current) return;
         setStatus("error");
         addLog(
           `✗ 连通性测试未通过，本地配置未修改。请根据提示调整配置后重试。`,
@@ -339,6 +349,7 @@ export function TerminalTestModal({
         toast.error(`连通性测试失败，未保存配置`);
       }
     } catch (err) {
+      if (!openRef.current) return;
       setStatus("error");
       const msg = err instanceof Error ? err.message : String(err);
       addLog(`❌ 执行过程发生异常: ${msg}`, "error");
@@ -349,8 +360,12 @@ export function TerminalTestModal({
 
   useEffect(() => {
     if (open) {
-      runTestAndSave();
+      if (!hasStartedRef.current) {
+        hasStartedRef.current = true;
+        void runTestAndSave();
+      }
     } else {
+      hasStartedRef.current = false;
       setShowRestartCard(false);
       setRestartingTarget(null);
       setCountdown(null);

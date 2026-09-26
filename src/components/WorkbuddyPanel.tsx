@@ -131,46 +131,58 @@ export function WorkbuddyPanel() {
     setMaxOutputTokens(item.maxOutputTokens ?? 32768);
   };
 
-  const load = async () => {
-    setLoading(true);
+  const load = async (silent = false) => {
+    if (!silent) {
+      setLoading(true);
+    }
     try {
       const cfg = await getWorkbuddyConfig();
-      const loadedUrl = cfg.base_url?.trim();
-      if (loadedUrl) {
-        setUrl(loadedUrl);
-      } else {
-        setUrl(PRESET_URLS[0]);
-      }
-      setApiKey(cfg.api_key || "");
-      setModel(cfg.model || "gpt-5.6-sol");
       setConfigExists(cfg.config_exists);
       setConfigPath(cfg.config_path);
       setConfiguredModels(cfg.configured_models || []);
 
-      setSupportsToolCall(cfg.supports_tool_call);
-      setSupportsImages(cfg.supports_images);
-      setSupportsReasoning(cfg.supports_reasoning);
-      setOnlyReasoning(cfg.only_reasoning);
-      setCanDisableThinking(cfg.can_disable_thinking);
-      setUseCustomProtocol(cfg.use_custom_protocol);
+      // 仅在非静默模式（初次载入或用户手动重新载入）下才覆盖当前表单中的模型与参数
+      if (!silent) {
+        const loadedUrl = cfg.base_url?.trim();
+        if (loadedUrl) {
+          setUrl(loadedUrl);
+        } else {
+          setUrl(PRESET_URLS[0]);
+        }
+        setApiKey(cfg.api_key || "");
+        setModel(cfg.model || "gpt-5.6-sol");
 
-      setDefaultEffort(cfg.default_effort || "");
-      setSupportedEfforts(
-        cfg.supported_efforts.length > 0 ? cfg.supported_efforts : ["medium"],
-      );
+        setSupportsToolCall(cfg.supports_tool_call);
+        setSupportsImages(cfg.supports_images);
+        setSupportsReasoning(cfg.supports_reasoning);
+        setOnlyReasoning(cfg.only_reasoning);
+        setCanDisableThinking(cfg.can_disable_thinking);
+        setUseCustomProtocol(cfg.use_custom_protocol);
 
-      setMaxInputTokens(cfg.max_input_tokens ?? 32768);
-      setMaxOutputTokens(cfg.max_output_tokens ?? 32768);
+        setDefaultEffort(cfg.default_effort || "");
+        setSupportedEfforts(
+          cfg.supported_efforts.length > 0 ? cfg.supported_efforts : ["medium"],
+        );
+
+        setMaxInputTokens(cfg.max_input_tokens ?? 32768);
+        setMaxOutputTokens(cfg.max_output_tokens ?? 32768);
+      }
     } catch (e) {
       toast.error(`读取 WorkBuddy 配置失败: ${e}`);
     } finally {
-      setLoading(false);
+      if (!silent) {
+        setLoading(false);
+      }
     }
   };
 
   useEffect(() => {
     load();
   }, []);
+
+  const handleReload = () => {
+    void load(false);
+  };
 
   const toggleEffort = (effortId: string) => {
     setSupportedEfforts((prev) =>
@@ -277,7 +289,7 @@ export function WorkbuddyPanel() {
 
         <button
           type="button"
-          onClick={load}
+          onClick={handleReload}
           className="self-start md:self-auto flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-medium transition-colors bg-white hover:bg-slate-50 border-slate-200 text-slate-700 dark:bg-white/5 dark:hover:bg-white/10 dark:border-white/10 dark:text-gray-300 shadow-2xs"
           title="重新载入本地配置"
         >
@@ -333,7 +345,7 @@ export function WorkbuddyPanel() {
               <StatusBadge
                 exists={configExists}
                 path={configPath}
-                onReload={load}
+                onReload={handleReload}
                 accentColor="emerald"
               />
             </div>
@@ -803,7 +815,7 @@ export function WorkbuddyPanel() {
         workbuddyPayload={currentPayload}
         onSuccess={() => {
           setConfigExists(true);
-          load();
+          void load(true);
         }}
       />
     </div>
