@@ -117,12 +117,19 @@ fn matches_process(
                 || (name_lower == "node.exe" && cmd_line.contains("codex"))
         }
         "workbuddy" => {
+            if name_lower.contains("supervisor")
+                || name_lower.contains("sharetarget")
+                || name_lower.contains("uninstall")
+                || name_lower.contains("crashpad")
+            {
+                return false;
+            }
             name_lower == "workbuddyai.exe"
                 || name_lower == "workbuddyai"
                 || name_lower == "workbuddy.exe"
                 || name_lower == "workbuddy"
-                || cmd_line.contains("workbuddyai")
-                || cmd_line.contains("workbuddy")
+                || cmd_line.contains("workbuddyai.exe")
+                || cmd_line.contains("workbuddy.exe")
         }
         _ => false,
     }
@@ -458,42 +465,358 @@ pub fn detect_chatgpt_client_path() -> DetectedPathInfo {
     detect_chatgpt_client_path_internal(is_running, running_exe)
 }
 
-/// 探测 WorkBuddy 客户端路径 (内部复用进程扫描结果)
+#[cfg(target_os = "windows")]
+fn find_workbuddy_in_registry() -> Option<(String, String)> {
+    use winreg::{
+        enums::{HKEY_CURRENT_USER, HKEY_LOCAL_MACHINE},
+        RegKey,
+    };
+
+    let uninstall_targets = [
+        (
+            HKEY_LOCAL_MACHINE,
+            "Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall",
+        ),
+        (
+            HKEY_LOCAL_MACHINE,
+            "Software\\Wow6432Node\\Microsoft\\Windows\\CurrentVersion\\Uninstall",
+        ),
+        (
+            HKEY_CURRENT_USER,
+            "Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall",
+        ),
+    ];
+
+    for (root_hkey, subkey_path) in uninstall_targets {
+        let root = RegKey::predef(root_hkey);
+        if let Ok(uninstall_key) = root.open_subkey(subkey_path) {
+            for sub_name in uninstall_key.enum_keys().filter_map(|r| r.ok()) {
+                if let Ok(sub) = uninstall_key.open_subkey(&sub_name) {
+                    let display_name: String = sub.get_value("DisplayName").unwrap_or_default();
+                    let display_lower = display_name.to_lowercase();
+                    let name_lower = sub_name.to_lowercase();
+
+                    if display_lower.contains("workbuddy") || name_lower.contains("workbuddy") {
+                        // 1. 优先尝试 DisplayIcon (例如 "E:\Developer Tool\Workbuddy\WorkBuddyAI\WorkBuddyAI.exe,0")
+                        if let Ok(icon) = sub.get_value::<String, _>("DisplayIcon") {
+                            let clean_icon = icon
+                                .split(',')
+                                .next()
+                                .unwrap_or("")
+                                .trim()
+                                .trim_matches('"');
+                            if !clean_icon.is_empty() {
+                                let p = Path::new(clean_icon);
+                                if p.exists() {
+                                    let label = if !display_name.is_empty() {
+                                        display_name
+                                    } else {
+                                        "WorkBuddy".to_string()
+                                    };
+                                    return Some((p.to_string_lossy().to_string(), label));
+                                }
+                            }
+                        }
+
+                        // 2. 尝试 InstallLocation
+                        if let Ok(loc) = sub.get_value::<String, _>("InstallLocation") {
+                            let loc_clean = loc.trim().trim_matches('"');
+                            if !loc_clean.is_empty() {
+                                let base = Path::new(loc_clean);
+                                for exe_name in &["WorkBuddyAI.exe", "WorkBuddy.exe"] {
+                                    let cand = base.join(exe_name);
+                                    if cand.exists() {
+                                        let label = if !display_name.is_empty() {
+                                            display_name
+                                        } else {
+                                            "WorkBuddy".to_string()
+                                        };
+                                        return Some((cand.to_string_lossy().to_string(), label));
+                                    }
+                                }
+                            }
+                        }
+
+                        // 3. 尝试 UninstallString (通过卸载程序目录反查 WorkBuddyAI.exe)
+                        if let Ok(uninst) = sub.get_value::<String, _>("UninstallString") {
+                            let uninst_path_str = if uninst.starts_with('"') {
+                                uninst
+                                    .trim_start_matches('"')
+                                    .split('"')
+                                    .next()
+                                    .unwrap_or("")
+                            } else {
+                                uninst.split_whitespace().next().unwrap_or("")
+                            };
+                            let uninst_path = Path::new(uninst_path_str);
+                            if let Some(parent) = uninst_path.parent() {
+                                for exe_name in &["WorkBuddyAI.exe", "WorkBuddy.exe"] {
+                                    let cand = parent.join(exe_name);
+                                    if cand.exists() {
+                                        let label = if !display_name.is_empty() {
+                                            display_name
+                                        } else {
+                                            "WorkBuddy".to_string()
+                                        };
+                                        return Some((cand.to_string_lossy().to_string(), label));
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // 检查 App Paths 注册表
+    for root_hkey in [HKEY_LOCAL_MACHINE, HKEY_CURRENT_USER] {
+        let root = RegKey::predef(root_hkey);
+        for exe_name in &["WorkBuddyAI.exe", "WorkBuddy.exe"] {
+            let app_path_key = format!(
+                "Software\\Microsoft\\Windows\\CurrentVersion\\App Paths\\{}",
+                exe_name
+            );
+            if let Ok(key) = root.open_subkey(&app_path_key) {
+                if let Ok(default_val) = key.get_value::<String, _>("") {
+                    let clean = default_val.trim().trim_matches('"');
+                    if !clean.is_empty() && Path::new(clean).exists() {
+                        return Some((clean.to_string(), format!("App Paths ({})", exe_name)));
+                    }
+                }
+            }
+        }
+    }
+
+    None
+}
+
+/// 探测 WorkBuddy 客户端路径 (参考 ChatGPT 客户端的多层级深度探测模式)
 pub fn detect_workbuddy_client_path_internal(
     is_running: bool,
     running_exe: Option<PathBuf>,
 ) -> DetectedPathInfo {
+    // 1. 尝试从运行中进程获取真实可执行路径
     if let Some(path) = running_exe {
+        let is_store = path.to_string_lossy().contains("WindowsApps");
         return DetectedPathInfo {
             app_type: "workbuddy".to_string(),
             path: path.to_string_lossy().to_string(),
             exists: true,
-            source: "running_process".to_string(),
+            source: if is_store {
+                "windows_apps".to_string()
+            } else {
+                "running_process".to_string()
+            },
             is_running,
-            extra_info: Some("探测自当前运行中进程".to_string()),
+            extra_info: Some(if is_store {
+                "探测自运行中实例 (Store 应用包)".to_string()
+            } else {
+                "探测自当前运行中进程".to_string()
+            }),
         };
     }
 
-    let (exists, path) = crate::workbuddy::detect_workbuddy_installation();
-    let extra_info = if let Some(ref p) = path {
-        Some(format!("已定位到 WorkBuddy 可执行文件 ({})", p))
-    } else if exists {
-        Some("检测到 WorkBuddy 配置文件目录".to_string())
-    } else {
-        None
-    };
+    #[cfg(target_os = "windows")]
+    {
+        // 2. 检查 Microsoft Store / WindowsApps 包 (参考 ChatGPT 探测模式)
+        for drive_letter in ['C', 'D', 'E', 'F'] {
+            let winapps_dirs = [
+                format!("{}:\\Program Files\\WindowsApps", drive_letter),
+                format!("{}:\\WindowsApps", drive_letter),
+            ];
+            for dir_str in &winapps_dirs {
+                let winapps_dir = Path::new(dir_str);
+                if winapps_dir.exists() {
+                    if let Ok(entries) = std::fs::read_dir(winapps_dir) {
+                        let mut store_candidates = Vec::new();
+                        for entry in entries.flatten() {
+                            let folder_name = entry.file_name().to_string_lossy().to_string();
+                            let folder_lower = folder_name.to_lowercase();
+                            if folder_lower.contains("workbuddy") {
+                                for sub in &[
+                                    entry.path().join("WorkBuddyAI.exe"),
+                                    entry.path().join("WorkBuddy.exe"),
+                                    entry.path().join("app").join("WorkBuddyAI.exe"),
+                                    entry.path().join("app").join("WorkBuddy.exe"),
+                                ] {
+                                    if sub.exists() {
+                                        store_candidates.push((folder_name.clone(), sub.clone()));
+                                        break;
+                                    }
+                                }
+                            }
+                        }
+
+                        // 按版本号降序排序，确保选用最新版本
+                        store_candidates.sort_by(|a, b| b.0.cmp(&a.0));
+
+                        if let Some((latest_folder, latest_exe)) =
+                            store_candidates.into_iter().next()
+                        {
+                            return DetectedPathInfo {
+                                app_type: "workbuddy".to_string(),
+                                path: latest_exe.to_string_lossy().to_string(),
+                                exists: true,
+                                source: "windows_apps".to_string(),
+                                is_running,
+                                extra_info: Some(format!(
+                                    "Microsoft Store 应用包 ({})",
+                                    latest_folder
+                                )),
+                            };
+                        }
+                    }
+                }
+            }
+        }
+
+        // 3. 检查 Windows 注册表 (HKLM / HKCU Uninstall 及 App Paths)
+        if let Some((reg_path, display_name)) = find_workbuddy_in_registry() {
+            return DetectedPathInfo {
+                app_type: "workbuddy".to_string(),
+                path: reg_path,
+                exists: true,
+                source: "registry".to_string(),
+                is_running,
+                extra_info: Some(format!("探测自 Windows 注册表安装记录 ({})", display_name)),
+            };
+        }
+
+        // 4. 检查常见 LocalAppData 安装路径
+        if let Ok(local_appdata) = std::env::var("LOCALAPPDATA") {
+            let local_base = PathBuf::from(&local_appdata);
+            let candidates = [
+                local_base
+                    .join("Programs")
+                    .join("WorkBuddyAI")
+                    .join("WorkBuddyAI.exe"),
+                local_base
+                    .join("Programs")
+                    .join("WorkBuddy")
+                    .join("WorkBuddy.exe"),
+                local_base.join("WorkBuddyAI").join("WorkBuddyAI.exe"),
+                local_base.join("WorkBuddy").join("WorkBuddy.exe"),
+            ];
+            for cand in candidates {
+                if cand.exists() {
+                    return DetectedPathInfo {
+                        app_type: "workbuddy".to_string(),
+                        path: cand.to_string_lossy().to_string(),
+                        exists: true,
+                        source: "standard_dir".to_string(),
+                        is_running,
+                        extra_info: Some("标准用户安装目录 (%LOCALAPPDATA%\\Programs)".to_string()),
+                    };
+                }
+            }
+        }
+
+        // 5. 检查系统 Program Files 目录
+        let mut pf_dirs = Vec::new();
+        if let Ok(pf) = std::env::var("ProgramFiles") {
+            pf_dirs.push(PathBuf::from(pf));
+        }
+        if let Ok(pfx86) = std::env::var("ProgramFiles(x86)") {
+            pf_dirs.push(PathBuf::from(pfx86));
+        }
+        if let Ok(pfw64) = std::env::var("ProgramW6432") {
+            pf_dirs.push(PathBuf::from(pfw64));
+        }
+        for pf in pf_dirs {
+            let candidates = [
+                pf.join("WorkBuddyAI").join("WorkBuddyAI.exe"),
+                pf.join("WorkBuddy").join("WorkBuddy.exe"),
+                pf.join("Workbuddy")
+                    .join("WorkBuddyAI")
+                    .join("WorkBuddyAI.exe"),
+            ];
+            for cand in candidates {
+                if cand.exists() {
+                    return DetectedPathInfo {
+                        app_type: "workbuddy".to_string(),
+                        path: cand.to_string_lossy().to_string(),
+                        exists: true,
+                        source: "standard_dir".to_string(),
+                        is_running,
+                        extra_info: Some("系统安装目录 (Program Files)".to_string()),
+                    };
+                }
+            }
+        }
+
+        // 6. 检查常见多盘符开发者与自定义安装目录
+        for drive_letter in ['C', 'D', 'E', 'F'] {
+            let custom_candidates = [
+                format!(
+                    "{}:\\Developer Tool\\Workbuddy\\WorkBuddyAI\\WorkBuddyAI.exe",
+                    drive_letter
+                ),
+                format!(
+                    "{}:\\Developer Tools\\Workbuddy\\WorkBuddyAI\\WorkBuddyAI.exe",
+                    drive_letter
+                ),
+                format!("{}:\\Workbuddy\\WorkBuddyAI\\WorkBuddyAI.exe", drive_letter),
+                format!("{}:\\WorkBuddyAI\\WorkBuddyAI.exe", drive_letter),
+                format!("{}:\\WorkBuddy\\WorkBuddy.exe", drive_letter),
+                format!("{}:\\Software\\WorkBuddyAI\\WorkBuddyAI.exe", drive_letter),
+                format!("{}:\\Tools\\WorkBuddyAI\\WorkBuddyAI.exe", drive_letter),
+            ];
+            for cand_str in &custom_candidates {
+                let p = Path::new(cand_str);
+                if p.exists() {
+                    return DetectedPathInfo {
+                        app_type: "workbuddy".to_string(),
+                        path: cand_str.clone(),
+                        exists: true,
+                        source: "standard_dir".to_string(),
+                        is_running,
+                        extra_info: Some("本地磁盘安装目录".to_string()),
+                    };
+                }
+            }
+        }
+    }
+
+    #[cfg(target_os = "macos")]
+    {
+        let mac_candidates = [
+            "/Applications/WorkBuddy.app/Contents/MacOS/WorkBuddy",
+            "/Applications/WorkBuddyAI.app/Contents/MacOS/WorkBuddyAI",
+        ];
+        for cand in mac_candidates {
+            if Path::new(cand).exists() {
+                return DetectedPathInfo {
+                    app_type: "workbuddy".to_string(),
+                    path: cand.to_string(),
+                    exists: true,
+                    source: "standard_dir".to_string(),
+                    is_running,
+                    extra_info: Some("macOS 应用目录 (/Applications)".to_string()),
+                };
+            }
+        }
+    }
+
+    // 7. 检查 PATH 环境变量
+    if let Some(path) = find_in_path("workbuddyai").or_else(|| find_in_path("workbuddy")) {
+        return DetectedPathInfo {
+            app_type: "workbuddy".to_string(),
+            path: path.to_string_lossy().to_string(),
+            exists: true,
+            source: "path_env".to_string(),
+            is_running,
+            extra_info: Some("探测自系统 PATH 环境变量".to_string()),
+        };
+    }
 
     DetectedPathInfo {
         app_type: "workbuddy".to_string(),
-        path: path.unwrap_or_default(),
-        exists,
-        source: if exists {
-            "standard_dir".to_string()
-        } else {
-            "not_found".to_string()
-        },
-        is_running,
-        extra_info,
+        path: String::new(),
+        exists: false,
+        source: "not_found".to_string(),
+        is_running: false,
+        extra_info: None,
     }
 }
 

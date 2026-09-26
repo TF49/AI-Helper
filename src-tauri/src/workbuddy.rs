@@ -104,40 +104,10 @@ pub fn detect_workbuddy_installation() -> (bool, Option<String>) {
         }
     }
 
-    // 1. 检查已知的典型安装路径
-    let mut candidate_paths: Vec<PathBuf> = Vec::new();
-
-    #[cfg(debug_assertions)]
-    candidate_paths.push(PathBuf::from(
-        r"E:\Developer Tool\Workbuddy\WorkBuddyAI\WorkBuddyAI.exe",
-    ));
-
-    if let Some(home) = dirs::home_dir() {
-        candidate_paths.push(home.join(r"AppData\Local\Programs\WorkBuddyAI\WorkBuddyAI.exe"));
-        candidate_paths.push(home.join(r"AppData\Local\Programs\WorkBuddy\WorkBuddy.exe"));
-    }
-
-    if let Ok(local_app_data) = std::env::var("LOCALAPPDATA") {
-        let base = PathBuf::from(local_app_data);
-        candidate_paths.push(base.join(r"Programs\WorkBuddyAI\WorkBuddyAI.exe"));
-        candidate_paths.push(base.join(r"Programs\WorkBuddy\WorkBuddy.exe"));
-    }
-
-    if let Ok(program_files) = std::env::var("ProgramFiles") {
-        candidate_paths.push(PathBuf::from(program_files).join(r"WorkBuddyAI\WorkBuddyAI.exe"));
-    }
-
-    for path in candidate_paths {
-        if path.exists() {
-            return (true, Some(path.display().to_string()));
-        }
-    }
-
-    // 2. 检查配置目录是否已初始化
-    if let Ok(path) = workbuddy_config_path() {
-        if path.exists() {
-            return (true, None);
-        }
+    // 1. 调用系统化深度探测模式 (进程、Store应用包、注册表、标准目录与多盘符)
+    let detected = crate::app_paths::detect_workbuddy_client_path();
+    if detected.exists && !detected.path.is_empty() {
+        return (true, Some(detected.path));
     }
 
     (false, None)

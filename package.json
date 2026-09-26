@@ -1,6 +1,6 @@
 {
   "name": "ai-helper",
-  "version": "1.0.25",
+  "version": "1.0.26",
   "description": "AI Helper - AI Agent 配置管理工具",
   "type": "module",
   "scripts": {

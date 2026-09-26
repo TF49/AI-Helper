@@ -1527,7 +1527,6 @@ export function AppPathsPanel() {
                   type="text"
                   value={workbuddyPath}
                   onChange={(e) => setWorkbuddyPath(e.target.value)}
-                  placeholder="例如: E:\Developer Tool\Workbuddy\WorkBuddyAI\WorkBuddyAI.exe"
                   className="w-full text-xs font-mono px-3 py-2 rounded-xl border border-slate-200 dark:border-white/10 bg-slate-50/70 dark:bg-black/30 text-slate-800 dark:text-gray-200 focus:outline-none focus:ring-1 focus:ring-emerald-500"
                 />
               </div>

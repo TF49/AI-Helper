@@ -22,7 +22,6 @@ import { ModelInput } from "./ModelInput";
 import { Label } from "./ui/label";
 import {
   PRESET_URLS,
-  WORKBUDDY_MODEL_SUGGESTIONS,
   type WorkbuddySavePayload,
 } from "../types";
 import { useModelFetch } from "../lib/useModelFetch";
@@ -427,46 +426,21 @@ export function WorkbuddyPanel() {
             </div>
           </SpotlightCard>
 
-          {/* 卡片 5: 测试模型与快捷选项 */}
+          {/* 卡片 5: 测试模型 */}
           <SpotlightCard
-            className="p-5 rounded-2xl border border-slate-200/90 dark:border-white/10 bg-white/80 dark:bg-[#121524]/60 shadow-sm dark:shadow-none flex flex-col justify-between"
+            className="p-5 rounded-2xl border border-slate-200/90 dark:border-white/10 bg-white/80 dark:bg-[#121524]/60 shadow-sm dark:shadow-none"
             spotlightColor="rgba(16, 185, 129, 0.12)"
           >
-            <div>
-              <ModelInput
-                value={model}
-                onChange={setModel}
-                models={models}
-                placeholder="选择或输入模型名称 (如 gpt-5.6-sol)"
-                id="workbuddy-models"
-                onRefresh={() => void refreshModels()}
-                refreshing={refreshingModels}
-                accentColor="emerald"
-              />
-            </div>
-
-            {/* 常用模型快捷填充芯片 */}
-            <div className="mt-3 pt-3 border-t border-slate-100 dark:border-white/5">
-              <span className="text-[10px] text-slate-400 dark:text-gray-500 uppercase tracking-wider block mb-1.5 font-medium">
-                常用模型推荐:
-              </span>
-              <div className="flex flex-wrap gap-1.5">
-                {WORKBUDDY_MODEL_SUGGESTIONS.map((item) => (
-                  <button
-                    key={item}
-                    type="button"
-                    onClick={() => setModel(item)}
-                    className={`text-[11px] font-mono px-2 py-0.5 rounded-md border transition-all cursor-pointer ${
-                      model === item
-                        ? "bg-emerald-100 border-emerald-300 text-emerald-700 dark:bg-emerald-500/20 dark:border-emerald-500/40 dark:text-emerald-300 font-semibold"
-                        : "bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100 hover:text-slate-900 dark:bg-white/5 dark:border-white/10 dark:text-gray-400 dark:hover:bg-white/10 dark:hover:text-white"
-                    }`}
-                  >
-                    {item}
-                  </button>
-                ))}
-              </div>
-            </div>
+            <ModelInput
+              value={model}
+              onChange={setModel}
+              models={models}
+              placeholder="选择或输入模型名称 (如 gpt-5.6-sol)"
+              id="workbuddy-models"
+              onRefresh={() => void refreshModels()}
+              refreshing={refreshingModels}
+              accentColor="emerald"
+            />
           </SpotlightCard>
 
           {/* 卡片 6: 思考强度与 Token 上限设置 */}
