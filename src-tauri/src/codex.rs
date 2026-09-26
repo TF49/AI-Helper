@@ -243,6 +243,7 @@ fn write_registry_env(name: &str, value: &str) -> Result<(), AppError> {
         .map_err(|e| AppError::Registry(e.to_string()))?;
     env.set_value(name, &value.to_string())
         .map_err(|e| AppError::Registry(e.to_string()))?;
+    std::env::set_var(name, value);
     Ok(())
 }
 

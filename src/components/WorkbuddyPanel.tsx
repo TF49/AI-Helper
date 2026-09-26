@@ -69,9 +69,9 @@ export function WorkbuddyPanel() {
   const [configPath, setConfigPath] = useState("");
   const [loading, setLoading] = useState(true);
   const [testModalOpen, setTestModalOpen] = useState(false);
-  const [configuredModels, setConfiguredModels] = useState<WorkbuddyModelItem[]>(
-    [],
-  );
+  const [configuredModels, setConfiguredModels] = useState<
+    WorkbuddyModelItem[]
+  >([]);
   const [deletingModelId, setDeletingModelId] = useState<string | null>(null);
 
   // 高级能力开关
@@ -282,7 +282,8 @@ export function WorkbuddyPanel() {
               </span>
             </div>
             <p className="text-xs text-slate-500 dark:text-gray-400 mt-0.5">
-              为 WorkBuddy 自定义服务商以数组形式拼接追加多个模型，支持独立路由节点与认证凭据
+              为 WorkBuddy
+              自定义服务商以数组形式拼接追加多个模型，支持独立路由节点与认证凭据
             </p>
           </div>
         </div>
@@ -355,7 +356,8 @@ export function WorkbuddyPanel() {
                 <div className="flex items-start gap-1.5 p-2.5 rounded-lg bg-amber-500/10 border border-amber-500/20 text-amber-700 dark:text-amber-300 text-xs">
                   <ShieldAlert size={14} className="flex-shrink-0 mt-0.5" />
                   <span>
-                    未检测到 WorkBuddy models.json 文件，保存新模型后将自动创建。
+                    未检测到 WorkBuddy models.json
+                    文件，保存新模型后将自动创建。
                   </span>
                 </div>
               ) : (
@@ -608,14 +610,16 @@ export function WorkbuddyPanel() {
                   <div className="flex items-center gap-1.5 p-2 rounded-lg bg-blue-500/10 border border-blue-500/20 text-blue-700 dark:text-blue-300 text-xs">
                     <Info size={13} className="flex-shrink-0" />
                     <span>
-                      当前模型已存在于 models.json 中，保存将更新此模型的各项配置参数。
+                      当前模型已存在于 models.json
+                      中，保存将更新此模型的各项配置参数。
                     </span>
                   </div>
                 ) : model.trim() ? (
                   <div className="flex items-center gap-1.5 p-2 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-emerald-700 dark:text-emerald-300 text-xs">
                     <Sparkles size={13} className="flex-shrink-0" />
                     <span>
-                      新增模型模式：保存将作为新模型追加（拼接）至 models.json 末尾，不覆盖现有模型。
+                      新增模型模式：保存将作为新模型追加（拼接）至 models.json
+                      末尾，不覆盖现有模型。
                     </span>
                   </div>
                 ) : null}

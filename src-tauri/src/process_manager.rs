@@ -203,8 +203,9 @@ pub fn launch_app(app_type: &str, custom_path: Option<&str>) -> Result<String, S
             #[cfg(target_os = "windows")]
             {
                 // 在独立 CMD 窗口中启动 Claude CLI
-                let mut cmd = Command::new("cmd");
-                cmd.args(["/c", "start", "Claude Code", "cmd.exe", "/k", &path_str]);
+                let comspec = std::env::var("COMSPEC").unwrap_or_else(|_| "cmd.exe".to_string());
+                let mut cmd = Command::new(&comspec);
+                cmd.args(["/c", "start", "Claude Code", &comspec, "/k", &path_str]);
                 cmd.spawn()
                     .map_err(|e| format!("启动 Claude Code 终端失败: {}", e))?;
                 Ok(format!("Claude Code 终端已在独立窗口中拉起 ({})", path_str))
@@ -223,9 +224,18 @@ pub fn launch_app(app_type: &str, custom_path: Option<&str>) -> Result<String, S
 
             #[cfg(target_os = "windows")]
             {
-                // 在独立 CMD 窗口中启动 Codex CLI
-                let mut cmd = Command::new("cmd");
-                cmd.args(["/c", "start", "Codex CLI", "cmd.exe", "/k", &path_str]);
+                // 在独立 CMD 窗口中启动 Codex CLI (追加 --no-daemon 避免在 Windows 管理员提权环境下触发 Daemon 安全限制)
+                let comspec = std::env::var("COMSPEC").unwrap_or_else(|_| "cmd.exe".to_string());
+                let mut cmd = Command::new(&comspec);
+                cmd.args([
+                    "/c",
+                    "start",
+                    "Codex CLI",
+                    &comspec,
+                    "/k",
+                    &path_str,
+                    "--no-daemon",
+                ]);
                 cmd.spawn()
                     .map_err(|e| format!("启动 Codex CLI 终端失败: {}", e))?;
                 Ok(format!("Codex CLI 终端已在独立窗口中拉起 ({})", path_str))
@@ -313,12 +323,13 @@ pub fn execute_in_terminal(command: &str) -> Result<String, String> {
 
     #[cfg(target_os = "windows")]
     {
-        let mut cmd = Command::new("cmd");
+        let comspec = std::env::var("COMSPEC").unwrap_or_else(|_| "cmd.exe".to_string());
+        let mut cmd = Command::new(&comspec);
         cmd.args([
             "/c",
             "start",
             "AI Helper - CLI 手动安装与更新终端",
-            "cmd.exe",
+            &comspec,
             "/k",
             trimmed,
         ]);

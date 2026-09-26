@@ -192,6 +192,86 @@ async fn open_url(url: String) -> Result<(), String> {
         .map_err(|e| e.to_string())?
 }
 
+#[tauri::command]
+async fn open_config_file(path: String) -> Result<(), String> {
+    let trimmed = path.trim().to_string();
+    if trimmed.is_empty() {
+        return Err("配置文件路径为空".to_string());
+    }
+
+    let expanded_path = if trimmed.starts_with("~/") || trimmed.starts_with("~\\") {
+        if let Some(home) = dirs::home_dir() {
+            home.join(&trimmed[2..])
+        } else {
+            std::path::PathBuf::from(&trimmed)
+        }
+    } else if trimmed == "~" {
+        dirs::home_dir().unwrap_or_else(|| std::path::PathBuf::from(&trimmed))
+    } else {
+        std::path::PathBuf::from(&trimmed)
+    };
+
+    if !expanded_path.exists() {
+        return Err(format!("配置文件不存在: {}", expanded_path.display()));
+    }
+
+    tokio::task::spawn_blocking(move || match opener::open(&expanded_path) {
+        Ok(()) => Ok(()),
+        Err(open_err) => {
+            log::warn!(
+                "opener::open 失败 ({:?})，尝试系统后备方案打开: {}",
+                open_err,
+                expanded_path.display()
+            );
+
+            #[cfg(target_os = "windows")]
+            {
+                if std::process::Command::new("notepad.exe")
+                    .arg(&expanded_path)
+                    .spawn()
+                    .is_ok()
+                {
+                    return Ok(());
+                }
+                if std::process::Command::new("explorer.exe")
+                    .arg(format!("/select,{}", expanded_path.display()))
+                    .spawn()
+                    .is_ok()
+                {
+                    return Ok(());
+                }
+            }
+
+            #[cfg(target_os = "macos")]
+            {
+                if std::process::Command::new("open")
+                    .arg("-t")
+                    .arg(&expanded_path)
+                    .spawn()
+                    .is_ok()
+                {
+                    return Ok(());
+                }
+            }
+
+            #[cfg(target_os = "linux")]
+            {
+                if std::process::Command::new("xdg-open")
+                    .arg(&expanded_path)
+                    .spawn()
+                    .is_ok()
+                {
+                    return Ok(());
+                }
+            }
+
+            Err(format!("无法打开配置文件: {}", open_err))
+        }
+    })
+    .await
+    .map_err(|e| format!("打开配置文件任务执行异常: {}", e))?
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -226,6 +306,7 @@ pub fn run() {
             fetch_codex_models,
             fetch_claude_models,
             open_url,
+            open_config_file,
             get_app_paths,
             save_app_paths,
             detect_app_path,

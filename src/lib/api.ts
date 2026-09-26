@@ -199,6 +199,33 @@ export async function openUrl(url: string): Promise<boolean> {
   }
 }
 
+let lastOpenConfigTime = 0;
+let lastOpenConfigPath = "";
+
+export async function openConfigFile(path: string): Promise<boolean> {
+  const trimmed = path.trim();
+  if (!trimmed) {
+    toast.error("配置文件路径为空");
+    return false;
+  }
+  const now = Date.now();
+  if (trimmed === lastOpenConfigPath && now - lastOpenConfigTime < 800) {
+    return true;
+  }
+  lastOpenConfigTime = now;
+  lastOpenConfigPath = trimmed;
+
+  try {
+    await invoke("open_config_file", { path: trimmed });
+    return true;
+  } catch (err) {
+    console.error("Failed to open config file:", err);
+    toast.error(`无法打开配置文件: ${String(err)}`);
+    return false;
+  }
+}
+
 export async function executeInTerminal(command: string): Promise<string> {
   return invoke<string>("execute_in_terminal", { command });
 }
+

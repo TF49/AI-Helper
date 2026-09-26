@@ -1364,6 +1364,17 @@ export function AppPathsPanel() {
                 💡 {codexInfo.extra_info}
               </div>
             )}
+
+            <div className="text-[11px] text-slate-500 dark:text-gray-400 bg-slate-50/60 dark:bg-white/[0.03] px-2.5 py-1.5 rounded-lg border border-slate-200/60 dark:border-white/5 flex items-start gap-1.5">
+              <span className="text-blue-500 font-bold">ℹ️</span>
+              <span>
+                Windows 提示：若在管理员终端中手动运行 Codex CLI，请使用{" "}
+                <code className="px-1 py-0.5 rounded bg-slate-200/60 dark:bg-white/10 font-mono text-[10px] text-blue-600 dark:text-blue-400">
+                  codex --no-daemon
+                </code>
+                （本软件“测试启动”已自动附带该参数）。
+              </span>
+            </div>
           </div>
         </SpotlightCard>
 

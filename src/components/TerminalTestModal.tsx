@@ -254,7 +254,10 @@ export function TerminalTestModal({
           addLog(`✓ 配置文件 ~/.codex/config.toml 已成功写入`, "success");
           addLog(`✓ 系统环境变量 CUSTOM_OPENAI_API_KEY 已更新`, "success");
         } else if (type === "workbuddy") {
-          addLog(`💾 正在将配置保存至本地 models.json (多模型拼接保存)...`, "info");
+          addLog(
+            `💾 正在将配置保存至本地 models.json (多模型拼接保存)...`,
+            "info",
+          );
           if (workbuddyPayload) {
             await setWorkbuddyConfig(workbuddyPayload);
           } else {

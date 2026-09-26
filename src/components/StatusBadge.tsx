@@ -6,14 +6,17 @@ import {
   RefreshCw,
   AlertCircle,
   CheckCircle2,
+  ExternalLink,
 } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "../lib/utils";
+import { openConfigFile } from "../lib/api";
 
 interface StatusBadgeProps {
   exists: boolean;
   path: string;
   onReload?: () => void;
+  onOpen?: () => void;
   accentColor?: "blue" | "purple" | "emerald";
   className?: string;
 }
@@ -22,10 +25,12 @@ export function StatusBadge({
   exists,
   path,
   onReload,
+  onOpen,
   accentColor = "blue",
   className,
 }: StatusBadgeProps) {
   const [copied, setCopied] = useState(false);
+  const [opening, setOpening] = useState(false);
 
   const handleCopy = async () => {
     if (!path) return;
@@ -38,6 +43,28 @@ export function StatusBadge({
       toast.error("复制失败");
     }
   };
+
+  const handleOpenFile = async () => {
+    if (onOpen) {
+      onOpen();
+      return;
+    }
+    if (!path) return;
+    if (!exists) {
+      toast.warning("配置文件尚未创建，请先点击保存配置以生成文件");
+      return;
+    }
+    setOpening(true);
+    try {
+      const ok = await openConfigFile(path);
+      if (ok) {
+        toast.success("已打开配置文件");
+      }
+    } finally {
+      setOpening(false);
+    }
+  };
+
 
   return (
     <div
@@ -103,12 +130,31 @@ export function StatusBadge({
           )}
         </div>
 
+        {/* 打开配置文件按钮 */}
+        {path && (
+          <button
+            type="button"
+            onClick={handleOpenFile}
+            disabled={opening}
+            className={cn(
+              "p-1 rounded-md transition-colors cursor-pointer",
+              exists
+                ? "text-slate-400 hover:text-slate-700 hover:bg-slate-200/60 dark:text-gray-400 dark:hover:text-white dark:hover:bg-white/10"
+                : "text-slate-300 dark:text-gray-600 hover:text-slate-500 hover:bg-slate-200/40 dark:hover:text-gray-400 dark:hover:bg-white/5",
+              opening && "opacity-50 cursor-wait",
+            )}
+            title={exists ? "打开配置文件" : "配置文件尚未生成，请先保存配置"}
+          >
+            <ExternalLink size={13} />
+          </button>
+        )}
+
         {/* 复制路径按钮 */}
         {path && (
           <button
             type="button"
             onClick={handleCopy}
-            className="p-1 rounded-md text-slate-400 hover:text-slate-700 hover:bg-slate-200/60 dark:text-gray-400 dark:hover:text-white dark:hover:bg-white/10 transition-colors"
+            className="p-1 rounded-md text-slate-400 hover:text-slate-700 hover:bg-slate-200/60 dark:text-gray-400 dark:hover:text-white dark:hover:bg-white/10 transition-colors cursor-pointer"
             title="复制完整路径"
           >
             {copied ? (
@@ -124,7 +170,7 @@ export function StatusBadge({
           <button
             type="button"
             onClick={onReload}
-            className="p-1 rounded-md text-slate-400 hover:text-slate-700 hover:bg-slate-200/60 dark:text-gray-400 dark:hover:text-white dark:hover:bg-white/10 transition-colors"
+            className="p-1 rounded-md text-slate-400 hover:text-slate-700 hover:bg-slate-200/60 dark:text-gray-400 dark:hover:text-white dark:hover:bg-white/10 transition-colors cursor-pointer"
             title="重新检测配置文件"
           >
             <RefreshCw size={13} />

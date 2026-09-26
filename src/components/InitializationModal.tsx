@@ -28,6 +28,7 @@ import {
   ChevronDown,
   ChevronUp,
   X,
+  ExternalLink,
 } from "lucide-react";
 import { OpenAIIcon, ClaudeIcon, WorkbuddyIcon } from "./BrandIcons";
 import { motion, AnimatePresence } from "motion/react";
@@ -41,6 +42,7 @@ import {
   setCodexConfig,
   setClaudeConfig,
   setWorkbuddyConfig,
+  openConfigFile,
 } from "../lib/api";
 import type {
   AgentConfig,
@@ -1310,25 +1312,45 @@ export function InitializationModal({
                                     : "未检测到安装环境，暂无配置文件"}
                             </code>
                             {configData.codex?.config_path ? (
-                              <button
-                                onClick={() =>
-                                  copyToClipboard(
-                                    configData.codex?.config_path || "",
-                                    "Codex 路径",
-                                  )
-                                }
-                                className="p-1 rounded hover:bg-slate-200 dark:hover:bg-white/10 text-slate-500 dark:text-gray-400 flex-shrink-0 cursor-pointer"
-                                title="复制路径"
-                              >
-                                {copiedKey === "Codex 路径" ? (
-                                  <Check
-                                    size={12}
-                                    className="text-emerald-500"
-                                  />
-                                ) : (
-                                  <Copy size={12} />
-                                )}
-                              </button>
+                              <div className="flex items-center gap-1 flex-shrink-0">
+                                <button
+                                  onClick={async () => {
+                                    if (!configData.codex?.config_exists) {
+                                      toast.warning(
+                                        "配置文件尚未创建，请先完成配置并保存",
+                                      );
+                                      return;
+                                    }
+                                    const ok = await openConfigFile(
+                                      configData.codex.config_path,
+                                    );
+                                    if (ok) toast.success("已打开配置文件");
+                                  }}
+                                  className="p-1 rounded hover:bg-slate-200 dark:hover:bg-white/10 text-slate-500 dark:text-gray-400 cursor-pointer"
+                                  title="打开配置文件"
+                                >
+                                  <ExternalLink size={12} />
+                                </button>
+                                <button
+                                  onClick={() =>
+                                    copyToClipboard(
+                                      configData.codex?.config_path || "",
+                                      "Codex 路径",
+                                    )
+                                  }
+                                  className="p-1 rounded hover:bg-slate-200 dark:hover:bg-white/10 text-slate-500 dark:text-gray-400 cursor-pointer"
+                                  title="复制路径"
+                                >
+                                  {copiedKey === "Codex 路径" ? (
+                                    <Check
+                                      size={12}
+                                      className="text-emerald-500"
+                                    />
+                                  ) : (
+                                    <Copy size={12} />
+                                  )}
+                                </button>
+                              </div>
                             ) : null}
                           </div>
                         </div>
@@ -1390,25 +1412,45 @@ export function InitializationModal({
                                     : "未检测到安装环境，暂无配置文件"}
                             </code>
                             {configData.claude?.config_path ? (
-                              <button
-                                onClick={() =>
-                                  copyToClipboard(
-                                    configData.claude?.config_path || "",
-                                    "Claude 路径",
-                                  )
-                                }
-                                className="p-1 rounded hover:bg-slate-200 dark:hover:bg-white/10 text-slate-500 dark:text-gray-400 flex-shrink-0 cursor-pointer"
-                                title="复制路径"
-                              >
-                                {copiedKey === "Claude 路径" ? (
-                                  <Check
-                                    size={12}
-                                    className="text-emerald-500"
-                                  />
-                                ) : (
-                                  <Copy size={12} />
-                                )}
-                              </button>
+                              <div className="flex items-center gap-1 flex-shrink-0">
+                                <button
+                                  onClick={async () => {
+                                    if (!configData.claude?.config_exists) {
+                                      toast.warning(
+                                        "配置文件尚未创建，请先完成配置并保存",
+                                      );
+                                      return;
+                                    }
+                                    const ok = await openConfigFile(
+                                      configData.claude.config_path,
+                                    );
+                                    if (ok) toast.success("已打开配置文件");
+                                  }}
+                                  className="p-1 rounded hover:bg-slate-200 dark:hover:bg-white/10 text-slate-500 dark:text-gray-400 cursor-pointer"
+                                  title="打开配置文件"
+                                >
+                                  <ExternalLink size={12} />
+                                </button>
+                                <button
+                                  onClick={() =>
+                                    copyToClipboard(
+                                      configData.claude?.config_path || "",
+                                      "Claude 路径",
+                                    )
+                                  }
+                                  className="p-1 rounded hover:bg-slate-200 dark:hover:bg-white/10 text-slate-500 dark:text-gray-400 cursor-pointer"
+                                  title="复制路径"
+                                >
+                                  {copiedKey === "Claude 路径" ? (
+                                    <Check
+                                      size={12}
+                                      className="text-emerald-500"
+                                    />
+                                  ) : (
+                                    <Copy size={12} />
+                                  )}
+                                </button>
+                              </div>
                             ) : null}
                           </div>
                         </div>
@@ -1471,25 +1513,45 @@ export function InitializationModal({
                                     : "未检测到安装环境，暂无配置文件"}
                             </code>
                             {configData.workbuddy?.config_path ? (
-                              <button
-                                onClick={() =>
-                                  copyToClipboard(
-                                    configData.workbuddy?.config_path || "",
-                                    "WorkBuddy 路径",
-                                  )
-                                }
-                                className="p-1 rounded hover:bg-slate-200 dark:hover:bg-white/10 text-slate-500 dark:text-gray-400 flex-shrink-0 cursor-pointer"
-                                title="复制路径"
-                              >
-                                {copiedKey === "WorkBuddy 路径" ? (
-                                  <Check
-                                    size={12}
-                                    className="text-emerald-500"
-                                  />
-                                ) : (
-                                  <Copy size={12} />
-                                )}
-                              </button>
+                              <div className="flex items-center gap-1 flex-shrink-0">
+                                <button
+                                  onClick={async () => {
+                                    if (!configData.workbuddy?.config_exists) {
+                                      toast.warning(
+                                        "配置文件尚未创建，请先完成配置并保存",
+                                      );
+                                      return;
+                                    }
+                                    const ok = await openConfigFile(
+                                      configData.workbuddy.config_path,
+                                    );
+                                    if (ok) toast.success("已打开配置文件");
+                                  }}
+                                  className="p-1 rounded hover:bg-slate-200 dark:hover:bg-white/10 text-slate-500 dark:text-gray-400 cursor-pointer"
+                                  title="打开配置文件"
+                                >
+                                  <ExternalLink size={12} />
+                                </button>
+                                <button
+                                  onClick={() =>
+                                    copyToClipboard(
+                                      configData.workbuddy?.config_path || "",
+                                      "WorkBuddy 路径",
+                                    )
+                                  }
+                                  className="p-1 rounded hover:bg-slate-200 dark:hover:bg-white/10 text-slate-500 dark:text-gray-400 cursor-pointer"
+                                  title="复制路径"
+                                >
+                                  {copiedKey === "WorkBuddy 路径" ? (
+                                    <Check
+                                      size={12}
+                                      className="text-emerald-500"
+                                    />
+                                  ) : (
+                                    <Copy size={12} />
+                                  )}
+                                </button>
+                              </div>
                             ) : null}
                           </div>
                         </div>
