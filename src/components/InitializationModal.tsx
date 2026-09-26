@@ -29,7 +29,7 @@ import {
   ChevronUp,
   X,
 } from "lucide-react";
-import { OpenAIIcon, ClaudeIcon } from "./BrandIcons";
+import { OpenAIIcon, ClaudeIcon, WorkbuddyIcon } from "./BrandIcons";
 import { motion, AnimatePresence } from "motion/react";
 import { toast } from "sonner";
 import { exit } from "@tauri-apps/plugin-process";
@@ -37,10 +37,17 @@ import {
   checkBobApiNetwork,
   getCodexConfig,
   getClaudeConfig,
+  getWorkbuddyConfig,
   setCodexConfig,
   setClaudeConfig,
+  setWorkbuddyConfig,
 } from "../lib/api";
-import type { AgentConfig, NetworkStatus, StepStatus } from "../types";
+import type {
+  AgentConfig,
+  NetworkStatus,
+  StepStatus,
+  WorkbuddyUIConfig,
+} from "../types";
 import { cn } from "../lib/utils";
 
 interface InitializationModalProps {
@@ -52,6 +59,7 @@ interface InitializationModalProps {
 interface StepConfigData {
   codex: AgentConfig | null;
   claude: AgentConfig | null;
+  workbuddy: WorkbuddyUIConfig | null;
 }
 
 interface ScanLogItem {
@@ -80,7 +88,9 @@ export function InitializationModal({
   const [stepSubProgress, setStepSubProgress] = useState<number>(0);
   const [stepSubPhaseText, setStepSubPhaseText] = useState<string>("");
   const [scanLogs, setScanLogs] = useState<ScanLogItem[]>([]);
-  const [checkpoints, setCheckpoints] = useState<Record<string, CheckpointStatus>>({});
+  const [checkpoints, setCheckpoints] = useState<
+    Record<string, CheckpointStatus>
+  >({});
 
   // ── 环节数据 ──
   const [networkData, setNetworkData] = useState<NetworkStatus | null>(null);
@@ -90,18 +100,26 @@ export function InitializationModal({
   const [configData, setConfigData] = useState<StepConfigData>({
     codex: null,
     claude: null,
+    workbuddy: null,
   });
   const [parseError, setParseError] = useState<string>("");
 
   // ── 环节 3 & 4 展示控制 ──
-  const [activeConfigTab, setActiveConfigTab] = useState<"chatgpt" | "claude">("chatgpt");
+  const [activeConfigTab, setActiveConfigTab] = useState<
+    "chatgpt" | "claude" | "workbuddy"
+  >("chatgpt");
   const [showCodexKey, setShowCodexKey] = useState<boolean>(false);
   const [showClaudeKey, setShowClaudeKey] = useState<boolean>(false);
+  const [showWorkbuddyKey, setShowWorkbuddyKey] = useState<boolean>(false);
   const [copiedKey, setCopiedKey] = useState<string>("");
 
   // ── 环节 4 确认与快速修改模式 ──
-  const [confirmationDecision, setConfirmationDecision] = useState<"none" | "confirmed" | "editing">("none");
-  const [editTab, setEditTab] = useState<"chatgpt" | "claude">("chatgpt");
+  const [confirmationDecision, setConfirmationDecision] = useState<
+    "none" | "confirmed" | "editing"
+  >("none");
+  const [editTab, setEditTab] = useState<"chatgpt" | "claude" | "workbuddy">(
+    "chatgpt",
+  );
   const [editUrl, setEditUrl] = useState<string>("");
   const [editApiKey, setEditApiKey] = useState<string>("");
   const [editModel, setEditModel] = useState<string>("");
@@ -116,7 +134,10 @@ export function InitializationModal({
       const now = new Date();
       const timeStr = `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}:${String(now.getSeconds()).padStart(2, "0")}.${String(now.getMilliseconds()).padStart(3, "0")}`;
       const id = `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
-      setScanLogs((prev) => [...prev.slice(-40), { id, time: timeStr, tag, text, type }]);
+      setScanLogs((prev) => [
+        ...prev.slice(-40),
+        { id, time: timeStr, tag, text, type },
+      ]);
     },
     [],
   );
@@ -152,19 +173,41 @@ export function InitializationModal({
       endpoint_ping: "pending",
       latency_eval: "pending",
     });
-    addLog("NET:INIT", "初始化本机网络探针，检查默认网关与本地 DNS 解析器...", "scan");
+    addLog(
+      "NET:INIT",
+      "初始化本机网络探针，检查默认网关与本地 DNS 解析器...",
+      "scan",
+    );
 
     if (!(await delay(700))) return false;
-    setCheckpoints((prev) => ({ ...prev, dns_gateway: "done", proxy_tls: "scanning" }));
+    setCheckpoints((prev) => ({
+      ...prev,
+      dns_gateway: "done",
+      proxy_tls: "scanning",
+    }));
     setStepSubProgress(35);
     setStepSubPhaseText("检测系统底层代理及 SSL/TLS 握手协议链...");
-    addLog("NET:TLS", "校验系统代理环境，配置 TLS 1.3 / HTTP/2 握手安全上下文...", "info");
+    addLog(
+      "NET:TLS",
+      "校验系统代理环境，配置 TLS 1.3 / HTTP/2 握手安全上下文...",
+      "info",
+    );
 
     if (!(await delay(750))) return false;
-    setCheckpoints((prev) => ({ ...prev, proxy_tls: "done", endpoint_ping: "scanning" }));
+    setCheckpoints((prev) => ({
+      ...prev,
+      proxy_tls: "done",
+      endpoint_ping: "scanning",
+    }));
     setStepSubProgress(65);
-    setStepSubPhaseText("向官方服务节点 (https://bob-api.com/) 发送安全探测心跳...");
-    addLog("NET:PROBE", "发起安全 HTTP GET 探针 -> https://bob-api.com/ ...", "scan");
+    setStepSubPhaseText(
+      "向官方服务节点 (https://bob-api.com/) 发送安全探测心跳...",
+    );
+    addLog(
+      "NET:PROBE",
+      "发起安全 HTTP GET 探针 -> https://bob-api.com/ ...",
+      "scan",
+    );
 
     let status: NetworkStatus;
     try {
@@ -188,14 +231,26 @@ export function InitializationModal({
           "无法连接至指定站点 https://bob-api.com/，请检查本机网络或代理设置。",
       );
       setCheckpoints((prev) => ({ ...prev, endpoint_ping: "error" }));
-      addLog("NET:FAIL", status.error_message || "服务端未响应或连接超时", "error");
+      addLog(
+        "NET:FAIL",
+        status.error_message || "服务端未响应或连接超时",
+        "error",
+      );
       return false;
     }
 
-    setCheckpoints((prev) => ({ ...prev, endpoint_ping: "done", latency_eval: "scanning" }));
+    setCheckpoints((prev) => ({
+      ...prev,
+      endpoint_ping: "done",
+      latency_eval: "scanning",
+    }));
     setStepSubProgress(90);
     setStepSubPhaseText("评估回包响应延迟与链路连通质量...");
-    addLog("NET:OK", `服务应答正常 [${status.status_code ?? 200} OK]，链路延迟: ${status.latency_ms ?? 0}ms`, "success");
+    addLog(
+      "NET:OK",
+      `服务应答正常 [${status.status_code ?? 200} OK]，链路延迟: ${status.latency_ms ?? 0}ms`,
+      "success",
+    );
 
     if (!(await delay(700))) return false;
     setCheckpoints((prev) => ({ ...prev, latency_eval: "done" }));
@@ -214,23 +269,40 @@ export function InitializationModal({
     setStep2Status("running");
     setPathError("");
     setStepSubProgress(8);
-    setStepSubPhaseText("启动本机文件系统深度诊断引擎，枚举操作系统环境变量...");
+    setStepSubPhaseText(
+      "启动本机文件系统深度诊断引擎，枚举操作系统环境变量...",
+    );
     setCheckpoints({
       env_profile: "scanning",
       scan_codex: "pending",
       scan_claude: "pending",
+      scan_workbuddy: "pending",
       acl_verify: "pending",
     });
-    addLog("HOST:SCAN", "启动本地存储与文件扫描引擎，定位操作系统环境 (%USERPROFILE%)...", "scan");
+    addLog(
+      "HOST:SCAN",
+      "启动本地存储与文件扫描引擎，定位操作系统环境 (%USERPROFILE%)...",
+      "scan",
+    );
 
     if (!(await delay(800))) return false;
-    setCheckpoints((prev) => ({ ...prev, env_profile: "done", scan_codex: "scanning" }));
-    setStepSubProgress(30);
-    setStepSubPhaseText("深度遍历系统磁盘，扫描 %USERPROFILE%/.codex/ 目录树与运行入口...");
-    addLog("FS:CODEX", "检索本地 ChatGPT (Codex) 运行环境与工作空间路径...", "scan");
+    setCheckpoints((prev) => ({
+      ...prev,
+      env_profile: "done",
+      scan_codex: "scanning",
+    }));
+    setStepSubProgress(25);
+    setStepSubPhaseText(
+      "深度遍历系统磁盘，扫描 %USERPROFILE%/.codex/ 目录树与运行入口...",
+    );
+    addLog(
+      "FS:CODEX",
+      "检索本地 ChatGPT (Codex) 运行环境与工作空间路径...",
+      "scan",
+    );
 
-    if (!(await delay(900))) return false;
-    setStepSubProgress(48);
+    if (!(await delay(800))) return false;
+    setStepSubProgress(42);
     setStepSubPhaseText("正在捕获 Codex CLI 本地配置载荷与运行环境属性...");
 
     let codex: AgentConfig;
@@ -252,23 +324,37 @@ export function InitializationModal({
         `锁定 ChatGPT (Codex) 运行环境: ${codex.app_path || "已安装"} [配置文件: ${codex.config_exists ? "已就绪" : "待初始化"}]`,
         "match",
       );
-      setCheckpoints((prev) => ({ ...prev, scan_codex: "done", scan_claude: "scanning" }));
+      setCheckpoints((prev) => ({
+        ...prev,
+        scan_codex: "done",
+        scan_claude: "scanning",
+      }));
     } else {
       addLog(
         "FS:CODEX",
         "未在系统检索到 ChatGPT (Codex) 运行环境或配置文件",
         "warn",
       );
-      setCheckpoints((prev) => ({ ...prev, scan_codex: "error", scan_claude: "scanning" }));
+      setCheckpoints((prev) => ({
+        ...prev,
+        scan_codex: "error",
+        scan_claude: "scanning",
+      }));
     }
 
-    if (!(await delay(900))) return false;
-    setStepSubProgress(68);
-    setStepSubPhaseText("深度检索 %USERPROFILE%/.claude/ 环境变量与运行入口...");
-    addLog("FS:CLAUDE", "检索本地 Claude Code 运行环境与 settings.json...", "scan");
+    if (!(await delay(800))) return false;
+    setStepSubProgress(60);
+    setStepSubPhaseText(
+      "深度检索 %USERPROFILE%/.claude/ 环境变量与运行入口...",
+    );
+    addLog(
+      "FS:CLAUDE",
+      "检索本地 Claude Code 运行环境与 settings.json...",
+      "scan",
+    );
 
-    if (!(await delay(900))) return false;
-    setStepSubProgress(84);
+    if (!(await delay(800))) return false;
+    setStepSubProgress(75);
     setStepSubPhaseText("正在捕获 Claude Code 本地配置载荷与权限描述符...");
 
     let claude: AgentConfig;
@@ -290,24 +376,85 @@ export function InitializationModal({
         `锁定 Claude Code 运行环境: ${claude.app_path || "已安装"} [配置文件: ${claude.config_exists ? "已就绪" : "待初始化"}]`,
         "match",
       );
-      setCheckpoints((prev) => ({ ...prev, scan_claude: "done", acl_verify: "scanning" }));
+      setCheckpoints((prev) => ({
+        ...prev,
+        scan_claude: "done",
+        scan_workbuddy: "scanning",
+      }));
     } else {
       addLog(
         "FS:CLAUDE",
         "未在系统检索到 Claude Code 运行环境或配置文件",
         "warn",
       );
-      setCheckpoints((prev) => ({ ...prev, scan_claude: "error", acl_verify: "scanning" }));
+      setCheckpoints((prev) => ({
+        ...prev,
+        scan_claude: "error",
+        scan_workbuddy: "scanning",
+      }));
     }
 
-    const anyInstalled = codex.is_installed || claude.is_installed;
+    if (!(await delay(800))) return false;
+    setStepSubProgress(85);
+    setStepSubPhaseText(
+      "深度检索 %USERPROFILE%/.workbuddy-ai/ 与 WorkBuddy 客户端运行入口...",
+    );
+    addLog(
+      "FS:WORKBUDDY",
+      "检索本地 WorkBuddy 客户端运行环境与 models.json...",
+      "scan",
+    );
+
+    let workbuddy: WorkbuddyUIConfig;
+    try {
+      workbuddy = await getWorkbuddyConfig();
+      setConfigData((prev) => ({ ...prev, workbuddy }));
+    } catch (e) {
+      const msg = `WorkBuddy 检索失败: ${e}`;
+      setStep2Status("error");
+      setPathError(msg);
+      setCheckpoints((prev) => ({ ...prev, scan_workbuddy: "error" }));
+      addLog("FS:ERR", msg, "error");
+      return false;
+    }
+
+    if (workbuddy.is_installed) {
+      addLog(
+        "FS:WORKBUDDY",
+        `锁定 WorkBuddy 客户端运行环境: ${workbuddy.app_path || "已安装"} [配置文件: ${workbuddy.config_exists ? "已就绪" : "待初始化"}]`,
+        "match",
+      );
+      setCheckpoints((prev) => ({
+        ...prev,
+        scan_workbuddy: "done",
+        acl_verify: "scanning",
+      }));
+    } else {
+      addLog(
+        "FS:WORKBUDDY",
+        "未在系统检索到 WorkBuddy 客户端或 models.json 配置文件",
+        "warn",
+      );
+      setCheckpoints((prev) => ({
+        ...prev,
+        scan_workbuddy: "error",
+        acl_verify: "scanning",
+      }));
+    }
+
+    const anyInstalled =
+      codex.is_installed || claude.is_installed || workbuddy.is_installed;
     if (!anyInstalled) {
       setStep2Status("error");
       setPathError(
-        "未在当前电脑检测到 Claude Code 或 ChatGPT (Codex) 的安装程序与配置文件。AI Helper 需要配合已安装的 Agent 运行环境使用，请先安装对应 Agent 或在路径管理中指定。",
+        "未在当前电脑检测到 Claude Code、ChatGPT (Codex) 或 WorkBuddy 的安装程序与配置文件。AI Helper 需要配合已安装的 Agent/客户端运行环境使用，请先安装对应应用或在路径管理中指定。",
       );
       setCheckpoints((prev) => ({ ...prev, acl_verify: "error" }));
-      addLog("FS:ERR", "未检测到任何本地 Agent 运行环境与配置文件，初始化流程已暂停", "error");
+      addLog(
+        "FS:ERR",
+        "未检测到任何本地 Agent/客户端运行环境与配置文件，初始化流程已暂停",
+        "error",
+      );
       return false;
     }
 
@@ -321,16 +468,26 @@ export function InitializationModal({
     setStepSubProgress(100);
     setStepSubPhaseText("本机环境扫描完成，成功定位本地配置文件与运行环境");
     setStep2Status("success");
-    const count = (codex.is_installed ? 1 : 0) + (claude.is_installed ? 1 : 0);
-    addLog("HOST:DONE", `本机扫描完成，已锁定 ${count} 处本地 Agent 运行环境与配置上下文`, "success");
+    const count =
+      (codex.is_installed ? 1 : 0) +
+      (claude.is_installed ? 1 : 0) +
+      (workbuddy.is_installed ? 1 : 0);
+    addLog(
+      "HOST:DONE",
+      `本机扫描完成，已锁定 ${count} 处本地 Agent / 客户端运行环境与配置上下文`,
+      "success",
+    );
 
     // 默认展示已安装的 tab
-    if (!codex.is_installed && claude.is_installed) {
-      setActiveConfigTab("claude");
-      setEditTab("claude");
-    } else if (codex.is_installed && !claude.is_installed) {
+    if (codex.is_installed) {
       setActiveConfigTab("chatgpt");
       setEditTab("chatgpt");
+    } else if (claude.is_installed) {
+      setActiveConfigTab("claude");
+      setEditTab("claude");
+    } else if (workbuddy.is_installed) {
+      setActiveConfigTab("workbuddy");
+      setEditTab("workbuddy");
     }
 
     await delay(500);
@@ -343,28 +500,46 @@ export function InitializationModal({
     setStep3Status("running");
     setParseError("");
     setStepSubProgress(12);
-    setStepSubPhaseText("装载本地配置文件二进制流，启动 TOML / JSON 语法树解析...");
+    setStepSubPhaseText(
+      "装载本地配置文件二进制流，启动 TOML / JSON 语法树解析...",
+    );
     setCheckpoints({
       load_binary: "scanning",
       parse_url: "pending",
       verify_key: "pending",
       map_model: "pending",
     });
-    addLog("PARSE:INIT", "加载本地配置文件二进制数据流，校验文件编码与格式规范...", "scan");
+    addLog(
+      "PARSE:INIT",
+      "加载本地配置文件二进制数据流，校验文件编码与格式规范...",
+      "scan",
+    );
 
     if (!(await delay(700))) return false;
 
     let codex: AgentConfig;
     let claude: AgentConfig;
+    let workbuddy: WorkbuddyUIConfig;
     try {
-      [codex, claude] = await Promise.all([
+      [codex, claude, workbuddy] = await Promise.all([
         getCodexConfig(),
         getClaudeConfig(),
+        getWorkbuddyConfig(),
       ]);
-      setConfigData({ codex, claude });
-      setEditUrl(codex.base_url || "https://bob-api.com/");
-      setEditApiKey(codex.api_key || "");
-      setEditModel(codex.model || "");
+      setConfigData({ codex, claude, workbuddy });
+      if (activeConfigTab === "workbuddy") {
+        setEditUrl(workbuddy.base_url || "https://bob-api.com/v1");
+        setEditApiKey(workbuddy.api_key || "");
+        setEditModel(workbuddy.model || "gpt-5.6-sol");
+      } else if (activeConfigTab === "claude") {
+        setEditUrl(claude.base_url || "https://bob-api.com/");
+        setEditApiKey(claude.api_key || "");
+        setEditModel(claude.model || "");
+      } else {
+        setEditUrl(codex.base_url || "https://bob-api.com/");
+        setEditApiKey(codex.api_key || "");
+        setEditModel(codex.model || "");
+      }
     } catch (err) {
       setStep3Status("error");
       const msg = err instanceof Error ? err.message : String(err);
@@ -374,29 +549,57 @@ export function InitializationModal({
       return false;
     }
 
-    setCheckpoints((prev) => ({ ...prev, load_binary: "done", parse_url: "scanning" }));
+    setCheckpoints((prev) => ({
+      ...prev,
+      load_binary: "done",
+      parse_url: "scanning",
+    }));
     setStepSubProgress(45);
     setStepSubPhaseText("提取并结构化检验接口地址规范 (Base URL)...");
-    addLog("PARSE:URL", `解析接口 URL: ${codex.base_url || "https://bob-api.com/"} [协议合规]`, "info");
+    addLog(
+      "PARSE:URL",
+      `解析接口 URL: ${codex.base_url || "https://bob-api.com/"} [协议合规]`,
+      "info",
+    );
 
     if (!(await delay(750))) return false;
-    setCheckpoints((prev) => ({ ...prev, parse_url: "done", verify_key: "scanning" }));
+    setCheckpoints((prev) => ({
+      ...prev,
+      parse_url: "done",
+      verify_key: "scanning",
+    }));
     setStepSubProgress(75);
     setStepSubPhaseText("校验认证密钥 (API Key) 前缀特征与安全掩码...");
-    addLog("PARSE:KEY", `校验 API Key 密钥格式与散列完整性... [${codex.api_key ? "存在有效密钥" : "未配置密钥"}]`, "info");
+    addLog(
+      "PARSE:KEY",
+      `校验 API Key 密钥格式与散列完整性... [${codex.api_key || workbuddy.api_key ? "存在有效密钥" : "未配置密钥"}]`,
+      "info",
+    );
 
     if (!(await delay(750))) return false;
-    setCheckpoints((prev) => ({ ...prev, verify_key: "done", map_model: "scanning" }));
+    setCheckpoints((prev) => ({
+      ...prev,
+      verify_key: "done",
+      map_model: "scanning",
+    }));
     setStepSubProgress(95);
     setStepSubPhaseText("读取核心模型 (Model) 配置与调用链参数...");
-    addLog("PARSE:MODEL", `读取核心模型: Codex -> ${codex.model || "未配置 (空)"}, Claude -> ${claude.model || "未配置 (空)"}`, "match");
+    addLog(
+      "PARSE:MODEL",
+      `读取核心模型: Codex -> ${codex.model || "未配置"}, Claude -> ${claude.model || "未配置"}, WorkBuddy -> ${workbuddy.model || "未配置"}`,
+      "match",
+    );
 
     if (!(await delay(600))) return false;
     setCheckpoints((prev) => ({ ...prev, map_model: "done" }));
     setStepSubProgress(100);
     setStepSubPhaseText("核心配置解析校验完毕，所有必要参数已就绪");
     setStep3Status("success");
-    addLog("PARSE:DONE", "三大核心参数（url、apikey、model）解析呈现就绪，进入操作确认环节", "success");
+    addLog(
+      "PARSE:DONE",
+      "三大核心参数（url、apikey、model）解析呈现就绪，进入操作确认环节",
+      "success",
+    );
 
     await delay(500);
     return true;
@@ -406,7 +609,11 @@ export function InitializationModal({
   const runStep4 = useCallback(async (): Promise<boolean> => {
     setCurrentStep(4);
     setStep4Status("running");
-    addLog("CONFIRM", "已进入最终配置确认环节，等待用户核实或快速更新配置", "match");
+    addLog(
+      "CONFIRM",
+      "已进入最终配置确认环节，等待用户核实或快速更新配置",
+      "match",
+    );
     return true;
   }, [addLog]);
 
@@ -473,16 +680,20 @@ export function InitializationModal({
   }, [open, runPipeline]);
 
   // 切换编辑 Tab 时同步表单数据
-  const handleSwitchEditTab = (tab: "chatgpt" | "claude") => {
+  const handleSwitchEditTab = (tab: "chatgpt" | "claude" | "workbuddy") => {
     setEditTab(tab);
     if (tab === "chatgpt") {
       setEditUrl(configData.codex?.base_url || "https://bob-api.com/");
       setEditApiKey(configData.codex?.api_key || "");
       setEditModel(configData.codex?.model || "");
-    } else {
+    } else if (tab === "claude") {
       setEditUrl(configData.claude?.base_url || "https://bob-api.com/");
       setEditApiKey(configData.claude?.api_key || "");
       setEditModel(configData.claude?.model || "");
+    } else {
+      setEditUrl(configData.workbuddy?.base_url || "https://bob-api.com/v1");
+      setEditApiKey(configData.workbuddy?.api_key || "");
+      setEditModel(configData.workbuddy?.model || "gpt-5.6-sol");
     }
   };
 
@@ -495,22 +706,53 @@ export function InitializationModal({
     setSavingEdit(true);
     try {
       if (editTab === "chatgpt") {
-        await setCodexConfig(editUrl.trim(), editApiKey.trim(), editModel.trim());
+        await setCodexConfig(
+          editUrl.trim(),
+          editApiKey.trim(),
+          editModel.trim(),
+        );
         toast.success("ChatGPT (Codex) 配置已保存更新");
-      } else {
-        await setClaudeConfig(editUrl.trim(), editApiKey.trim(), editModel.trim());
+      } else if (editTab === "claude") {
+        await setClaudeConfig(
+          editUrl.trim(),
+          editApiKey.trim(),
+          editModel.trim(),
+        );
         toast.success("Claude Code 配置已保存更新");
+      } else {
+        const existing = configData.workbuddy;
+        await setWorkbuddyConfig({
+          url: editUrl.trim(),
+          api_key: editApiKey.trim(),
+          model: editModel.trim() || "gpt-5.6-sol",
+          supports_tool_call: existing?.supports_tool_call ?? true,
+          supports_images: existing?.supports_images ?? true,
+          supports_reasoning: existing?.supports_reasoning ?? true,
+          only_reasoning: existing?.only_reasoning ?? false,
+          can_disable_thinking: existing?.can_disable_thinking ?? true,
+          use_custom_protocol: existing?.use_custom_protocol ?? false,
+          default_effort: existing?.default_effort ?? null,
+          supported_efforts: existing?.supported_efforts ?? ["medium"],
+          max_input_tokens: existing?.max_input_tokens ?? 32768,
+          max_output_tokens: existing?.max_output_tokens ?? 32768,
+        });
+        toast.success("WorkBuddy 自定义模型配置已保存更新");
       }
 
       // 重新读取并刷新展示
-      const [newCodex, newClaude] = await Promise.all([
+      const [newCodex, newClaude, newWb] = await Promise.all([
         getCodexConfig(),
         getClaudeConfig(),
+        getWorkbuddyConfig(),
       ]);
-      setConfigData({ codex: newCodex, claude: newClaude });
+      setConfigData({ codex: newCodex, claude: newClaude, workbuddy: newWb });
       setConfirmationDecision("confirmed");
       setStep4Status("success");
-      addLog("CONFIG:SAVE", `${editTab === "chatgpt" ? "ChatGPT" : "Claude"} 配置已手动更新生效`, "success");
+      addLog(
+        "CONFIG:SAVE",
+        `${editTab === "chatgpt" ? "ChatGPT" : editTab === "claude" ? "Claude" : "WorkBuddy"} 配置已手动更新生效`,
+        "success",
+      );
     } catch (err) {
       toast.error(`保存修改失败: ${err}`);
     } finally {
@@ -529,7 +771,11 @@ export function InitializationModal({
   // 用户在未检测到本地 Agent 环境时，选择跳过检测并强行预先写入配置
   const handleForceContinueStep2 = () => {
     setStep2Status("success");
-    addLog("HOST:OVERRIDE", "用户选择跳过环境安装检测，强制进入配置初始化流程", "warn");
+    addLog(
+      "HOST:OVERRIDE",
+      "用户选择跳过环境安装检测，强制进入配置初始化流程",
+      "warn",
+    );
     toast.info("已跳过安装检测，将为您预先配置 Agent 核心参数");
     setCurrentStep(3);
     void runPipeline(3);
@@ -558,7 +804,23 @@ export function InitializationModal({
 
   const currentCodex = configData.codex;
   const currentClaude = configData.claude;
-  const activeCfg = activeConfigTab === "chatgpt" ? currentCodex : currentClaude;
+  const currentWorkbuddy = configData.workbuddy;
+  const activeCfg: AgentConfig | null =
+    activeConfigTab === "chatgpt"
+      ? currentCodex
+      : activeConfigTab === "claude"
+        ? currentClaude
+        : currentWorkbuddy
+          ? {
+              base_url: currentWorkbuddy.base_url,
+              api_key: currentWorkbuddy.api_key,
+              model: currentWorkbuddy.model,
+              config_exists: currentWorkbuddy.config_exists,
+              config_path: currentWorkbuddy.config_path,
+              is_installed: currentWorkbuddy.is_installed,
+              app_path: currentWorkbuddy.app_path,
+            }
+          : null;
 
   return (
     <AnimatePresence>
@@ -586,7 +848,8 @@ export function InitializationModal({
                     </span>
                   </h2>
                   <p className="text-[11px] text-slate-500 dark:text-gray-400">
-                    按顺序执行网络探针测试、本机环境与 Agent 配置文件深度扫描、核心参数解析与确认
+                    按顺序执行网络探针测试、本机环境与 Agent
+                    配置文件深度扫描、核心参数解析与确认
                   </p>
                 </div>
               </div>
@@ -644,7 +907,9 @@ export function InitializationModal({
                     subtitle="验证指定站点与网关链路"
                     status={step1Status}
                     isActive={currentStep === 1}
-                    subProgress={currentStep === 1 ? stepSubProgress : undefined}
+                    subProgress={
+                      currentStep === 1 ? stepSubProgress : undefined
+                    }
                     onClick={() => setCurrentStep(1)}
                   />
 
@@ -655,7 +920,9 @@ export function InitializationModal({
                     subtitle="深度遍历系统定位 Agent 文件"
                     status={step2Status}
                     isActive={currentStep === 2}
-                    subProgress={currentStep === 2 ? stepSubProgress : undefined}
+                    subProgress={
+                      currentStep === 2 ? stepSubProgress : undefined
+                    }
                     onClick={() => {
                       if (step1Status === "success") setCurrentStep(2);
                     }}
@@ -668,7 +935,9 @@ export function InitializationModal({
                     subtitle="校验 url、apikey、model"
                     status={step3Status}
                     isActive={currentStep === 3}
-                    subProgress={currentStep === 3 ? stepSubProgress : undefined}
+                    subProgress={
+                      currentStep === 3 ? stepSubProgress : undefined
+                    }
                     onClick={() => {
                       if (step2Status === "success") setCurrentStep(3);
                     }}
@@ -690,7 +959,8 @@ export function InitializationModal({
                 {/* 左下角小贴士 */}
                 <div className="p-3 rounded-xl bg-blue-50/70 border border-blue-100 text-blue-800 dark:bg-blue-950/30 dark:border-cyan-500/20 dark:text-cyan-300 text-[11px] leading-relaxed mt-4">
                   <p className="font-semibold flex items-center gap-1.5 mb-0.5">
-                    <Sparkles size={12} className="text-cyan-500" /> 本机自检扫描机制
+                    <Sparkles size={12} className="text-cyan-500" />{" "}
+                    本机自检扫描机制
                   </p>
                   工具正在深度扫描系统磁盘与用户运行环境，单点验证失败即终止；待完成全部核对并确认后进入软件。
                 </div>
@@ -707,13 +977,17 @@ export function InitializationModal({
                           {step1Status === "error" ? (
                             <WifiOff size={16} className="text-red-500" />
                           ) : (
-                            <Wifi size={16} className="text-blue-500 dark:text-cyan-400" />
+                            <Wifi
+                              size={16}
+                              className="text-blue-500 dark:text-cyan-400"
+                            />
                           )}
                           环节 1：本机网络与目标服务接入连通性探测
                         </h3>
                         {step1Status === "running" && (
                           <span className="flex items-center gap-1.5 text-xs text-blue-600 dark:text-cyan-400 font-medium">
-                            <Loader2 size={13} className="animate-spin" /> 正在探测网络...
+                            <Loader2 size={13} className="animate-spin" />{" "}
+                            正在探测网络...
                           </span>
                         )}
                         {step1Status === "success" && (
@@ -724,7 +998,8 @@ export function InitializationModal({
                       </div>
 
                       <p className="text-xs text-slate-500 dark:text-gray-400">
-                        通过向官方指定服务节点发送真实 HTTP 探针，精准检验本机网络、DNS 解析及代理环境能否正常连通。
+                        通过向官方指定服务节点发送真实 HTTP
+                        探针，精准检验本机网络、DNS 解析及代理环境能否正常连通。
                       </p>
 
                       {/* 扫描子进度指示 */}
@@ -741,26 +1016,36 @@ export function InitializationModal({
                           {
                             key: "dns_gateway",
                             label: "DNS 寻址与本机网络适配器",
-                            status: checkpoints.dns_gateway || (step1Status === "success" ? "done" : "pending"),
+                            status:
+                              checkpoints.dns_gateway ||
+                              (step1Status === "success" ? "done" : "pending"),
                             detail: "检查默认网关与本地 DNS 状态",
                           },
                           {
                             key: "proxy_tls",
                             label: "本机代理与 TLS 1.3 握手协议",
-                            status: checkpoints.proxy_tls || (step1Status === "success" ? "done" : "pending"),
+                            status:
+                              checkpoints.proxy_tls ||
+                              (step1Status === "success" ? "done" : "pending"),
                             detail: "配置 SSL/TLS 传输层安全上下文",
                           },
                           {
                             key: "endpoint_ping",
                             label: "BobAPI 目标服务可用性探测",
-                            status: checkpoints.endpoint_ping || (step1Status === "success" ? "done" : "pending"),
+                            status:
+                              checkpoints.endpoint_ping ||
+                              (step1Status === "success" ? "done" : "pending"),
                             detail: "https://bob-api.com/ (GET)",
                           },
                           {
                             key: "latency_eval",
                             label: "往返通信链路延迟评估",
-                            status: checkpoints.latency_eval || (step1Status === "success" ? "done" : "pending"),
-                            detail: networkData?.latency_ms ? `${networkData.latency_ms} ms` : "延迟分析",
+                            status:
+                              checkpoints.latency_eval ||
+                              (step1Status === "success" ? "done" : "pending"),
+                            detail: networkData?.latency_ms
+                              ? `${networkData.latency_ms} ms`
+                              : "延迟分析",
                           },
                         ]}
                       />
@@ -812,8 +1097,13 @@ export function InitializationModal({
                       {step1Status === "success" && (
                         <div className="p-3 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 dark:bg-emerald-500/10 dark:border-emerald-500/20 dark:text-emerald-300 text-xs flex items-center justify-between">
                           <div className="flex items-center gap-2">
-                            <CheckCircle2 size={16} className="text-emerald-600 flex-shrink-0" />
-                            <span>网络连通性检测通过！本机与指定服务端能够建立高速稳定通信。</span>
+                            <CheckCircle2
+                              size={16}
+                              className="text-emerald-600 flex-shrink-0"
+                            />
+                            <span>
+                              网络连通性检测通过！本机与指定服务端能够建立高速稳定通信。
+                            </span>
                           </div>
                           <button
                             onClick={() => setCurrentStep(2)}
@@ -854,12 +1144,16 @@ export function InitializationModal({
                     <div className="space-y-4">
                       <div className="flex items-center justify-between">
                         <h3 className="text-sm font-semibold text-slate-900 dark:text-white flex items-center gap-2">
-                          <FolderCheck size={16} className="text-blue-500 dark:text-cyan-400" />
+                          <FolderCheck
+                            size={16}
+                            className="text-blue-500 dark:text-cyan-400"
+                          />
                           环节 2：本机环境与 Agent 配置文件深度扫描
                         </h3>
                         {step2Status === "running" && (
                           <span className="flex items-center gap-1.5 text-xs text-blue-600 dark:text-cyan-400 font-medium">
-                            <Loader2 size={13} className="animate-spin" /> 正在深度扫描本机...
+                            <Loader2 size={13} className="animate-spin" />{" "}
+                            正在深度扫描本机...
                           </span>
                         )}
                         {step2Status === "success" && (
@@ -891,13 +1185,17 @@ export function InitializationModal({
                           {
                             key: "env_profile",
                             label: "系统运行环境变量与用户根目录",
-                            status: checkpoints.env_profile || (step2Status === "success" ? "done" : "pending"),
+                            status:
+                              checkpoints.env_profile ||
+                              (step2Status === "success" ? "done" : "pending"),
                             detail: "%USERPROFILE% 目录遍历",
                           },
                           {
                             key: "scan_codex",
                             label: "ChatGPT (Codex) 本地配置文件",
-                            status: checkpoints.scan_codex || (step2Status === "success" ? "done" : "pending"),
+                            status:
+                              checkpoints.scan_codex ||
+                              (step2Status === "success" ? "done" : "pending"),
                             detail:
                               checkpoints.scan_codex === "error"
                                 ? "未检测到安装"
@@ -912,7 +1210,9 @@ export function InitializationModal({
                           {
                             key: "scan_claude",
                             label: "Claude Code 运行环境与配置",
-                            status: checkpoints.scan_claude || (step2Status === "success" ? "done" : "pending"),
+                            status:
+                              checkpoints.scan_claude ||
+                              (step2Status === "success" ? "done" : "pending"),
                             detail:
                               checkpoints.scan_claude === "error"
                                 ? "未检测到安装"
@@ -925,9 +1225,28 @@ export function InitializationModal({
                                       : "正在检索运行环境...",
                           },
                           {
+                            key: "scan_workbuddy",
+                            label: "WorkBuddy 客户端与模型配置",
+                            status:
+                              checkpoints.scan_workbuddy ||
+                              (step2Status === "success" ? "done" : "pending"),
+                            detail:
+                              checkpoints.scan_workbuddy === "error"
+                                ? "未检测到安装"
+                                : configData.workbuddy?.config_exists
+                                  ? "已就绪 (models.json)"
+                                  : configData.workbuddy?.is_installed
+                                    ? "客户端已就绪，待写入模型"
+                                    : checkpoints.scan_workbuddy === "done"
+                                      ? "已就绪"
+                                      : "正在检索运行环境...",
+                          },
+                          {
                             key: "acl_verify",
                             label: "文件安全描述符与系统读写权限",
-                            status: checkpoints.acl_verify || (step2Status === "success" ? "done" : "pending"),
+                            status:
+                              checkpoints.acl_verify ||
+                              (step2Status === "success" ? "done" : "pending"),
                             detail: "本地 I/O 权限核验",
                           },
                         ]}
@@ -956,7 +1275,8 @@ export function InitializationModal({
                                       : "bg-rose-100 text-rose-800 dark:bg-rose-500/20 dark:text-rose-300",
                               )}
                             >
-                              {step2Status === "running" && !configData.codex ? (
+                              {step2Status === "running" &&
+                              !configData.codex ? (
                                 <>
                                   <Loader2 size={10} className="animate-spin" />
                                   扫描磁盘中
@@ -1001,7 +1321,10 @@ export function InitializationModal({
                                 title="复制路径"
                               >
                                 {copiedKey === "Codex 路径" ? (
-                                  <Check size={12} className="text-emerald-500" />
+                                  <Check
+                                    size={12}
+                                    className="text-emerald-500"
+                                  />
                                 ) : (
                                   <Copy size={12} />
                                 )}
@@ -1014,7 +1337,10 @@ export function InitializationModal({
                         <div className="p-3.5 rounded-xl border bg-slate-50/80 dark:bg-white/[0.02] border-slate-200 dark:border-white/10 space-y-2 relative">
                           <div className="flex items-center justify-between">
                             <span className="text-xs font-semibold text-slate-800 dark:text-gray-200 flex items-center gap-1.5">
-                              <ClaudeIcon size={14} className="text-purple-500" />
+                              <ClaudeIcon
+                                size={14}
+                                className="text-purple-500"
+                              />
                               Claude Code 配置文件
                             </span>
                             <span
@@ -1029,7 +1355,8 @@ export function InitializationModal({
                                       : "bg-rose-100 text-rose-800 dark:bg-rose-500/20 dark:text-rose-300",
                               )}
                             >
-                              {step2Status === "running" && !configData.claude ? (
+                              {step2Status === "running" &&
+                              !configData.claude ? (
                                 <>
                                   <Loader2 size={10} className="animate-spin" />
                                   扫描磁盘中
@@ -1074,7 +1401,91 @@ export function InitializationModal({
                                 title="复制路径"
                               >
                                 {copiedKey === "Claude 路径" ? (
-                                  <Check size={12} className="text-emerald-500" />
+                                  <Check
+                                    size={12}
+                                    className="text-emerald-500"
+                                  />
+                                ) : (
+                                  <Copy size={12} />
+                                )}
+                              </button>
+                            ) : null}
+                          </div>
+                        </div>
+
+                        {/* WorkBuddy 路径卡片 */}
+                        <div className="p-3.5 rounded-xl border bg-slate-50/80 dark:bg-white/[0.02] border-slate-200 dark:border-white/10 space-y-2 relative">
+                          <div className="flex items-center justify-between">
+                            <span className="text-xs font-semibold text-slate-800 dark:text-gray-200 flex items-center gap-1.5">
+                              <WorkbuddyIcon
+                                size={14}
+                                className="text-emerald-500"
+                              />
+                              WorkBuddy 配置文件
+                            </span>
+                            <span
+                              className={cn(
+                                "px-2 py-0.5 rounded text-[10px] font-semibold flex items-center gap-1",
+                                step2Status === "running" &&
+                                  !configData.workbuddy
+                                  ? "bg-blue-100 text-blue-700 dark:bg-blue-500/20 dark:text-blue-300"
+                                  : configData.workbuddy?.config_exists
+                                    ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-500/20 dark:text-emerald-300"
+                                    : configData.workbuddy?.is_installed
+                                      ? "bg-amber-100 text-amber-800 dark:bg-amber-500/20 dark:text-amber-300"
+                                      : "bg-rose-100 text-rose-800 dark:bg-rose-500/20 dark:text-rose-300",
+                              )}
+                            >
+                              {step2Status === "running" &&
+                              !configData.workbuddy ? (
+                                <>
+                                  <Loader2 size={10} className="animate-spin" />
+                                  扫描磁盘中
+                                </>
+                              ) : configData.workbuddy?.config_exists ? (
+                                <>
+                                  <CheckCircle2 size={10} />
+                                  已锁定路径
+                                </>
+                              ) : configData.workbuddy?.is_installed ? (
+                                <>
+                                  <AlertCircle size={10} />
+                                  待初始化 (客户端已就绪)
+                                </>
+                              ) : (
+                                <>
+                                  <XCircle size={10} />
+                                  未安装
+                                </>
+                              )}
+                            </span>
+                          </div>
+                          <div className="flex items-center justify-between gap-2 p-2 rounded-lg bg-slate-100 dark:bg-black/30 border border-slate-200/60 dark:border-white/5">
+                            <code className="text-[11px] font-mono text-slate-700 dark:text-gray-300 break-all select-all">
+                              {configData.workbuddy?.config_path
+                                ? configData.workbuddy.config_path
+                                : step2Status === "running"
+                                  ? "正在遍历磁盘检索 WorkBuddy 路径..."
+                                  : configData.workbuddy?.is_installed
+                                    ? "客户端已检测，待写入 ~/.workbuddy-ai/models.json"
+                                    : "未检测到安装环境，暂无配置文件"}
+                            </code>
+                            {configData.workbuddy?.config_path ? (
+                              <button
+                                onClick={() =>
+                                  copyToClipboard(
+                                    configData.workbuddy?.config_path || "",
+                                    "WorkBuddy 路径",
+                                  )
+                                }
+                                className="p-1 rounded hover:bg-slate-200 dark:hover:bg-white/10 text-slate-500 dark:text-gray-400 flex-shrink-0 cursor-pointer"
+                                title="复制路径"
+                              >
+                                {copiedKey === "WorkBuddy 路径" ? (
+                                  <Check
+                                    size={12}
+                                    className="text-emerald-500"
+                                  />
                                 ) : (
                                   <Copy size={12} />
                                 )}
@@ -1087,23 +1498,27 @@ export function InitializationModal({
                       {step2Status === "success" && (
                         <div className="p-3 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 dark:bg-emerald-500/10 dark:border-emerald-500/20 dark:text-emerald-300 text-xs flex items-center justify-between">
                           <div className="flex items-center gap-2">
-                            <CheckCircle2 size={16} className="text-emerald-600 flex-shrink-0" />
+                            <CheckCircle2
+                              size={16}
+                              className="text-emerald-600 flex-shrink-0"
+                            />
                             <span>
-                              {configData.codex?.is_installed && configData.claude?.is_installed
-                                ? "本机环境扫描完成！已准确定位 2 处本地 Agent 运行环境与配置文件。"
-                                : configData.claude?.is_installed
-                                  ? "本机扫描完成！已检测到 Claude Code 运行环境（ChatGPT / Codex 未安装）"
-                                  : configData.codex?.is_installed
-                                    ? "本机扫描完成！已检测到 ChatGPT (Codex) 运行环境（Claude 未安装）"
-                                    : "本机扫描通过！已准备预先配置 Agent 核心参数。"}
+                              {(configData.codex?.is_installed ? 1 : 0) +
+                                (configData.claude?.is_installed ? 1 : 0) +
+                                (configData.workbuddy?.is_installed ? 1 : 0) >
+                              1
+                                ? `本机环境扫描完成！已准确定位多个本地 Agent / 客户端运行环境与配置文件。`
+                                : configData.workbuddy?.is_installed
+                                  ? "本机扫描完成！已检测到 WorkBuddy 客户端运行环境"
+                                  : configData.claude?.is_installed
+                                    ? "本机扫描完成！已检测到 Claude Code 运行环境"
+                                    : configData.codex?.is_installed
+                                      ? "本机扫描完成！已检测到 ChatGPT (Codex) 运行环境"
+                                      : "本机扫描通过！已准备预先配置核心参数。"}
                             </span>
                           </div>
                           <button
                             onClick={() => {
-                              if (!configData.codex?.is_installed && configData.claude?.is_installed) {
-                                setActiveConfigTab("claude");
-                                setEditTab("claude");
-                              }
                               setCurrentStep(3);
                             }}
                             className="flex items-center gap-1 px-2.5 py-1 rounded bg-emerald-600 text-white font-medium text-[11px] hover:bg-emerald-700 transition cursor-pointer"
@@ -1118,7 +1533,10 @@ export function InitializationModal({
                         <div className="space-y-3">
                           <div className="p-3.5 rounded-xl bg-rose-50 border border-rose-200 text-rose-900 dark:bg-rose-500/10 dark:border-rose-500/20 dark:text-rose-300 text-xs space-y-2">
                             <div className="flex items-center gap-1.5 font-bold">
-                              <XCircle size={15} className="text-rose-600 dark:text-rose-400 flex-shrink-0" />
+                              <XCircle
+                                size={15}
+                                className="text-rose-600 dark:text-rose-400 flex-shrink-0"
+                              />
                               未检测到本地 Agent 运行环境与配置文件
                             </div>
                             <p className="text-[11px] leading-relaxed text-rose-700 dark:text-rose-300/90 whitespace-pre-line">
@@ -1126,14 +1544,24 @@ export function InitializationModal({
                             </p>
                             <div className="pt-1 border-t border-rose-200/60 dark:border-rose-500/20 text-[11px] text-slate-600 dark:text-gray-300 space-y-1.5">
                               <div className="font-semibold text-slate-800 dark:text-gray-200 flex items-center gap-1">
-                                <Terminal size={12} className="text-slate-500" />
+                                <Terminal
+                                  size={12}
+                                  className="text-slate-500"
+                                />
                                 常见快速安装指引：
                               </div>
                               <div className="flex flex-col sm:flex-row gap-2 font-mono text-[10px]">
                                 <div className="flex items-center justify-between gap-2 px-2.5 py-1 rounded bg-white dark:bg-black/30 border border-rose-200/60 dark:border-rose-500/20 flex-1">
-                                  <span className="truncate">Claude: npm i -g @anthropic-ai/claude-code</span>
+                                  <span className="truncate">
+                                    Claude: npm i -g @anthropic-ai/claude-code
+                                  </span>
                                   <button
-                                    onClick={() => copyToClipboard("npm i -g @anthropic-ai/claude-code", "Claude 安装命令")}
+                                    onClick={() =>
+                                      copyToClipboard(
+                                        "npm i -g @anthropic-ai/claude-code",
+                                        "Claude 安装命令",
+                                      )
+                                    }
                                     className="p-0.5 text-slate-400 hover:text-slate-700 dark:hover:text-white cursor-pointer"
                                     title="复制命令"
                                   >
@@ -1141,9 +1569,16 @@ export function InitializationModal({
                                   </button>
                                 </div>
                                 <div className="flex items-center justify-between gap-2 px-2.5 py-1 rounded bg-white dark:bg-black/30 border border-rose-200/60 dark:border-rose-500/20 flex-1">
-                                  <span className="truncate">Codex: npm i -g @openai/codex</span>
+                                  <span className="truncate">
+                                    Codex: npm i -g @openai/codex
+                                  </span>
                                   <button
-                                    onClick={() => copyToClipboard("npm i -g @openai/codex", "Codex 安装命令")}
+                                    onClick={() =>
+                                      copyToClipboard(
+                                        "npm i -g @openai/codex",
+                                        "Codex 安装命令",
+                                      )
+                                    }
                                     className="p-0.5 text-slate-400 hover:text-slate-700 dark:hover:text-white cursor-pointer"
                                     title="复制命令"
                                   >
@@ -1190,12 +1625,16 @@ export function InitializationModal({
                     <div className="space-y-4">
                       <div className="flex items-center justify-between">
                         <h3 className="text-sm font-semibold text-slate-900 dark:text-white flex items-center gap-2">
-                          <FileCode size={16} className="text-blue-500 dark:text-cyan-400" />
+                          <FileCode
+                            size={16}
+                            className="text-blue-500 dark:text-cyan-400"
+                          />
                           环节 3：核心配置信息读取与解析展示
                         </h3>
                         {step3Status === "running" && (
                           <span className="flex items-center gap-1.5 text-xs text-blue-600 dark:text-cyan-400 font-medium">
-                            <Loader2 size={13} className="animate-spin" /> 解析中...
+                            <Loader2 size={13} className="animate-spin" />{" "}
+                            解析中...
                           </span>
                         )}
                         {step3Status === "success" && (
@@ -1226,26 +1665,38 @@ export function InitializationModal({
                         checkpoints={[
                           {
                             key: "load_binary",
-                            label: activeCfg?.config_exists ? "装载本地配置文件二进制流" : "载入默认配置规范模板",
-                            status: checkpoints.load_binary || (step3Status === "success" ? "done" : "pending"),
-                            detail: activeCfg?.config_exists ? "语法树语法校验" : "空配置结构模板",
+                            label: activeCfg?.config_exists
+                              ? "装载本地配置文件二进制流"
+                              : "载入默认配置规范模板",
+                            status:
+                              checkpoints.load_binary ||
+                              (step3Status === "success" ? "done" : "pending"),
+                            detail: activeCfg?.config_exists
+                              ? "语法树语法校验"
+                              : "空配置结构模板",
                           },
                           {
                             key: "parse_url",
                             label: "结构化提取 Base URL 规范",
-                            status: checkpoints.parse_url || (step3Status === "success" ? "done" : "pending"),
+                            status:
+                              checkpoints.parse_url ||
+                              (step3Status === "success" ? "done" : "pending"),
                             detail: "接口网络地址合规性",
                           },
                           {
                             key: "verify_key",
                             label: "校验 API Key 前缀掩码结构",
-                            status: checkpoints.verify_key || (step3Status === "success" ? "done" : "pending"),
+                            status:
+                              checkpoints.verify_key ||
+                              (step3Status === "success" ? "done" : "pending"),
                             detail: "密钥完整性校验",
                           },
                           {
                             key: "map_model",
                             label: "读取核心推理模型 (Model)",
-                            status: checkpoints.map_model || (step3Status === "success" ? "done" : "pending"),
+                            status:
+                              checkpoints.map_model ||
+                              (step3Status === "success" ? "done" : "pending"),
                             detail: "模型配置合规性",
                           },
                         ]}
@@ -1293,6 +1744,26 @@ export function InitializationModal({
                             </span>
                           )}
                         </button>
+                        <button
+                          onClick={() => {
+                            setActiveConfigTab("workbuddy");
+                            setEditTab("workbuddy");
+                          }}
+                          className={cn(
+                            "flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition cursor-pointer",
+                            activeConfigTab === "workbuddy"
+                              ? "bg-white text-emerald-600 shadow-sm dark:bg-emerald-500/20 dark:text-emerald-300 font-bold"
+                              : "text-slate-600 dark:text-gray-400 hover:text-slate-900 dark:hover:text-white",
+                          )}
+                        >
+                          <WorkbuddyIcon size={13} />
+                          WorkBuddy
+                          {!configData.workbuddy?.is_installed && (
+                            <span className="text-[9px] px-1 py-0.2 rounded bg-slate-200 dark:bg-white/10 text-slate-500 dark:text-gray-400">
+                              未安装
+                            </span>
+                          )}
+                        </button>
                       </div>
 
                       {/* 核心配置展示卡片 (url, apikey, model) */}
@@ -1305,11 +1776,15 @@ export function InitializationModal({
                           </span>
                           <div className="flex-1 flex items-center justify-between px-2.5 py-1.5 rounded-lg bg-white dark:bg-black/40 border border-slate-200/80 dark:border-white/10 font-mono text-[11px]">
                             <span className="truncate">
-                              {activeCfg?.base_url || "未配置 (默认: https://bob-api.com/)"}
+                              {activeCfg?.base_url ||
+                                "未配置 (默认: https://bob-api.com/)"}
                             </span>
                             <button
                               onClick={() =>
-                                copyToClipboard(activeCfg?.base_url || "", "接口 URL")
+                                copyToClipboard(
+                                  activeCfg?.base_url || "",
+                                  "接口 URL",
+                                )
                               }
                               className="ml-2 text-slate-400 hover:text-slate-700 dark:hover:text-white"
                               title="复制"
@@ -1328,13 +1803,15 @@ export function InitializationModal({
                           <div className="flex-1 flex items-center justify-between px-2.5 py-1.5 rounded-lg bg-white dark:bg-black/40 border border-slate-200/80 dark:border-white/10 font-mono text-[11px]">
                             <span className="truncate">
                               {activeCfg?.api_key
-                                ? activeConfigTab === "chatgpt"
-                                  ? showCodexKey
-                                    ? activeCfg.api_key
-                                    : `${activeCfg.api_key.slice(0, 6)}••••••••••••${activeCfg.api_key.slice(-4)}`
-                                  : showClaudeKey
-                                    ? activeCfg.api_key
-                                    : `${activeCfg.api_key.slice(0, 6)}••••••••••••${activeCfg.api_key.slice(-4)}`
+                                ? (
+                                    activeConfigTab === "chatgpt"
+                                      ? showCodexKey
+                                      : activeConfigTab === "claude"
+                                        ? showClaudeKey
+                                        : showWorkbuddyKey
+                                  )
+                                  ? activeCfg.api_key
+                                  : `${activeCfg.api_key.slice(0, 6)}••••••••••••${activeCfg.api_key.slice(-4)}`
                                 : "未配置密钥 (空)"}
                             </span>
                             <div className="flex items-center gap-1.5 ml-2 flex-shrink-0">
@@ -1342,14 +1819,22 @@ export function InitializationModal({
                                 onClick={() => {
                                   if (activeConfigTab === "chatgpt") {
                                     setShowCodexKey(!showCodexKey);
-                                  } else {
+                                  } else if (activeConfigTab === "claude") {
                                     setShowClaudeKey(!showClaudeKey);
+                                  } else {
+                                    setShowWorkbuddyKey(!showWorkbuddyKey);
                                   }
                                 }}
                                 className="text-slate-400 hover:text-slate-700 dark:hover:text-white"
                                 title="切换可见性"
                               >
-                                {(activeConfigTab === "chatgpt" ? showCodexKey : showClaudeKey) ? (
+                                {(
+                                  activeConfigTab === "chatgpt"
+                                    ? showCodexKey
+                                    : activeConfigTab === "claude"
+                                      ? showClaudeKey
+                                      : showWorkbuddyKey
+                                ) ? (
                                   <EyeOff size={13} />
                                 ) : (
                                   <Eye size={13} />
@@ -1357,7 +1842,10 @@ export function InitializationModal({
                               </button>
                               <button
                                 onClick={() =>
-                                  copyToClipboard(activeCfg?.api_key || "", "API Key")
+                                  copyToClipboard(
+                                    activeCfg?.api_key || "",
+                                    "API Key",
+                                  )
                                 }
                                 className="text-slate-400 hover:text-slate-700 dark:hover:text-white"
                                 title="复制"
@@ -1388,7 +1876,10 @@ export function InitializationModal({
                             {activeCfg?.model ? (
                               <button
                                 onClick={() =>
-                                  copyToClipboard(activeCfg?.model || "", "模型名称")
+                                  copyToClipboard(
+                                    activeCfg?.model || "",
+                                    "模型名称",
+                                  )
                                 }
                                 className="ml-2 text-slate-400 hover:text-slate-700 dark:hover:text-white"
                                 title="复制"
@@ -1403,8 +1894,13 @@ export function InitializationModal({
                       {step3Status === "success" && (
                         <div className="p-3 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 dark:bg-emerald-500/10 dark:border-emerald-500/20 dark:text-emerald-300 text-xs flex items-center justify-between">
                           <div className="flex items-center gap-2">
-                            <CheckCircle2 size={16} className="text-emerald-600 flex-shrink-0" />
-                            <span>三大核心参数（url、apikey、model）已成功读取并呈现。</span>
+                            <CheckCircle2
+                              size={16}
+                              className="text-emerald-600 flex-shrink-0"
+                            />
+                            <span>
+                              三大核心参数（url、apikey、model）已成功读取并呈现。
+                            </span>
                           </div>
                           <button
                             onClick={() => setCurrentStep(4)}
@@ -1444,7 +1940,10 @@ export function InitializationModal({
                     <div className="space-y-4">
                       <div className="flex items-center justify-between">
                         <h3 className="text-sm font-semibold text-slate-900 dark:text-white flex items-center gap-2">
-                          <ShieldCheck size={16} className="text-blue-500 dark:text-cyan-400" />
+                          <ShieldCheck
+                            size={16}
+                            className="text-blue-500 dark:text-cyan-400"
+                          />
                           环节 4：配置信息检查与操作确认对话框
                         </h3>
                         {step4Status === "success" && (
@@ -1456,7 +1955,10 @@ export function InitializationModal({
 
                       <div className="p-4 rounded-xl border border-blue-200/80 bg-blue-50/50 dark:bg-blue-950/20 dark:border-cyan-500/30 space-y-3">
                         <div className="flex items-start gap-2.5">
-                          <AlertCircle size={18} className="text-blue-600 dark:text-cyan-400 flex-shrink-0 mt-0.5" />
+                          <AlertCircle
+                            size={18}
+                            className="text-blue-600 dark:text-cyan-400 flex-shrink-0 mt-0.5"
+                          />
                           <div>
                             <h4 className="text-xs font-bold text-slate-900 dark:text-white">
                               请核对由本机扫描抓取的核心配置参数
@@ -1480,7 +1982,10 @@ export function InitializationModal({
                           >
                             <div className="flex items-center justify-between">
                               <span className="text-xs font-bold flex items-center gap-1.5">
-                                <CheckCircle2 size={14} className="text-emerald-500" />
+                                <CheckCircle2
+                                  size={14}
+                                  className="text-emerald-500"
+                                />
                                 选项 A：配置无误
                               </span>
                               {confirmationDecision === "confirmed" && (
@@ -1506,7 +2011,10 @@ export function InitializationModal({
                           >
                             <div className="flex items-center justify-between">
                               <span className="text-xs font-bold flex items-center gap-1.5">
-                                <Edit3 size={14} className="text-blue-500 dark:text-cyan-400" />
+                                <Edit3
+                                  size={14}
+                                  className="text-blue-500 dark:text-cyan-400"
+                                />
                                 选项 B：需要修改配置
                               </span>
                               {confirmationDecision === "editing" && (
@@ -1514,7 +2022,8 @@ export function InitializationModal({
                               )}
                             </div>
                             <p className="text-[10px] text-slate-500 dark:text-gray-400 mt-1">
-                              立即在此对话框中对 url、apikey 或 model 进行快速修改并保存。
+                              立即在此对话框中对 url、apikey 或 model
+                              进行快速修改并保存。
                             </p>
                           </button>
                         </div>
@@ -1564,6 +2073,22 @@ export function InitializationModal({
                                   </span>
                                 )}
                               </button>
+                              <button
+                                onClick={() => handleSwitchEditTab("workbuddy")}
+                                className={cn(
+                                  "px-2.5 py-1 rounded font-medium transition cursor-pointer flex items-center gap-1",
+                                  editTab === "workbuddy"
+                                    ? "bg-white text-emerald-600 shadow-xs dark:bg-emerald-600 dark:text-white"
+                                    : "text-slate-600 dark:text-gray-400",
+                                )}
+                              >
+                                WorkBuddy
+                                {!configData.workbuddy?.is_installed && (
+                                  <span className="text-[9px] opacity-75">
+                                    (未安装)
+                                  </span>
+                                )}
+                              </button>
                             </div>
                           </div>
 
@@ -1608,7 +2133,9 @@ export function InitializationModal({
                               placeholder={
                                 editTab === "chatgpt"
                                   ? "gpt-4o / gpt-5.6-sol"
-                                  : "claude-3-7-sonnet-20250219"
+                                  : editTab === "claude"
+                                    ? "claude-3-7-sonnet-20250219"
+                                    : "gpt-5.6-sol"
                               }
                             />
                           </div>
@@ -1651,15 +2178,22 @@ export function InitializationModal({
               <div className="text-xs text-slate-500 dark:text-gray-400">
                 {step4Status === "success" ? (
                   <span className="text-emerald-600 dark:text-emerald-400 font-medium flex items-center gap-1.5">
-                    <CheckCircle2 size={14} /> 所有初始化环节检验通过，可点击右侧按钮进入主界面
+                    <CheckCircle2 size={14} />{" "}
+                    所有初始化环节检验通过，可点击右侧按钮进入主界面
                   </span>
-                ) : step1Status === "error" || step2Status === "error" || step3Status === "error" ? (
+                ) : step1Status === "error" ||
+                  step2Status === "error" ||
+                  step3Status === "error" ? (
                   <span className="text-red-600 dark:text-red-400 font-medium flex items-center gap-1.5">
-                    <AlertCircle size={14} /> 初始化异常中断，请解决当前环节错误后重试
+                    <AlertCircle size={14} />{" "}
+                    初始化异常中断，请解决当前环节错误后重试
                   </span>
                 ) : (
                   <span className="flex items-center gap-2">
-                    <Loader2 size={13} className="animate-spin text-blue-600 dark:text-cyan-400" />
+                    <Loader2
+                      size={13}
+                      className="animate-spin text-blue-600 dark:text-cyan-400"
+                    />
                     正在执行第 {currentStep} 环节扫描自检，请稍候...
                   </span>
                 )}
@@ -1773,12 +2307,18 @@ function RadarScannerHud({
           animate={{ scale: [0.7, 1.35], opacity: [0.8, 0] }}
           transition={{ repeat: Infinity, duration: 1.6, ease: "easeOut" }}
         />
-        <Scan size={18} className="text-cyan-600 dark:text-cyan-400 relative z-10 animate-pulse" />
+        <Scan
+          size={18}
+          className="text-cyan-600 dark:text-cyan-400 relative z-10 animate-pulse"
+        />
       </div>
       <div className="flex-1 min-w-0">
         <div className="flex items-center justify-between">
           <span className="text-xs font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
-            <Activity size={13} className="text-cyan-600 dark:text-cyan-400 animate-pulse" />
+            <Activity
+              size={13}
+              className="text-cyan-600 dark:text-cyan-400 animate-pulse"
+            />
             {label}
           </span>
           <span className="text-[10px] font-mono text-cyan-600 dark:text-cyan-400 animate-pulse font-semibold px-1.5 py-0.5 rounded bg-cyan-500/10 border border-cyan-500/20">
@@ -1805,7 +2345,10 @@ function ScanProgressBar({
     <div className="space-y-1.5 p-3 rounded-xl bg-slate-50/80 dark:bg-white/[0.02] border border-slate-200/80 dark:border-white/10">
       <div className="flex items-center justify-between text-xs">
         <span className="text-[11px] text-slate-700 dark:text-gray-300 font-medium truncate flex items-center gap-1.5">
-          <Loader2 size={12} className="animate-spin text-blue-600 dark:text-cyan-400 flex-shrink-0" />
+          <Loader2
+            size={12}
+            className="animate-spin text-blue-600 dark:text-cyan-400 flex-shrink-0"
+          />
           <span className="truncate">{statusText}</span>
         </span>
         <span className="text-[11px] font-mono font-bold text-blue-600 dark:text-cyan-400 ml-2 flex-shrink-0">
@@ -1856,10 +2399,16 @@ function ChecklistCard({
         >
           <div className="flex-shrink-0">
             {cp.status === "done" && (
-              <CheckCircle2 size={15} className="text-emerald-600 dark:text-emerald-400" />
+              <CheckCircle2
+                size={15}
+                className="text-emerald-600 dark:text-emerald-400"
+              />
             )}
             {cp.status === "scanning" && (
-              <Loader2 size={15} className="animate-spin text-blue-600 dark:text-cyan-400" />
+              <Loader2
+                size={15}
+                className="animate-spin text-blue-600 dark:text-cyan-400"
+              />
             )}
             {cp.status === "pending" && (
               <span className="w-3.5 h-3.5 rounded-full border-2 border-slate-300 dark:border-white/20 inline-block" />
@@ -1933,7 +2482,9 @@ function ScanTerminalConsole({
       {!collapsed && (
         <div className="p-3 font-mono text-[10.5px] leading-relaxed max-h-32 overflow-y-auto space-y-1 select-text">
           {logs.length === 0 ? (
-            <div className="text-slate-500 italic">初始化扫描引擎中，等待输出日志...</div>
+            <div className="text-slate-500 italic">
+              初始化扫描引擎中，等待输出日志...
+            </div>
           ) : (
             logs.map((log) => (
               <div key={log.id} className="flex items-start gap-2">
@@ -1943,7 +2494,8 @@ function ScanTerminalConsole({
                 <span
                   className={cn(
                     "px-1 py-0.2 rounded text-[9.5px] font-bold flex-shrink-0",
-                    log.type === "success" && "bg-emerald-500/20 text-emerald-300",
+                    log.type === "success" &&
+                      "bg-emerald-500/20 text-emerald-300",
                     log.type === "match" && "bg-cyan-500/20 text-cyan-300",
                     log.type === "scan" && "bg-blue-500/20 text-blue-300",
                     log.type === "warn" && "bg-amber-500/20 text-amber-300",
@@ -2017,8 +2569,7 @@ function StepIndicatorNode({
             "bg-emerald-500 text-white ring-4 ring-emerald-500/20",
           status === "running" &&
             "bg-blue-600 text-white ring-4 ring-blue-500/25 animate-pulse",
-          status === "error" &&
-            "bg-red-500 text-white ring-4 ring-red-500/20",
+          status === "error" && "bg-red-500 text-white ring-4 ring-red-500/20",
           status === "pending" &&
             "bg-white border-2 border-slate-300 text-slate-500 dark:bg-[#161926] dark:border-white/20 dark:text-gray-400",
         )}

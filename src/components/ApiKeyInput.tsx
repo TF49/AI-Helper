@@ -9,7 +9,8 @@ export interface ApiKeyInputProps {
   onChange: (v: string) => void;
   placeholder?: string;
   envVarName?: string;
-  accentColor?: "blue" | "purple";
+  hintText?: string;
+  accentColor?: "blue" | "purple" | "emerald";
 }
 
 export function ApiKeyInput({
@@ -17,6 +18,7 @@ export function ApiKeyInput({
   onChange,
   placeholder = "sk-...",
   envVarName,
+  hintText,
   accentColor = "blue",
 }: ApiKeyInputProps) {
   const [show, setShow] = useState(false);
@@ -50,12 +52,22 @@ export function ApiKeyInput({
     toast.info("已清空");
   };
 
-  const isBlue = accentColor === "blue";
+  const isEmerald = accentColor === "emerald";
+  const isPurple = accentColor === "purple";
 
   return (
     <div className="space-y-1.5">
       <div className="relative group">
-        <div className="absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400 dark:text-gray-500 group-focus-within:text-blue-500 transition-colors">
+        <div
+          className={cn(
+            "absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400 dark:text-gray-500 transition-colors",
+            isEmerald
+              ? "group-focus-within:text-emerald-500"
+              : isPurple
+                ? "group-focus-within:text-purple-500"
+                : "group-focus-within:text-blue-500",
+          )}
+        >
           <KeyRound size={15} />
         </div>
 
@@ -68,9 +80,11 @@ export function ApiKeyInput({
             "pl-10 pr-24 font-mono text-xs tracking-wider rounded-xl h-10",
             "bg-slate-50/80 dark:bg-[#141724]/80 border-slate-200 dark:border-white/10 text-slate-900 dark:text-gray-200",
             "transition-all duration-200 placeholder:text-slate-400 dark:placeholder:text-gray-600",
-            isBlue
-              ? "focus:bg-white dark:focus:bg-[#141724] focus:border-blue-500 focus:ring-1 focus:ring-blue-500/30"
-              : "focus:bg-white dark:focus:bg-[#141724] focus:border-purple-500 focus:ring-1 focus:ring-purple-500/30",
+            isEmerald
+              ? "focus:bg-white dark:focus:bg-[#141724] focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500/30"
+              : isPurple
+                ? "focus:bg-white dark:focus:bg-[#141724] focus:border-purple-500 focus:ring-1 focus:ring-purple-500/30"
+                : "focus:bg-white dark:focus:bg-[#141724] focus:border-blue-500 focus:ring-1 focus:ring-blue-500/30",
           )}
         />
 
@@ -101,9 +115,11 @@ export function ApiKeyInput({
               onClick={handlePaste}
               className={cn(
                 "flex items-center gap-1 text-[11px] px-2 py-0.5 rounded border font-medium transition-colors",
-                isBlue
-                  ? "border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100 dark:border-blue-500/30 dark:bg-blue-500/10 dark:text-blue-400"
-                  : "border-purple-200 bg-purple-50 text-purple-700 hover:bg-purple-100 dark:border-purple-500/30 dark:bg-purple-500/10 dark:text-purple-400",
+                isEmerald
+                  ? "border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-400"
+                  : isPurple
+                    ? "border-purple-200 bg-purple-50 text-purple-700 hover:bg-purple-100 dark:border-purple-500/30 dark:bg-purple-500/10 dark:text-purple-400"
+                    : "border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100 dark:border-blue-500/30 dark:bg-blue-500/10 dark:text-blue-400",
               )}
               title="一键粘贴剪贴板内容"
             >
@@ -127,14 +143,16 @@ export function ApiKeyInput({
       {/* 底部环境变量与长度提示 */}
       <div className="flex items-center justify-between px-1 text-[11px] text-slate-500 dark:text-gray-400">
         <span>
-          {envVarName && (
+          {hintText ? (
+            <span>{hintText}</span>
+          ) : envVarName ? (
             <>
               写入环境变量{" "}
               <code className="text-slate-700 dark:text-gray-300 font-mono font-medium">
                 {envVarName}
               </code>
             </>
-          )}
+          ) : null}
         </span>
         {value && (
           <span className="font-mono text-[10px] text-slate-400 dark:text-gray-500">

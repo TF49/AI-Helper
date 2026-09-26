@@ -33,11 +33,12 @@ pub async fn check_bob_api_network() -> NetworkStatus {
         Ok(response) => {
             let latency_ms = start.elapsed().as_millis() as u64;
             let status = response.status();
-            let reachable = status.is_success();
+            let status_code = status.as_u16();
+            let reachable = status_code < 500;
             NetworkStatus {
                 reachable,
                 target_url: BOB_API_URL.to_string(),
-                status_code: Some(status.as_u16()),
+                status_code: Some(status_code),
                 latency_ms: Some(latency_ms),
                 error_message: if reachable {
                     None

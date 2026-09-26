@@ -11,25 +11,28 @@ import {
   Clock,
   RotateCcw,
 } from "lucide-react";
-import { OpenAIIcon, ClaudeIcon } from "./BrandIcons";
+import { OpenAIIcon, ClaudeIcon, WorkbuddyIcon } from "./BrandIcons";
 import { toast } from "sonner";
 import {
   setCodexConfig,
   setClaudeConfig,
+  setWorkbuddyConfig,
   testCodexStream,
   testClaudeStream,
+  testWorkbuddyStream,
   checkAppProcessStatus,
   restartTargetApp,
 } from "../lib/api";
-import type { TestStreamEvent } from "../types";
+import type { TestStreamEvent, WorkbuddySavePayload } from "../types";
 
 export interface TerminalTestModalProps {
   open: boolean;
   onClose: () => void;
-  type: "codex" | "claude";
+  type: "codex" | "claude" | "workbuddy";
   url: string;
   apiKey: string;
   model: string;
+  workbuddyPayload?: WorkbuddySavePayload;
   onSuccess?: () => void;
 }
 
@@ -47,9 +50,12 @@ export function TerminalTestModal({
   url,
   apiKey,
   model,
+  workbuddyPayload,
   onSuccess,
 }: TerminalTestModalProps) {
-  const [status, setStatus] = useState<"running" | "success" | "error">("running");
+  const [status, setStatus] = useState<"running" | "success" | "error">(
+    "running",
+  );
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [streamingText, setStreamingText] = useState("");
   const [latency, setLatency] = useState<number | null>(null);
@@ -61,6 +67,7 @@ export function TerminalTestModal({
   const [chatgptRunning, setChatgptRunning] = useState(false);
   const [codexRunning, setCodexRunning] = useState(false);
   const [claudeRunning, setClaudeRunning] = useState(false);
+  const [workbuddyRunning, setWorkbuddyRunning] = useState(false);
   const [restartingTarget, setRestartingTarget] = useState<string | null>(null);
   const [showRestartCard, setShowRestartCard] = useState(false);
 
@@ -112,24 +119,33 @@ export function TerminalTestModal({
     };
   }, [countdown, onClose]);
 
-  const handleRestart = async (target: "chatgpt" | "codex" | "claude") => {
+  const handleRestart = async (
+    target: "chatgpt" | "codex" | "claude" | "workbuddy",
+  ) => {
     setRestartingTarget(target);
     const targetName =
       target === "chatgpt"
         ? "ChatGPT 桌面客户端"
         : target === "codex"
           ? "Codex CLI"
-          : "Claude Code CLI";
+          : target === "workbuddy"
+            ? "WorkBuddy 客户端"
+            : "Claude Code CLI";
 
     addLog(`🚀 正在执行 ${targetName} 重启/拉起流程...`, "info");
     try {
       const result = await restartTargetApp(target);
       addLog(`✓ ${result}`, "success");
-      addLog(`💡 目标应用已拉起，您可以继续测试重启其他应用或点击下方“完成”退出`, "dim");
+      addLog(
+        `💡 目标应用已拉起，您可以继续测试重启其他应用或点击下方“完成”退出`,
+        "dim",
+      );
       if (target === "chatgpt") setChatgptRunning(true);
       if (target === "codex") setCodexRunning(true);
       if (target === "claude") setClaudeRunning(true);
+      if (target === "workbuddy") setWorkbuddyRunning(true);
       toast.success(`${targetName} 操作成功！`);
+      setCountdown(5);
     } catch (err) {
       addLog(`❌ 重启失败: ${err}`, "error");
       toast.error(`重启失败: ${err}`);
@@ -153,9 +169,18 @@ export function TerminalTestModal({
     setLatency(null);
     setStatusCode(null);
 
-    const platformName = type === "codex" ? "ChatGPT (Codex)" : "Claude Code";
+    const platformName =
+      type === "codex"
+        ? "ChatGPT (Codex)"
+        : type === "workbuddy"
+          ? "WorkBuddy"
+          : "Claude Code";
     const protocolName =
-      type === "codex" ? "OpenAI Responses Protocol" : "Anthropic Messages Protocol";
+      type === "codex"
+        ? "OpenAI Responses Protocol"
+        : type === "workbuddy"
+          ? "OpenAI Chat Completions Protocol"
+          : "Anthropic Messages Protocol";
 
     addLog(`🚀 启动 ${platformName} 连通性测试与配置流程...`, "info");
     addLog(`目标协议: ${protocolName}`, "dim");
@@ -179,28 +204,87 @@ export function TerminalTestModal({
         }
       };
 
+      let testResult;
       if (type === "codex") {
-        await testCodexStream(url, apiKey.trim(), model.trim(), handleEvent);
+        testResult = await testCodexStream(
+          url,
+          apiKey.trim(),
+          model.trim(),
+          handleEvent,
+        );
+      } else if (type === "workbuddy") {
+        testResult = await testWorkbuddyStream(
+          url,
+          apiKey.trim(),
+          model.trim(),
+          handleEvent,
+        );
       } else {
-        await testClaudeStream(url, apiKey.trim(), model.trim(), handleEvent);
+        testResult = await testClaudeStream(
+          url,
+          apiKey.trim(),
+          model.trim(),
+          handleEvent,
+        );
       }
+
+      if (testResult.latencyMs !== undefined && testResult.latencyMs !== null) {
+        setLatency(testResult.latencyMs);
+      }
+      if (
+        testResult.statusCode !== undefined &&
+        testResult.statusCode !== null
+      ) {
+        setStatusCode(testResult.statusCode);
+      }
+      testSuccess = testResult.success;
 
       if (testSuccess) {
         // 保存配置
-        addLog(`💾 正在将配置写入本地配置文件与系统环境变量...`, "info");
-
         if (type === "codex") {
+          addLog(`💾 正在将配置写入本地配置文件与系统环境变量...`, "info");
           await setCodexConfig(url, apiKey.trim(), model.trim());
           addLog(`✓ 配置文件 ~/.codex/config.toml 已成功写入`, "success");
           addLog(`✓ 系统环境变量 CUSTOM_OPENAI_API_KEY 已更新`, "success");
+        } else if (type === "workbuddy") {
+          addLog(`💾 正在将配置明文保存至本地 models.json...`, "info");
+          if (workbuddyPayload) {
+            await setWorkbuddyConfig(workbuddyPayload);
+          } else {
+            await setWorkbuddyConfig({
+              url,
+              api_key: apiKey.trim(),
+              model: model.trim(),
+              supports_tool_call: true,
+              supports_images: true,
+              supports_reasoning: true,
+              only_reasoning: false,
+              can_disable_thinking: true,
+              use_custom_protocol: false,
+              default_effort: null,
+              supported_efforts: ["medium"],
+              max_input_tokens: 32768,
+              max_output_tokens: 32768,
+            });
+          }
+          addLog(
+            `✓ 配置文件 ~/.workbuddy-ai/models.json 已成功写入 (明文密钥，无需环境变量)`,
+            "success",
+          );
+          addLog(`💡 WorkBuddy 已通过内部热重载机制自动感知新模型`, "info");
         } else {
+          addLog(`💾 正在将配置写入本地配置文件与系统环境变量...`, "info");
           await setClaudeConfig(url, apiKey.trim(), model.trim());
           addLog(`✓ 配置文件 ~/.claude/settings.json 已成功写入`, "success");
-          addLog(`✓ 系统环境变量 ANTHROPIC_BASE_URL 与 Token 已更新`, "success");
+          addLog(
+            `✓ 系统环境变量 ANTHROPIC_BASE_URL 与 Token 已更新`,
+            "success",
+          );
         }
 
         // 探测目标客户端运行状态
         addLog(`🔍 正在检查目标应用与 CLI 运行状态...`, "dim");
+        let anyRunning = false;
         if (type === "codex") {
           const [gRun, xRun] = await Promise.all([
             checkAppProcessStatus("chatgpt").catch(() => false),
@@ -208,26 +292,50 @@ export function TerminalTestModal({
           ]);
           setChatgptRunning(gRun);
           setCodexRunning(xRun);
+          anyRunning = gRun || xRun;
           if (gRun) addLog(`💡 检测到 ChatGPT 桌面客户端正在运行中`, "info");
           if (xRun) addLog(`💡 检测到 Codex CLI 正在运行中`, "info");
-          if (!gRun && !xRun) addLog(`💡 当前未检测到运行中的 ChatGPT 客户端或 Codex 进程`, "dim");
+          if (!gRun && !xRun)
+            addLog(
+              `💡 当前未检测到运行中的 ChatGPT 客户端或 Codex 进程`,
+              "dim",
+            );
+        } else if (type === "workbuddy") {
+          const wbRun = await checkAppProcessStatus("workbuddy").catch(
+            () => false,
+          );
+          setWorkbuddyRunning(wbRun);
+          anyRunning = wbRun;
+          if (wbRun)
+            addLog(
+              `💡 检测到 WorkBuddy 正在运行中 (新模型已实时热重载)`,
+              "info",
+            );
+          else addLog(`💡 当前未检测到运行中的 WorkBuddy 进程`, "dim");
         } else {
           const cRun = await checkAppProcessStatus("claude").catch(() => false);
           setClaudeRunning(cRun);
+          anyRunning = cRun;
           if (cRun) addLog(`💡 检测到 Claude Code CLI 正在运行中`, "info");
           else addLog(`💡 当前未检测到运行中的 Claude Code 进程`, "dim");
+        }
+
+        if (!anyRunning) {
+          // 当前未在运行客户端，无需强制重启，8秒后自动关闭
+          setCountdown(8);
         }
 
         addLog(`👉 配置部署成功！请在下方确认是否立即重启客户端生效`, "info");
         setStatus("success");
         setShowRestartCard(true);
         onSuccess?.();
-        toast.success(
-          `${platformName} 连通性测试通过，配置已成功保存！`,
-        );
+        toast.success(`${platformName} 连通性测试通过，配置已成功保存！`);
       } else {
         setStatus("error");
-        addLog(`✗ 连通性测试未通过，本地配置未修改。请根据提示调整配置后重试。`, "error");
+        addLog(
+          `✗ 连通性测试未通过，本地配置未修改。请根据提示调整配置后重试。`,
+          "error",
+        );
         toast.error(`连通性测试失败，未保存配置`);
       }
     } catch (err) {
@@ -289,7 +397,12 @@ export function TerminalTestModal({
             <div className="flex items-center gap-2 text-xs font-mono text-slate-300">
               <Terminal size={14} className="text-blue-400" />
               <span className="font-semibold text-slate-200">
-                {type === "codex" ? "Codex" : "Claude Code"} 连通性测试与配置部署终端
+                {type === "codex"
+                  ? "Codex"
+                  : type === "workbuddy"
+                    ? "WorkBuddy"
+                    : "Claude Code"}{" "}
+                连通性测试与配置部署终端
               </span>
             </div>
           </div>
@@ -353,14 +466,19 @@ export function TerminalTestModal({
             {logs.map((log) => {
               let colorClass = "text-slate-300";
               if (log.level === "info") colorClass = "text-[#58a6ff]";
-              else if (log.level === "success") colorClass = "text-[#3fb950] font-medium";
+              else if (log.level === "success")
+                colorClass = "text-[#3fb950] font-medium";
               else if (log.level === "warn") colorClass = "text-[#d29922]";
-              else if (log.level === "error") colorClass = "text-[#f85149] font-medium";
+              else if (log.level === "error")
+                colorClass = "text-[#f85149] font-medium";
               else if (log.level === "response") colorClass = "text-[#a5d6ff]";
               else if (log.level === "dim") colorClass = "text-[#8b949e]";
 
               return (
-                <div key={log.id} className="flex items-start gap-2.5 break-all">
+                <div
+                  key={log.id}
+                  className="flex items-start gap-2.5 break-all"
+                >
                   <span className="text-[#484f58] select-none text-[11px] shrink-0 pt-0.5">
                     [{log.timestamp}]
                   </span>
@@ -387,7 +505,9 @@ export function TerminalTestModal({
             {/* 运行中终端光标 */}
             {status === "running" && !streamingText && (
               <div className="flex items-center gap-2 pt-1 text-[#8b949e]">
-                <span className="text-[#484f58] text-[11px]">[{getNowTime()}]</span>
+                <span className="text-[#484f58] text-[11px]">
+                  [{getNowTime()}]
+                </span>
                 <span className="text-yellow-400">正在与服务节点通信中</span>
                 <span className="inline-block w-2 h-3.5 bg-yellow-400 animate-pulse align-middle" />
               </div>
@@ -410,9 +530,13 @@ export function TerminalTestModal({
                   ? chatgptRunning || codexRunning
                     ? "检测到客户端/CLI 运行中"
                     : "当前未运行"
-                  : claudeRunning
-                    ? "检测到 CLI 运行中"
-                    : "当前未运行"}
+                  : type === "workbuddy"
+                    ? workbuddyRunning
+                      ? "检测到 WorkBuddy 运行中 (新模型已热重载生效)"
+                      : "当前未运行"
+                    : claudeRunning
+                      ? "检测到 CLI 运行中"
+                      : "当前未运行"}
               </span>
             </div>
 
@@ -433,7 +557,9 @@ export function TerminalTestModal({
                         <OpenAIIcon size={13} />
                       )}
                       <span>
-                        {chatgptRunning ? "重启 ChatGPT 客户端" : "启动 ChatGPT 客户端"}
+                        {chatgptRunning
+                          ? "重启 ChatGPT 客户端"
+                          : "启动 ChatGPT 客户端"}
                       </span>
                     </button>
 
@@ -450,10 +576,31 @@ export function TerminalTestModal({
                         <Terminal size={13} />
                       )}
                       <span>
-                        {codexRunning ? "重启 Codex CLI 终端" : "启动 Codex CLI 终端"}
+                        {codexRunning
+                          ? "重启 Codex CLI 终端"
+                          : "启动 Codex CLI 终端"}
                       </span>
                     </button>
                   </>
+                ) : type === "workbuddy" ? (
+                  <button
+                    type="button"
+                    onClick={() => void handleRestart("workbuddy")}
+                    disabled={restartingTarget !== null}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-medium transition-colors shadow-xs cursor-pointer disabled:opacity-60"
+                    title="重启 WorkBuddy 客户端"
+                  >
+                    {restartingTarget === "workbuddy" ? (
+                      <Loader2 size={13} className="animate-spin" />
+                    ) : (
+                      <WorkbuddyIcon size={13} />
+                    )}
+                    <span>
+                      {workbuddyRunning
+                        ? "重启 WorkBuddy 客户端"
+                        : "启动 WorkBuddy 客户端"}
+                    </span>
+                  </button>
                 ) : (
                   <button
                     type="button"
@@ -468,7 +615,9 @@ export function TerminalTestModal({
                       <ClaudeIcon size={13} />
                     )}
                     <span>
-                      {claudeRunning ? "重启 Claude Code 终端" : "启动 Claude Code 终端"}
+                      {claudeRunning
+                        ? "重启 Claude Code 终端"
+                        : "启动 Claude Code 终端"}
                     </span>
                   </button>
                 )}
@@ -494,7 +643,9 @@ export function TerminalTestModal({
             {status === "running" && (
               <>
                 <Loader2 size={16} className="animate-spin text-blue-400" />
-                <span className="text-slate-300">正在发送探测请求并验证网络握手...</span>
+                <span className="text-slate-300">
+                  正在发送探测请求并验证网络握手...
+                </span>
               </>
             )}
             {status === "success" && (

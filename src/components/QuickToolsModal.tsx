@@ -11,13 +11,13 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { openUrl } from "../lib/api";
-import { OpenAIIcon, ClaudeIcon } from "./BrandIcons";
+import { OpenAIIcon, ClaudeIcon, WorkbuddyIcon } from "./BrandIcons";
 import { ThemeToggle } from "./ThemeToggle";
 
 interface QuickToolsModalProps {
   open: boolean;
   onClose: () => void;
-  activeTab: "chatgpt" | "claude";
+  activeTab: "chatgpt" | "claude" | "workbuddy";
   currentUrl: string;
   currentKey: string;
   currentModel: string;
@@ -32,7 +32,9 @@ export function QuickToolsModal({
   currentModel,
 }: QuickToolsModalProps) {
   const [copiedCurl, setCopiedCurl] = useState(false);
-  const [selectedProtocol, setSelectedProtocol] = useState<"chatgpt" | "claude">(activeTab);
+  const [selectedProtocol, setSelectedProtocol] = useState<
+    "chatgpt" | "claude" | "workbuddy"
+  >(activeTab);
 
   useEffect(() => {
     setSelectedProtocol(activeTab);
@@ -43,13 +45,17 @@ export function QuickToolsModal({
   const effectiveKey = currentKey || "YOUR_API_KEY";
   const effectiveModel =
     currentModel ||
-    (selectedProtocol === "chatgpt" ? "gpt-4o" : "claude-3-7-sonnet-20250219");
+    (selectedProtocol === "claude"
+      ? "claude-3-7-sonnet-20250219"
+      : selectedProtocol === "workbuddy"
+        ? "gpt-5.6-sol"
+        : "gpt-4o");
   const base = currentUrl.endsWith("/") ? currentUrl : `${currentUrl}/`;
 
   const curlCommand =
-    selectedProtocol === "chatgpt"
-      ? `curl ${base}v1/chat/completions \\\n  -H "Content-Type: application/json" \\\n  -H "Authorization: Bearer ${effectiveKey}" \\\n  -d '{\n    "model": "${effectiveModel}",\n    "messages": [{"role": "user", "content": "Hi!"}]\n  }'`
-      : `curl ${base}v1/messages \\\n  -H "Content-Type: application/json" \\\n  -H "x-api-key: ${effectiveKey}" \\\n  -H "anthropic-version: 2023-06-01" \\\n  -d '{\n    "model": "${effectiveModel}",\n    "max_tokens": 100,\n    "messages": [{"role": "user", "content": "Hi!"}]\n  }'`;
+    selectedProtocol === "claude"
+      ? `curl ${base}v1/messages \\\n  -H "Content-Type: application/json" \\\n  -H "x-api-key: ${effectiveKey}" \\\n  -H "anthropic-version: 2023-06-01" \\\n  -d '{\n    "model": "${effectiveModel}",\n    "max_tokens": 100,\n    "messages": [{"role": "user", "content": "Hi!"}]\n  }'`
+      : `curl ${base}v1/chat/completions \\\n  -H "Content-Type: application/json" \\\n  -H "Authorization: Bearer ${effectiveKey}" \\\n  -d '{\n    "model": "${effectiveModel}",\n    "messages": [{"role": "user", "content": "Hi!"}]\n  }'`;
 
   const handleCopyCurl = async () => {
     try {
@@ -133,6 +139,18 @@ export function QuickToolsModal({
                     <ClaudeIcon size={11} />
                     Claude
                   </button>
+                  <button
+                    type="button"
+                    onClick={() => setSelectedProtocol("workbuddy")}
+                    className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md font-medium transition-colors cursor-pointer ${
+                      selectedProtocol === "workbuddy"
+                        ? "bg-emerald-600 text-white shadow-2xs"
+                        : "text-slate-600 dark:text-gray-400 hover:text-slate-900 dark:hover:text-white"
+                    }`}
+                  >
+                    <WorkbuddyIcon size={11} />
+                    WorkBuddy
+                  </button>
                 </div>
                 <button
                   type="button"
@@ -186,9 +204,21 @@ export function QuickToolsModal({
                 中的 <code className="font-mono">env.ANTHROPIC_AUTH_TOKEN</code>
                 。
               </p>
+              <p>
+                •{" "}
+                <strong className="text-slate-800 dark:text-gray-200">
+                  WorkBuddy
+                </strong>
+                : 自定义服务商模型配置保存在用户目录下的{" "}
+                <code className="text-emerald-600 dark:text-emerald-300 font-mono font-medium">
+                  ~/.workbuddy-ai/models.json
+                </code>
+                ，API Key
+                仅以明文形式直接保存在配置文件中（无需注入系统环境变量），支持客户端内部实时热重载。
+              </p>
               <p className="text-slate-400 dark:text-gray-500 text-[11px]">
-                提示：修改配置后，请彻底关闭并重启对应的客户端（Codex / Claude
-                CLI）以重新加载新配置。
+                提示：修改配置后，可通过应用与路径管理或主界面一键重启对应的客户端或
+                CLI 重新加载新配置。
               </p>
             </div>
           </div>

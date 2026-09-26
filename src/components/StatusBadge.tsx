@@ -1,5 +1,12 @@
 import { useState } from "react";
-import { FileCode, Check, Copy, RefreshCw, AlertCircle, CheckCircle2 } from "lucide-react";
+import {
+  FileCode,
+  Check,
+  Copy,
+  RefreshCw,
+  AlertCircle,
+  CheckCircle2,
+} from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "../lib/utils";
 
@@ -7,7 +14,7 @@ interface StatusBadgeProps {
   exists: boolean;
   path: string;
   onReload?: () => void;
-  accentColor?: "blue" | "purple";
+  accentColor?: "blue" | "purple" | "emerald";
   className?: string;
 }
 
@@ -48,7 +55,9 @@ export function StatusBadge({
             "w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0",
             accentColor === "blue"
               ? "bg-blue-100 text-blue-600 dark:bg-blue-500/20 dark:text-blue-400"
-              : "bg-purple-100 text-purple-600 dark:bg-purple-500/20 dark:text-purple-400",
+              : accentColor === "emerald"
+                ? "bg-emerald-100 text-emerald-600 dark:bg-emerald-500/20 dark:text-emerald-400"
+                : "bg-purple-100 text-purple-600 dark:bg-purple-500/20 dark:text-purple-400",
           )}
         >
           <FileCode size={15} />

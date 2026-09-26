@@ -11,10 +11,7 @@ import {
   ShieldCheck,
 } from "lucide-react";
 import { ClaudeIcon } from "./BrandIcons";
-import {
-  fetchClaudeModels,
-  getClaudeConfig,
-} from "../lib/api";
+import { fetchClaudeModels, getClaudeConfig } from "../lib/api";
 import { StatusBadge } from "./StatusBadge";
 import { NodeCardSelector } from "./NodeCardSelector";
 import { ApiKeyInput } from "./ApiKeyInput";
@@ -51,8 +48,8 @@ export function ClaudePanel() {
     setLoading(true);
     try {
       const cfg = await getClaudeConfig();
-      const loadedUrl = cfg.base_url;
-      if (loadedUrl && (PRESET_URLS as readonly string[]).includes(loadedUrl)) {
+      const loadedUrl = cfg.base_url?.trim();
+      if (loadedUrl) {
         setUrl(loadedUrl);
       } else {
         setUrl(PRESET_URLS[0]);
@@ -84,7 +81,6 @@ export function ClaudePanel() {
     setTestModalOpen(true);
   };
 
-
   if (loading) {
     return (
       <div className="flex flex-col items-center justify-center flex-1 h-full min-h-[300px] gap-3">
@@ -114,7 +110,8 @@ export function ClaudePanel() {
               </span>
             </div>
             <p className="text-xs text-slate-500 dark:text-gray-400 mt-0.5">
-              为 Claude Code 终端命令行工具配置反向代理网关、Auth Token 与默认模型
+              为 Claude Code 终端命令行工具配置反向代理网关、Auth Token
+              与默认模型
             </p>
           </div>
         </div>
@@ -186,13 +183,16 @@ export function ClaudePanel() {
               {!configExists ? (
                 <div className="flex items-start gap-1.5 p-2.5 rounded-lg bg-amber-500/10 border border-amber-500/20 text-amber-700 dark:text-amber-300 text-xs">
                   <ShieldAlert size={14} className="flex-shrink-0 mt-0.5" />
-                  <span>未检测到 Claude 配置文件，点击保存将自动在用户主目录中创建。</span>
+                  <span>
+                    未检测到 Claude 配置文件，点击保存将自动在用户主目录中创建。
+                  </span>
                 </div>
               ) : (
                 <div className="flex items-center gap-2 p-2.5 rounded-xl bg-slate-50/70 border border-slate-200/80 dark:bg-white/[0.03] dark:border-white/5 text-xs text-slate-500 dark:text-gray-400">
                   <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 flex-shrink-0" />
                   <span className="leading-relaxed">
-                    Claude Code 启动时将读取此文件设置 ANTHROPIC_AUTH_TOKEN 与 API URL。更新配置后重启相应终端即可生效。
+                    Claude Code 启动时将读取此文件设置 ANTHROPIC_AUTH_TOKEN 与
+                    API URL。更新配置后重启相应终端即可生效。
                   </span>
                 </div>
               )}
@@ -227,7 +227,10 @@ export function ClaudePanel() {
             </div>
 
             <div className="mt-3 flex items-center gap-2 p-2.5 rounded-xl bg-slate-50/70 border border-slate-200/80 dark:bg-white/[0.03] dark:border-white/5 text-xs text-slate-500 dark:text-gray-400">
-              <ShieldCheck size={14} className="text-purple-500 dark:text-purple-400 flex-shrink-0" />
+              <ShieldCheck
+                size={14}
+                className="text-purple-500 dark:text-purple-400 flex-shrink-0"
+              />
               <span className="leading-relaxed">
                 凭据仅加密储存于本地配置与当前环境，直接与所选专线通信，绝不中转第三方。
               </span>
@@ -297,7 +300,8 @@ export function ClaudePanel() {
           </div>
         </StarBorder>
         <p className="text-[11px] text-center text-slate-500 dark:text-gray-400 pt-2">
-          点击将唤起终端进行连通性测试，验证通过后自动写入本地 ~/.claude/settings.json
+          点击将唤起终端进行连通性测试，验证通过后自动写入本地
+          ~/.claude/settings.json
         </p>
       </div>
 
@@ -317,4 +321,3 @@ export function ClaudePanel() {
 }
 
 export default ClaudePanel;
-

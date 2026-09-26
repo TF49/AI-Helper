@@ -11,10 +11,7 @@ import {
   ShieldCheck,
 } from "lucide-react";
 import { OpenAIIcon } from "./BrandIcons";
-import {
-  fetchCodexModels,
-  getCodexConfig,
-} from "../lib/api";
+import { fetchCodexModels, getCodexConfig } from "../lib/api";
 import { StatusBadge } from "./StatusBadge";
 import { NodeCardSelector } from "./NodeCardSelector";
 import { ApiKeyInput } from "./ApiKeyInput";
@@ -52,8 +49,8 @@ export function ChatGPTPanel() {
     setLoading(true);
     try {
       const cfg = await getCodexConfig();
-      const loadedUrl = cfg.base_url;
-      if (loadedUrl && (PRESET_URLS as readonly string[]).includes(loadedUrl)) {
+      const loadedUrl = cfg.base_url?.trim();
+      if (loadedUrl) {
         setUrl(loadedUrl);
       } else {
         setUrl(PRESET_URLS[0]);
@@ -84,7 +81,6 @@ export function ChatGPTPanel() {
     }
     setTestModalOpen(true);
   };
-
 
   if (loading) {
     return (
@@ -187,13 +183,16 @@ export function ChatGPTPanel() {
               {!configExists ? (
                 <div className="flex items-start gap-1.5 p-2.5 rounded-lg bg-amber-500/10 border border-amber-500/20 text-amber-700 dark:text-amber-300 text-xs">
                   <ShieldAlert size={14} className="flex-shrink-0 mt-0.5" />
-                  <span>未检测到 Codex 配置文件，点击保存将自动在用户主目录中创建。</span>
+                  <span>
+                    未检测到 Codex 配置文件，点击保存将自动在用户主目录中创建。
+                  </span>
                 </div>
               ) : (
                 <div className="flex items-center gap-2 p-2.5 rounded-xl bg-slate-50/70 border border-slate-200/80 dark:bg-white/[0.03] dark:border-white/5 text-xs text-slate-500 dark:text-gray-400">
                   <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 flex-shrink-0" />
                   <span className="leading-relaxed">
-                    Codex 会在每次启动时自动加载此文件。更新配置后重启相应 IDE 或终端即可生效。
+                    Codex 会在每次启动时自动加载此文件。更新配置后重启相应 IDE
+                    或终端即可生效。
                   </span>
                 </div>
               )}
@@ -228,7 +227,10 @@ export function ChatGPTPanel() {
             </div>
 
             <div className="mt-3 flex items-center gap-2 p-2.5 rounded-xl bg-slate-50/70 border border-slate-200/80 dark:bg-white/[0.03] dark:border-white/5 text-xs text-slate-500 dark:text-gray-400">
-              <ShieldCheck size={14} className="text-blue-500 dark:text-blue-400 flex-shrink-0" />
+              <ShieldCheck
+                size={14}
+                className="text-blue-500 dark:text-blue-400 flex-shrink-0"
+              />
               <span className="leading-relaxed">
                 凭据仅加密储存于本地配置与当前环境，直接与所选专线通信，绝不中转第三方。
               </span>
@@ -298,7 +300,8 @@ export function ChatGPTPanel() {
           </div>
         </StarBorder>
         <p className="text-[11px] text-center text-slate-500 dark:text-gray-400 pt-2">
-          点击将唤起终端进行连通性测试，验证通过后自动写入本地 ~/.codex/config.toml 并设置环境变量
+          点击将唤起终端进行连通性测试，验证通过后自动写入本地
+          ~/.codex/config.toml 并设置环境变量
         </p>
       </div>
 
@@ -318,4 +321,3 @@ export function ChatGPTPanel() {
 }
 
 export default ChatGPTPanel;
-

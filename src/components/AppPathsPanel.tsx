@@ -18,7 +18,7 @@ import {
   ExternalLink,
   DownloadCloud,
 } from "lucide-react";
-import { ClaudeIcon, OpenAIIcon } from "./BrandIcons";
+import { ClaudeIcon, OpenAIIcon, WorkbuddyIcon } from "./BrandIcons";
 import {
   browseAppPath,
   checkAppProcessStatus,
@@ -102,25 +102,36 @@ export function AppPathsPanel() {
   const [claudePath, setClaudePath] = useState("");
   const [codexPath, setCodexPath] = useState("");
   const [chatgptPath, setChatgptPath] = useState("");
+  const [workbuddyPath, setWorkbuddyPath] = useState("");
 
   // 运行与探测状态
   const [claudeInfo, setClaudeInfo] = useState<DetectedPathInfo | null>(null);
   const [codexInfo, setCodexInfo] = useState<DetectedPathInfo | null>(null);
   const [chatgptInfo, setChatgptInfo] = useState<DetectedPathInfo | null>(null);
+  const [workbuddyInfo, setWorkbuddyInfo] = useState<DetectedPathInfo | null>(
+    null,
+  );
 
   const [claudeRunning, setClaudeRunning] = useState(false);
   const [codexRunning, setCodexRunning] = useState(false);
   const [chatgptRunning, setChatgptRunning] = useState(false);
+  const [workbuddyRunning, setWorkbuddyRunning] = useState(false);
 
   const [detectingType, setDetectingType] = useState<string | null>(null);
   const [launchingType, setLaunchingType] = useState<string | null>(null);
 
   // 手动安装与命令管理状态
   const [showManualInstallGuide, setShowManualInstallGuide] = useState(false);
-  const [guideActiveTab, setGuideActiveTab] = useState<"claude" | "codex" | "nodejs">("claude");
-  const [expandedCardInstall, setExpandedCardInstall] = useState<"claude" | "codex" | null>(null);
-  const [claudeSelectedInstallOption, setClaudeSelectedInstallOption] = useState("npm_latest");
-  const [codexSelectedInstallOption, setCodexSelectedInstallOption] = useState("npm_latest");
+  const [guideActiveTab, setGuideActiveTab] = useState<
+    "claude" | "codex" | "nodejs"
+  >("claude");
+  const [expandedCardInstall, setExpandedCardInstall] = useState<
+    "claude" | "codex" | null
+  >(null);
+  const [claudeSelectedInstallOption, setClaudeSelectedInstallOption] =
+    useState("npm_latest");
+  const [codexSelectedInstallOption, setCodexSelectedInstallOption] =
+    useState("npm_latest");
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [runningCmd, setRunningCmd] = useState<string | null>(null);
 
@@ -159,7 +170,6 @@ export function AppPathsPanel() {
     }
   }, [showManualInstallGuide]);
 
-
   // 加载已保存配置与探测运行状态
   const loadInitialData = async () => {
     setLoading(true);
@@ -168,16 +178,19 @@ export function AppPathsPanel() {
       setClaudePath(saved.claude_cli_path || "");
       setCodexPath(saved.codex_cli_path || "");
       setChatgptPath(saved.chatgpt_client_path || "");
+      setWorkbuddyPath(saved.workbuddy_client_path || "");
 
       // 并发检查当前运行状态
-      const [cRun, xRun, gRun] = await Promise.all([
+      const [cRun, xRun, gRun, wbRun] = await Promise.all([
         checkAppProcessStatus("claude").catch(() => false),
         checkAppProcessStatus("codex").catch(() => false),
         checkAppProcessStatus("chatgpt").catch(() => false),
+        checkAppProcessStatus("workbuddy").catch(() => false),
       ]);
       setClaudeRunning(cRun);
       setCodexRunning(xRun);
       setChatgptRunning(gRun);
+      setWorkbuddyRunning(wbRun);
     } catch (err) {
       toast.error(`读取路径配置失败: ${err}`);
     } finally {
@@ -194,7 +207,9 @@ export function AppPathsPanel() {
   }, []);
 
   // 单项自动探测
-  const handleDetectSingle = async (type: "claude" | "codex" | "chatgpt") => {
+  const handleDetectSingle = async (
+    type: "claude" | "codex" | "chatgpt" | "workbuddy",
+  ) => {
     setDetectingType(type);
     try {
       const info = await detectAppPath(type);
@@ -210,6 +225,10 @@ export function AppPathsPanel() {
         setChatgptInfo(info);
         if (info.path) setChatgptPath(info.path);
         setChatgptRunning(info.is_running);
+      } else if (type === "workbuddy") {
+        setWorkbuddyInfo(info);
+        if (info.path) setWorkbuddyPath(info.path);
+        setWorkbuddyRunning(info.is_running);
       }
 
       if (info.exists && info.path) {
@@ -217,7 +236,9 @@ export function AppPathsPanel() {
           `成功探测到 ${type.toUpperCase()} 路径: ${info.extra_info || "已就绪"}`,
         );
       } else {
-        toast.warning(`未在标准路径或环境变量中自动检测到 ${type.toUpperCase()}`);
+        toast.warning(
+          `未在标准路径或环境变量中自动检测到 ${type.toUpperCase()}`,
+        );
       }
     } catch (err) {
       toast.error(`探测失败: ${err}`);
@@ -244,6 +265,10 @@ export function AppPathsPanel() {
           setChatgptInfo(info);
           if (info.path) setChatgptPath(info.path);
           setChatgptRunning(info.is_running);
+        } else if (info.app_type === "workbuddy") {
+          setWorkbuddyInfo(info);
+          if (info.path) setWorkbuddyPath(info.path);
+          setWorkbuddyRunning(info.is_running);
         }
       }
       toast.success("已完成全部应用与 CLI 路径深度探测！");
@@ -255,13 +280,16 @@ export function AppPathsPanel() {
   };
 
   // 浏览选择文件
-  const handleBrowse = async (type: "claude" | "codex" | "chatgpt") => {
+  const handleBrowse = async (
+    type: "claude" | "codex" | "chatgpt" | "workbuddy",
+  ) => {
     try {
       const selected = await browseAppPath(type);
       if (selected) {
         if (type === "claude") setClaudePath(selected);
         if (type === "codex") setCodexPath(selected);
         if (type === "chatgpt") setChatgptPath(selected);
+        if (type === "workbuddy") setWorkbuddyPath(selected);
         toast.success(`已选择路径: ${selected}`);
       }
     } catch (err) {
@@ -277,6 +305,7 @@ export function AppPathsPanel() {
         claude_cli_path: claudePath.trim() || null,
         codex_cli_path: codexPath.trim() || null,
         chatgpt_client_path: chatgptPath.trim() || null,
+        workbuddy_client_path: workbuddyPath.trim() || null,
       };
       await saveAppPaths(cfg);
       toast.success("安装路径配置已保存至 ~/.ai-helper/app_paths.json");
@@ -288,7 +317,9 @@ export function AppPathsPanel() {
   };
 
   // 测试启动 / 重启目标
-  const handleLaunchOrRestart = async (type: "claude" | "codex" | "chatgpt") => {
+  const handleLaunchOrRestart = async (
+    type: "claude" | "codex" | "chatgpt" | "workbuddy",
+  ) => {
     setLaunchingType(type);
     try {
       const custom =
@@ -296,7 +327,9 @@ export function AppPathsPanel() {
           ? claudePath
           : type === "codex"
             ? codexPath
-            : chatgptPath;
+            : type === "workbuddy"
+              ? workbuddyPath
+              : chatgptPath;
 
       const result = await restartTargetApp(type, custom || undefined);
       toast.success(result);
@@ -311,6 +344,7 @@ export function AppPathsPanel() {
         if (type === "claude") setClaudeRunning(isRun);
         if (type === "codex") setCodexRunning(isRun);
         if (type === "chatgpt") setChatgptRunning(isRun);
+        if (type === "workbuddy") setWorkbuddyRunning(isRun);
         delete refreshTimersRef.current[type];
       }, 1000);
     } catch (err) {
@@ -348,7 +382,6 @@ export function AppPathsPanel() {
     }
   };
 
-
   if (loading) {
     return (
       <div className="flex flex-col items-center justify-center flex-1 h-full min-h-[300px] gap-3">
@@ -378,7 +411,8 @@ export function AppPathsPanel() {
               </span>
             </div>
             <p className="text-xs text-slate-500 dark:text-gray-400 mt-0.5">
-              自动探测、指定与验证 Claude CLI、Codex CLI 及 ChatGPT 桌面端可执行程序路径，保障重启与唤醒顺畅
+              自动探测、指定与验证 Claude CLI、Codex CLI 及 ChatGPT
+              桌面端可执行程序路径，保障重启与唤醒顺畅
             </p>
           </div>
         </div>
@@ -435,340 +469,371 @@ export function AppPathsPanel() {
               className="p-5 rounded-2xl border border-purple-300/80 dark:border-purple-500/30 bg-purple-50/30 dark:bg-[#15132a]/80 shadow-md animate-fade-in flex-shrink-0 min-h-fit"
               spotlightColor="rgba(168, 85, 247, 0.15)"
             >
-            <div className="flex flex-col gap-4">
-              {/* 标题栏 */}
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 pb-2.5 border-b border-purple-200/60 dark:border-purple-500/20">
-                <div className="flex items-center gap-2.5">
-                  <div className="w-8 h-8 rounded-lg bg-purple-100 text-purple-600 dark:bg-purple-500/20 dark:text-purple-400 flex items-center justify-center flex-shrink-0">
-                    <Terminal size={16} />
+              <div className="flex flex-col gap-4">
+                {/* 标题栏 */}
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 pb-2.5 border-b border-purple-200/60 dark:border-purple-500/20">
+                  <div className="flex items-center gap-2.5">
+                    <div className="w-8 h-8 rounded-lg bg-purple-100 text-purple-600 dark:bg-purple-500/20 dark:text-purple-400 flex items-center justify-center flex-shrink-0">
+                      <Terminal size={16} />
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs font-bold text-slate-900 dark:text-white">
+                          CLI 手动安装与更新命令中心
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-slate-500 dark:text-gray-400 mt-0.5">
+                        支持官方 CLI
+                        推荐安装命令一键复制及在终端直接运行安装与版本更新
+                      </p>
+                    </div>
                   </div>
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs font-bold text-slate-900 dark:text-white">
-                        CLI 手动安装与更新命令中心
+
+                  {/* 选项卡切换: Claude / Codex / Node.js 运行环境 */}
+                  <div className="flex items-center gap-1 p-0.5 rounded-xl bg-purple-100/60 dark:bg-black/40 border border-purple-200/60 dark:border-white/10 self-start sm:self-auto">
+                    <button
+                      type="button"
+                      onClick={() => setGuideActiveTab("claude")}
+                      className={cn(
+                        "px-3 py-1 rounded-lg text-xs font-medium transition-all cursor-pointer",
+                        guideActiveTab === "claude"
+                          ? "bg-purple-600 text-white shadow-xs"
+                          : "text-slate-700 dark:text-gray-300 hover:bg-white/50 dark:hover:bg-white/5",
+                      )}
+                    >
+                      Claude Code
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setGuideActiveTab("codex")}
+                      className={cn(
+                        "px-3 py-1 rounded-lg text-xs font-medium transition-all cursor-pointer",
+                        guideActiveTab === "codex"
+                          ? "bg-blue-600 text-white shadow-xs"
+                          : "text-slate-700 dark:text-gray-300 hover:bg-white/50 dark:hover:bg-white/5",
+                      )}
+                    >
+                      Codex CLI
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setGuideActiveTab("nodejs")}
+                      className={cn(
+                        "px-3 py-1 rounded-lg text-xs font-medium transition-all cursor-pointer",
+                        guideActiveTab === "nodejs"
+                          ? "bg-teal-600 text-white shadow-xs"
+                          : "text-slate-700 dark:text-gray-300 hover:bg-white/50 dark:hover:bg-white/5",
+                      )}
+                    >
+                      运行环境检测
+                    </button>
+                  </div>
+                </div>
+
+                {/* 选项卡内容: Claude Code */}
+                {guideActiveTab === "claude" && (
+                  <div className="space-y-2.5">
+                    <div className="flex items-center justify-between text-[11px] text-slate-500 dark:text-gray-400">
+                      <span>
+                        官方包名:{" "}
+                        <code className="font-mono text-purple-600 dark:text-purple-400 select-text">
+                          @anthropic-ai/claude-code
+                        </code>
                       </span>
+                      <button
+                        type="button"
+                        onClick={() => void handleDetectSingle("claude")}
+                        disabled={detectingType === "claude"}
+                        className="text-purple-600 dark:text-purple-400 hover:underline flex items-center gap-1 cursor-pointer disabled:opacity-60"
+                      >
+                        <Search
+                          size={11}
+                          className={
+                            detectingType === "claude" ? "animate-spin" : ""
+                          }
+                        />
+                        <span>检测本地是否已就绪</span>
+                      </button>
                     </div>
-                    <p className="text-[11px] text-slate-500 dark:text-gray-400 mt-0.5">
-                      支持官方 CLI 推荐安装命令一键复制及在终端直接运行安装与版本更新
-                    </p>
-                  </div>
-                </div>
 
-                {/* 选项卡切换: Claude / Codex / Node.js 运行环境 */}
-                <div className="flex items-center gap-1 p-0.5 rounded-xl bg-purple-100/60 dark:bg-black/40 border border-purple-200/60 dark:border-white/10 self-start sm:self-auto">
-                  <button
-                    type="button"
-                    onClick={() => setGuideActiveTab("claude")}
-                    className={cn(
-                      "px-3 py-1 rounded-lg text-xs font-medium transition-all cursor-pointer",
-                      guideActiveTab === "claude"
-                        ? "bg-purple-600 text-white shadow-xs"
-                        : "text-slate-700 dark:text-gray-300 hover:bg-white/50 dark:hover:bg-white/5",
-                    )}
-                  >
-                    Claude Code
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setGuideActiveTab("codex")}
-                    className={cn(
-                      "px-3 py-1 rounded-lg text-xs font-medium transition-all cursor-pointer",
-                      guideActiveTab === "codex"
-                        ? "bg-blue-600 text-white shadow-xs"
-                        : "text-slate-700 dark:text-gray-300 hover:bg-white/50 dark:hover:bg-white/5",
-                    )}
-                  >
-                    Codex CLI
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setGuideActiveTab("nodejs")}
-                    className={cn(
-                      "px-3 py-1 rounded-lg text-xs font-medium transition-all cursor-pointer",
-                      guideActiveTab === "nodejs"
-                        ? "bg-teal-600 text-white shadow-xs"
-                        : "text-slate-700 dark:text-gray-300 hover:bg-white/50 dark:hover:bg-white/5",
-                    )}
-                  >
-                    运行环境检测
-                  </button>
-                </div>
+                    <div className="grid grid-cols-1 gap-2">
+                      {CLAUDE_INSTALL_OPTIONS.map((opt) => (
+                        <div
+                          key={opt.id}
+                          className="p-2.5 rounded-xl border border-slate-200/90 dark:border-white/10 bg-white/70 dark:bg-black/30 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2.5"
+                        >
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2 mb-1">
+                              <span className="text-xs font-bold text-slate-900 dark:text-white">
+                                {opt.name}
+                              </span>
+                              {opt.badge && (
+                                <span className="text-[9px] font-medium px-1.5 py-0.2 rounded bg-purple-100 text-purple-700 border border-purple-200 dark:bg-purple-500/20 dark:text-purple-300 dark:border-purple-500/30">
+                                  {opt.badge}
+                                </span>
+                              )}
+                              <span className="text-[11px] text-slate-500 dark:text-gray-400 truncate">
+                                {opt.desc}
+                              </span>
+                            </div>
+                            <div className="px-2 py-1 rounded-lg bg-slate-900 dark:bg-black/70 text-purple-300 font-mono text-xs overflow-x-auto select-text">
+                              <code>{opt.command}</code>
+                            </div>
+                          </div>
+
+                          <div className="flex items-center gap-1.5 flex-shrink-0 justify-end self-end sm:self-center">
+                            <button
+                              type="button"
+                              onClick={() =>
+                                void handleCopyCommand(
+                                  opt.command,
+                                  `guide_claude_${opt.id}`,
+                                  "Claude Code 安装命令",
+                                )
+                              }
+                              className="px-2.5 py-1.5 rounded-lg border border-slate-200 dark:border-white/10 bg-white dark:bg-white/5 hover:bg-slate-50 dark:hover:bg-white/10 text-xs font-medium text-slate-700 dark:text-gray-200 flex items-center gap-1 transition-colors cursor-pointer"
+                              title="复制完整命令到剪贴板"
+                            >
+                              {copiedId === `guide_claude_${opt.id}` ? (
+                                <>
+                                  <Check
+                                    size={12}
+                                    className="text-emerald-500"
+                                  />
+                                  <span className="text-emerald-500">
+                                    已复制
+                                  </span>
+                                </>
+                              ) : (
+                                <>
+                                  <Copy size={12} />
+                                  <span>复制</span>
+                                </>
+                              )}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() =>
+                                void handleRunInTerminal(
+                                  opt.command,
+                                  "Claude Code 安装命令",
+                                )
+                              }
+                              disabled={runningCmd === opt.command}
+                              className="px-2.5 py-1.5 rounded-lg bg-purple-600 hover:bg-purple-700 text-white text-xs font-medium flex items-center gap-1 transition-colors cursor-pointer disabled:opacity-60"
+                              title="在独立控制台终端中拉起并自动执行"
+                            >
+                              <Play
+                                size={11}
+                                className={
+                                  runningCmd === opt.command
+                                    ? "animate-spin"
+                                    : ""
+                                }
+                              />
+                              <span>在终端运行</span>
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* 选项卡内容: Codex CLI */}
+                {guideActiveTab === "codex" && (
+                  <div className="space-y-2.5">
+                    <div className="flex items-center justify-between text-[11px] text-slate-500 dark:text-gray-400">
+                      <span>
+                        官方包名:{" "}
+                        <code className="font-mono text-blue-600 dark:text-blue-400 select-text">
+                          @openai/codex
+                        </code>
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => void handleDetectSingle("codex")}
+                        disabled={detectingType === "codex"}
+                        className="text-blue-600 dark:text-blue-400 hover:underline flex items-center gap-1 cursor-pointer disabled:opacity-60"
+                      >
+                        <Search
+                          size={11}
+                          className={
+                            detectingType === "codex" ? "animate-spin" : ""
+                          }
+                        />
+                        <span>检测本地是否已就绪</span>
+                      </button>
+                    </div>
+
+                    <div className="grid grid-cols-1 gap-2">
+                      {CODEX_INSTALL_OPTIONS.map((opt) => (
+                        <div
+                          key={opt.id}
+                          className="p-2.5 rounded-xl border border-slate-200/90 dark:border-white/10 bg-white/70 dark:bg-black/30 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2.5"
+                        >
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2 mb-1">
+                              <span className="text-xs font-bold text-slate-900 dark:text-white">
+                                {opt.name}
+                              </span>
+                              {opt.badge && (
+                                <span className="text-[9px] font-medium px-1.5 py-0.2 rounded bg-blue-100 text-blue-700 border border-blue-200 dark:bg-blue-500/20 dark:text-blue-300 dark:border-blue-500/30">
+                                  {opt.badge}
+                                </span>
+                              )}
+                              <span className="text-[11px] text-slate-500 dark:text-gray-400 truncate">
+                                {opt.desc}
+                              </span>
+                            </div>
+                            <div className="px-2 py-1 rounded-lg bg-slate-900 dark:bg-black/70 text-blue-300 font-mono text-xs overflow-x-auto select-text">
+                              <code>{opt.command}</code>
+                            </div>
+                          </div>
+
+                          <div className="flex items-center gap-1.5 flex-shrink-0 justify-end self-end sm:self-center">
+                            <button
+                              type="button"
+                              onClick={() =>
+                                void handleCopyCommand(
+                                  opt.command,
+                                  `guide_codex_${opt.id}`,
+                                  "Codex CLI 安装命令",
+                                )
+                              }
+                              className="px-2.5 py-1.5 rounded-lg border border-slate-200 dark:border-white/10 bg-white dark:bg-white/5 hover:bg-slate-50 dark:hover:bg-white/10 text-xs font-medium text-slate-700 dark:text-gray-200 flex items-center gap-1 transition-colors cursor-pointer"
+                              title="复制完整命令到剪贴板"
+                            >
+                              {copiedId === `guide_codex_${opt.id}` ? (
+                                <>
+                                  <Check
+                                    size={12}
+                                    className="text-emerald-500"
+                                  />
+                                  <span className="text-emerald-500">
+                                    已复制
+                                  </span>
+                                </>
+                              ) : (
+                                <>
+                                  <Copy size={12} />
+                                  <span>复制</span>
+                                </>
+                              )}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() =>
+                                void handleRunInTerminal(
+                                  opt.command,
+                                  "Codex CLI 安装命令",
+                                )
+                              }
+                              disabled={runningCmd === opt.command}
+                              className="px-2.5 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs font-medium flex items-center gap-1 transition-colors cursor-pointer disabled:opacity-60"
+                              title="在独立控制台终端中拉起并自动执行"
+                            >
+                              <Play
+                                size={11}
+                                className={
+                                  runningCmd === opt.command
+                                    ? "animate-spin"
+                                    : ""
+                                }
+                              />
+                              <span>在终端运行</span>
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* 选项卡内容: Node.js 运行环境 */}
+                {guideActiveTab === "nodejs" && (
+                  <div className="space-y-3">
+                    <div className="p-3 rounded-xl border border-teal-200 dark:border-teal-500/20 bg-teal-50/40 dark:bg-teal-950/20 text-xs text-slate-700 dark:text-gray-300 space-y-1.5">
+                      <div className="font-semibold text-teal-800 dark:text-teal-300 flex items-center gap-1.5">
+                        <span>📌 Node.js 运行环境要求</span>
+                      </div>
+                      <p className="text-[11px] leading-relaxed">
+                        Claude Code 与 Codex CLI 基于 Node.js
+                        全局模块运行，系统必须预先安装{" "}
+                        <strong>Node.js 18.0.0 LTS 或更高版本</strong>。
+                        安装完成后即可在终端直接执行 npm 全局安装命令。
+                      </p>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                      {NODE_CHECK_COMMANDS.map((item) => (
+                        <div
+                          key={item.id}
+                          className="p-2.5 rounded-xl border border-slate-200 dark:border-white/10 bg-white/70 dark:bg-black/30 flex items-center justify-between gap-2"
+                        >
+                          <div className="min-w-0">
+                            <div className="text-xs font-medium text-slate-900 dark:text-white">
+                              {item.name}
+                            </div>
+                            <code className="text-xs font-mono text-teal-600 dark:text-teal-400 select-text">
+                              {item.command}
+                            </code>
+                          </div>
+                          <div className="flex items-center gap-1">
+                            <button
+                              type="button"
+                              onClick={() =>
+                                void handleCopyCommand(
+                                  item.command,
+                                  item.id,
+                                  item.name,
+                                )
+                              }
+                              className="p-1.5 rounded-lg border border-slate-200 dark:border-white/10 hover:bg-slate-100 dark:hover:bg-white/10 text-slate-700 dark:text-gray-300 cursor-pointer"
+                              title="复制检查命令"
+                            >
+                              {copiedId === item.id ? (
+                                <Check size={12} className="text-emerald-500" />
+                              ) : (
+                                <Copy size={12} />
+                              )}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() =>
+                                void handleRunInTerminal(
+                                  item.command,
+                                  item.name,
+                                )
+                              }
+                              className="p-1.5 rounded-lg bg-teal-600 hover:bg-teal-700 text-white cursor-pointer"
+                              title="在终端运行测试命令"
+                            >
+                              <Play size={12} />
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+
+                    <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
+                      <span className="text-[11px] text-slate-500 dark:text-gray-400">
+                        尚未安装 Node.js？建议直接前往 Node.js 官方网站下载安装
+                        LTS 稳定版
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => void openUrl("https://nodejs.org/")}
+                        className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-teal-600 hover:bg-teal-700 text-white text-xs font-medium transition-colors cursor-pointer"
+                      >
+                        <span>下载 Node.js LTS 官网安装包</span>
+                        <ExternalLink size={12} />
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
-
-              {/* 选项卡内容: Claude Code */}
-              {guideActiveTab === "claude" && (
-                <div className="space-y-2.5">
-                  <div className="flex items-center justify-between text-[11px] text-slate-500 dark:text-gray-400">
-                    <span>
-                      官方包名: <code className="font-mono text-purple-600 dark:text-purple-400 select-text">@anthropic-ai/claude-code</code>
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() => void handleDetectSingle("claude")}
-                      disabled={detectingType === "claude"}
-                      className="text-purple-600 dark:text-purple-400 hover:underline flex items-center gap-1 cursor-pointer disabled:opacity-60"
-                    >
-                      <Search
-                        size={11}
-                        className={detectingType === "claude" ? "animate-spin" : ""}
-                      />
-                      <span>检测本地是否已就绪</span>
-                    </button>
-                  </div>
-
-                  <div className="grid grid-cols-1 gap-2">
-                    {CLAUDE_INSTALL_OPTIONS.map((opt) => (
-                      <div
-                        key={opt.id}
-                        className="p-2.5 rounded-xl border border-slate-200/90 dark:border-white/10 bg-white/70 dark:bg-black/30 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2.5"
-                      >
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2 mb-1">
-                            <span className="text-xs font-bold text-slate-900 dark:text-white">
-                              {opt.name}
-                            </span>
-                            {opt.badge && (
-                              <span className="text-[9px] font-medium px-1.5 py-0.2 rounded bg-purple-100 text-purple-700 border border-purple-200 dark:bg-purple-500/20 dark:text-purple-300 dark:border-purple-500/30">
-                                {opt.badge}
-                              </span>
-                            )}
-                            <span className="text-[11px] text-slate-500 dark:text-gray-400 truncate">
-                              {opt.desc}
-                            </span>
-                          </div>
-                          <div className="px-2 py-1 rounded-lg bg-slate-900 dark:bg-black/70 text-purple-300 font-mono text-xs overflow-x-auto select-text">
-                            <code>{opt.command}</code>
-                          </div>
-                        </div>
-
-                        <div className="flex items-center gap-1.5 flex-shrink-0 justify-end self-end sm:self-center">
-                          <button
-                            type="button"
-                            onClick={() =>
-                              void handleCopyCommand(
-                                opt.command,
-                                `guide_claude_${opt.id}`,
-                                "Claude Code 安装命令",
-                              )
-                            }
-                            className="px-2.5 py-1.5 rounded-lg border border-slate-200 dark:border-white/10 bg-white dark:bg-white/5 hover:bg-slate-50 dark:hover:bg-white/10 text-xs font-medium text-slate-700 dark:text-gray-200 flex items-center gap-1 transition-colors cursor-pointer"
-                            title="复制完整命令到剪贴板"
-                          >
-                            {copiedId === `guide_claude_${opt.id}` ? (
-                              <>
-                                <Check size={12} className="text-emerald-500" />
-                                <span className="text-emerald-500">已复制</span>
-                              </>
-                            ) : (
-                              <>
-                                <Copy size={12} />
-                                <span>复制</span>
-                              </>
-                            )}
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() =>
-                              void handleRunInTerminal(
-                                opt.command,
-                                "Claude Code 安装命令",
-                              )
-                            }
-                            disabled={runningCmd === opt.command}
-                            className="px-2.5 py-1.5 rounded-lg bg-purple-600 hover:bg-purple-700 text-white text-xs font-medium flex items-center gap-1 transition-colors cursor-pointer disabled:opacity-60"
-                            title="在独立控制台终端中拉起并自动执行"
-                          >
-                            <Play
-                              size={11}
-                              className={
-                                runningCmd === opt.command ? "animate-spin" : ""
-                              }
-                            />
-                            <span>在终端运行</span>
-                          </button>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {/* 选项卡内容: Codex CLI */}
-              {guideActiveTab === "codex" && (
-                <div className="space-y-2.5">
-                  <div className="flex items-center justify-between text-[11px] text-slate-500 dark:text-gray-400">
-                    <span>
-                      官方包名: <code className="font-mono text-blue-600 dark:text-blue-400 select-text">@openai/codex</code>
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() => void handleDetectSingle("codex")}
-                      disabled={detectingType === "codex"}
-                      className="text-blue-600 dark:text-blue-400 hover:underline flex items-center gap-1 cursor-pointer disabled:opacity-60"
-                    >
-                      <Search
-                        size={11}
-                        className={detectingType === "codex" ? "animate-spin" : ""}
-                      />
-                      <span>检测本地是否已就绪</span>
-                    </button>
-                  </div>
-
-                  <div className="grid grid-cols-1 gap-2">
-                    {CODEX_INSTALL_OPTIONS.map((opt) => (
-                      <div
-                        key={opt.id}
-                        className="p-2.5 rounded-xl border border-slate-200/90 dark:border-white/10 bg-white/70 dark:bg-black/30 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2.5"
-                      >
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2 mb-1">
-                            <span className="text-xs font-bold text-slate-900 dark:text-white">
-                              {opt.name}
-                            </span>
-                            {opt.badge && (
-                              <span className="text-[9px] font-medium px-1.5 py-0.2 rounded bg-blue-100 text-blue-700 border border-blue-200 dark:bg-blue-500/20 dark:text-blue-300 dark:border-blue-500/30">
-                                {opt.badge}
-                              </span>
-                            )}
-                            <span className="text-[11px] text-slate-500 dark:text-gray-400 truncate">
-                              {opt.desc}
-                            </span>
-                          </div>
-                          <div className="px-2 py-1 rounded-lg bg-slate-900 dark:bg-black/70 text-blue-300 font-mono text-xs overflow-x-auto select-text">
-                            <code>{opt.command}</code>
-                          </div>
-                        </div>
-
-                        <div className="flex items-center gap-1.5 flex-shrink-0 justify-end self-end sm:self-center">
-                          <button
-                            type="button"
-                            onClick={() =>
-                              void handleCopyCommand(
-                                opt.command,
-                                `guide_codex_${opt.id}`,
-                                "Codex CLI 安装命令",
-                              )
-                            }
-                            className="px-2.5 py-1.5 rounded-lg border border-slate-200 dark:border-white/10 bg-white dark:bg-white/5 hover:bg-slate-50 dark:hover:bg-white/10 text-xs font-medium text-slate-700 dark:text-gray-200 flex items-center gap-1 transition-colors cursor-pointer"
-                            title="复制完整命令到剪贴板"
-                          >
-                            {copiedId === `guide_codex_${opt.id}` ? (
-                              <>
-                                <Check size={12} className="text-emerald-500" />
-                                <span className="text-emerald-500">已复制</span>
-                              </>
-                            ) : (
-                              <>
-                                <Copy size={12} />
-                                <span>复制</span>
-                              </>
-                            )}
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() =>
-                              void handleRunInTerminal(
-                                opt.command,
-                                "Codex CLI 安装命令",
-                              )
-                            }
-                            disabled={runningCmd === opt.command}
-                            className="px-2.5 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs font-medium flex items-center gap-1 transition-colors cursor-pointer disabled:opacity-60"
-                            title="在独立控制台终端中拉起并自动执行"
-                          >
-                            <Play
-                              size={11}
-                              className={
-                                runningCmd === opt.command ? "animate-spin" : ""
-                              }
-                            />
-                            <span>在终端运行</span>
-                          </button>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {/* 选项卡内容: Node.js 运行环境 */}
-              {guideActiveTab === "nodejs" && (
-                <div className="space-y-3">
-                  <div className="p-3 rounded-xl border border-teal-200 dark:border-teal-500/20 bg-teal-50/40 dark:bg-teal-950/20 text-xs text-slate-700 dark:text-gray-300 space-y-1.5">
-                    <div className="font-semibold text-teal-800 dark:text-teal-300 flex items-center gap-1.5">
-                      <span>📌 Node.js 运行环境要求</span>
-                    </div>
-                    <p className="text-[11px] leading-relaxed">
-                      Claude Code 与 Codex CLI 基于 Node.js 全局模块运行，系统必须预先安装 <strong>Node.js 18.0.0 LTS 或更高版本</strong>。
-                      安装完成后即可在终端直接执行 npm 全局安装命令。
-                    </p>
-                  </div>
-
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                    {NODE_CHECK_COMMANDS.map((item) => (
-                      <div
-                        key={item.id}
-                        className="p-2.5 rounded-xl border border-slate-200 dark:border-white/10 bg-white/70 dark:bg-black/30 flex items-center justify-between gap-2"
-                      >
-                        <div className="min-w-0">
-                          <div className="text-xs font-medium text-slate-900 dark:text-white">
-                            {item.name}
-                          </div>
-                          <code className="text-xs font-mono text-teal-600 dark:text-teal-400 select-text">
-                            {item.command}
-                          </code>
-                        </div>
-                        <div className="flex items-center gap-1">
-                          <button
-                            type="button"
-                            onClick={() =>
-                              void handleCopyCommand(
-                                item.command,
-                                item.id,
-                                item.name,
-                              )
-                            }
-                            className="p-1.5 rounded-lg border border-slate-200 dark:border-white/10 hover:bg-slate-100 dark:hover:bg-white/10 text-slate-700 dark:text-gray-300 cursor-pointer"
-                            title="复制检查命令"
-                          >
-                            {copiedId === item.id ? (
-                              <Check size={12} className="text-emerald-500" />
-                            ) : (
-                              <Copy size={12} />
-                            )}
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() =>
-                              void handleRunInTerminal(item.command, item.name)
-                            }
-                            className="p-1.5 rounded-lg bg-teal-600 hover:bg-teal-700 text-white cursor-pointer"
-                            title="在终端运行测试命令"
-                          >
-                            <Play size={12} />
-                          </button>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-
-                  <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
-                    <span className="text-[11px] text-slate-500 dark:text-gray-400">
-                      尚未安装 Node.js？建议直接前往 Node.js 官方网站下载安装 LTS 稳定版
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() => void openUrl("https://nodejs.org/")}
-                      className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-teal-600 hover:bg-teal-700 text-white text-xs font-medium transition-colors cursor-pointer"
-                    >
-                      <span>下载 Node.js LTS 官网安装包</span>
-                      <ExternalLink size={12} />
-                    </button>
-                  </div>
-                </div>
-              )}
-            </div>
-          </SpotlightCard>
+            </SpotlightCard>
           </div>
         )}
 
@@ -860,7 +925,10 @@ export function AppPathsPanel() {
                   className="px-2.5 py-1.5 rounded-lg border border-purple-200 text-purple-700 bg-purple-50 hover:bg-purple-100 dark:border-purple-500/30 dark:bg-purple-500/10 dark:text-purple-300 text-xs font-medium flex items-center gap-1 cursor-pointer transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
                   title="自动探测 Claude CLI 路径"
                 >
-                  <Search size={12} className={detectingType === "claude" ? "animate-spin" : ""} />
+                  <Search
+                    size={12}
+                    className={detectingType === "claude" ? "animate-spin" : ""}
+                  />
                   <span>探测</span>
                 </button>
 
@@ -881,7 +949,10 @@ export function AppPathsPanel() {
                   className="px-2.5 py-1.5 rounded-lg bg-purple-600 hover:bg-purple-700 text-white text-xs font-medium flex items-center gap-1 cursor-pointer transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
                   title="在独立终端窗口启动/重启测试"
                 >
-                  <Play size={12} className={launchingType === "claude" ? "animate-spin" : ""} />
+                  <Play
+                    size={12}
+                    className={launchingType === "claude" ? "animate-spin" : ""}
+                  />
                   <span>测试启动</span>
                 </button>
               </div>
@@ -895,7 +966,10 @@ export function AppPathsPanel() {
               >
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <div className="flex items-center gap-1.5 text-xs font-semibold text-purple-900 dark:text-purple-300">
-                    <Terminal size={13} className="text-purple-600 dark:text-purple-400" />
+                    <Terminal
+                      size={13}
+                      className="text-purple-600 dark:text-purple-400"
+                    />
                     <span>Claude Code 手动安装与版本更新</span>
                   </div>
                 </div>
@@ -1116,7 +1190,10 @@ export function AppPathsPanel() {
                   className="px-2.5 py-1.5 rounded-lg border border-blue-200 text-blue-700 bg-blue-50 hover:bg-blue-100 dark:border-blue-500/30 dark:bg-blue-500/10 dark:text-blue-300 text-xs font-medium flex items-center gap-1 cursor-pointer transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
                   title="自动探测 Codex CLI 路径"
                 >
-                  <Search size={12} className={detectingType === "codex" ? "animate-spin" : ""} />
+                  <Search
+                    size={12}
+                    className={detectingType === "codex" ? "animate-spin" : ""}
+                  />
                   <span>探测</span>
                 </button>
 
@@ -1137,7 +1214,10 @@ export function AppPathsPanel() {
                   className="px-2.5 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs font-medium flex items-center gap-1 cursor-pointer transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
                   title="在独立终端窗口启动/重启测试"
                 >
-                  <Play size={12} className={launchingType === "codex" ? "animate-spin" : ""} />
+                  <Play
+                    size={12}
+                    className={launchingType === "codex" ? "animate-spin" : ""}
+                  />
                   <span>测试启动</span>
                 </button>
               </div>
@@ -1151,7 +1231,10 @@ export function AppPathsPanel() {
               >
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <div className="flex items-center gap-1.5 text-xs font-semibold text-blue-900 dark:text-blue-300">
-                    <Terminal size={13} className="text-blue-600 dark:text-blue-400" />
+                    <Terminal
+                      size={13}
+                      className="text-blue-600 dark:text-blue-400"
+                    />
                     <span>Codex CLI 手动安装与版本更新</span>
                   </div>
                 </div>
@@ -1348,7 +1431,12 @@ export function AppPathsPanel() {
                   className="px-2.5 py-1.5 rounded-lg border border-emerald-200 text-emerald-700 bg-emerald-50 hover:bg-emerald-100 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-300 text-xs font-medium flex items-center gap-1 cursor-pointer transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
                   title="自动探测 ChatGPT 客户端安装路径"
                 >
-                  <Search size={12} className={detectingType === "chatgpt" ? "animate-spin" : ""} />
+                  <Search
+                    size={12}
+                    className={
+                      detectingType === "chatgpt" ? "animate-spin" : ""
+                    }
+                  />
                   <span>探测</span>
                 </button>
 
@@ -1369,7 +1457,12 @@ export function AppPathsPanel() {
                   className="px-2.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-medium flex items-center gap-1 cursor-pointer transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
                   title="静默重启或拉起客户端"
                 >
-                  <Play size={12} className={launchingType === "chatgpt" ? "animate-spin" : ""} />
+                  <Play
+                    size={12}
+                    className={
+                      launchingType === "chatgpt" ? "animate-spin" : ""
+                    }
+                  />
                   <span>{chatgptRunning ? "重启客户端" : "启动客户端"}</span>
                 </button>
               </div>
@@ -1378,6 +1471,115 @@ export function AppPathsPanel() {
             {chatgptInfo?.extra_info && (
               <div className="text-[11px] text-emerald-600 dark:text-emerald-400 bg-emerald-50/50 dark:bg-emerald-500/10 px-2.5 py-1 rounded-lg border border-emerald-100 dark:border-emerald-500/20">
                 💡 {chatgptInfo.extra_info}
+              </div>
+            )}
+          </div>
+        </SpotlightCard>
+
+        {/* 卡片 4: WorkBuddy 客户端 */}
+        <SpotlightCard
+          className="p-5 rounded-2xl border border-slate-200/90 dark:border-white/10 bg-white/80 dark:bg-[#121524]/60 shadow-sm dark:shadow-none flex-shrink-0 min-h-fit"
+          spotlightColor="rgba(16, 185, 129, 0.12)"
+        >
+          <div className="flex flex-col gap-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-lg bg-emerald-100 text-emerald-600 dark:bg-emerald-500/20 dark:text-emerald-400 flex items-center justify-center flex-shrink-0">
+                  <WorkbuddyIcon size={16} />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-bold text-slate-900 dark:text-white">
+                      WorkBuddy 客户端路径
+                    </span>
+                    {workbuddyRunning && (
+                      <span className="inline-flex items-center gap-1 text-[10px] font-medium px-2 py-0.2 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 dark:bg-emerald-500/10 dark:text-emerald-300 dark:border-emerald-500/30">
+                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                        运行中
+                      </span>
+                    )}
+                  </div>
+                  <span className="text-[11px] text-slate-400 dark:text-gray-500 font-mono">
+                    Win32 可执行程序 (WorkBuddyAI.exe)
+                  </span>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2">
+                {workbuddyPath ? (
+                  <span className="text-[11px] text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
+                    <CheckCircle2 size={13} />
+                    <span>已就绪</span>
+                  </span>
+                ) : (
+                  <span className="text-[11px] text-amber-600 dark:text-amber-400 flex items-center gap-1">
+                    <AlertCircle size={13} />
+                    <span>待配置</span>
+                  </span>
+                )}
+              </div>
+            </div>
+
+            {/* 路径输入框与操作按键 */}
+            <div className="flex flex-col sm:flex-row gap-2 items-center">
+              <div className="relative flex-1 w-full">
+                <input
+                  type="text"
+                  value={workbuddyPath}
+                  onChange={(e) => setWorkbuddyPath(e.target.value)}
+                  placeholder="例如: E:\Developer Tool\Workbuddy\WorkBuddyAI\WorkBuddyAI.exe"
+                  className="w-full text-xs font-mono px-3 py-2 rounded-xl border border-slate-200 dark:border-white/10 bg-slate-50/70 dark:bg-black/30 text-slate-800 dark:text-gray-200 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                />
+              </div>
+
+              <div className="flex items-center gap-1.5 w-full sm:w-auto justify-end">
+                <button
+                  type="button"
+                  onClick={() => void handleDetectSingle("workbuddy")}
+                  disabled={detectingType === "workbuddy"}
+                  className="px-2.5 py-1.5 rounded-lg border border-emerald-200 text-emerald-700 bg-emerald-50 hover:bg-emerald-100 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-300 text-xs font-medium flex items-center gap-1 cursor-pointer transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+                  title="自动探测 WorkBuddy 客户端安装路径"
+                >
+                  <Search
+                    size={12}
+                    className={
+                      detectingType === "workbuddy" ? "animate-spin" : ""
+                    }
+                  />
+                  <span>探测</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => void handleBrowse("workbuddy")}
+                  className="px-2.5 py-1.5 rounded-lg border border-slate-200 dark:border-white/10 text-slate-700 dark:text-gray-300 hover:bg-slate-100 dark:hover:bg-white/5 text-xs font-medium flex items-center gap-1 cursor-pointer transition-colors"
+                  title="通过文件管理器浏览路径"
+                >
+                  <FolderOpen size={12} />
+                  <span>浏览</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => void handleLaunchOrRestart("workbuddy")}
+                  disabled={launchingType === "workbuddy"}
+                  className="px-2.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-medium flex items-center gap-1 cursor-pointer transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+                  title="静默重启或拉起客户端"
+                >
+                  <Play
+                    size={12}
+                    className={
+                      launchingType === "workbuddy" ? "animate-spin" : ""
+                    }
+                  />
+                  <span>{workbuddyRunning ? "重启客户端" : "启动客户端"}</span>
+                </button>
+              </div>
+            </div>
+
+            {workbuddyInfo?.extra_info && (
+              <div className="text-[11px] text-emerald-600 dark:text-emerald-400 bg-emerald-50/50 dark:bg-emerald-500/10 px-2.5 py-1 rounded-lg border border-emerald-100 dark:border-emerald-500/20">
+                💡 {workbuddyInfo.extra_info}
               </div>
             )}
           </div>

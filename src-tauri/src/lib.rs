@@ -9,6 +9,7 @@ mod model_fetch;
 mod network;
 mod process_manager;
 mod updater;
+mod workbuddy;
 
 #[tauri::command]
 fn get_app_paths() -> app_paths::AppPathsConfig {
@@ -26,6 +27,7 @@ fn detect_app_path(app_type: String) -> Result<app_paths::DetectedPathInfo, Stri
         "claude" => Ok(app_paths::detect_claude_cli_path()),
         "codex" => Ok(app_paths::detect_codex_cli_path()),
         "chatgpt" => Ok(app_paths::detect_chatgpt_client_path()),
+        "workbuddy" => Ok(app_paths::detect_workbuddy_client_path()),
         _ => Err(format!("未知应用类型: {}", app_type)),
     }
 }
@@ -93,6 +95,16 @@ fn set_claude_config(
 }
 
 #[tauri::command]
+fn get_workbuddy_config() -> Result<workbuddy::WorkbuddyUIConfig, error::AppError> {
+    workbuddy::get_workbuddy_config()
+}
+
+#[tauri::command]
+fn set_workbuddy_config(payload: workbuddy::WorkbuddySavePayload) -> Result<(), error::AppError> {
+    workbuddy::set_workbuddy_config(payload)
+}
+
+#[tauri::command]
 async fn check_for_updates() -> Result<updater::UpdateInfo, String> {
     updater::check_for_updates().await
 }
@@ -137,6 +149,16 @@ async fn test_claude_stream(
 }
 
 #[tauri::command]
+async fn test_workbuddy_stream(
+    url: String,
+    api_key: String,
+    model: String,
+    on_event: tauri::ipc::Channel<api_test::TestStreamEvent>,
+) -> api_test::ApiTestResult {
+    api_test::test_workbuddy_stream(url, api_key, model, on_event).await
+}
+
+#[tauri::command]
 async fn fetch_codex_models(
     url: String,
     api_key: String,
@@ -171,11 +193,12 @@ pub fn run() {
         .plugin(tauri_plugin_updater::Builder::default().build())
         .plugin(tauri_plugin_store::Builder::default().build())
         .setup(|app| {
-            let window = app.get_webview_window("main").unwrap();
-            let _ = window.maximize();
-            window.show().unwrap();
-            #[cfg(debug_assertions)]
-            window.open_devtools();
+            if let Some(window) = app.get_webview_window("main") {
+                let _ = window.maximize();
+                let _ = window.show();
+                #[cfg(debug_assertions)]
+                window.open_devtools();
+            }
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -183,12 +206,15 @@ pub fn run() {
             set_codex_config,
             get_claude_config,
             set_claude_config,
+            get_workbuddy_config,
+            set_workbuddy_config,
             check_for_updates,
             check_bob_api_network,
             test_codex_config,
             test_claude_config,
             test_codex_stream,
             test_claude_stream,
+            test_workbuddy_stream,
             fetch_codex_models,
             fetch_claude_models,
             open_url,

@@ -8,6 +8,8 @@ import type {
   FetchedModel,
   NetworkStatus,
   TestStreamEvent,
+  WorkbuddyUIConfig,
+  WorkbuddySavePayload,
 } from "../types";
 
 export async function getAppPaths(): Promise<AppPathsConfig> {
@@ -19,7 +21,7 @@ export async function saveAppPaths(config: AppPathsConfig): Promise<void> {
 }
 
 export async function detectAppPath(
-  appType: "claude" | "codex" | "chatgpt",
+  appType: "claude" | "codex" | "chatgpt" | "workbuddy",
 ): Promise<DetectedPathInfo> {
   return invoke<DetectedPathInfo>("detect_app_path", { appType });
 }
@@ -29,19 +31,19 @@ export async function detectAllAppPaths(): Promise<DetectedPathInfo[]> {
 }
 
 export async function browseAppPath(
-  appType: "claude" | "codex" | "chatgpt",
+  appType: "claude" | "codex" | "chatgpt" | "workbuddy",
 ): Promise<string | null> {
   return invoke<string | null>("browse_app_path", { appType });
 }
 
 export async function checkAppProcessStatus(
-  appType: "claude" | "codex" | "chatgpt",
+  appType: "claude" | "codex" | "chatgpt" | "workbuddy",
 ): Promise<boolean> {
   return invoke<boolean>("check_app_process_status", { appType });
 }
 
 export async function restartTargetApp(
-  appType: "claude" | "codex" | "chatgpt",
+  appType: "claude" | "codex" | "chatgpt" | "workbuddy",
   customPath?: string,
 ): Promise<string> {
   return invoke<string>("restart_target_app", { appType, customPath });
@@ -69,6 +71,16 @@ export async function setClaudeConfig(
   model?: string,
 ): Promise<void> {
   return invoke("set_claude_config", { url, apiKey, model });
+}
+
+export async function getWorkbuddyConfig(): Promise<WorkbuddyUIConfig> {
+  return invoke<WorkbuddyUIConfig>("get_workbuddy_config");
+}
+
+export async function setWorkbuddyConfig(
+  payload: WorkbuddySavePayload,
+): Promise<void> {
+  return invoke("set_workbuddy_config", { payload });
 }
 
 export async function checkBobApiNetwork(): Promise<NetworkStatus> {
@@ -129,6 +141,20 @@ export async function testClaudeStream(
   });
 }
 
+export async function testWorkbuddyStream(
+  url: string,
+  apiKey: string,
+  model: string,
+  onEvent: (event: TestStreamEvent) => void,
+): Promise<ApiTestResult> {
+  const channel = new Channel<TestStreamEvent>(onEvent);
+  return invoke<ApiTestResult>("test_workbuddy_stream", {
+    url,
+    apiKey,
+    model,
+    onEvent: channel,
+  });
+}
 
 export async function fetchCodexModels(
   url: string,
@@ -169,6 +195,3 @@ export async function openUrl(url: string): Promise<boolean> {
 export async function executeInTerminal(command: string): Promise<string> {
   return invoke<string>("execute_in_terminal", { command });
 }
-
-
-

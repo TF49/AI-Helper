@@ -8,6 +8,8 @@ pub struct AppPathsConfig {
     pub claude_cli_path: Option<String>,
     pub codex_cli_path: Option<String>,
     pub chatgpt_client_path: Option<String>,
+    #[serde(default)]
+    pub workbuddy_client_path: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -113,6 +115,14 @@ fn matches_process(
             name_lower == "codex.exe"
                 || name_lower == "codex"
                 || (name_lower == "node.exe" && cmd_line.contains("codex"))
+        }
+        "workbuddy" => {
+            name_lower == "workbuddyai.exe"
+                || name_lower == "workbuddyai"
+                || name_lower == "workbuddy.exe"
+                || name_lower == "workbuddy"
+                || cmd_line.contains("workbuddyai")
+                || cmd_line.contains("workbuddy")
         }
         _ => false,
     }
@@ -448,6 +458,51 @@ pub fn detect_chatgpt_client_path() -> DetectedPathInfo {
     detect_chatgpt_client_path_internal(is_running, running_exe)
 }
 
+/// 探测 WorkBuddy 客户端路径 (内部复用进程扫描结果)
+pub fn detect_workbuddy_client_path_internal(
+    is_running: bool,
+    running_exe: Option<PathBuf>,
+) -> DetectedPathInfo {
+    if let Some(path) = running_exe {
+        return DetectedPathInfo {
+            app_type: "workbuddy".to_string(),
+            path: path.to_string_lossy().to_string(),
+            exists: true,
+            source: "running_process".to_string(),
+            is_running,
+            extra_info: Some("探测自当前运行中进程".to_string()),
+        };
+    }
+
+    let (exists, path) = crate::workbuddy::detect_workbuddy_installation();
+    let extra_info = if let Some(ref p) = path {
+        Some(format!("已定位到 WorkBuddy 可执行文件 ({})", p))
+    } else if exists {
+        Some("检测到 WorkBuddy 配置文件目录".to_string())
+    } else {
+        None
+    };
+
+    DetectedPathInfo {
+        app_type: "workbuddy".to_string(),
+        path: path.unwrap_or_default(),
+        exists,
+        source: if exists {
+            "standard_dir".to_string()
+        } else {
+            "not_found".to_string()
+        },
+        is_running,
+        extra_info,
+    }
+}
+
+/// 探测 WorkBuddy 客户端路径
+pub fn detect_workbuddy_client_path() -> DetectedPathInfo {
+    let (is_running, running_exe) = inspect_target_process("workbuddy");
+    detect_workbuddy_client_path_internal(is_running, running_exe)
+}
+
 /// 单次扫描系统进程树，高效全量探测所有应用路径
 pub fn detect_all_app_paths() -> Vec<DetectedPathInfo> {
     let mut system = System::new();
@@ -456,11 +511,13 @@ pub fn detect_all_app_paths() -> Vec<DetectedPathInfo> {
     let (claude_run, claude_exe) = inspect_target_process_with_system("claude", &system);
     let (codex_run, codex_exe) = inspect_target_process_with_system("codex", &system);
     let (chatgpt_run, chatgpt_exe) = inspect_target_process_with_system("chatgpt", &system);
+    let (workbuddy_run, workbuddy_exe) = inspect_target_process_with_system("workbuddy", &system);
 
     vec![
         detect_claude_cli_path_internal(claude_run, claude_exe),
         detect_codex_cli_path_internal(codex_run, codex_exe),
         detect_chatgpt_client_path_internal(chatgpt_run, chatgpt_exe),
+        detect_workbuddy_client_path_internal(workbuddy_run, workbuddy_exe),
     ]
 }
 
@@ -486,6 +543,11 @@ pub fn browse_path_dialog(app_type: &str) -> Result<Option<String>, String> {
             "命令与可执行文件 (*.cmd;*.exe;*.bat)",
             "*.cmd;*.exe;*.bat",
             "选择 Codex CLI 启动入口 (codex.cmd / codex.exe)",
+        ),
+        "workbuddy" => (
+            "可执行文件 (*.exe)",
+            "*.exe",
+            "选择 WorkBuddy 客户端路径 (WorkBuddyAI.exe)",
         ),
         _ => return Err(format!("不支持的应用类型选择: {}", app_type)),
     };
@@ -551,11 +613,21 @@ mod tests {
     }
 
     #[test]
+    fn test_detect_workbuddy_client_path_does_not_panic() {
+        let detected = detect_workbuddy_client_path();
+        assert_eq!(detected.app_type, "workbuddy");
+        println!("Detected WorkBuddy: {:?}", detected);
+    }
+
+    #[test]
     fn test_app_paths_config_serde() {
         let cfg = AppPathsConfig {
             claude_cli_path: Some("C:\\bin\\claude.cmd".to_string()),
             codex_cli_path: Some("C:\\bin\\codex.cmd".to_string()),
             chatgpt_client_path: Some("C:\\Program Files\\ChatGPT\\ChatGPT.exe".to_string()),
+            workbuddy_client_path: Some(
+                "E:\\Developer Tool\\Workbuddy\\WorkBuddyAI\\WorkBuddyAI.exe".to_string(),
+            ),
         };
 
         let json = serde_json::to_string(&cfg).expect("serialize");
@@ -564,5 +636,9 @@ mod tests {
         assert_eq!(deserialized.claude_cli_path, cfg.claude_cli_path);
         assert_eq!(deserialized.codex_cli_path, cfg.codex_cli_path);
         assert_eq!(deserialized.chatgpt_client_path, cfg.chatgpt_client_path);
+        assert_eq!(
+            deserialized.workbuddy_client_path,
+            cfg.workbuddy_client_path
+        );
     }
 }

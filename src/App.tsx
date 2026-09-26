@@ -18,9 +18,15 @@ import {
 import { motion, AnimatePresence } from "motion/react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { getVersion } from "@tauri-apps/api/app";
-import { BrandLogo, OpenAIIcon, ClaudeIcon } from "./components/BrandIcons";
+import {
+  BrandLogo,
+  OpenAIIcon,
+  ClaudeIcon,
+  WorkbuddyIcon,
+} from "./components/BrandIcons";
 import { ChatGPTPanel } from "./components/ChatGPTPanel";
 import { ClaudePanel } from "./components/ClaudePanel";
+import { WorkbuddyPanel } from "./components/WorkbuddyPanel";
 import { AppPathsPanel } from "./components/AppPathsPanel";
 import { QuickToolsModal } from "./components/QuickToolsModal";
 import { InitializationModal } from "./components/InitializationModal";
@@ -33,7 +39,7 @@ import { cn } from "./lib/utils";
 import { checkBobApiNetwork, openUrl } from "./lib/api";
 import { ForceUpdateModal, useAppUpdater } from "./components/ForceUpdateModal";
 
-type Tab = "chatgpt" | "claude" | "paths";
+type Tab = "chatgpt" | "claude" | "workbuddy" | "paths";
 type NetworkState = "checking" | "reachable" | "unreachable";
 
 export default function App() {
@@ -42,7 +48,9 @@ export default function App() {
 
 function AppContent() {
   const [tab, setTab] = useState<Tab>("chatgpt");
-  const [lastAgentTab, setLastAgentTab] = useState<"chatgpt" | "claude">("chatgpt");
+  const [lastAgentTab, setLastAgentTab] = useState<
+    "chatgpt" | "claude" | "workbuddy"
+  >("chatgpt");
   const [networkState, setNetworkState] = useState<NetworkState>("checking");
   const [toolsOpen, setToolsOpen] = useState(false);
   const [initModalOpen, setInitModalOpen] = useState(false);
@@ -52,7 +60,7 @@ function AppContent() {
 
   const switchTab = (newTab: Tab) => {
     setTab(newTab);
-    if (newTab === "chatgpt" || newTab === "claude") {
+    if (newTab === "chatgpt" || newTab === "claude" || newTab === "workbuddy") {
       setLastAgentTab(newTab);
     }
   };
@@ -222,7 +230,7 @@ function AppContent() {
       >
         {/* 左侧：Logo + 标题与版本 */}
         <div className="flex items-center gap-2.5 pointer-events-none pl-1">
-          <BrandLogo size={22} className="w-5.5 h-5.5 drop-shadow-xs" />
+          <BrandLogo size={22} className="w-[22px] h-[22px] drop-shadow-sm" />
           <div className="flex items-center gap-2">
             <div className="flex items-center gap-1 leading-none">
               <DecryptedText
@@ -333,7 +341,10 @@ function AppContent() {
                     </div>
                   </div>
                   {tab === "chatgpt" && (
-                    <ChevronRight size={14} className="text-blue-600 dark:text-blue-400 flex-shrink-0" />
+                    <ChevronRight
+                      size={14}
+                      className="text-blue-600 dark:text-blue-400 flex-shrink-0"
+                    />
                   )}
                 </button>
 
@@ -369,7 +380,49 @@ function AppContent() {
                     </div>
                   </div>
                   {tab === "claude" && (
-                    <ChevronRight size={14} className="text-purple-600 dark:text-purple-400 flex-shrink-0" />
+                    <ChevronRight
+                      size={14}
+                      className="text-purple-600 dark:text-purple-400 flex-shrink-0"
+                    />
+                  )}
+                </button>
+
+                {/* WorkBuddy 选项 */}
+                <button
+                  type="button"
+                  onClick={() => switchTab("workbuddy")}
+                  className={cn(
+                    "relative w-full flex items-center justify-between p-2.5 rounded-xl border text-left transition-all cursor-pointer",
+                    tab === "workbuddy"
+                      ? "border-emerald-500/70 bg-emerald-50/80 text-emerald-900 dark:bg-emerald-500/15 dark:border-emerald-500/50 dark:text-emerald-100 shadow-xs"
+                      : "border-transparent text-slate-600 dark:text-gray-400 hover:bg-slate-100/80 dark:hover:bg-white/5 hover:text-slate-900 dark:hover:text-gray-200",
+                  )}
+                >
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <div
+                      className={cn(
+                        "w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 transition-colors",
+                        tab === "workbuddy"
+                          ? "bg-emerald-600 text-white dark:bg-emerald-500 dark:text-white"
+                          : "bg-slate-100 text-slate-500 dark:bg-white/5 dark:text-gray-400",
+                      )}
+                    >
+                      <WorkbuddyIcon size={16} />
+                    </div>
+                    <div className="min-w-0">
+                      <div className="text-xs font-semibold truncate leading-tight">
+                        WorkBuddy
+                      </div>
+                      <div className="text-[10px] font-mono text-slate-400 dark:text-gray-500 truncate mt-0.5">
+                        models.json
+                      </div>
+                    </div>
+                  </div>
+                  {tab === "workbuddy" && (
+                    <ChevronRight
+                      size={14}
+                      className="text-emerald-600 dark:text-emerald-400 flex-shrink-0"
+                    />
                   )}
                 </button>
 
@@ -405,7 +458,10 @@ function AppContent() {
                     </div>
                   </div>
                   {tab === "paths" && (
-                    <ChevronRight size={14} className="text-teal-600 dark:text-teal-400 flex-shrink-0" />
+                    <ChevronRight
+                      size={14}
+                      className="text-teal-600 dark:text-teal-400 flex-shrink-0"
+                    />
                   )}
                 </button>
               </div>
@@ -429,7 +485,9 @@ function AppContent() {
                   </div>
                   <div className="min-w-0 flex-1">
                     <div className="leading-tight">环境初始化向导</div>
-                    <div className="text-[10px] text-slate-400 dark:text-gray-500">检测并修复运行环境</div>
+                    <div className="text-[10px] text-slate-400 dark:text-gray-500">
+                      检测并修复运行环境
+                    </div>
                   </div>
                 </button>
 
@@ -444,7 +502,9 @@ function AppContent() {
                   </div>
                   <div className="min-w-0 flex-1">
                     <div className="leading-tight">快速诊断工具箱</div>
-                    <div className="text-[10px] text-slate-400 dark:text-gray-500">cURL 脚本与在线文档</div>
+                    <div className="text-[10px] text-slate-400 dark:text-gray-500">
+                      cURL 脚本与在线文档
+                    </div>
                   </div>
                 </button>
               </div>
@@ -478,20 +538,31 @@ function AppContent() {
                 >
                   <RefreshCw
                     size={11}
-                    className={networkState === "checking" ? "animate-spin" : ""}
+                    className={
+                      networkState === "checking" ? "animate-spin" : ""
+                    }
                   />
                 </button>
               </div>
               <div className="flex items-center gap-2">
                 {networkState === "checking" ? (
-                  <Loader2 size={13} className="animate-spin text-blue-500 flex-shrink-0" />
+                  <Loader2
+                    size={13}
+                    className="animate-spin text-blue-500 flex-shrink-0"
+                  />
                 ) : networkState === "reachable" ? (
                   <div className="relative flex items-center justify-center flex-shrink-0">
                     <span className="animate-ping absolute inline-flex h-2 w-2 rounded-full bg-emerald-400 opacity-60" />
-                    <Wifi size={13} className="text-emerald-600 dark:text-emerald-400" />
+                    <Wifi
+                      size={13}
+                      className="text-emerald-600 dark:text-emerald-400"
+                    />
                   </div>
                 ) : (
-                  <WifiOff size={13} className="text-amber-600 dark:text-amber-400 flex-shrink-0" />
+                  <WifiOff
+                    size={13}
+                    className="text-amber-600 dark:text-amber-400 flex-shrink-0"
+                  />
                 )}
                 <span className="text-[11px] truncate font-medium">
                   {networkState === "checking" && "正在检测网络..."}
@@ -516,7 +587,9 @@ function AppContent() {
               >
                 <RefreshCw
                   size={10}
-                  className={isManualChecking ? "animate-spin text-blue-500" : ""}
+                  className={
+                    isManualChecking ? "animate-spin text-blue-500" : ""
+                  }
                 />
                 <span>{isManualChecking ? "检查中" : "检查更新"}</span>
               </button>
@@ -550,6 +623,17 @@ function AppContent() {
                 >
                   <ClaudePanel />
                 </motion.div>
+              ) : tab === "workbuddy" ? (
+                <motion.div
+                  key="workbuddy"
+                  initial={{ opacity: 0, y: 8 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -8 }}
+                  transition={{ duration: 0.2, ease: "easeOut" }}
+                  className="w-full flex-1 flex flex-col min-h-0"
+                >
+                  <WorkbuddyPanel />
+                </motion.div>
               ) : (
                 <motion.div
                   key="paths"
@@ -571,11 +655,21 @@ function AppContent() {
       <QuickToolsModal
         open={toolsOpen}
         onClose={() => setToolsOpen(false)}
-        activeTab={lastAgentTab}
+        activeTab={
+          lastAgentTab === "claude"
+            ? "claude"
+            : lastAgentTab === "workbuddy"
+              ? "workbuddy"
+              : "chatgpt"
+        }
         currentUrl="https://bob-api.com/"
         currentKey=""
         currentModel={
-          lastAgentTab === "claude" ? "claude-3-7-sonnet-20250219" : "gpt-4o"
+          lastAgentTab === "claude"
+            ? "claude-3-7-sonnet-20250219"
+            : lastAgentTab === "workbuddy"
+              ? "gpt-5.6-sol"
+              : "gpt-4o"
         }
       />
 

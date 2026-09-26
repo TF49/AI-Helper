@@ -1,13 +1,7 @@
 import { useState } from "react";
 import * as Popover from "@radix-ui/react-popover";
 import { Command } from "cmdk";
-import {
-  ChevronDown,
-  Download,
-  Loader2,
-  Search,
-  Cpu,
-} from "lucide-react";
+import { ChevronDown, Download, Loader2, Search, Cpu } from "lucide-react";
 import type { FetchedModel } from "../types";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
@@ -21,7 +15,7 @@ export interface ModelInputProps {
   id: string;
   onRefresh: () => void;
   refreshing: boolean;
-  accentColor?: "blue" | "purple";
+  accentColor?: "blue" | "purple" | "emerald";
 }
 
 export function ModelInput({
@@ -44,6 +38,7 @@ export function ModelInput({
   }
 
   const isBlue = accentColor === "blue";
+  const isEmerald = accentColor === "emerald";
 
   return (
     <div className="space-y-2">
@@ -57,7 +52,9 @@ export function ModelInput({
             className={
               isBlue
                 ? "text-blue-500 dark:text-blue-400"
-                : "text-purple-500 dark:text-purple-400"
+                : isEmerald
+                  ? "text-emerald-500 dark:text-emerald-400"
+                  : "text-purple-500 dark:text-purple-400"
             }
           />
           测试模型
@@ -99,7 +96,9 @@ export function ModelInput({
             "bg-slate-50/80 dark:bg-[#141724]/80 border-slate-200 dark:border-white/10 text-slate-900 dark:text-gray-200",
             isBlue
               ? "focus:bg-white dark:focus:bg-[#141724] focus:border-blue-500 focus:ring-1 focus:ring-blue-500/30"
-              : "focus:bg-white dark:focus:bg-[#141724] focus:border-purple-500 focus:ring-1 focus:ring-purple-500/30",
+              : isEmerald
+                ? "focus:bg-white dark:focus:bg-[#141724] focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500/30"
+                : "focus:bg-white dark:focus:bg-[#141724] focus:border-purple-500 focus:ring-1 focus:ring-purple-500/30",
           )}
         />
         {models.length > 0 && (
@@ -152,7 +151,14 @@ export function ModelInput({
                               onChange(m.id);
                               setOpen(false);
                             }}
-                            className="cursor-pointer break-all rounded-lg px-2.5 py-1.5 text-xs font-mono text-slate-700 dark:text-gray-300 hover:text-slate-950 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-white/10 data-[selected=true]:bg-blue-50 data-[selected=true]:text-blue-600 dark:data-[selected=true]:bg-blue-500/20 dark:data-[selected=true]:text-blue-300 transition-colors"
+                            className={cn(
+                              "cursor-pointer break-all rounded-lg px-2.5 py-1.5 text-xs font-mono text-slate-700 dark:text-gray-300 hover:text-slate-950 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-white/10 transition-colors",
+                              isBlue
+                                ? "data-[selected=true]:bg-blue-50 data-[selected=true]:text-blue-600 dark:data-[selected=true]:bg-blue-500/20 dark:data-[selected=true]:text-blue-300"
+                                : isEmerald
+                                  ? "data-[selected=true]:bg-emerald-50 data-[selected=true]:text-emerald-600 dark:data-[selected=true]:bg-emerald-500/20 dark:data-[selected=true]:text-emerald-300"
+                                  : "data-[selected=true]:bg-purple-50 data-[selected=true]:text-purple-600 dark:data-[selected=true]:bg-purple-500/20 dark:data-[selected=true]:text-purple-300",
+                            )}
                           >
                             {m.id}
                           </Command.Item>

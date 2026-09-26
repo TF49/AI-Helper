@@ -24,12 +24,14 @@ import {
   RotateCcw,
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
-import { check as tauriCheck, type DownloadEvent } from "@tauri-apps/plugin-updater";
+import {
+  check as tauriCheck,
+  type DownloadEvent,
+} from "@tauri-apps/plugin-updater";
 import { relaunch, exit } from "@tauri-apps/plugin-process";
 import { invoke } from "@tauri-apps/api/core";
 import { toast } from "sonner";
 import { openUrl } from "../lib/api";
-
 
 // ── 类型定义 ─────────────────────────────────────────────────────────────────
 
@@ -45,13 +47,13 @@ export interface BackendUpdateInfo {
 }
 
 export type UpdatePhase =
-  | "idle"       // 无更新/未激活
-  | "checking"   // 检查版本中
-  | "downloading"// 正在下载更新
+  | "idle" // 无更新/未激活
+  | "checking" // 检查版本中
+  | "downloading" // 正在下载更新
   | "installing" // 下载完成，正在安装
-  | "ready"      // 安装就绪，等待重启
-  | "error"      // 更新失败
-  | "manual";    // 资产未就绪，需手动前往 GitHub 下载
+  | "ready" // 安装就绪，等待重启
+  | "error" // 更新失败
+  | "manual"; // 资产未就绪，需手动前往 GitHub 下载
 
 function formatBytes(bytes: number): string {
   if (!bytes || bytes <= 0) return "0 B";
@@ -73,7 +75,9 @@ function getAcceleratedDownloadUrl(version?: string): string {
 
 export function useAppUpdater() {
   const [phase, setPhase] = useState<UpdatePhase>("idle");
-  const [backendInfo, setBackendInfo] = useState<BackendUpdateInfo | null>(null);
+  const [backendInfo, setBackendInfo] = useState<BackendUpdateInfo | null>(
+    null,
+  );
   const [downloadProgress, setDownloadProgress] = useState(0);
   const [progressBytes, setProgressBytes] = useState(0);
   const [totalBytes, setTotalBytes] = useState(0);
@@ -88,101 +92,102 @@ export function useAppUpdater() {
    * 执行检查与下载流程（复用 Antigravity-Manager checkAndDownload）
    * @param manual 是否为用户手动点击检查更新
    */
-  const checkForUpdates = useCallback(
-    async (manual = false) => {
-      if (downloadStarted.current) return;
+  const checkForUpdates = useCallback(async (manual = false) => {
+    if (downloadStarted.current) return;
 
+    if (manual) {
+      setIsManualChecking(true);
+    }
+    setErrorMessage("");
+
+    try {
+      // Step 1: 调用 Rust 后端多源版本检测（updater.json -> GitHub API -> Raw -> jsDelivr）
+      const info = await invoke<BackendUpdateInfo>("check_for_updates");
+
+      if (!info.has_update) {
+        setPhase("idle");
+        setIsBootCheckComplete(true);
+        if (manual) {
+          setIsManualChecking(false);
+          toast.success(
+            `当前已是最新版本 (v${info.current_version})，无需更新`,
+          );
+        }
+        return;
+      }
+
+      // 发现新版本！
+      setBackendInfo(info);
       if (manual) {
-        setIsManualChecking(true);
+        setIsManualChecking(false);
       }
-      setErrorMessage("");
 
-      try {
-        // Step 1: 调用 Rust 后端多源版本检测（updater.json -> GitHub API -> Raw -> jsDelivr）
-        const info = await invoke<BackendUpdateInfo>("check_for_updates");
+      if (downloadStarted.current) return;
+      downloadStarted.current = true;
 
-        if (!info.has_update) {
-          setPhase("idle");
-          setIsBootCheckComplete(true);
-          if (manual) {
-            setIsManualChecking(false);
-            toast.success(`当前已是最新版本 (v${info.current_version})，无需更新`);
-          }
-          return;
-        }
+      setPhase("downloading");
+      setDownloadProgress(0);
+      setProgressBytes(0);
+      setTotalBytes(0);
 
-        // 发现新版本！
-        setBackendInfo(info);
-        if (manual) {
-          setIsManualChecking(false);
-        }
+      // Step 2: 调用 Tauri 原生 check，支持 upstream 代理
+      const update = await tauriCheck(
+        info.proxy_url ? { proxy: info.proxy_url } : undefined,
+      );
 
-        if (downloadStarted.current) return;
-        downloadStarted.current = true;
-
-        setPhase("downloading");
-        setDownloadProgress(0);
-        setProgressBytes(0);
-        setTotalBytes(0);
-
-        // Step 2: 调用 Tauri 原生 check，支持 upstream 代理
-        const update = await tauriCheck(
-          info.proxy_url ? { proxy: info.proxy_url } : undefined,
-        );
-
-        if (!update) {
-          // updater.json 资产尚未同步完成，降级为提示手动下载
-          setPhase("manual");
-          downloadStarted.current = false;
-          return;
-        }
-
-        let downloaded = 0;
-        let contentLength = 0;
-
-        // Step 3: 下载与静默安装
-        await update.downloadAndInstall((event: DownloadEvent) => {
-          switch (event.event) {
-            case "Started":
-              contentLength = event.data.contentLength ?? 0;
-              setTotalBytes(contentLength);
-              break;
-            case "Progress":
-              downloaded += event.data.chunkLength;
-              setProgressBytes(downloaded);
-              if (contentLength > 0) {
-                setDownloadProgress(Math.round((downloaded / contentLength) * 100));
-              }
-              break;
-            case "Finished":
-              setPhase("installing");
-              break;
-          }
-        });
-
-        // Step 4: 安装完成，准备重启
-        setPhase("ready");
-      } catch (err: unknown) {
+      if (!update) {
+        // updater.json 资产尚未同步完成，降级为提示手动下载
+        setPhase("manual");
         downloadStarted.current = false;
-        if (manual) {
-          setIsManualChecking(false);
-        }
-        const msg = err instanceof Error ? err.message : String(err);
-
-        // 启动时的静默检查如果只是网络不通且无更新，不打扰用户并放行后续初始化
-        if (!downloadStarted.current && !manual) {
-          console.warn("Silent update check skipped:", msg);
-          setPhase("idle");
-          setIsBootCheckComplete(true);
-          return;
-        }
-
-        setErrorMessage(msg || "更新下载失败，请检查网络或配置代理");
-        setPhase("error");
+        return;
       }
-    },
-    [],
-  );
+
+      let downloaded = 0;
+      let contentLength = 0;
+
+      // Step 3: 下载与静默安装
+      await update.downloadAndInstall((event: DownloadEvent) => {
+        switch (event.event) {
+          case "Started":
+            contentLength = event.data.contentLength ?? 0;
+            setTotalBytes(contentLength);
+            break;
+          case "Progress":
+            downloaded += event.data.chunkLength;
+            setProgressBytes(downloaded);
+            if (contentLength > 0) {
+              setDownloadProgress(
+                Math.round((downloaded / contentLength) * 100),
+              );
+            }
+            break;
+          case "Finished":
+            setPhase("installing");
+            break;
+        }
+      });
+
+      // Step 4: 安装完成，准备重启
+      setPhase("ready");
+    } catch (err: unknown) {
+      downloadStarted.current = false;
+      if (manual) {
+        setIsManualChecking(false);
+      }
+      const msg = err instanceof Error ? err.message : String(err);
+
+      // 启动时的静默检查如果只是网络不通且无更新，不打扰用户并放行后续初始化
+      if (!downloadStarted.current && !manual) {
+        console.warn("Silent update check skipped:", msg);
+        setPhase("idle");
+        setIsBootCheckComplete(true);
+        return;
+      }
+
+      setErrorMessage(msg || "更新下载失败，请检查网络或配置代理");
+      setPhase("error");
+    }
+  }, []);
 
   // 应用启动时快速执行静默检测，确保先检查更新，再决定是否进入初始化
   useEffect(() => {
@@ -198,7 +203,9 @@ export function useAppUpdater() {
     const safetyTimer = setTimeout(() => {
       setIsBootCheckComplete((prev) => {
         if (!prev) {
-          console.warn("Boot update check safety timeout reached, unlocking init/dashboard.");
+          console.warn(
+            "Boot update check safety timeout reached, unlocking init/dashboard.",
+          );
           return true;
         }
         return prev;
@@ -376,7 +383,9 @@ export function ForceUpdateModal({
             {/* 版本号对比 */}
             {backendInfo && (
               <div className="flex items-center justify-center gap-2 mt-3 font-mono text-xs bg-white/5 border border-white/10 px-3 py-1.5 rounded-xl">
-                <span className="text-slate-400">v{backendInfo.current_version}</span>
+                <span className="text-slate-400">
+                  v{backendInfo.current_version}
+                </span>
                 <span className="text-slate-600">→</span>
                 <span className="text-emerald-400 font-bold">
                   v{backendInfo.latest_version}
@@ -404,7 +413,10 @@ export function ForceUpdateModal({
               <div className="space-y-2">
                 <div className="flex justify-between items-center text-xs">
                   <span className="text-slate-300 flex items-center gap-1.5">
-                    <RefreshCw size={13} className="animate-spin text-blue-400" />
+                    <RefreshCw
+                      size={13}
+                      className="animate-spin text-blue-400"
+                    />
                     正在下载更新资源...
                   </span>
                   <span className="font-mono text-blue-400 font-semibold">
@@ -474,15 +486,20 @@ export function ForceUpdateModal({
                     自动安装包暂未就绪
                   </div>
                   <p className="text-[11px] text-amber-300/80 leading-relaxed">
-                    最新版本安装包可直接通过国内高速通道或前往 GitHub Releases 下载。
+                    最新版本安装包可直接通过国内高速通道或前往 GitHub Releases
+                    下载。
                   </p>
                 </div>
                 <div className="flex items-center gap-2">
                   <a
-                    href={getAcceleratedDownloadUrl(backendInfo?.latest_version)}
+                    href={getAcceleratedDownloadUrl(
+                      backendInfo?.latest_version,
+                    )}
                     onClick={(e) => {
                       e.preventDefault();
-                      void openUrl(getAcceleratedDownloadUrl(backendInfo?.latest_version));
+                      void openUrl(
+                        getAcceleratedDownloadUrl(backendInfo?.latest_version),
+                      );
                     }}
                     target="_blank"
                     rel="noreferrer"
@@ -496,7 +513,9 @@ export function ForceUpdateModal({
                     href={backendInfo?.download_url ?? GITHUB_RELEASES_URL}
                     onClick={(e) => {
                       e.preventDefault();
-                      void openUrl(backendInfo?.download_url ?? GITHUB_RELEASES_URL);
+                      void openUrl(
+                        backendInfo?.download_url ?? GITHUB_RELEASES_URL,
+                      );
                     }}
                     target="_blank"
                     rel="noreferrer"
@@ -525,7 +544,8 @@ export function ForceUpdateModal({
                     更新下载失败
                   </div>
                   <p className="text-[11px] text-red-300/80 leading-relaxed break-words">
-                    {errorMessage || "网络连接超时或无法直连 GitHub，请检查网络或配置代理"}
+                    {errorMessage ||
+                      "网络连接超时或无法直连 GitHub，请检查网络或配置代理"}
                   </p>
                 </div>
                 <div className="flex items-center gap-2">
@@ -537,10 +557,14 @@ export function ForceUpdateModal({
                     重试下载
                   </button>
                   <a
-                    href={getAcceleratedDownloadUrl(backendInfo?.latest_version)}
+                    href={getAcceleratedDownloadUrl(
+                      backendInfo?.latest_version,
+                    )}
                     onClick={(e) => {
                       e.preventDefault();
-                      void openUrl(getAcceleratedDownloadUrl(backendInfo?.latest_version));
+                      void openUrl(
+                        getAcceleratedDownloadUrl(backendInfo?.latest_version),
+                      );
                     }}
                     target="_blank"
                     rel="noreferrer"

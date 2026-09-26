@@ -401,6 +401,169 @@ pub async fn test_claude_stream(
     }
 }
 
+pub async fn test_workbuddy_stream(
+    url: String,
+    api_key: String,
+    model: String,
+    on_event: Channel<TestStreamEvent>,
+) -> ApiTestResult {
+    let root = api_root(&url);
+    let endpoint = format!("{root}/v1/chat/completions");
+    let masked_key = mask_api_key(&api_key);
+
+    let _ = on_event.send(TestStreamEvent::Log {
+        text: "正在初始化测试连接 (WorkBuddy OpenAI Chat Completions 协议)...".to_string(),
+        level: "info".to_string(),
+    });
+    let _ = on_event.send(TestStreamEvent::Log {
+        text: format!("目标端点: {}", endpoint),
+        level: "dim".to_string(),
+    });
+    let _ = on_event.send(TestStreamEvent::Log {
+        text: format!("测试模型: {} | 密钥凭证: {}", model, masked_key),
+        level: "dim".to_string(),
+    });
+    let _ = on_event.send(TestStreamEvent::Log {
+        text: "发送握手消息: [POST /v1/chat/completions] payload: \"Hi\"...".to_string(),
+        level: "info".to_string(),
+    });
+
+    let client = Client::new();
+    let request = client.post(&endpoint).bearer_auth(&api_key).json(&json!({
+        "model": model,
+        "max_tokens": 16,
+        "messages": [{ "role": "user", "content": "Hi" }],
+    }));
+
+    let start = Instant::now();
+    let send_result = request.timeout(REQUEST_TIMEOUT).send().await;
+    let latency_ms = start.elapsed().as_millis() as u64;
+
+    match send_result {
+        Ok(response) => {
+            let status = response.status();
+            let status_code = status.as_u16();
+
+            if status.is_success() {
+                let _ = on_event.send(TestStreamEvent::Log {
+                    text: format!(
+                        "HTTP {} OK - 连接成功 (往返延迟: {}ms)",
+                        status_code, latency_ms
+                    ),
+                    level: "success".to_string(),
+                });
+
+                let body_text = response.text().await.unwrap_or_default();
+                let reply_preview = extract_response_text(&body_text);
+
+                if let Some(ref reply) = reply_preview {
+                    let _ = on_event.send(TestStreamEvent::Log {
+                        text: "上游模型响应:".to_string(),
+                        level: "response".to_string(),
+                    });
+                    let _ = on_event.send(TestStreamEvent::Chunk {
+                        delta: reply.clone(),
+                    });
+                }
+
+                let _ = on_event.send(TestStreamEvent::Finish {
+                    success: true,
+                    message: "测试通过".to_string(),
+                    latency_ms,
+                    status_code: Some(status_code),
+                });
+
+                ApiTestResult {
+                    success: true,
+                    message: "测试成功".to_string(),
+                    status_code: Some(status_code),
+                    latency_ms: Some(latency_ms),
+                    response_preview: reply_preview,
+                }
+            } else {
+                let body = response.text().await.unwrap_or_default();
+                let cleaned_body = sanitize_error(&body, &api_key);
+                let _ = on_event.send(TestStreamEvent::Log {
+                    text: format!(
+                        "HTTP {} {} - 服务端返回异常 (耗时: {}ms)",
+                        status_code,
+                        status.canonical_reason().unwrap_or(""),
+                        latency_ms
+                    ),
+                    level: "error".to_string(),
+                });
+                if !cleaned_body.is_empty() {
+                    let _ = on_event.send(TestStreamEvent::Log {
+                        text: format!("错误详情: {}", cleaned_body),
+                        level: "error".to_string(),
+                    });
+                }
+
+                let hint = match status {
+                    StatusCode::UNAUTHORIZED => "建议: 身份认证失败，请检查 API Key 是否正确填写或是否已被吊销。",
+                    StatusCode::FORBIDDEN => "建议: 访问被拒绝，可能当前账号没有权限访问该模型，或 IP 属地受限。",
+                    StatusCode::NOT_FOUND => "建议: 端点 404 未找到，请确认 Base URL 填写是否正确（WorkBuddy 默认请求 /v1/chat/completions）。",
+                    StatusCode::TOO_MANY_REQUESTS => "建议: 上游返回 429 请求过多，可能是触发了频控限制或余额不足。",
+                    _ if status.is_server_error() => "建议: 上游服务器内部错误 (5xx)，请稍后重试或切换备用节点。",
+                    _ => "建议: 请检查 Base URL、API Key 与 Model 配置。",
+                };
+                let _ = on_event.send(TestStreamEvent::Log {
+                    text: hint.to_string(),
+                    level: "warn".to_string(),
+                });
+
+                let _ = on_event.send(TestStreamEvent::Finish {
+                    success: false,
+                    message: format!("服务返回 HTTP {}", status_code),
+                    latency_ms,
+                    status_code: Some(status_code),
+                });
+
+                ApiTestResult {
+                    success: false,
+                    message: format!("服务返回 HTTP {}", status_code),
+                    status_code: Some(status_code),
+                    latency_ms: Some(latency_ms),
+                    response_preview: None,
+                }
+            }
+        }
+        Err(err) => {
+            let msg = if err.is_timeout() {
+                "请求超时 (超过 20 秒未收到响应)".to_string()
+            } else if err.is_connect() {
+                "网络连接失败: 无法连接至服务节点".to_string()
+            } else {
+                format!("请求异常: {}", err)
+            };
+
+            let _ = on_event.send(TestStreamEvent::Log {
+                text: msg.clone(),
+                level: "error".to_string(),
+            });
+            let _ = on_event.send(TestStreamEvent::Log {
+                text: "建议: 请检查服务节点 URL 是否拼写正确、本地网络连通性及代理设置。"
+                    .to_string(),
+                level: "warn".to_string(),
+            });
+            let _ = on_event.send(TestStreamEvent::Finish {
+                success: false,
+                message: msg.clone(),
+                latency_ms,
+                status_code: None,
+            });
+
+            ApiTestResult {
+                success: false,
+                message: msg,
+                status_code: None,
+                latency_ms: Some(latency_ms),
+                response_preview: None,
+            }
+        }
+    }
+}
+
 fn mask_api_key(key: &str) -> String {
     let trimmed = key.trim();
     if trimmed.is_empty() {
@@ -497,12 +660,22 @@ async fn send_test_request(request: reqwest::RequestBuilder) -> ApiTestResult {
                 }
             }
         }
-        Err(_) => ApiTestResult {
-            success: false,
-            message: "连接失败或请求超时".to_string(),
-            status_code: None,
-            latency_ms: None,
-            response_preview: None,
-        },
+        Err(err) => {
+            let latency = start.elapsed().as_millis() as u64;
+            let message = if err.is_timeout() {
+                "请求超时 (超过 20 秒未收到响应)".to_string()
+            } else if err.is_connect() {
+                "网络连接失败: 无法连接至服务节点".to_string()
+            } else {
+                format!("连接失败或请求异常: {}", err)
+            };
+            ApiTestResult {
+                success: false,
+                message,
+                status_code: None,
+                latency_ms: Some(latency),
+                response_preview: None,
+            }
+        }
     }
 }
