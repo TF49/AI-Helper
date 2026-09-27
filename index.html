@@ -1,0 +1,663 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AI Helper - 惊艳，不止于快。专为 AI 开发者打造的配置管理中枢 & 进程调度平台</title>
+  <meta name="description" content="AI Helper 采用 Rust 2024 与 Tauri v2 打造，配备 Anime.js 电影级动态引擎与极简纯白工业美学，全面纳管 Claude Code CLI、OpenAI Codex、Trae Work 与 Workbuddy。">
+  <meta name="keywords" content="AI Helper, Claude Code, OpenAI Codex, Trae Work, Tauri, Rust, Anime.js, AI Agent, 进程管理, 配置中心">
+  <link rel="icon" type="image/x-icon" href="assets/favicon.ico">
+  <link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+
+  <!-- Ambient Light & Anime.js Interactive Dot Matrix -->
+  <div class="aurora-container">
+    <div class="aurora-glow glow-cyan"></div>
+    <div class="aurora-glow glow-purple"></div>
+    <div class="aurora-glow glow-blue"></div>
+  </div>
+  <canvas id="anime-dot-canvas"></canvas>
+  <div class="grid-mesh"></div>
+
+  <!-- Apple Pro Titanium Navigation Bar -->
+  <header class="apple-nav">
+    <div class="container nav-wrapper">
+      <a href="#" class="brand-unit">
+        <img src="assets/logo.png" alt="AI Helper Logo" class="brand-symbol">
+        <span class="brand-title">
+          <span>AI Helper</span>
+          <span class="tag-version current-version-tag">v1.0.31</span>
+        </span>
+      </a>
+
+      <nav>
+        <ul class="nav-menu">
+          <li class="nav-item"><a href="#bento">核心架构</a></li>
+          <li class="nav-item"><a href="#workflow">工作流程</a></li>
+          <li class="nav-item"><a href="#downloads">下载专区</a></li>
+          <li class="nav-item"><a href="#faq">常见问答</a></li>
+        </ul>
+      </nav>
+
+      <div class="nav-cta-group">
+        <a href="https://github.com/TF49/AI-Helper" target="_blank" rel="noopener noreferrer" class="btn-github-nav">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+            <path fill-rule="evenodd" clip-rule="evenodd" d="M12 2C6.477 2 2 6.484 2 12.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.53 1.032 1.53 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0112 6.844c.85.004 1.705.115 2.504.337 1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.202 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.943.359.309.678.92.678 1.855 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.019 10.019 0 0022 12.017C22 6.484 17.522 2 12 2z"/>
+          </svg>
+          <span>GitHub</span>
+        </a>
+        <a href="#downloads" class="star-border-btn">
+          <span>下载客户端</span>
+        </a>
+      </div>
+    </div>
+  </header>
+
+  <!-- Keynote Hero Section -->
+  <section class="hero-keynote">
+    <div class="container">
+      <div class="keynote-eyebrow">
+        <span class="badge-pulse"></span>
+        <span data-decrypted-text="TAURI V2 + RUST 2024 · 极速重构">TAURI V2 + RUST 2024 · 极速重构</span>
+      </div>
+
+      <h1 class="keynote-headline anime-headline">
+        <span class="anime-split-text">AI Helper.</span><br>
+        <span class="anime-split-text text-gradient-pro">惊艳，不止于快。</span><br>
+        <span class="text-gradient-aurora">下一代 AI 编程配置与调度中枢</span>
+      </h1>
+
+      <p class="keynote-subhead">
+        专为专业开发者打磨的桌面中枢平台。全面接管 <strong>Claude Code</strong>、<strong>OpenAI Codex</strong>、<strong>Trae Work</strong> 与 <strong>Workbuddy</strong>，带来极速感知、原子下发、流式握手与进程树安全热重启。
+      </p>
+
+      <div class="hero-cta-group">
+        <a id="btn-hero-download" href="https://github.com/TF49/AI-Helper/releases/download/v1.0.31/AI-Helper-v1.0.31-Windows-x64-Setup.exe" class="btn-hero-primary">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+            <polyline points="7 10 12 15 17 10"></polyline>
+            <line x1="12" y1="15" x2="12" y2="3"></line>
+          </svg>
+          <span id="hero-btn-text">绔嬪嵆涓嬭浇 Windows 瀹夎鐗?(v1.0.31)</span>
+        </a>
+
+        <a href="#downloads" class="btn-hero-secondary">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="2" y="7" width="20" height="14" rx="2" ry="2"></rect>
+            <path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"></path>
+          </svg>
+          <span>便携绿色版 (ZIP)</span>
+        </a>
+      </div>
+
+      <div class="hero-spec-pills">
+        <span class="spec-pill">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"></polyline></svg>
+          适用于 Windows 10/11 64位
+        </span>
+        <span class="spec-pill">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"></polyline></svg>
+          100% 自由开源 (MIT 协议)
+        </span>
+        <span class="spec-pill">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"></polyline></svg>
+          极简常驻内存 &lt; 35MB
+        </span>
+      </div>
+
+      <!-- Anime.js Animated Laser Circuit Data Flow Pipeline -->
+      <div class="pipeline-showcase">
+        <svg class="pipeline-svg-canvas" viewBox="0 0 980 120" fill="none">
+          <!-- Background cable track -->
+          <path d="M 120 60 C 280 60, 280 60, 490 60 C 700 60, 700 60, 860 60" stroke="rgba(0, 113, 227, 0.12)" stroke-width="4" stroke-linecap="round"/>
+          <!-- Active flowing laser cable -->
+          <path class="laser-circuit-path" d="M 120 60 C 280 60, 280 60, 490 60 C 700 60, 700 60, 860 60" stroke="url(#laserGradient)" stroke-width="4" stroke-linecap="round" stroke-dasharray="16 12"/>
+          <defs>
+            <linearGradient id="laserGradient" x1="0%" y1="0%" x2="100%" y2="0%">
+              <stop offset="0%" stop-color="#0071e3" stop-opacity="0.3"/>
+              <stop offset="50%" stop-color="#0071e3" stop-opacity="1"/>
+              <stop offset="100%" stop-color="#7c3aed" stop-opacity="1"/>
+            </linearGradient>
+          </defs>
+        </svg>
+
+        <div class="pipeline-nodes-bar">
+          <div class="p-node p-node-cloud active-glow">
+            <span class="p-node-icon">🌐</span>
+            <span>AI 云端网关 (API Nodes)</span>
+          </div>
+
+          <div class="p-node p-node-hub">
+            <span class="p-node-icon">⚡</span>
+            <span>AI Helper 极速调度中枢</span>
+          </div>
+
+          <div class="p-node p-node-target">
+            <span class="p-node-icon">🚀</span>
+            <span>目标客户端 / CLI 进程</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- React-Bits: 3D Tilted Showcase Window -->
+      <div class="showcase-stage">
+        <div class="tilted-window-card">
+          <div class="window-chrome">
+            <div class="chrome-lights">
+              <span class="chrome-light light-close"></span>
+              <span class="chrome-light light-min"></span>
+              <span class="chrome-light light-max"></span>
+            </div>
+            <div class="chrome-title">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon></svg>
+              <span>AI Helper Studio - 交互式实时操作体验 (点击可即刻交互)</span>
+            </div>
+            <div class="chrome-actions">
+              <span>_</span>
+              <span>□</span>
+              <span>✕</span>
+            </div>
+          </div>
+
+          <div class="simulator-layout">
+            <!-- Sidebar -->
+            <div class="sim-nav-bar">
+              <div class="sim-section-label">主流已接管智能体</div>
+              <button class="sim-tab-button active" data-tab="chatgpt">
+                <span>🟢</span>
+                <span>ChatGPT / Codex</span>
+                <span class="sim-badge-tag">v1</span>
+              </button>
+              <button class="sim-tab-button" data-tab="claude">
+                <span>🟣</span>
+                <span>Claude Code CLI</span>
+                <span class="sim-badge-tag">v3.7</span>
+              </button>
+              <button class="sim-tab-button" data-tab="traework">
+                <span>🔵</span>
+                <span>TRAE Work (字节)</span>
+                <span class="sim-badge-tag">SQLite</span>
+              </button>
+              <button class="sim-tab-button" data-tab="workbuddy">
+                <span>🟠</span>
+                <span>Workbuddy AI</span>
+                <span class="sim-badge-tag">Sync</span>
+              </button>
+
+              <div class="sim-section-label" style="margin-top: 14px;">生命周期调度</div>
+              <button class="sim-tab-button" data-tab="paths">
+                <span>🧭</span>
+                <span>路径管理 & 进程树</span>
+                <span class="sim-badge-tag" style="background:rgba(0,113,227,0.1); color:var(--accent-blue);">守护中</span>
+              </button>
+            </div>
+
+            <!-- Viewport -->
+            <div class="sim-viewport">
+              <div class="sim-head">
+                <div class="sim-head-text">
+                  <h3 id="sim-title">🟢 ChatGPT & Codex CLI 配置中心</h3>
+                  <p id="sim-desc">原子写入 ~/.codex/config.toml，全面接管微软商店 Store 隔离包与 Win32 原生版</p>
+                </div>
+                <div id="sim-status-badge" class="sim-status-indicator">
+                  已注入 · 进程就绪
+                </div>
+              </div>
+
+              <!-- Fields -->
+              <div class="sim-form-row">
+                <label>
+                  <span>配置文件绝对路径 (支持一键原生调阅)</span>
+                  <span style="color:var(--accent-blue); cursor:pointer;" onclick="showToast('已唤起系统原生编辑器打开配置文件！')">📂 原生调阅</span>
+                </label>
+                <input id="sim-input-config" type="text" class="sim-text-input" readonly value="~/.codex/config.toml">
+              </div>
+
+              <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+                <div class="sim-form-row">
+                  <label>API 服务网关 (Base URL)</label>
+                  <input id="sim-input-api" type="text" class="sim-text-input" value="https://api.openai.com/v1">
+                </div>
+                <div class="sim-form-row">
+                  <label>推荐默认模型 (快捷芯片切换)</label>
+                  <input id="sim-input-model" type="text" class="sim-text-input" value="gpt-4o">
+                </div>
+              </div>
+
+              <div class="sim-form-row">
+                <label>快速填充芯片 (点击立即切换)：</label>
+                <div id="sim-chips" class="chips-deck">
+                  <span class="chip-item active">gpt-4o</span>
+                  <span class="chip-item">gpt-4o-mini</span>
+                  <span class="chip-item">o1</span>
+                  <span class="chip-item">o3-mini</span>
+                  <span class="chip-item">chatgpt-4o-latest</span>
+                </div>
+              </div>
+
+              <!-- Terminal Diagnostic Console -->
+              <div class="terminal-console">
+                <div class="console-header">
+                  <span>⚡ 交互式流式终端诊断</span>
+                  <span id="sim-latency-badge" style="color:#10b981;">待测试</span>
+                </div>
+                <pre id="sim-terminal-text" class="console-output"><span style="color:#64748b;">// 准备就绪。点击下方「测试流式连通性」发起网络握手探针...</span></pre>
+              </div>
+
+              <div class="sim-footer-bar">
+                <button class="btn-terminal-action btn-terminal-ghost" onclick="copyToClipboard('curl -X POST https://api.openai.com/v1/chat/completions -H &quot;Authorization: Bearer sk-***&quot;', '已复制脱敏 cURL 排错命令！')">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+                  <span>复制 cURL 药丸</span>
+                </button>
+                <button id="btn-sim-test" class="btn-terminal-action btn-terminal-test">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
+                  <span>测试流式连通性</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Apple Bento Grid Section (SpotlightCard Light) -->
+  <section id="bento" class="section-bento">
+    <div class="container">
+      <div class="keynote-section-title">
+        <span class="keynote-label">Bento Architecture</span>
+        <h2 class="keynote-h2">强悍内核，举重若轻。</h2>
+        <p class="keynote-lead">每一个架构层级的精细雕琢，只为给你带来零延迟、不打断的顶级编程专注力。</p>
+      </div>
+
+      <div class="bento-grid">
+        <!-- Bento Card 1: Multi-Agent Orchestration (Span 8) -->
+        <div class="spotlight-card bento-col-8">
+          <div class="spotlight-glare"></div>
+          <div class="bento-icon-badge">🤖</div>
+          <h3>多核主流智能体一站式纳管</h3>
+          <p>针对不同 AI 编程终端的底层存储模型专属定制，彻底斩断在数十个配置文件间反复翻找的痛苦过程：</p>
+          <ul class="bento-spec-list">
+            <li>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"></polyline></svg>
+              <span><strong>🟣 Claude Code CLI</strong>：深度托管 <code>~/.claude.json</code> 与 <code>settings.json</code>，内置 Claude 3.7 Sonnet 芯片；</span>
+            </li>
+            <li>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"></polyline></svg>
+              <span><strong>🟢 OpenAI Codex / ChatGPT</strong>：写入 <code>~/.codex/config.toml</code>，支持微软商店 Store 与原生 Win32 双端；</span>
+            </li>
+            <li>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"></polyline></svg>
+              <span><strong>🔵 Trae Work (字节跳动)</strong>：直连 SQLite 3 <code>state.vscdb</code> 数据库，自定义模型热注入！</span>
+            </li>
+          </ul>
+        </div>
+
+        <!-- Bento Card 2: Lightweight Rust Power (Span 4) -->
+        <div class="spotlight-card bento-col-4">
+          <div class="spotlight-glare"></div>
+          <div class="bento-icon-badge">⚡</div>
+          <h3>极致轻量常驻</h3>
+          <p>Rust 2024 原生编译 + Tauri v2 极速引擎，告别 Electron 臃肿包袱，启动快如闪电。</p>
+          <div class="metric-stat-group">
+            <div>
+              <div class="metric-unit-number">&lt; 35<span style="font-size: 1.4rem;">MB</span></div>
+              <div class="metric-unit-label">内存极低常驻</div>
+            </div>
+            <div>
+              <div class="metric-unit-number">0.1<span style="font-size: 1.4rem;">s</span></div>
+              <div class="metric-unit-label">秒级即刻唤醒</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Bento Card 3: In-Process Env Sync (Span 4) -->
+        <div class="spotlight-card bento-col-4">
+          <div class="spotlight-glare"></div>
+          <div class="bento-icon-badge">🔄</div>
+          <h3>进程内纳秒级环境注入</h3>
+          <p>在持久化配置写入的同时，同步执行 <code>std::env::set_var</code>，当前应用与派生终端无需重启操作系统，即可即刻获得最新 API Key 与网关。</p>
+        </div>
+
+        <!-- Bento Card 4: Safe Process Lifecycle (Span 8) -->
+        <div class="spotlight-card bento-col-8">
+          <div class="spotlight-glare"></div>
+          <div class="bento-icon-badge">🛡️</div>
+          <h3>有界句柄释放等待与进程树安全热重启</h3>
+          <p>彻底告别端口冲突与僵尸孤儿进程！执行 <code>taskkill /F /T</code> 强力清理子进程树，并以最长 2.5 秒、每 150ms 轮询检测文件读写锁与句柄完全释放，杜绝多实例竞争崩溃。</p>
+          <div style="display: flex; gap: 14px; margin-top: 24px; flex-wrap: wrap;">
+            <div style="padding: 10px 16px; background: #f5f5f7; border: 1px solid var(--border-subtle); border-radius: 8px; font-size: 0.86rem; color: var(--text-primary);">
+              🧹 <strong>进程树安全查杀 (/F /T)</strong>
+            </div>
+            <div style="padding: 10px 16px; background: #f5f5f7; border: 1px solid var(--border-subtle); border-radius: 8px; font-size: 0.86rem; color: var(--text-primary);">
+              🔒 <strong>文件锁安全释放等待</strong>
+            </div>
+          </div>
+        </div>
+
+        <!-- Bento Card 5: Native Config Viewer (Span 6) -->
+        <div class="spotlight-card bento-col-6">
+          <div class="spotlight-glare"></div>
+          <div class="bento-icon-badge">📂</div>
+          <h3>独创「全场景原生配置文件直达」联动引擎</h3>
+          <p>在状态栏胶囊与引导向导中均有一键打开配置文件按钮，搭载智能三级降级容灾机制（默认关联编辑器 ➔ 系统记事本 ➔ 资源管理器高亮定位），告别手动翻找路径。</p>
+        </div>
+
+        <!-- Bento Card 6: Elevation Hardening & Dynamic COMSPEC (Span 6) -->
+        <div class="spotlight-card bento-col-6">
+          <div class="spotlight-glare"></div>
+          <div class="bento-icon-badge">🐚</div>
+          <h3>动态 COMSPEC 解释器与管理员提权守护</h3>
+          <p>针对 Windows 开发者在管理员高权限控制台运行 Codex 容易遭遇的跨会话 Daemon 冲突，自动注入 <code>--no-daemon</code> 参数并动态解析当前操作系统命令解释器环境路径，稳健性拉满。</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Keynote Workflow Steps -->
+  <section id="workflow" class="section-workflow">
+    <div class="container">
+      <div class="keynote-section-title">
+        <span class="keynote-label">Streamlined Workflow</span>
+        <h2 class="keynote-h2">全链路闭环，不到 10 秒。</h2>
+        <p class="keynote-lead">无需繁杂的手动调试，从配置到连通生效，行云流水。</p>
+      </div>
+
+      <div class="workflow-steps-deck">
+        <div class="workflow-card-step">
+          <div class="step-watermark">01</div>
+          <h4>环境感知与路径自愈</h4>
+          <p>软件启动时自动探测系统 PATH、NPM 全局脚本及 Store 隔离包，智能自愈纠偏失效路径，一览客户端运行状态。</p>
+        </div>
+
+        <div class="workflow-card-step">
+          <div class="step-watermark">02</div>
+          <h4>网关配置与流式测速</h4>
+          <p>填入 API Key 与中转地址，点击芯片一键选定模型，发起真实流式网络握手，毫秒级验证首字延迟与连通状态。</p>
+        </div>
+
+        <div class="workflow-card-step">
+          <div class="step-watermark">03</div>
+          <h4>原子写入与一键热重启</h4>
+          <p>后端原子落盘配置，弹出引导面板一键终止旧进程树并等待句柄释放，唤醒新客户端，携最新配置立即投入开发！</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Download Center (Apple Store Tier) -->
+  <section id="downloads" class="section-download">
+    <div class="container">
+      <div class="keynote-section-title">
+        <span class="keynote-label">Official Downloads</span>
+        <h2 class="keynote-h2">立即下载体验</h2>
+        <p class="keynote-lead">
+          当前官方最新版本：<strong class="current-version-tag" style="color: var(--accent-blue);">v1.0.31</strong> · 纯净无广告 · 永久开源免费
+        </p>
+      </div>
+
+      <div class="download-cards-row">
+        <!-- Card 1: Setup Exe -->
+        <div class="dl-pro-card featured-card">
+          <div class="card-badge-top">推荐首选</div>
+          <div class="dl-card-icon">
+            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+              <polyline points="7 10 12 15 17 10"></polyline>
+              <line x1="12" y1="15" x2="12" y2="3"></line>
+            </svg>
+          </div>
+          <h3>Windows 官方安装包</h3>
+          <div class="sub-meta">NSIS 自动化安装程序 · ~12MB</div>
+
+          <ul class="dl-spec-items">
+            <li>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#10b981" stroke-width="2.5"><polyline points="20 6 9 17 4 12"></polyline></svg>
+              <span>自动创建桌面快捷方式与开始菜单引导</span>
+            </li>
+            <li>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#10b981" stroke-width="2.5"><polyline points="20 6 9 17 4 12"></polyline></svg>
+              <span>内置安全数字指纹与 WebView2 运行库检测</span>
+            </li>
+            <li>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#10b981" stroke-width="2.5"><polyline points="20 6 9 17 4 12"></polyline></svg>
+              <span>支持静默平滑一键自动更新机制</span>
+            </li>
+          </ul>
+
+          <a id="link-dl-setup" href="https://github.com/TF49/AI-Helper/releases/download/v1.0.31/AI-Helper-v1.0.31-Windows-x64-Setup.exe" class="btn-dl-apple">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+            <span>GitHub 直链下载 (Setup.exe)</span>
+          </a>
+          <a id="link-dl-fast-setup" href="https://ghfast.top/https://github.com/TF49/AI-Helper/releases/download/v1.0.31/AI-Helper-v1.0.31-Windows-x64-Setup.exe" class="btn-dl-fast-mirror">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#38bdf8" stroke-width="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon></svg>
+            <span>🚀 国内高速镜像下载 (直连不卡顿)</span>
+          </a>
+        </div>
+
+        <!-- Card 2: Standalone Zip -->
+        <div class="dl-pro-card">
+          <div class="dl-card-icon" style="background: rgba(168, 85, 247, 0.12); color: #a855f7; border-color: rgba(168, 85, 247, 0.3);">
+            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="2" y="7" width="20" height="14" rx="2" ry="2"></rect>
+              <path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"></path>
+            </svg>
+          </div>
+          <h3>Windows 便携免安装版</h3>
+          <div class="sub-meta">绿色便携 ZIP 压缩包 · ~14MB</div>
+
+          <ul class="dl-spec-items">
+            <li>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#10b981" stroke-width="2.5"><polyline points="20 6 9 17 4 12"></polyline></svg>
+              <span>解压即用，不写入系统注册表，纯净无残留</span>
+            </li>
+            <li>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#10b981" stroke-width="2.5"><polyline points="20 6 9 17 4 12"></polyline></svg>
+              <span>适合 U 盘携带或严格安全权限的企业办公机</span>
+            </li>
+            <li>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#10b981" stroke-width="2.5"><polyline points="20 6 9 17 4 12"></polyline></svg>
+              <span>包含完整第三方协议说明与二进制文件</span>
+            </li>
+          </ul>
+
+          <a id="link-dl-zip" href="https://github.com/TF49/AI-Helper/releases/download/v1.0.31/AI-Helper-v1.0.31-Windows-x64-Standalone.zip" class="btn-dl-apple">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+            <span>GitHub 直链下载 (ZIP)</span>
+          </a>
+          <a id="link-dl-fast-zip" href="https://ghfast.top/https://github.com/TF49/AI-Helper/releases/download/v1.0.31/AI-Helper-v1.0.31-Windows-x64-Standalone.zip" class="btn-dl-fast-mirror">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#a855f7" stroke-width="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon></svg>
+            <span>🚀 国内高速镜像下载 (免安装)</span>
+          </a>
+        </div>
+
+        <!-- Card 3: Source & Build -->
+        <div class="dl-pro-card">
+          <div class="dl-card-icon" style="background: rgba(245, 158, 11, 0.12); color: #f59e0b; border-color: rgba(245, 158, 11, 0.3);">
+            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="16 18 22 12 16 6"></polyline>
+              <polyline points="8 6 2 12 8 18"></polyline>
+            </svg>
+          </div>
+          <h3>源码本地自主构建</h3>
+          <div class="sub-meta">Tauri v2 + React 18 + Rust 2024</div>
+
+          <ul class="dl-spec-items">
+            <li>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#10b981" stroke-width="2.5"><polyline points="20 6 9 17 4 12"></polyline></svg>
+              <span>Node.js >= 18 + pnpm 10 + Rust stable</span>
+            </li>
+            <li>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#10b981" stroke-width="2.5"><polyline points="20 6 9 17 4 12"></polyline></svg>
+              <span><code>pnpm dev</code> 极速热重载本地调试</span>
+            </li>
+            <li>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#10b981" stroke-width="2.5"><polyline points="20 6 9 17 4 12"></polyline></svg>
+              <span><code>pnpm build</code> 编译生成专属安装包</span>
+            </li>
+          </ul>
+
+          <a href="https://github.com/TF49/AI-Helper" target="_blank" rel="noopener noreferrer" class="btn-dl-apple" style="background: #ffffff; color: var(--text-primary); border: 1px solid var(--border-medium); box-shadow: var(--shadow-subtle);">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path fill-rule="evenodd" clip-rule="evenodd" d="M12 2C6.477 2 2 6.484 2 12.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.53 1.032 1.53 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0112 6.844c.85.004 1.705.115 2.504.337 1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.202 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.943.359.309.678.92.678 1.855 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.019 10.019 0 0022 12.017C22 6.484 17.522 2 12 2z"/></svg>
+            <span>访问 GitHub 仓库</span>
+          </a>
+          <button class="btn-dl-fast-mirror" onclick="copyToClipboard('git clone https://github.com/TF49/AI-Helper.git &amp;&amp; cd AI-Helper &amp;&amp; pnpm install &amp;&amp; pnpm dev', '已复制克隆与调试命令！')">
+            <span>📋 复制 Git 克隆命令</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Security & Checksums -->
+      <div class="security-audit-box">
+        <div class="audit-head">
+          <div class="audit-head-title">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#10b981" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg>
+            <span>系统要求与安全校验 (System Requirements & Checksums)</span>
+          </div>
+          <span style="font-size: 0.8rem; color: #10b981; font-weight:600;">✔ 官方构建已通过 SHA-256 签名</span>
+        </div>
+
+        <div style="font-size: 0.88rem; color: var(--text-secondary); line-height: 1.6;">
+          <strong>系统环境</strong>：Windows 10 (1809 及以上) / Windows 11 64位系统。底层基于 Microsoft Edge WebView2 运行库极速渲染（Win11 自带；Win10 可通过微软官网 Evergreen Runtime 自动安装）。
+        </div>
+
+        <div class="hash-record-pill">
+          <span id="checksum-setup-filename">AI-Helper-v1.0.31-Windows-x64-Setup.exe</span>
+          <button id="btn-copy-checksum" class="btn-copy-hash" onclick="copyReleaseChecksumUrl()">
+            <span>查看发布页 SHA256</span>
+          </button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- FAQ Section (Accordion) -->
+  <section id="faq" class="section-faq">
+    <div class="container">
+      <div class="keynote-section-title">
+        <span class="keynote-label">FAQ</span>
+        <h2 class="keynote-h2">常见问题与解答</h2>
+        <p class="keynote-lead">这里汇总了开发者最关心的关键事项，让你用得彻底放心。</p>
+      </div>
+
+      <div class="faq-accordion-group">
+        <div class="faq-accordion-row">
+          <button class="faq-trigger-btn">
+            <span>1. AI Helper 是免费开源的吗？有收费功能或广告吗？</span>
+            <svg class="faq-trigger-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
+          </button>
+          <div class="faq-content-drawer">
+            AI Helper 是 100% 自由开源软件，遵循宽松的 MIT 开源协议。无论是个人开发者、团队协作还是企业内网使用，均完全免费，永久承诺不含任何广告弹窗，亦没有任何付费墙功能。
+          </div>
+        </div>
+
+        <div class="faq-accordion-row">
+          <button class="faq-trigger-btn">
+            <span>2. 我的 API Key 与配置安全吗？会上传到任何服务器吗？</span>
+            <svg class="faq-trigger-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
+          </button>
+          <div class="faq-content-drawer">
+            绝对安全！AI Helper 所有配置下发操作均在本地进行，直接原子读写你本地的配置文件（如 <code>~/.claude.json</code>、<code>~/.codex/config.toml</code>、以及 Trae 的 SQLite <code>state.vscdb</code> 本地数据库）。除向你指定的 API 网关发起流式连通性测试握手外，绝不向任何第三方云端或遥测服务器上传你的任何凭证。全部代码均开源可供审计。
+          </div>
+        </div>
+
+        <div class="faq-accordion-row">
+          <button class="faq-trigger-btn">
+            <span>3. 下载安装包时提示“Windows 已保护你的电脑”怎么办？</span>
+            <svg class="faq-trigger-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
+          </button>
+          <div class="faq-content-drawer">
+            这是因为开源项目的安装包由 GitHub Actions 自动化编译发布，未向商业机构购买昂贵的高级 EV 代码签名证书（SmartScreen 对新发布的二进制会触发此标准拦截）。请放心点击界面上的<strong>「更多信息」➔「仍要运行」</strong>即可。你也可以随时通过便携免安装版（ZIP）直接解压运行。
+          </div>
+        </div>
+
+        <div class="faq-accordion-row">
+          <button class="faq-trigger-btn">
+            <span>4. 国内无代理网络下载 GitHub 资源极其缓慢或超时怎么办？</span>
+            <svg class="faq-trigger-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
+          </button>
+          <div class="faq-content-drawer">
+            我们在下载专区直接提供了<strong>「🚀 国内高速镜像下载」</strong>按钮（基于稳定 CDN 反代加速）。点击该按钮即可绕过 GitHub 官方直连瓶颈，实现满速秒级下载。
+          </div>
+        </div>
+
+        <div class="faq-accordion-row">
+          <button class="faq-trigger-btn">
+            <span>5. 如何支持自定义模型与字节跳动 Trae Work？</span>
+            <svg class="faq-trigger-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
+          </button>
+          <div class="faq-content-drawer">
+            从最新版本起，AI Helper 全面引入了对 Trae Work (TRAE SOLO CN) 的专有支持。在界面中选择 Trae 标签页，填入你的自定义模型名称（如 <code>gpt-5.6-sol</code>、<code>claude-3-7-sonnet</code>）及 Base URL，点击保存即可由 Rust 后端自动直写入本地 SQLite 状态数据库，启动 Trae 后无需复杂配置直接可用！
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Apple Keynote Footer -->
+  <footer class="keynote-footer">
+    <div class="container">
+      <div class="footer-main-grid">
+        <div class="footer-brand-box">
+          <a href="#" class="brand-unit">
+            <img src="assets/logo.png" alt="AI Helper Logo" class="brand-symbol">
+            <span class="brand-title">AI Helper</span>
+          </a>
+          <p>
+            专为专业 AI 开发者打磨的极速 Agent 配置管理中枢 & 进程生命周期调度平台。惊艳，不止于快。
+          </p>
+        </div>
+
+        <div class="footer-links-columns">
+          <div class="footer-col">
+            <h5>产品导航</h5>
+            <ul>
+              <li><a href="#bento">核心架构</a></li>
+              <li><a href="#workflow">工作流程</a></li>
+              <li><a href="#downloads">下载专区</a></li>
+              <li><a href="#faq">常见问题</a></li>
+            </ul>
+          </div>
+
+          <div class="footer-col">
+            <h5>开源生态</h5>
+            <ul>
+              <li><a href="https://github.com/TF49/AI-Helper" target="_blank" rel="noopener noreferrer">GitHub 仓库</a></li>
+              <li><a href="https://github.com/TF49/AI-Helper/releases" target="_blank" rel="noopener noreferrer">版本发布历史</a></li>
+              <li><a href="https://github.com/TF49/AI-Helper/issues" target="_blank" rel="noopener noreferrer">提交 Issue / 反馈</a></li>
+              <li><a href="https://github.com/TF49/AI-Helper/blob/main/LICENSE" target="_blank" rel="noopener noreferrer">MIT 开源协议</a></li>
+            </ul>
+          </div>
+
+          <div class="footer-col">
+            <h5>支持的智能体</h5>
+            <ul>
+              <li><a href="#">Claude Code CLI</a></li>
+              <li><a href="#">OpenAI Codex / ChatGPT</a></li>
+              <li><a href="#">Trae Work (字节跳动)</a></li>
+              <li><a href="#">Workbuddy AI</a></li>
+            </ul>
+          </div>
+        </div>
+      </div>
+
+      <div class="footer-legal-bar">
+        <div>
+          © 2026 AI Helper. Released under the <a href="https://github.com/TF49/AI-Helper/blob/main/LICENSE" target="_blank" rel="noopener noreferrer" style="color:var(--accent-blue); text-decoration:none;">MIT License</a>.
+        </div>
+        <div>
+          Designed with ❤️ for AI Developers worldwide.
+        </div>
+      </div>
+    </div>
+  </footer>
+
+  <!-- Local Offline-Ready Animation Libraries -->
+  <script src="assets/anime.min.js"></script>
+  <script src="assets/gsap.min.js"></script>
+  <script src="assets/ScrollTrigger.min.js"></script>
+  <!-- Landing Page Script -->
+  <script src="assets/script.js"></script>
+</body>
+</html>
