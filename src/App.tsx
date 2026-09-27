@@ -38,11 +38,19 @@ import { AuroraBackground } from "./components/react-bits/AuroraBackground";
 import { DecryptedText } from "./components/react-bits/DecryptedText";
 import { ShinyText } from "./components/react-bits/ShinyText";
 import { cn } from "./lib/utils";
-import { checkBobApiNetwork, openUrl } from "./lib/api";
+import { checkBobApiNetwork, openUrl, isTauri } from "./lib/api";
 import { ForceUpdateModal, useAppUpdater } from "./components/ForceUpdateModal";
 
 type Tab = "chatgpt" | "claude" | "workbuddy" | "traework" | "paths";
 type NetworkState = "checking" | "reachable" | "unreachable";
+
+const mockWindow = {
+  isMaximized: async () => false,
+  toggleMaximize: async () => {},
+  minimize: async () => {},
+  close: async () => {},
+  onResized: async (_cb: () => void) => () => {},
+};
 
 export default function App() {
   return <AppContent />;
@@ -58,7 +66,7 @@ function AppContent() {
   const [initModalOpen, setInitModalOpen] = useState(false);
   const [appVersion, setAppVersion] = useState("...");
   const { resolvedTheme } = useTheme();
-  const win = getCurrentWindow();
+  const win = isTauri ? getCurrentWindow() : mockWindow;
 
   const switchTab = (newTab: Tab) => {
     setTab(newTab);
@@ -135,7 +143,13 @@ function AppContent() {
 
   // 读取真实版本号
   useEffect(() => {
-    void getVersion().then((v) => setAppVersion(v));
+    if (isTauri) {
+      void getVersion()
+        .then((v) => setAppVersion(v))
+        .catch(() => setAppVersion("1.0.32"));
+    } else {
+      setAppVersion("1.0.32 (Web Preview)");
+    }
   }, []);
 
   // 严格执行启动时序：优先更新检查与自动更新，当更新检查结束且未处于更新重启中时，再判定并弹出初始化向导
@@ -160,6 +174,15 @@ function AppContent() {
       setInitModalOpen(true);
     }
   }, [isBootCheckComplete, updatePhase]);
+
+  // 兜底保护：确保启动检测过渡遮罩最多停留 2.5 秒，超时后无论任何网络情况均放行
+  useEffect(() => {
+    if (isBootCheckComplete) return;
+    const safety = setTimeout(() => {
+      handleUpdateClose();
+    }, 2500);
+    return () => clearTimeout(safety);
+  }, [isBootCheckComplete, handleUpdateClose]);
 
   const handleInitFinish = () => {
     localStorage.setItem("ai_helper_init_completed", "true");
@@ -763,6 +786,13 @@ function AppContent() {
           <p className="text-xs text-slate-400 mt-1.5">
             优先确认最新版本与运行环境，请稍候
           </p>
+          <button
+            type="button"
+            onClick={handleUpdateClose}
+            className="mt-5 px-3.5 py-1.5 rounded-lg text-xs text-slate-400 hover:text-white bg-white/5 hover:bg-white/10 border border-white/10 transition-colors cursor-pointer"
+          >
+            跳过检查直接进入
+          </button>
         </div>
       )}
 

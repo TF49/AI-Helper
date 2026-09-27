@@ -1,4 +1,4 @@
-import { invoke, Channel } from "@tauri-apps/api/core";
+import { invoke as tauriInvoke, Channel } from "@tauri-apps/api/core";
 import { toast } from "sonner";
 import type {
   AgentConfig,
@@ -15,6 +15,72 @@ import type {
   TraeWorkSavePayload,
   TraeWorkModelItem,
 } from "../types";
+
+export const isTauri =
+  typeof window !== "undefined" &&
+  Boolean((window as unknown as { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__);
+
+function getMockResponse<T>(cmd: string, _args?: Record<string, unknown>): T {
+  switch (cmd) {
+    case "check_bob_api_network":
+      return { reachable: true, latency_ms: 45, checked_at: Date.now() } as unknown as T;
+    case "get_traework_config":
+      return {
+        config_exists: true,
+        config_path: "C:\\Users\\Administrator\\AppData\\Roaming\\Trae\\User\\globalStorage\\state.vscdb",
+        api_format: "custom_responses_compatible",
+        base_url: "https://bob-api.com/v1/responses",
+        is_full_url: true,
+        configured_models: [],
+      } as unknown as T;
+    case "get_codex_config":
+      return {
+        config_exists: true,
+        config_path: "~/.codex/config.toml",
+        url: "https://bob-api.com",
+        api_key: "",
+        model: "gpt-5.6-sol",
+      } as unknown as T;
+    case "get_claude_config":
+      return {
+        config_exists: true,
+        config_path: "~/.claude/settings.json",
+        url: "https://bob-api.com",
+        api_key: "",
+        model: "claude-3-7-sonnet",
+      } as unknown as T;
+    case "get_workbuddy_config":
+      return {
+        config_exists: true,
+        config_path: "~/.workbuddy-ai/models.json",
+        configured_models: [],
+      } as unknown as T;
+    case "get_app_paths":
+      return { claude: null, codex: null, chatgpt: null, workbuddy: null, traework: null } as unknown as T;
+    case "detect_all_app_paths":
+      return [] as unknown as T;
+    case "fetch_codex_models":
+    case "fetch_claude_models":
+      return [
+        { id: "gpt-5.6-sol", name: "gpt-5.6-sol" },
+        { id: "claude-3-7-sonnet", name: "claude-3-7-sonnet" },
+      ] as unknown as T;
+    case "open_url":
+      if (_args && typeof _args.url === "string") {
+        window.open(_args.url, "_blank");
+      }
+      return true as unknown as T;
+    default:
+      return undefined as unknown as T;
+  }
+}
+
+async function invoke<T>(cmd: string, args?: Record<string, unknown>): Promise<T> {
+  if (!isTauri) {
+    return getMockResponse<T>(cmd, args);
+  }
+  return tauriInvoke<T>(cmd, args);
+}
 
 export async function getAppPaths(): Promise<AppPathsConfig> {
   return invoke<AppPathsConfig>("get_app_paths");
@@ -143,6 +209,11 @@ export async function testCodexStream(
   model: string,
   onEvent: (event: TestStreamEvent) => void,
 ): Promise<ApiTestResult> {
+  if (!isTauri) {
+    onEvent({ type: "log", data: { text: "[Web Preview] 模拟发起 Codex 连接测试...", level: "info" } });
+    onEvent({ type: "finish", data: { success: true, message: "测试连接成功", latency_ms: 60, status_code: 200 } });
+    return { success: true, message: "测试连接成功", latencyMs: 60, statusCode: 200 };
+  }
   const channel = new Channel<TestStreamEvent>(onEvent);
   return invoke<ApiTestResult>("test_codex_stream", {
     url,
@@ -158,6 +229,11 @@ export async function testClaudeStream(
   model: string,
   onEvent: (event: TestStreamEvent) => void,
 ): Promise<ApiTestResult> {
+  if (!isTauri) {
+    onEvent({ type: "log", data: { text: "[Web Preview] 模拟发起 Claude 连接测试...", level: "info" } });
+    onEvent({ type: "finish", data: { success: true, message: "测试连接成功", latency_ms: 60, status_code: 200 } });
+    return { success: true, message: "测试连接成功", latencyMs: 60, statusCode: 200 };
+  }
   const channel = new Channel<TestStreamEvent>(onEvent);
   return invoke<ApiTestResult>("test_claude_stream", {
     url,
@@ -173,6 +249,11 @@ export async function testWorkbuddyStream(
   model: string,
   onEvent: (event: TestStreamEvent) => void,
 ): Promise<ApiTestResult> {
+  if (!isTauri) {
+    onEvent({ type: "log", data: { text: "[Web Preview] 模拟发起 WorkBuddy 连接测试...", level: "info" } });
+    onEvent({ type: "finish", data: { success: true, message: "测试连接成功", latency_ms: 60, status_code: 200 } });
+    return { success: true, message: "测试连接成功", latencyMs: 60, statusCode: 200 };
+  }
   const channel = new Channel<TestStreamEvent>(onEvent);
   return invoke<ApiTestResult>("test_workbuddy_stream", {
     url,
@@ -190,6 +271,12 @@ export async function testTraeWorkStream(
   isFullUrl: boolean,
   onEvent: (event: TestStreamEvent) => void,
 ): Promise<ApiTestResult> {
+  if (!isTauri) {
+    onEvent({ type: "log", data: { text: "[Web Preview] 模拟发起 Trae Work 连接测试...", level: "info" } });
+    onEvent({ type: "log", data: { text: `端点: ${url} | 格式: ${apiFormat}`, level: "dim" } });
+    onEvent({ type: "finish", data: { success: true, message: "测试连接成功", latency_ms: 60, status_code: 200 } });
+    return { success: true, message: "测试连接成功", latencyMs: 60, statusCode: 200 };
+  }
   const channel = new Channel<TestStreamEvent>(onEvent);
   return invoke<ApiTestResult>("test_traework_stream", {
     url,

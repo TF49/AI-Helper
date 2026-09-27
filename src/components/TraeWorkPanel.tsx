@@ -26,7 +26,6 @@ import {
   deleteTraeWorkModel,
   fetchCodexModels,
   getTraeWorkConfig,
-  setTraeWorkConfig,
   openConfigFile,
 } from "../lib/api";
 import { StatusBadge } from "./StatusBadge";
@@ -36,7 +35,6 @@ import { ModelInput } from "./ModelInput";
 import { Label } from "./ui/label";
 import type {
   TraeWorkModelItem,
-  TraeWorkSavePayload,
   TraeApiFormat,
 } from "../types";
 import { useModelFetch } from "../lib/useModelFetch";
@@ -108,60 +106,37 @@ export function extractGatewayBase(rawUrl: string): string {
 export function buildTraeUrl(
   rawBaseOrUrl: string,
   format: TraeApiFormat,
-  fullUrl: boolean,
+  _fullUrl: boolean = true,
 ): string {
   if (!rawBaseOrUrl) {
-    if (fullUrl) {
-      if (format === "custom_responses_compatible") {
-        return "https://bob-api.com/v1/responses";
-      } else if (format === "custom_anthropic_compatible") {
-        return "https://bob-api.com/v1/messages";
-      } else {
-        return "https://bob-api.com/v1/chat/completions";
-      }
+    if (format === "custom_responses_compatible") {
+      return "https://bob-api.com/v1/responses";
+    } else if (format === "custom_anthropic_compatible") {
+      return "https://bob-api.com/v1/messages";
     } else {
-      if (format === "custom_anthropic_compatible") {
-        return "https://bob-api.com";
-      } else {
-        return "https://bob-api.com/v1";
-      }
+      return "https://bob-api.com/v1/chat/completions";
     }
   }
 
   let u = rawBaseOrUrl.trim().replace(/\/+$/, "");
   u = u.replace(/\/(chat\/completions|responses|messages)$/i, "").replace(/\/+$/, "");
 
-  if (fullUrl) {
-    if (format === "custom_anthropic_compatible") {
-      if (u.endsWith("/v1")) {
-        return `${u}/messages`;
-      }
-      return `${u}/v1/messages`;
-    } else if (format === "custom_responses_compatible") {
-      if (u.endsWith("/v1")) {
-        return `${u}/responses`;
-      }
-      return `${u}/v1/responses`;
-    } else {
-      const lastSeg = u.split("/").pop() || "";
-      if (/^v\d+$/i.test(lastSeg)) {
-        return `${u}/chat/completions`;
-      }
-      return `${u}/v1/chat/completions`;
+  if (format === "custom_anthropic_compatible") {
+    if (u.endsWith("/v1")) {
+      return `${u}/messages`;
     }
+    return `${u}/v1/messages`;
+  } else if (format === "custom_responses_compatible") {
+    if (u.endsWith("/v1")) {
+      return `${u}/responses`;
+    }
+    return `${u}/v1/responses`;
   } else {
-    if (format === "custom_anthropic_compatible") {
-      while (u.endsWith("/v1")) {
-        u = u.slice(0, -3).replace(/\/+$/, "");
-      }
-      return u || "https://bob-api.com";
-    } else {
-      const lastSeg = u.split("/").pop() || "";
-      if (/^v\d+$/i.test(lastSeg)) {
-        return u;
-      }
-      return `${u}/v1`;
+    const lastSeg = u.split("/").pop() || "";
+    if (/^v\d+$/i.test(lastSeg)) {
+      return `${u}/chat/completions`;
     }
+    return `${u}/v1/chat/completions`;
   }
 }
 
@@ -173,12 +148,11 @@ export function TraeWorkPanel() {
   const [apiFormat, setApiFormat] = useState<TraeApiFormat>(
     "custom_responses_compatible",
   );
-  const [isFullUrl, setIsFullUrl] = useState(true);
+  const isFullUrl = true;
 
   const [configExists, setConfigExists] = useState(false);
   const [configPath, setConfigPath] = useState("");
   const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
   const [testModalOpen, setTestModalOpen] = useState(false);
   const [configuredModels, setConfiguredModels] = useState<TraeWorkModelItem[]>(
     [],
@@ -232,13 +206,9 @@ export function TraeWorkPanel() {
     }
 
     if (item.base_url) {
-      const full =
-        item.base_url.endsWith("/chat/completions") ||
-        item.base_url.endsWith("/responses") ||
-        item.base_url.endsWith("/v1/messages") ||
-        item.base_url.endsWith("/messages");
-      setIsFullUrl(full);
-      setUrl(item.base_url);
+      setUrl(buildTraeUrl(item.base_url, nextFormat, true));
+    } else {
+      setUrl(buildTraeUrl(url, nextFormat, true));
     }
 
     setSupportsImages(item.multimodal ?? true);
@@ -288,13 +258,10 @@ export function TraeWorkPanel() {
           setApiFormat(loadedFormat);
         }
 
-        const full = Boolean(cfg.is_full_url);
-        setIsFullUrl(full);
-
         if (cfg.base_url) {
-          setUrl(cfg.base_url);
+          setUrl(buildTraeUrl(cfg.base_url, loadedFormat, true));
         } else {
-          setUrl(buildTraeUrl("https://bob-api.com", loadedFormat, full));
+          setUrl(buildTraeUrl("https://bob-api.com", loadedFormat, true));
         }
 
         if (cfg.api_key) {
@@ -340,7 +307,6 @@ export function TraeWorkPanel() {
     setModel("gpt-5.6-sol");
     setDisplayName("gpt-5.6-sol");
     setApiFormat("custom_responses_compatible");
-    setIsFullUrl(true);
     setSupportsImages(true);
     setThinkingMode("default");
     setMaxTurn(500);
@@ -420,7 +386,7 @@ export function TraeWorkPanel() {
     }
   };
 
-  const handleSave = async () => {
+  const handleSave = () => {
     if (!model.trim()) {
       toast.error("请输入模型 ID");
       return;
@@ -429,36 +395,17 @@ export function TraeWorkPanel() {
       toast.error("请输入自定义请求地址");
       return;
     }
-
-    setSaving(true);
-    try {
-      const cleanUrl = buildTraeUrl(url, apiFormat, isFullUrl);
-      const payload: TraeWorkSavePayload = {
-        api_format: apiFormat,
-        base_url: cleanUrl,
-        is_full_url: isFullUrl,
-        model: model.trim(),
-        display_name: displayName.trim() || model.trim(),
-        api_key: apiKey.trim(),
-        supports_images: supportsImages,
-        thinking_mode: thinkingMode,
-        max_turn: Number(maxTurn) || 500,
-        token_input: tokenInput === "" ? null : Number(tokenInput),
-        token_output: tokenOutput === "" ? null : Number(tokenOutput),
-        temperature: temperature === "" ? null : Number(temperature),
-        top_p: topP === "" ? null : Number(topP),
-        top_k: topK === "" ? null : Number(topK),
-      };
-
-      await setTraeWorkConfig(payload);
-      toast.success("Trae Work 模型配置已成功保存并同步！");
-      await load(true);
-    } catch (err) {
-      console.error("Failed to save Trae Work config:", err);
-      toast.error(`保存失败: ${String(err)}`);
-    } finally {
-      setSaving(false);
+    if (!apiKey.trim()) {
+      toast.error("请先输入 API 密钥凭证后再进行保存与测试");
+      return;
     }
+    if (apiKey.includes("•")) {
+      toast.warning(
+        "当前检测到本地数据库安全加密密文，无法直接用于网络请求。如需发起测试并保存，请输入明文 API Key 后再操作。",
+      );
+      return;
+    }
+    setTestModalOpen(true);
   };
 
   const isExistingModel = configuredModels.some((item) => {
@@ -550,12 +497,12 @@ export function TraeWorkPanel() {
       </div>
 
       {/* ── 双列栅格配置区域 ── */}
-      <div className="flex-1 grid grid-cols-1 lg:grid-cols-2 gap-5 min-h-0 overflow-y-auto pr-1">
+      <div className="flex-1 grid grid-cols-1 lg:grid-cols-2 gap-5 min-h-0 overflow-y-auto pr-1.5 pb-2">
         {/* ── 左列：路由网络、本地数据库状态与高级协议特性 ── */}
-        <div className="flex flex-col gap-5 flex-1 min-h-0">
+        <div className="flex flex-col gap-5">
           {/* 卡片 1: API 服务节点选择 */}
           <SpotlightCard
-            className="p-5 rounded-2xl border border-slate-200/90 dark:border-white/10 bg-white/80 dark:bg-[#121524]/60 shadow-sm dark:shadow-none flex flex-col justify-between"
+            className="p-5 rounded-2xl border border-slate-200/90 dark:border-white/10 bg-white/80 dark:bg-[#121524]/60 shadow-sm dark:shadow-none flex flex-col justify-between shrink-0"
             spotlightColor="rgba(2, 132, 199, 0.12)"
           >
             <div className="flex items-center justify-between mb-3 flex-shrink-0">
@@ -581,7 +528,7 @@ export function TraeWorkPanel() {
 
           {/* 卡片 2: 本地数据库路径管理 */}
           <SpotlightCard
-            className="p-5 rounded-2xl border border-slate-200/90 dark:border-white/10 bg-white/80 dark:bg-[#121524]/60 shadow-sm dark:shadow-none flex flex-col justify-between"
+            className="p-5 rounded-2xl border border-slate-200/90 dark:border-white/10 bg-white/80 dark:bg-[#121524]/60 shadow-sm dark:shadow-none space-y-3 shrink-0"
             spotlightColor="rgba(2, 132, 199, 0.12)"
           >
             <div>
@@ -635,7 +582,7 @@ export function TraeWorkPanel() {
 
           {/* 卡片 3: API 协议与高级模型特性 */}
           <SpotlightCard
-            className="p-5 rounded-2xl border border-slate-200/90 dark:border-white/10 bg-white/80 dark:bg-[#121524]/60 shadow-sm dark:shadow-none space-y-4"
+            className="p-5 rounded-2xl border border-slate-200/90 dark:border-white/10 bg-white/80 dark:bg-[#121524]/60 shadow-sm dark:shadow-none space-y-4 shrink-0"
             spotlightColor="rgba(2, 132, 199, 0.12)"
           >
             <div>
@@ -813,10 +760,10 @@ export function TraeWorkPanel() {
         </div>
 
         {/* ── 右列：密钥凭证、多模型管理与配置、上下文窗口与 Token 限制 ── */}
-        <div className="flex flex-col gap-5 flex-1 min-h-0">
+        <div className="flex flex-col gap-5">
           {/* 卡片 4: API 密钥凭据 */}
           <SpotlightCard
-            className="p-5 rounded-2xl border border-slate-200/90 dark:border-white/10 bg-white/80 dark:bg-[#121524]/60 shadow-sm dark:shadow-none flex flex-col justify-between"
+            className="p-5 rounded-2xl border border-slate-200/90 dark:border-white/10 bg-white/80 dark:bg-[#121524]/60 shadow-sm dark:shadow-none space-y-3.5 shrink-0"
             spotlightColor="rgba(2, 132, 199, 0.12)"
           >
             <div>
@@ -842,7 +789,7 @@ export function TraeWorkPanel() {
               />
             </div>
 
-            <div className="mt-3 flex items-center gap-2 p-2.5 rounded-xl bg-slate-50/70 border border-slate-200/80 dark:bg-white/[0.03] dark:border-white/5 text-xs text-slate-500 dark:text-gray-400">
+            <div className="flex items-center gap-2 p-2.5 rounded-xl bg-slate-50/70 border border-slate-200/80 dark:bg-white/[0.03] dark:border-white/5 text-xs text-slate-500 dark:text-gray-400">
               <ShieldCheck
                 size={14}
                 className="text-sky-500 dark:text-sky-400 flex-shrink-0"
@@ -856,7 +803,7 @@ export function TraeWorkPanel() {
 
           {/* 卡片 5: 模型管理与自定义配置 */}
           <SpotlightCard
-            className="p-5 rounded-2xl border border-slate-200/90 dark:border-white/10 bg-white/80 dark:bg-[#121524]/60 shadow-sm dark:shadow-none space-y-4"
+            className="p-5 rounded-2xl border border-slate-200/90 dark:border-white/10 bg-white/80 dark:bg-[#121524]/60 shadow-sm dark:shadow-none space-y-4 shrink-0"
             spotlightColor="rgba(2, 132, 199, 0.12)"
           >
             {/* 已配置模型标签组与切换 */}
@@ -987,7 +934,7 @@ export function TraeWorkPanel() {
                   value={displayName}
                   onChange={(e) => setDisplayName(e.target.value)}
                   placeholder="在 Trae 列表中展示的名称，未设置时默认使用 Model ID"
-                  disabled={saving}
+                  disabled={testModalOpen}
                   className="w-full text-xs bg-slate-50 dark:bg-[#181b2a] border border-slate-200 dark:border-white/10 rounded-lg px-2.5 py-1.5 text-slate-800 dark:text-gray-200 focus:outline-none focus:ring-1 focus:ring-sky-500"
                 />
               </div>
@@ -998,30 +945,19 @@ export function TraeWorkPanel() {
                   <Label className="text-xs font-semibold text-slate-800 dark:text-gray-200 flex items-center gap-1">
                     <span className="text-destructive">*</span> 自定义请求地址
                   </Label>
-                  <div className="flex items-center gap-2">
-                    <span className="text-[11px] text-slate-400 dark:text-gray-500">
-                      完整 URL
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-[11px] text-sky-600 dark:text-sky-400 font-medium">
+                      完整 URL (已锁定)
                     </span>
                     <button
                       type="button"
                       role="switch"
-                      aria-checked={isFullUrl}
-                      onClick={() => {
-                        const next = !isFullUrl;
-                        setIsFullUrl(next);
-                        setUrl(buildTraeUrl(url, apiFormat, next));
-                      }}
-                      className={`relative inline-flex h-4 w-7 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
-                        isFullUrl
-                          ? "bg-sky-500"
-                          : "bg-slate-300 dark:bg-white/20"
-                      }`}
+                      aria-checked={true}
+                      disabled
+                      className="relative inline-flex h-4 w-7 flex-shrink-0 cursor-not-allowed rounded-full border-2 border-transparent bg-sky-500 opacity-90 transition-colors"
+                      title="已强制开启完整 URL 端点，根据所选协议自动显示完整路径"
                     >
-                      <span
-                        className={`pointer-events-none inline-block h-3 w-3 transform rounded-full bg-white shadow-sm ring-0 transition duration-200 ease-in-out ${
-                          isFullUrl ? "translate-x-3" : "translate-x-0"
-                        }`}
-                      />
+                      <span className="pointer-events-none inline-block h-3 w-3 transform rounded-full bg-white shadow-sm translate-x-3 transition duration-200" />
                     </button>
                   </div>
                 </div>
@@ -1029,20 +965,14 @@ export function TraeWorkPanel() {
                 <input
                   type="text"
                   value={url}
-                  onChange={(e) => setUrl(e.target.value)}
-                  placeholder={
-                    isFullUrl
-                      ? currentFormatMeta.fullPlaceholder
-                      : currentFormatMeta.placeholder
-                  }
-                  disabled={saving}
-                  className="w-full text-xs font-mono bg-slate-50 dark:bg-[#181b2a] border border-slate-200 dark:border-white/10 rounded-lg px-2.5 py-1.5 text-slate-800 dark:text-gray-200 focus:outline-none focus:ring-1 focus:ring-sky-500"
+                  readOnly
+                  placeholder={currentFormatMeta.fullPlaceholder}
+                  className="w-full text-xs font-mono bg-slate-100/80 dark:bg-white/[0.04] border border-slate-200 dark:border-white/10 rounded-lg px-2.5 py-1.5 text-slate-700 dark:text-gray-300 cursor-not-allowed select-all focus:outline-none"
+                  title="自定义请求地址不可直接手动编辑，已根据所选节点与协议自动生成完整端点"
                 />
 
-                <div className="text-[11px] text-slate-400 dark:text-gray-500 line-clamp-1">
-                  {isFullUrl
-                    ? `完整端点：${currentFormatMeta.fullPlaceholder}`
-                    : currentFormatMeta.hint}
+                <div className="text-[11px] text-slate-400 dark:text-gray-500 break-all">
+                  当前协议请求端点：{url || currentFormatMeta.fullPlaceholder}
                 </div>
               </div>
 
@@ -1071,7 +1001,7 @@ export function TraeWorkPanel() {
 
           {/* 卡片 6: 上下文窗口与 Token 限制 */}
           <SpotlightCard
-            className="p-5 rounded-2xl border border-slate-200/90 dark:border-white/10 bg-white/80 dark:bg-[#121524]/60 shadow-sm dark:shadow-none flex flex-col justify-between"
+            className="p-5 rounded-2xl border border-slate-200/90 dark:border-white/10 bg-white/80 dark:bg-[#121524]/60 shadow-sm dark:shadow-none space-y-4 shrink-0"
             spotlightColor="rgba(2, 132, 199, 0.12)"
           >
             <div className="space-y-4">
@@ -1184,7 +1114,7 @@ export function TraeWorkPanel() {
               </div>
             </div>
 
-            <div className="mt-3 flex items-center gap-1.5 text-[11px] text-slate-400 dark:text-gray-500">
+            <div className="pt-1 flex items-center gap-1.5 text-[11px] text-slate-400 dark:text-gray-500">
               <Info size={12} className="text-sky-500 flex-shrink-0" />
               <span>
                 数值将作为 prompt_max_tokens 与 max_tokens 写入 Trae 数据库，留空则由上游模型原生限制决定。
@@ -1195,75 +1125,42 @@ export function TraeWorkPanel() {
       </div>
 
       {/* ── 底部保存与联机验证操作栏 ── */}
-      <div className="pt-2 flex-shrink-0 flex flex-col gap-2">
-        <div className="flex items-center gap-3 w-full">
-          <button
-            type="button"
-            onClick={() => {
-              if (!apiKey.trim()) {
-                toast.error("请先输入 API 密钥后再进行测试");
-                return;
-              }
-              if (apiKey.includes("•")) {
-                toast.warning(
-                  "当前检测到本地数据库安全加密密文，无法直接用于网络请求。如需在线测试连通性，请输入明文 API Key 后再测。",
-                );
-                return;
-              }
-              setTestModalOpen(true);
-            }}
-            disabled={saving}
-            className="flex items-center justify-center gap-1.5 px-4 py-3 rounded-xl border border-sky-500/40 text-sky-700 dark:text-sky-300 hover:bg-sky-500/10 text-xs font-semibold transition-all cursor-pointer shadow-xs whitespace-nowrap"
-            title="发起一次真实请求测试上游连通性与模型输出"
-          >
-            <Sparkles size={15} />
-            <span>连通性测试</span>
-          </button>
+      <div className="pt-2 flex-shrink-0">
+        <StarBorder
+          className="w-full shadow-md"
+          color="#0284c7"
+          speed="3.5s"
+          onClick={handleSave}
+          disabled={testModalOpen}
+          innerClassName="bg-sky-600 hover:bg-sky-700 text-white dark:bg-[#0c1829] dark:text-sky-100 py-3 cursor-pointer"
+        >
+          <div className="flex items-center justify-center gap-2 font-semibold tracking-wide">
+            {isExistingModel ? (
+              <>
+                <Save
+                  size={18}
+                  className="text-white dark:text-sky-400 group-hover:scale-110 transition-transform"
+                />
+                <span className="text-sm">
+                  保存并更新 Trae 模型配置 ({displayName || model})
+                </span>
+              </>
+            ) : (
+              <>
+                <Plus
+                  size={18}
+                  className="text-white dark:text-sky-400 group-hover:scale-110 transition-transform"
+                />
+                <span className="text-sm">
+                  保存并新增模型至 Trae ({displayName || model || "新模型"})
+                </span>
+              </>
+            )}
+          </div>
+        </StarBorder>
 
-          <StarBorder
-            className="w-full flex-1 shadow-md"
-            color="#0284c7"
-            speed="3.5s"
-            onClick={handleSave}
-            disabled={saving}
-            innerClassName="bg-sky-600 hover:bg-sky-700 text-white dark:bg-[#0c1829] dark:text-sky-100 py-3 cursor-pointer"
-          >
-            <div className="flex items-center justify-center gap-2 font-semibold tracking-wide">
-              {saving ? (
-                <>
-                  <Loader2
-                    size={18}
-                    className="animate-spin text-white dark:text-sky-400"
-                  />
-                  <span className="text-sm">正在同步至 Trae...</span>
-                </>
-              ) : isExistingModel ? (
-                <>
-                  <Save
-                    size={18}
-                    className="text-white dark:text-sky-400 group-hover:scale-110 transition-transform"
-                  />
-                  <span className="text-sm">
-                    保存并更新 Trae 模型配置 ({displayName || model})
-                  </span>
-                </>
-              ) : (
-                <>
-                  <Plus
-                    size={18}
-                    className="text-white dark:text-sky-400 group-hover:scale-110 transition-transform"
-                  />
-                  <span className="text-sm">
-                    保存并新增模型至 Trae ({displayName || model || "新模型"})
-                  </span>
-                </>
-              )}
-            </div>
-          </StarBorder>
-        </div>
-
-        <p className="text-[11px] text-center text-slate-500 dark:text-gray-400">
-          点击直接将模型参数写入本地 Trae 状态数据库 (state.vscdb)；亦可先通过“连通性测试”验证上游服务响应
+        <p className="text-[11px] text-center text-slate-500 dark:text-gray-400 pt-2">
+          点击将唤起终端进行连通性测试，验证通过后自动写入本地 Trae 状态数据库 (state.vscdb)
         </p>
       </div>
 

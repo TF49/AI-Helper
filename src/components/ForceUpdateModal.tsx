@@ -31,7 +31,7 @@ import {
 import { relaunch, exit } from "@tauri-apps/plugin-process";
 import { invoke } from "@tauri-apps/api/core";
 import { toast } from "sonner";
-import { openUrl } from "../lib/api";
+import { openUrl, isTauri } from "../lib/api";
 
 // ── 类型定义 ─────────────────────────────────────────────────────────────────
 
@@ -83,7 +83,7 @@ export function useAppUpdater() {
   const [totalBytes, setTotalBytes] = useState(0);
   const [errorMessage, setErrorMessage] = useState("");
   const [isManualChecking, setIsManualChecking] = useState(false);
-  const [isBootCheckComplete, setIsBootCheckComplete] = useState(false);
+  const [isBootCheckComplete, setIsBootCheckComplete] = useState(!isTauri);
 
   const downloadStarted = useRef(false);
   const hasBootChecked = useRef(false);
@@ -93,6 +93,14 @@ export function useAppUpdater() {
    * @param manual 是否为用户手动点击检查更新
    */
   const checkForUpdates = useCallback(async (manual = false) => {
+    if (!isTauri) {
+      setIsBootCheckComplete(true);
+      if (manual) {
+        setIsManualChecking(false);
+        toast.info("当前运行于 Web 浏览器预览环境");
+      }
+      return;
+    }
     if (downloadStarted.current) return;
 
     if (manual) {
@@ -191,6 +199,11 @@ export function useAppUpdater() {
 
   // 应用启动时快速执行静默检测，确保先检查更新，再决定是否进入初始化
   useEffect(() => {
+    if (!isTauri) {
+      setIsBootCheckComplete(true);
+      return;
+    }
+
     if (hasBootChecked.current) return;
     hasBootChecked.current = true;
 
@@ -199,7 +212,7 @@ export function useAppUpdater() {
       void checkForUpdates(false);
     }, 100);
 
-    // 6秒超时兜底：即使极端网络环境卡住检测请求，也确保超时后放行进入主界面/初始化
+    // 2.5秒超时兜底：即使极端网络环境卡住检测请求，也确保超时后放行进入主界面/初始化
     const safetyTimer = setTimeout(() => {
       setIsBootCheckComplete((prev) => {
         if (!prev) {
@@ -210,9 +223,11 @@ export function useAppUpdater() {
         }
         return prev;
       });
-    }, 6000);
+    }, 2500);
 
     return () => {
+      // 兼容 React 18 StrictMode 模拟挂载-卸载-重挂载
+      hasBootChecked.current = false;
       clearTimeout(timer);
       clearTimeout(safetyTimer);
     };
