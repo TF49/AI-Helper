@@ -569,41 +569,14 @@ pub async fn test_traework_stream(
     api_key: String,
     model: String,
     api_format: String,
-    is_full_url: bool,
+    _is_full_url: bool,
     on_event: Channel<TestStreamEvent>,
 ) -> ApiTestResult {
-    let raw_url = url.trim().trim_end_matches('/');
-    let (endpoint, protocol_name) = match api_format.as_str() {
-        "custom_responses_compatible" => {
-            let ep = if is_full_url {
-                url.trim().to_string()
-            } else if raw_url.ends_with("/responses") {
-                raw_url.to_string()
-            } else {
-                format!("{}/responses", raw_url)
-            };
-            (ep, "OpenAI Responses 格式")
-        }
-        "custom_anthropic_compatible" => {
-            let ep = if is_full_url {
-                url.trim().to_string()
-            } else if raw_url.ends_with("/v1/messages") {
-                raw_url.to_string()
-            } else {
-                format!("{}/v1/messages", raw_url)
-            };
-            (ep, "Anthropic Messages 格式")
-        }
-        _ => {
-            let ep = if is_full_url {
-                url.trim().to_string()
-            } else if raw_url.ends_with("/chat/completions") {
-                raw_url.to_string()
-            } else {
-                format!("{}/chat/completions", raw_url)
-            };
-            (ep, "OpenAI Chat Completions 格式")
-        }
+    let endpoint = crate::traework::normalize_traework_url(&url, &api_format, true);
+    let protocol_name = match api_format.as_str() {
+        "custom_responses_compatible" => "OpenAI Responses 格式",
+        "custom_anthropic_compatible" => "Anthropic Messages 格式",
+        _ => "OpenAI Chat Completions 格式",
     };
 
     let masked_key = mask_api_key(&api_key);

@@ -3,13 +3,20 @@ import { toast } from "sonner";
 import {
   Loader2,
   Save,
+  RefreshCw,
+  RotateCcw,
+  Server,
+  KeyRound,
+  FileCode,
+  ShieldAlert,
+  ShieldCheck,
+  Cpu,
   Sliders,
+  Plus,
   Trash2,
   Sparkles,
   Layers,
   Info,
-  ChevronDown,
-  ChevronRight,
   ExternalLink,
   Copy,
   Check,
@@ -27,60 +34,145 @@ import { NodeCardSelector } from "./NodeCardSelector";
 import { ApiKeyInput } from "./ApiKeyInput";
 import { ModelInput } from "./ModelInput";
 import { Label } from "./ui/label";
-import {
-  TRAEWORK_MODEL_SUGGESTIONS,
-  type TraeWorkModelItem,
-  type TraeWorkSavePayload,
-  type TraeApiFormat,
+import type {
+  TraeWorkModelItem,
+  TraeWorkSavePayload,
+  TraeApiFormat,
 } from "../types";
 import { useModelFetch } from "../lib/useModelFetch";
 import { SpotlightCard } from "./react-bits/SpotlightCard";
+import { StarBorder } from "./react-bits/StarBorder";
 import { TerminalTestModal } from "./TerminalTestModal";
 
-const API_FORMAT_OPTIONS: { id: TraeApiFormat; label: string; placeholder: string; fullPlaceholder: string; hint: string }[] = [
-  {
-    id: "custom_openai_compatible",
-    label: "OpenAI Chat Completions 格式",
-    placeholder: "例如 https://api.openai.com/v1",
-    fullPlaceholder: "例如 https://api.openai.com/v1/chat/completions",
-    hint: "请输入兼容 OpenAI API 的服务端点地址，不要以斜杠结尾。/chat/completions 将会被补充到你填写的地址末尾。",
-  },
+const API_FORMAT_OPTIONS: {
+  id: TraeApiFormat;
+  label: string;
+  badge: string;
+  placeholder: string;
+  fullPlaceholder: string;
+  hint: string;
+}[] = [
   {
     id: "custom_responses_compatible",
     label: "OpenAI Responses API 格式",
-    placeholder: "例如 https://api.openai.com/v1",
+    badge: "responses",
+    placeholder: "例如 https://bob-api.com/v1",
     fullPlaceholder: "例如 https://bob-api.com/v1/responses",
-    hint: "请输入兼容 OpenAI Responses API 的服务端点地址，不要以斜杠结尾。/responses 将会被补充到你填写的地址末尾。",
+    hint: "兼容 OpenAI Responses API 服务端点，留空自动补全 /responses。",
+  },
+  {
+    id: "custom_openai_compatible",
+    label: "OpenAI Chat Completions 格式",
+    badge: "chat/completions",
+    placeholder: "例如 https://api.openai.com/v1",
+    fullPlaceholder: "例如 https://api.openai.com/v1/chat/completions",
+    hint: "兼容 OpenAI 标准 API 服务端点，留空自动补全 /chat/completions。",
   },
   {
     id: "custom_anthropic_compatible",
     label: "Anthropic Messages 格式",
+    badge: "messages",
     placeholder: "例如 https://api.anthropic.com",
     fullPlaceholder: "例如 https://api.anthropic.com/v1/messages",
-    hint: "请输入兼容 Claude API 的服务端点地址，不要以斜杠结尾。/v1/messages 将会被补充到你填写的地址末尾。",
+    hint: "兼容 Claude API 服务端点，留空自动补全 /v1/messages。",
   },
 ];
 
-const INPUT_TOKEN_CHIPS = [
-  { label: "128k", value: 131072 },
-  { label: "256k", value: 262144 },
-  { label: "512k", value: 524288 },
+const INPUT_TOKEN_PRESETS = [
+  { label: "32K", value: 32768 },
+  { label: "64K", value: 65536 },
+  { label: "128K", value: 131072 },
+  { label: "200K", value: 200000 },
+  { label: "256K", value: 262144 },
   { label: "1M", value: 1048576 },
 ];
 
-const OUTPUT_TOKEN_CHIPS = [
-  { label: "4k", value: 4096 },
-  { label: "16k", value: 16384 },
-  { label: "32k", value: 32768 },
-  { label: "128k", value: 131072 },
+const OUTPUT_TOKEN_PRESETS = [
+  { label: "4K", value: 4096 },
+  { label: "8K", value: 8192 },
+  { label: "16K", value: 16384 },
+  { label: "32K", value: 32768 },
+  { label: "64K", value: 65536 },
 ];
+
+export function extractGatewayBase(rawUrl: string): string {
+  if (!rawUrl) return "https://bob-api.com";
+  let u = rawUrl.trim().replace(/\/+$/, "");
+  u = u.replace(/\/(chat\/completions|responses|messages)$/i, "").replace(/\/+$/, "");
+  while (u.endsWith("/v1")) {
+    u = u.slice(0, -3).replace(/\/+$/, "");
+  }
+  return u || "https://bob-api.com";
+}
+
+export function buildTraeUrl(
+  rawBaseOrUrl: string,
+  format: TraeApiFormat,
+  fullUrl: boolean,
+): string {
+  if (!rawBaseOrUrl) {
+    if (fullUrl) {
+      if (format === "custom_responses_compatible") {
+        return "https://bob-api.com/v1/responses";
+      } else if (format === "custom_anthropic_compatible") {
+        return "https://bob-api.com/v1/messages";
+      } else {
+        return "https://bob-api.com/v1/chat/completions";
+      }
+    } else {
+      if (format === "custom_anthropic_compatible") {
+        return "https://bob-api.com";
+      } else {
+        return "https://bob-api.com/v1";
+      }
+    }
+  }
+
+  let u = rawBaseOrUrl.trim().replace(/\/+$/, "");
+  u = u.replace(/\/(chat\/completions|responses|messages)$/i, "").replace(/\/+$/, "");
+
+  if (fullUrl) {
+    if (format === "custom_anthropic_compatible") {
+      if (u.endsWith("/v1")) {
+        return `${u}/messages`;
+      }
+      return `${u}/v1/messages`;
+    } else if (format === "custom_responses_compatible") {
+      if (u.endsWith("/v1")) {
+        return `${u}/responses`;
+      }
+      return `${u}/v1/responses`;
+    } else {
+      const lastSeg = u.split("/").pop() || "";
+      if (/^v\d+$/i.test(lastSeg)) {
+        return `${u}/chat/completions`;
+      }
+      return `${u}/v1/chat/completions`;
+    }
+  } else {
+    if (format === "custom_anthropic_compatible") {
+      while (u.endsWith("/v1")) {
+        u = u.slice(0, -3).replace(/\/+$/, "");
+      }
+      return u || "https://bob-api.com";
+    } else {
+      const lastSeg = u.split("/").pop() || "";
+      if (/^v\d+$/i.test(lastSeg)) {
+        return u;
+      }
+      return `${u}/v1`;
+    }
+  }
+}
 
 export function TraeWorkPanel() {
   const [url, setUrl] = useState<string>("https://bob-api.com/v1/responses");
   const [apiKey, setApiKey] = useState("");
   const [model, setModel] = useState("gpt-5.6-sol");
   const [displayName, setDisplayName] = useState("gpt-5.6-sol");
-  const [apiFormat, setApiFormat] = useState<TraeApiFormat>("custom_responses_compatible");
+  const [apiFormat, setApiFormat] = useState<TraeApiFormat>(
+    "custom_responses_compatible",
+  );
   const [isFullUrl, setIsFullUrl] = useState(true);
 
   const [configExists, setConfigExists] = useState(false);
@@ -88,14 +180,19 @@ export function TraeWorkPanel() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [testModalOpen, setTestModalOpen] = useState(false);
-  const [advancedExpanded, setAdvancedExpanded] = useState(false);
-  const [configuredModels, setConfiguredModels] = useState<TraeWorkModelItem[]>([]);
-  const [deletingModelName, setDeletingModelName] = useState<string | null>(null);
+  const [configuredModels, setConfiguredModels] = useState<TraeWorkModelItem[]>(
+    [],
+  );
+  const [deletingModelName, setDeletingModelName] = useState<string | null>(
+    null,
+  );
   const [copiedSuccess, setCopiedSuccess] = useState(false);
 
   // 高级能力配置
   const [supportsImages, setSupportsImages] = useState(true);
-  const [thinkingMode, setThinkingMode] = useState<"default" | "on" | "off">("default");
+  const [thinkingMode, setThinkingMode] = useState<"default" | "on" | "off">(
+    "default",
+  );
   const [maxTurn, setMaxTurn] = useState<number>(500);
 
   // 上下文 Token 限制
@@ -108,13 +205,14 @@ export function TraeWorkPanel() {
   const [topK, setTopK] = useState<number | "">("");
 
   const { models, refreshingModels, refreshModels } = useModelFetch(
-    url,
+    extractGatewayBase(url),
     apiKey,
     fetchCodexModels,
   );
 
   const currentFormatMeta =
-    API_FORMAT_OPTIONS.find((f) => f.id === apiFormat) || API_FORMAT_OPTIONS[0];
+    API_FORMAT_OPTIONS.find((f) => f.id === apiFormat) ||
+    API_FORMAT_OPTIONS[0];
 
   const applyModelConfig = (item: TraeWorkModelItem) => {
     const rawModel = item.name.includes("//")
@@ -123,21 +221,24 @@ export function TraeWorkPanel() {
     setModel(rawModel);
     setDisplayName(item.display_name || rawModel);
 
+    let nextFormat: TraeApiFormat = "custom_responses_compatible";
     if (
       item.provider === "custom_openai_compatible" ||
       item.provider === "custom_responses_compatible" ||
       item.provider === "custom_anthropic_compatible"
     ) {
-      setApiFormat(item.provider as TraeApiFormat);
+      nextFormat = item.provider as TraeApiFormat;
+      setApiFormat(nextFormat);
     }
 
     if (item.base_url) {
-      setUrl(item.base_url);
-      setIsFullUrl(
+      const full =
         item.base_url.endsWith("/chat/completions") ||
-          item.base_url.endsWith("/responses") ||
-          item.base_url.endsWith("/v1/messages"),
-      );
+        item.base_url.endsWith("/responses") ||
+        item.base_url.endsWith("/v1/messages") ||
+        item.base_url.endsWith("/messages");
+      setIsFullUrl(full);
+      setUrl(item.base_url);
     }
 
     setSupportsImages(item.multimodal ?? true);
@@ -150,7 +251,7 @@ export function TraeWorkPanel() {
     }
 
     if (item.ak) {
-      setApiKey("••••••••••••••••");
+      setApiKey(item.ak);
     } else {
       setApiKey("");
     }
@@ -176,9 +277,26 @@ export function TraeWorkPanel() {
       setConfiguredModels(cfg.configured_models || []);
 
       if (!silent) {
+        let loadedFormat: TraeApiFormat = "custom_responses_compatible";
+        if (
+          cfg.api_format &&
+          (cfg.api_format === "custom_openai_compatible" ||
+            cfg.api_format === "custom_responses_compatible" ||
+            cfg.api_format === "custom_anthropic_compatible")
+        ) {
+          loadedFormat = cfg.api_format as TraeApiFormat;
+          setApiFormat(loadedFormat);
+        }
+
+        const full = Boolean(cfg.is_full_url);
+        setIsFullUrl(full);
+
         if (cfg.base_url) {
           setUrl(cfg.base_url);
+        } else {
+          setUrl(buildTraeUrl("https://bob-api.com", loadedFormat, full));
         }
+
         if (cfg.api_key) {
           setApiKey(cfg.api_key);
         }
@@ -188,14 +306,7 @@ export function TraeWorkPanel() {
         if (cfg.display_name) {
           setDisplayName(cfg.display_name);
         }
-        if (cfg.api_format && (
-          cfg.api_format === "custom_openai_compatible" ||
-          cfg.api_format === "custom_responses_compatible" ||
-          cfg.api_format === "custom_anthropic_compatible"
-        )) {
-          setApiFormat(cfg.api_format as TraeApiFormat);
-        }
-        setIsFullUrl(cfg.is_full_url);
+
         setSupportsImages(cfg.supports_images);
         if (cfg.thinking_mode === "on" || cfg.thinking_mode === "off") {
           setThinkingMode(cfg.thinking_mode);
@@ -268,6 +379,47 @@ export function TraeWorkPanel() {
     toast.success("模型配置参数已复制到剪贴板！");
   };
 
+  const handleAddNewModel = () => {
+    setModel("");
+    setDisplayName("");
+    if (apiKey.includes("•")) {
+      setApiKey("");
+    }
+    toast.info("已切换至新增模型模式，请输入新模型 ID 与展示名称后保存");
+  };
+
+  const handleDeleteModel = async (
+    targetName: string,
+    e: React.MouseEvent,
+  ) => {
+    e.stopPropagation();
+    if (!window.confirm(`确定要从 Trae 中移除模型 "${targetName}" 吗？`)) {
+      return;
+    }
+    setDeletingModelName(targetName);
+    try {
+      const remaining = await deleteTraeWorkModel(targetName);
+      setConfiguredModels(remaining);
+      toast.success(`已从 Trae 成功移除模型 "${targetName}"`);
+      const rawCurrent = model.includes("//")
+        ? model.split("//").pop() || model
+        : model;
+      if (rawCurrent && (targetName.endsWith(rawCurrent) || targetName === rawCurrent)) {
+        if (remaining.length > 0) {
+          applyModelConfig(remaining[0]);
+        } else {
+          setModel("");
+          setDisplayName("");
+        }
+      }
+    } catch (err) {
+      console.error("Failed to delete model:", err);
+      toast.error(`删除模型失败: ${String(err)}`);
+    } finally {
+      setDeletingModelName(null);
+    }
+  };
+
   const handleSave = async () => {
     if (!model.trim()) {
       toast.error("请输入模型 ID");
@@ -280,9 +432,10 @@ export function TraeWorkPanel() {
 
     setSaving(true);
     try {
+      const cleanUrl = buildTraeUrl(url, apiFormat, isFullUrl);
       const payload: TraeWorkSavePayload = {
         api_format: apiFormat,
-        base_url: url.trim(),
+        base_url: cleanUrl,
         is_full_url: isFullUrl,
         model: model.trim(),
         display_name: displayName.trim() || model.trim(),
@@ -308,539 +461,303 @@ export function TraeWorkPanel() {
     }
   };
 
-  const handleDeleteModel = async (targetName: string, e: React.MouseEvent) => {
-    e.stopPropagation();
-    setDeletingModelName(targetName);
-    try {
-      const remaining = await deleteTraeWorkModel(targetName);
-      setConfiguredModels(remaining);
-      toast.success(`已移除模型: ${targetName}`);
-    } catch (err) {
-      console.error("Failed to delete model:", err);
-      toast.error(`删除模型失败: ${String(err)}`);
-    } finally {
-      setDeletingModelName(null);
-    }
-  };
+  const isExistingModel = configuredModels.some((item) => {
+    const rawId = item.name.includes("//")
+      ? item.name.split("//").pop() || item.name
+      : item.name;
+    return (
+      rawId.trim().toLowerCase() === model.trim().toLowerCase() ||
+      item.display_name.trim().toLowerCase() ===
+        displayName.trim().toLowerCase()
+    );
+  });
 
   if (loading) {
     return (
-      <div className="flex h-64 items-center justify-center">
-        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      <div className="flex flex-col items-center justify-center flex-1 h-full min-h-[300px] gap-3">
+        <Loader2 className="animate-spin text-sky-500" size={36} />
+        <span className="text-xs text-slate-500 dark:text-gray-400 animate-pulse">
+          正在读取 Trae Work 本地数据库配置...
+        </span>
       </div>
     );
   }
 
   return (
-    <div className="space-y-6">
-      {/* 顶部应用状态栏 */}
-      <StatusBadge
-        exists={configExists}
-        path={configPath}
-        onReload={() => void load()}
-        accentColor="blue"
-      />
-
-      {/* 已配置的自定义模型列表 */}
-      {configuredModels.length > 0 && (
-        <SpotlightCard className="p-5 border border-primary/20 bg-card/60 backdrop-blur-sm rounded-xl">
-          <div className="flex items-center justify-between mb-3">
+    <div className="w-full flex-1 flex flex-col justify-between min-h-0 gap-5 pb-2">
+      {/* ── 顶部面板标题栏与快速概览 ── */}
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 pb-3.5 border-b border-slate-200/80 dark:border-white/10 flex-shrink-0">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-xl bg-sky-100 text-sky-600 border border-sky-200 dark:bg-sky-500/20 dark:text-sky-400 dark:border-sky-500/30 flex items-center justify-center flex-shrink-0 shadow-xs">
+            <TraeWorkIcon size={22} />
+          </div>
+          <div>
             <div className="flex items-center gap-2">
-              <Layers className="h-4 w-4 text-primary" />
-              <span className="text-sm font-semibold tracking-wide">
-                Trae 中已配置的模型 ({configuredModels.length})
+              <h1 className="text-base font-bold text-slate-900 dark:text-white">
+                Trae Work 接入配置
+              </h1>
+              <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-sky-50 text-sky-700 border border-sky-200 dark:bg-sky-500/10 dark:text-sky-300 dark:border-sky-500/30">
+                SQLite 存储模式 (state.vscdb)
               </span>
             </div>
-            <button
-              type="button"
-              onClick={() => openConfigFile(configPath)}
-              className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1 transition-colors"
-              title="打开 SQLite 状态库位置"
-            >
-              <ExternalLink className="h-3 w-3" />
-              <span>数据存储</span>
-            </button>
+            <p className="text-xs text-slate-500 dark:text-gray-400 mt-0.5">
+              为 Trae Work (Trae Solo) IDE
+              深度配置高可用反代节点、API 协议与自定义模型参数
+            </p>
           </div>
+        </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
-            {configuredModels.map((item) => {
-              const rawId = item.name.includes("//")
-                ? item.name.split("//").pop() || item.name
-                : item.name;
-              const isCurrent =
-                rawId.toLowerCase() === model.toLowerCase() ||
-                item.display_name.toLowerCase() === displayName.toLowerCase();
-
-              return (
-                <div
-                  key={item.name}
-                  onClick={() => applyModelConfig(item)}
-                  className={`p-3 rounded-lg border text-left cursor-pointer transition-all flex items-center justify-between group ${
-                    isCurrent
-                      ? "border-primary bg-primary/10 shadow-sm"
-                      : "border-border/60 hover:border-primary/50 bg-background/50 hover:bg-background/80"
-                  }`}
-                >
-                  <div className="flex flex-col min-w-0 pr-2">
-                    <div className="flex items-center gap-1.5">
-                      <span className="font-medium text-xs truncate text-foreground">
-                        {item.display_name || rawId}
-                      </span>
-                      {isCurrent && (
-                        <span className="text-[10px] px-1.5 py-0.2 bg-primary text-primary-foreground rounded-full">
-                          当前
-                        </span>
-                      )}
-                    </div>
-                    <div className="flex items-center gap-2 mt-1 text-[11px] text-muted-foreground truncate">
-                      <span>{item.provider.replace("custom_", "").replace("_compatible", "")}</span>
-                      <span>•</span>
-                      <span className="truncate max-w-[150px]">{rawId}</span>
-                    </div>
-                  </div>
-
-                  <div className="flex items-center gap-1">
-                    <button
-                      type="button"
-                      onClick={(e) => handleDeleteModel(item.name, e)}
-                      disabled={deletingModelName === item.name}
-                      className="opacity-0 group-hover:opacity-100 p-1 rounded hover:bg-destructive/20 text-muted-foreground hover:text-destructive transition-all"
-                      title="删除此模型"
-                    >
-                      {deletingModelName === item.name ? (
-                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                      ) : (
-                        <Trash2 className="h-3.5 w-3.5" />
-                      )}
-                    </button>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </SpotlightCard>
-      )}
-
-      {/* 预设节点选择 */}
-      <SpotlightCard className="p-6 border border-border/50 bg-card/50 backdrop-blur-sm rounded-xl">
-        <NodeCardSelector
-          value={url}
-          onChange={(selected: string) => {
-            const stripped = selected.replace(/\/+$/, "");
-            if (isFullUrl) {
-              if (apiFormat === "custom_responses_compatible") {
-                setUrl(`${stripped}/v1/responses`);
-              } else if (apiFormat === "custom_anthropic_compatible") {
-                setUrl(`${stripped}/v1/messages`);
-              } else {
-                setUrl(`${stripped}/v1/chat/completions`);
-              }
-            } else {
-              setUrl(`${stripped}/v1`);
-            }
-          }}
-          accentColor="blue"
-        />
-      </SpotlightCard>
-
-      {/* 自定义模型配置主表单 (1:1 还原 Trae 官方界面) */}
-      <SpotlightCard className="p-6 border border-border/50 bg-card/50 backdrop-blur-sm rounded-xl space-y-6">
-        <div className="flex items-center justify-between border-b border-border/40 pb-3">
-          <div className="flex items-center gap-2">
-            <TraeWorkIcon size={20} className="text-primary" />
-            <h3 className="font-semibold text-base text-foreground tracking-wide">
-              自定义模型配置
-            </h3>
-          </div>
+        <div className="flex items-center gap-2 self-start md:self-auto">
           <button
             type="button"
             onClick={handleCopyParams}
-            className="text-xs flex items-center gap-1.5 px-2.5 py-1 rounded-md border border-border/60 hover:bg-muted/60 transition-colors text-muted-foreground hover:text-foreground"
+            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border text-xs font-medium transition-colors bg-white hover:bg-slate-50 border-slate-200 text-slate-700 dark:bg-white/5 dark:hover:bg-white/10 dark:border-white/10 dark:text-gray-300 shadow-2xs cursor-pointer"
+            title="复制完整模型 JSON 配置参数"
           >
             {copiedSuccess ? (
               <>
-                <Check className="h-3.5 w-3.5 text-emerald-500" />
+                <Check size={12} className="text-emerald-500" />
                 <span className="text-emerald-500">已复制</span>
               </>
             ) : (
               <>
-                <Copy className="h-3.5 w-3.5" />
+                <Copy size={12} />
                 <span>复制参数</span>
               </>
             )}
           </button>
-        </div>
 
-        {/* 1. API 格式 */}
-        <div className="space-y-2">
-          <Label className="text-xs font-semibold flex items-center gap-1 text-foreground">
-            <span className="text-destructive">*</span> API 格式
-          </Label>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
-            {API_FORMAT_OPTIONS.map((opt) => {
-              const active = apiFormat === opt.id;
-              return (
-                <button
-                  key={opt.id}
-                  type="button"
-                  onClick={() => {
-                    setApiFormat(opt.id);
-                    // 智能同步推荐后缀
-                    const stripped = url.replace(/\/(chat\/completions|responses|v1\/messages)$/, "").replace(/\/+$/, "");
-                    if (isFullUrl) {
-                      if (opt.id === "custom_responses_compatible") {
-                        setUrl(`${stripped}/v1/responses`);
-                      } else if (opt.id === "custom_anthropic_compatible") {
-                        setUrl(`${stripped}/v1/messages`);
-                      } else {
-                        setUrl(`${stripped}/v1/chat/completions`);
-                      }
-                    }
-                  }}
-                  className={`p-3 rounded-lg border text-left transition-all ${
-                    active
-                      ? "border-primary bg-primary/10 text-primary font-medium ring-1 ring-primary/40 shadow-sm"
-                      : "border-border/60 hover:border-border text-muted-foreground hover:bg-background/80"
-                  }`}
-                >
-                  <div className="text-xs font-medium">{opt.label}</div>
-                  <div className="text-[10px] text-muted-foreground mt-1 opacity-80">
-                    {opt.id.replace("custom_", "")}
-                  </div>
-                </button>
-              );
-            })}
-          </div>
-        </div>
-
-        {/* 2. 自定义请求地址 */}
-        <div className="space-y-2">
-          <div className="flex items-center justify-between">
-            <Label className="text-xs font-semibold flex items-center gap-1 text-foreground">
-              <span className="text-destructive">*</span> 自定义请求地址
-            </Label>
-            <div className="flex items-center gap-2">
-              <span className="text-[11px] text-muted-foreground">完整 URL</span>
-              <button
-                type="button"
-                role="switch"
-                aria-checked={isFullUrl}
-                onClick={() => setIsFullUrl(!isFullUrl)}
-                className={`relative inline-flex h-5 w-9 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
-                  isFullUrl ? "bg-primary" : "bg-muted"
-                }`}
-              >
-                <span
-                  className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-background shadow-lg ring-0 transition duration-200 ease-in-out ${
-                    isFullUrl ? "translate-x-4" : "translate-x-0"
-                  }`}
-                />
-              </button>
-            </div>
-          </div>
-
-          <div className="text-[11px] text-muted-foreground">
-            {isFullUrl ? (
-              <span>请输入完整的 API 请求地址，包括路径端点。例如：{currentFormatMeta.fullPlaceholder}</span>
-            ) : (
-              <span>{currentFormatMeta.hint}</span>
-            )}
-          </div>
-
-          <input
-            type="text"
-            value={url}
-            onChange={(e) => setUrl(e.target.value)}
-            placeholder={isFullUrl ? currentFormatMeta.fullPlaceholder : currentFormatMeta.placeholder}
-            disabled={saving}
-            className="w-full h-10 px-3.5 py-2 text-sm bg-background border border-border/80 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary transition-all font-mono"
-          />
-        </div>
-
-        {/* 3. 模型 ID */}
-        <div className="space-y-2">
-          <Label className="text-xs font-semibold flex items-center gap-1 text-foreground">
-            <span className="text-destructive">*</span> 模型 ID
-          </Label>
-          <ModelInput
-            value={model}
-            onChange={(newModel: string) => {
-              setModel(newModel);
-              if (!displayName || displayName === model) {
-                setDisplayName(newModel);
-              }
-              // 针对 gpt-5.6-sol 等智能适配格式
-              if (newModel.toLowerCase().includes("sol")) {
-                setApiFormat("custom_responses_compatible");
-              } else if (newModel.toLowerCase().includes("claude")) {
-                setApiFormat("custom_anthropic_compatible");
-              }
-            }}
-            models={models}
-            placeholder="请输入模型 ID (例如 gpt-5.6-sol, gpt-4o)"
-            id="traework-models"
-            onRefresh={() => void refreshModels()}
-            refreshing={refreshingModels}
-            accentColor="blue"
-          />
-
-          <div className="flex flex-wrap gap-1.5 pt-1">
-            {TRAEWORK_MODEL_SUGGESTIONS.map((item) => (
-              <button
-                key={item}
-                type="button"
-                onClick={() => {
-                  setModel(item);
-                  if (!displayName || displayName === model) {
-                    setDisplayName(item);
-                  }
-                  if (item.toLowerCase().includes("sol")) {
-                    setApiFormat("custom_responses_compatible");
-                  } else if (item.toLowerCase().includes("claude")) {
-                    setApiFormat("custom_anthropic_compatible");
-                  }
-                }}
-                className={`text-[11px] font-mono px-2 py-0.5 rounded-md border transition-all cursor-pointer ${
-                  model === item
-                    ? "bg-sky-100 border-sky-300 text-sky-700 dark:bg-sky-500/20 dark:border-sky-500/40 dark:text-sky-300 font-semibold"
-                    : "bg-muted/50 border-border/60 text-muted-foreground hover:bg-muted hover:text-foreground"
-                }`}
-              >
-                {item}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {/* 4. 模型展示名称 */}
-        <div className="space-y-2">
-          <div className="flex items-center justify-between">
-            <Label className="text-xs font-semibold text-foreground">
-              模型展示名称
-            </Label>
-            <span className="text-[11px] text-muted-foreground">
-              {displayName.length}/64
-            </span>
-          </div>
-          <div className="text-[11px] text-muted-foreground">
-            在模型列表中展示的名称，未设置时默认显示 Model ID。
-          </div>
-          <input
-            type="text"
-            maxLength={64}
-            value={displayName}
-            onChange={(e) => setDisplayName(e.target.value)}
-            placeholder="请输入模型展示名称"
-            disabled={saving}
-            className="w-full h-10 px-3.5 py-2 text-sm bg-background border border-border/80 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary transition-all"
-          />
-        </div>
-
-        {/* 5. API 密钥 */}
-        <div className="space-y-2">
-          <Label className="text-xs font-semibold flex items-center gap-1 text-foreground">
-            <span className="text-destructive">*</span> API 密钥
-          </Label>
-          <ApiKeyInput
-            value={apiKey}
-            onChange={setApiKey}
-            placeholder="请输入 API Key (例如 sk-...)"
-            accentColor="blue"
-          />
-          <div className="text-[11px] text-muted-foreground">
-            {apiKey.includes("•")
-              ? "🔒 检测到已存储的加密密钥凭证。若无需更换密钥，直接点击保存将自动保留；如需更改请输入新密钥。"
-              : "输入的新密钥将以安全凭证存储在本地 Trae 状态数据库 (state.vscdb) 中。"}
-          </div>
-        </div>
-
-        {/* 6. 高级配置折叠面板 */}
-        <div className="border border-border/50 rounded-xl overflow-hidden bg-background/30 transition-all">
           <button
             type="button"
-            onClick={() => setAdvancedExpanded(!advancedExpanded)}
-            className="w-full px-4 py-3 flex items-center justify-between hover:bg-muted/40 transition-colors text-left"
+            onClick={handleReset}
+            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border text-xs font-medium transition-colors bg-white hover:bg-slate-50 border-slate-200 text-slate-700 dark:bg-white/5 dark:hover:bg-white/10 dark:border-white/10 dark:text-gray-300 shadow-2xs cursor-pointer"
+            title="重置为默认预设配置"
           >
-            <div className="flex items-center gap-2">
-              <Sliders className="h-4 w-4 text-primary" />
-              <span className="text-xs font-semibold text-foreground">高级配置</span>
-              {!advancedExpanded && (
-                <span className="text-[11px] text-muted-foreground hidden sm:inline">
-                  (上下文窗口、工具轮数、图片输入、思考模式与采样参数)
-                </span>
-              )}
-            </div>
-            {advancedExpanded ? (
-              <ChevronDown className="h-4 w-4 text-muted-foreground" />
-            ) : (
-              <ChevronRight className="h-4 w-4 text-muted-foreground" />
-            )}
+            <RotateCcw size={12} />
+            <span>重置预设</span>
           </button>
 
-          {advancedExpanded && (
-            <div className="p-4 border-t border-border/40 space-y-5 bg-background/50">
-              {/* 上下文窗口 Token */}
-              <div className="space-y-3">
-                <Label className="text-xs font-semibold text-foreground">
-                  上下文窗口 (Token)
-                </Label>
+          <button
+            type="button"
+            onClick={() => void load(false)}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-medium transition-colors bg-white hover:bg-slate-50 border-slate-200 text-slate-700 dark:bg-white/5 dark:hover:bg-white/10 dark:border-white/10 dark:text-gray-300 shadow-2xs cursor-pointer"
+            title="重新载入本地数据库配置"
+          >
+            <RefreshCw size={12} />
+            <span>重新载入</span>
+          </button>
+        </div>
+      </div>
 
-                {/* 输入 Token */}
-                <div className="space-y-1.5">
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs text-muted-foreground">输入</span>
-                    <div className="flex gap-1">
-                      {INPUT_TOKEN_CHIPS.map((chip) => (
-                        <button
-                          key={chip.label}
-                          type="button"
-                          onClick={() => setTokenInput(chip.value)}
-                          className={`text-[10px] px-2 py-0.5 rounded border transition-colors ${
-                            tokenInput === chip.value
-                              ? "bg-primary text-primary-foreground border-primary"
-                              : "border-border/60 hover:bg-muted text-muted-foreground"
-                          }`}
-                        >
-                          {chip.label}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
+      {/* ── 双列栅格配置区域 ── */}
+      <div className="flex-1 grid grid-cols-1 lg:grid-cols-2 gap-5 min-h-0 overflow-y-auto pr-1">
+        {/* ── 左列：路由网络、本地数据库状态与高级协议特性 ── */}
+        <div className="flex flex-col gap-5 flex-1 min-h-0">
+          {/* 卡片 1: API 服务节点选择 */}
+          <SpotlightCard
+            className="p-5 rounded-2xl border border-slate-200/90 dark:border-white/10 bg-white/80 dark:bg-[#121524]/60 shadow-sm dark:shadow-none flex flex-col justify-between"
+            spotlightColor="rgba(2, 132, 199, 0.12)"
+          >
+            <div className="flex items-center justify-between mb-3 flex-shrink-0">
+              <Label className="text-xs font-semibold text-slate-800 dark:text-gray-200 flex items-center gap-2">
+                <Server size={14} className="text-sky-500" />
+                API 服务网关节点
+              </Label>
+              <span className="text-[11px] text-slate-400 dark:text-gray-500">
+                支持多线路故障切换
+              </span>
+            </div>
+            <div className="flex-1 flex flex-col justify-center min-h-0">
+              <NodeCardSelector
+                value={extractGatewayBase(url) + "/"}
+                onChange={(selected: string) => {
+                  setUrl(buildTraeUrl(selected, apiFormat, isFullUrl));
+                }}
+                accentColor="blue"
+                className="h-full"
+              />
+            </div>
+          </SpotlightCard>
+
+          {/* 卡片 2: 本地数据库路径管理 */}
+          <SpotlightCard
+            className="p-5 rounded-2xl border border-slate-200/90 dark:border-white/10 bg-white/80 dark:bg-[#121524]/60 shadow-sm dark:shadow-none flex flex-col justify-between"
+            spotlightColor="rgba(2, 132, 199, 0.12)"
+          >
+            <div>
+              <div className="flex items-center justify-between mb-3">
+                <Label className="text-xs font-semibold text-slate-800 dark:text-gray-200 flex items-center gap-2">
+                  <FileCode size={14} className="text-sky-500" />
+                  本地状态数据库路径
+                </Label>
+                <button
+                  type="button"
+                  onClick={() => openConfigFile(configPath)}
+                  className="text-[11px] font-mono text-slate-400 dark:text-gray-500 hover:text-sky-600 dark:hover:text-sky-400 flex items-center gap-1 transition-colors cursor-pointer"
+                  title="打开数据库所在目录"
+                >
+                  <span>state.vscdb</span>
+                  <ExternalLink size={10} />
+                </button>
+              </div>
+
+              <StatusBadge
+                exists={configExists}
+                path={configPath}
+                onReload={() => void load(false)}
+                accentColor="blue"
+              />
+            </div>
+
+            <div className="mt-3">
+              {!configExists ? (
+                <div className="flex items-start gap-1.5 p-2.5 rounded-lg bg-amber-500/10 border border-amber-500/20 text-amber-700 dark:text-amber-300 text-xs">
+                  <ShieldAlert size={14} className="flex-shrink-0 mt-0.5" />
+                  <span>
+                    未检测到 Trae 本地数据库文件，请确认已安装并首次运行 Trae
+                    (TRAE SOLO)。
+                  </span>
+                </div>
+              ) : (
+                <div className="flex items-center gap-2 p-2.5 rounded-xl bg-slate-50/70 border border-slate-200/80 dark:bg-white/[0.03] dark:border-white/5 text-xs text-slate-500 dark:text-gray-400">
+                  <div className="w-1.5 h-1.5 rounded-full bg-sky-500 flex-shrink-0" />
+                  <span className="leading-relaxed">
+                    当前数据库已检测到{" "}
+                    <strong className="text-sky-600 dark:text-sky-400 font-mono">
+                      {configuredModels.length}
+                    </strong>{" "}
+                    个自定义模型。Trae 支持配置热同步，保存后即时生效。
+                  </span>
+                </div>
+              )}
+            </div>
+          </SpotlightCard>
+
+          {/* 卡片 3: API 协议与高级模型特性 */}
+          <SpotlightCard
+            className="p-5 rounded-2xl border border-slate-200/90 dark:border-white/10 bg-white/80 dark:bg-[#121524]/60 shadow-sm dark:shadow-none space-y-4"
+            spotlightColor="rgba(2, 132, 199, 0.12)"
+          >
+            <div>
+              <div className="flex items-center justify-between mb-2.5">
+                <Label className="text-xs font-semibold text-slate-800 dark:text-gray-200 flex items-center gap-2">
+                  <Cpu size={14} className="text-sky-500" />
+                  API 协议格式
+                </Label>
+                <span className="text-[11px] text-slate-400 dark:text-gray-500">
+                  Provider Protocol
+                </span>
+              </div>
+
+              {/* 3 个协议格式选择按钮 */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                {API_FORMAT_OPTIONS.map((opt) => {
+                  const active = apiFormat === opt.id;
+                  return (
+                    <button
+                      key={opt.id}
+                      type="button"
+                      onClick={() => {
+                        setApiFormat(opt.id);
+                        setUrl(buildTraeUrl(url, opt.id, isFullUrl));
+                      }}
+                      className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer flex flex-col justify-between ${
+                        active
+                          ? "bg-sky-500/15 border-sky-500/60 text-sky-800 dark:text-sky-300 font-medium shadow-2xs ring-1 ring-sky-500/30"
+                          : "bg-slate-50/50 dark:bg-white/[0.02] border-slate-200/80 dark:border-white/10 text-slate-700 dark:text-gray-300 hover:border-slate-300 dark:hover:border-white/20"
+                      }`}
+                    >
+                      <div className="text-xs font-semibold truncate leading-snug">
+                        {opt.label.replace(" 格式", "")}
+                      </div>
+                      <div className="text-[10px] font-mono text-slate-400 dark:text-gray-500 mt-1">
+                        /{opt.badge}
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* 模型特性与能力开关 */}
+            <div className="pt-3 border-t border-slate-100 dark:border-white/5 space-y-3">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-medium text-slate-700 dark:text-gray-300">
+                  模型行为特性与能力:
+                </span>
+                <span className="text-[11px] text-slate-400 dark:text-gray-500">
+                  Feature Switches
+                </span>
+              </div>
+
+              <div className="grid grid-cols-2 gap-2.5">
+                {/* 图片输入 */}
+                <label className="flex items-center gap-2 p-2 rounded-lg border border-slate-200/70 dark:border-white/10 bg-slate-50/50 dark:bg-white/[0.02] cursor-pointer hover:bg-slate-100/70 dark:hover:bg-white/5 transition-colors">
+                  <input
+                    type="checkbox"
+                    checked={supportsImages}
+                    onChange={(e) => setSupportsImages(e.target.checked)}
+                    className="w-3.5 h-3.5 rounded text-sky-600 focus:ring-sky-500 border-slate-300 dark:border-white/20 dark:bg-white/5"
+                  />
+                  <span className="text-xs text-slate-700 dark:text-gray-300 select-none">
+                    支持图片输入 (多模态)
+                  </span>
+                </label>
+
+                {/* 工具调用轮数 */}
+                <div className="flex items-center gap-2 p-1.5 px-2 rounded-lg border border-slate-200/70 dark:border-white/10 bg-slate-50/50 dark:bg-white/[0.02]">
+                  <span className="text-xs text-slate-700 dark:text-gray-300 flex-shrink-0">
+                    工具轮数:
+                  </span>
                   <input
                     type="number"
-                    value={tokenInput}
-                    onChange={(e) =>
-                      setTokenInput(e.target.value === "" ? "" : Number(e.target.value))
-                    }
-                    placeholder="请输入数值，留空则使用最佳默认值"
-                    className="w-full h-9 px-3 text-xs bg-background border border-border/80 rounded-md focus:outline-none focus:ring-1 focus:ring-primary font-mono"
-                  />
-                </div>
-
-                {/* 输出 Token */}
-                <div className="space-y-1.5">
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs text-muted-foreground">输出</span>
-                    <div className="flex gap-1">
-                      {OUTPUT_TOKEN_CHIPS.map((chip) => (
-                        <button
-                          key={chip.label}
-                          type="button"
-                          onClick={() => setTokenOutput(chip.value)}
-                          className={`text-[10px] px-2 py-0.5 rounded border transition-colors ${
-                            tokenOutput === chip.value
-                              ? "bg-primary text-primary-foreground border-primary"
-                              : "border-border/60 hover:bg-muted text-muted-foreground"
-                          }`}
-                        >
-                          {chip.label}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                  <input
-                    type="number"
-                    value={tokenOutput}
-                    onChange={(e) =>
-                      setTokenOutput(e.target.value === "" ? "" : Number(e.target.value))
-                    }
-                    placeholder="请输入数值，留空则使用最佳默认值"
-                    className="w-full h-9 px-3 text-xs bg-background border border-border/80 rounded-md focus:outline-none focus:ring-1 focus:ring-primary font-mono"
+                    value={maxTurn}
+                    onChange={(e) => setMaxTurn(Number(e.target.value) || 500)}
+                    placeholder="500"
+                    className="w-full text-xs font-mono bg-white dark:bg-[#181b2a] border border-slate-200 dark:border-white/10 rounded px-1.5 py-0.5 text-slate-800 dark:text-gray-200 focus:outline-none focus:ring-1 focus:ring-sky-500"
                   />
                 </div>
               </div>
 
-              {/* 工具调用轮数 */}
-              <div className="space-y-1.5">
-                <Label className="text-xs font-semibold text-foreground">
-                  工具调用轮数
-                </Label>
-                <input
-                  type="number"
-                  value={maxTurn}
-                  onChange={(e) => setMaxTurn(Number(e.target.value) || 500)}
-                  placeholder="500"
-                  className="w-full h-9 px-3 text-xs bg-background border border-border/80 rounded-md focus:outline-none focus:ring-1 focus:ring-primary font-mono"
-                />
-              </div>
-
-              {/* 支持图片输入 */}
-              <div className="space-y-2">
-                <Label className="text-xs font-semibold text-foreground">
-                  支持图片输入
-                </Label>
-                <div className="flex gap-4">
-                  <label className="flex items-center gap-1.5 text-xs text-foreground cursor-pointer">
-                    <input
-                      type="radio"
-                      name="imageInput"
-                      checked={supportsImages}
-                      onChange={() => setSupportsImages(true)}
-                      className="text-primary focus:ring-primary"
-                    />
-                    <span>支持</span>
-                  </label>
-                  <label className="flex items-center gap-1.5 text-xs text-foreground cursor-pointer">
-                    <input
-                      type="radio"
-                      name="imageInput"
-                      checked={!supportsImages}
-                      onChange={() => setSupportsImages(false)}
-                      className="text-primary focus:ring-primary"
-                    />
-                    <span>不支持</span>
-                  </label>
+              {/* 思考模式选项 */}
+              <div className="space-y-1.5 pt-1">
+                <span className="text-[11px] text-slate-500 dark:text-gray-400">
+                  思考模式 (Reasoning Mode):
+                </span>
+                <div className="grid grid-cols-3 gap-2">
+                  {[
+                    { id: "default", label: "跟随默认" },
+                    { id: "on", label: "强制开启" },
+                    { id: "off", label: "强制关闭" },
+                  ].map((item) => (
+                    <button
+                      key={item.id}
+                      type="button"
+                      onClick={() =>
+                        setThinkingMode(item.id as "default" | "on" | "off")
+                      }
+                      className={`text-xs py-1.5 px-2 rounded-lg border text-center transition-all cursor-pointer ${
+                        thinkingMode === item.id
+                          ? "bg-sky-500/15 border-sky-500/60 text-sky-700 dark:text-sky-300 font-medium"
+                          : "bg-slate-50/50 dark:bg-white/[0.02] border-slate-200/80 dark:border-white/10 text-slate-600 dark:text-gray-400 hover:border-slate-300 dark:hover:border-white/20"
+                      }`}
+                    >
+                      {item.label}
+                    </button>
+                  ))}
                 </div>
               </div>
 
-              {/* 思考模式 */}
-              <div className="space-y-2">
-                <Label className="text-xs font-semibold text-foreground">
-                  思考模式
-                </Label>
-                <div className="flex flex-wrap gap-4">
-                  <label className="flex items-center gap-1.5 text-xs text-foreground cursor-pointer">
-                    <input
-                      type="radio"
-                      name="thinkingMode"
-                      checked={thinkingMode === "default"}
-                      onChange={() => setThinkingMode("default")}
-                      className="text-primary focus:ring-primary"
-                    />
-                    <span>跟随模型默认配置</span>
-                  </label>
-                  <label className="flex items-center gap-1.5 text-xs text-foreground cursor-pointer">
-                    <input
-                      type="radio"
-                      name="thinkingMode"
-                      checked={thinkingMode === "on"}
-                      onChange={() => setThinkingMode("on")}
-                      className="text-primary focus:ring-primary"
-                    />
-                    <span>开启</span>
-                  </label>
-                  <label className="flex items-center gap-1.5 text-xs text-foreground cursor-pointer">
-                    <input
-                      type="radio"
-                      name="thinkingMode"
-                      checked={thinkingMode === "off"}
-                      onChange={() => setThinkingMode("off")}
-                      className="text-primary focus:ring-primary"
-                    />
-                    <span>关闭</span>
-                  </label>
-                </div>
-              </div>
-
-              {/* 采样参数 */}
-              <div className="space-y-3 pt-2 border-t border-border/40">
-                <Label className="text-xs font-semibold text-foreground">
-                  采样参数
-                </Label>
-
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                  <div className="space-y-1">
-                    <span className="text-[11px] text-muted-foreground">Temperature</span>
+              {/* 采样超参 */}
+              <div className="pt-2 border-t border-slate-100 dark:border-white/5">
+                <span className="text-[11px] text-slate-500 dark:text-gray-400 block mb-1.5">
+                  采样参数 (留空使用模型最佳预设):
+                </span>
+                <div className="grid grid-cols-3 gap-2">
+                  <div className="space-y-0.5">
+                    <span className="text-[10px] text-slate-400">
+                      Temperature
+                    </span>
                     <input
                       type="number"
                       step="0.1"
@@ -848,15 +765,16 @@ export function TraeWorkPanel() {
                       max="2"
                       value={temperature}
                       onChange={(e) =>
-                        setTemperature(e.target.value === "" ? "" : Number(e.target.value))
+                        setTemperature(
+                          e.target.value === "" ? "" : Number(e.target.value),
+                        )
                       }
-                      placeholder="0 ~ 2 (留空使用最佳)"
-                      className="w-full h-8 px-2.5 text-xs bg-background border border-border/80 rounded focus:outline-none focus:ring-1 focus:ring-primary font-mono"
+                      placeholder="0.0 ~ 2.0"
+                      className="w-full text-xs font-mono bg-slate-50 dark:bg-[#181b2a] border border-slate-200 dark:border-white/10 rounded-lg px-2 py-1 text-slate-800 dark:text-gray-200 focus:outline-none focus:ring-1 focus:ring-sky-500"
                     />
                   </div>
-
-                  <div className="space-y-1">
-                    <span className="text-[11px] text-muted-foreground">Top P</span>
+                  <div className="space-y-0.5">
+                    <span className="text-[10px] text-slate-400">Top P</span>
                     <input
                       type="number"
                       step="0.05"
@@ -864,93 +782,490 @@ export function TraeWorkPanel() {
                       max="1"
                       value={topP}
                       onChange={(e) =>
-                        setTopP(e.target.value === "" ? "" : Number(e.target.value))
+                        setTopP(
+                          e.target.value === "" ? "" : Number(e.target.value),
+                        )
                       }
-                      placeholder="0 ~ 1 (留空使用最佳)"
-                      className="w-full h-8 px-2.5 text-xs bg-background border border-border/80 rounded focus:outline-none focus:ring-1 focus:ring-primary font-mono"
+                      placeholder="0.0 ~ 1.0"
+                      className="w-full text-xs font-mono bg-slate-50 dark:bg-[#181b2a] border border-slate-200 dark:border-white/10 rounded-lg px-2 py-1 text-slate-800 dark:text-gray-200 focus:outline-none focus:ring-1 focus:ring-sky-500"
                     />
                   </div>
-
-                  <div className="space-y-1">
-                    <span className="text-[11px] text-muted-foreground">Top K</span>
+                  <div className="space-y-0.5">
+                    <span className="text-[10px] text-slate-400">Top K</span>
                     <input
                       type="number"
                       min="1"
                       max="100"
                       value={topK}
                       onChange={(e) =>
-                        setTopK(e.target.value === "" ? "" : Number(e.target.value))
+                        setTopK(
+                          e.target.value === "" ? "" : Number(e.target.value),
+                        )
                       }
-                      placeholder="1 ~ 100 (留空最佳)"
-                      className="w-full h-8 px-2.5 text-xs bg-background border border-border/80 rounded focus:outline-none focus:ring-1 focus:ring-primary font-mono"
+                      placeholder="1 ~ 100"
+                      className="w-full text-xs font-mono bg-slate-50 dark:bg-[#181b2a] border border-slate-200 dark:border-white/10 rounded-lg px-2 py-1 text-slate-800 dark:text-gray-200 focus:outline-none focus:ring-1 focus:ring-sky-500"
                     />
                   </div>
                 </div>
               </div>
             </div>
-          )}
+          </SpotlightCard>
         </div>
 
-        {/* 底部操作与连通性测试提示 */}
-        <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-3 border-t border-border/40">
-          <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-            <Info className="h-3.5 w-3.5 text-primary flex-shrink-0" />
-            <span>连通性测试会发起一次真实请求，消耗极少量模型 Token。</span>
-          </div>
-
-          <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
-            <button
-              type="button"
-              onClick={handleReset}
-              disabled={saving}
-              className="px-3.5 py-2 text-xs rounded-lg border border-border/60 hover:bg-muted/60 transition-colors text-muted-foreground hover:text-foreground"
-            >
-              重置
-            </button>
-
-            <button
-              type="button"
-              onClick={() => {
-                if (!apiKey.trim()) {
-                  toast.error("请先输入 API 密钥后再进行测试");
-                  return;
+        {/* ── 右列：密钥凭证、多模型管理与配置、上下文窗口与 Token 限制 ── */}
+        <div className="flex flex-col gap-5 flex-1 min-h-0">
+          {/* 卡片 4: API 密钥凭据 */}
+          <SpotlightCard
+            className="p-5 rounded-2xl border border-slate-200/90 dark:border-white/10 bg-white/80 dark:bg-[#121524]/60 shadow-sm dark:shadow-none flex flex-col justify-between"
+            spotlightColor="rgba(2, 132, 199, 0.12)"
+          >
+            <div>
+              <div className="flex items-center justify-between mb-3">
+                <Label className="text-xs font-semibold text-slate-800 dark:text-gray-200 flex items-center gap-2">
+                  <KeyRound size={14} className="text-sky-500" />
+                  API 密钥凭证
+                </Label>
+                <span className="text-[11px] text-slate-400 dark:text-gray-500">
+                  认证凭据
+                </span>
+              </div>
+              <ApiKeyInput
+                value={apiKey}
+                onChange={setApiKey}
+                placeholder="sk-... (填入 API Key)"
+                hintText={
+                  apiKey.includes("•")
+                    ? "检测到已存储在本地 state.vscdb 的加密密钥凭证，若无需更换可直接保留"
+                    : "新密钥将安全加密存储至本地 Trae 状态数据库 (state.vscdb) 中"
                 }
-                if (apiKey.includes("•")) {
-                  toast.warning(
-                    "当前检测到本地数据库安全加密密文，无法直接用于网络请求。如需在线测试连通性，请重新输入明文 API Key 后再测。",
-                  );
-                  return;
-                }
-                setTestModalOpen(true);
-              }}
-              disabled={saving}
-              className="px-4 py-2 text-xs rounded-lg border border-primary/50 text-primary hover:bg-primary/10 transition-colors flex items-center gap-1.5 font-medium"
-            >
-              <Sparkles className="h-3.5 w-3.5" />
-              <span>连通性测试</span>
-            </button>
+                accentColor="blue"
+              />
+            </div>
 
-            <button
-              type="button"
-              onClick={handleSave}
-              disabled={saving}
-              className="px-5 py-2 text-xs rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 transition-colors flex items-center gap-1.5 font-medium shadow-sm"
-            >
+            <div className="mt-3 flex items-center gap-2 p-2.5 rounded-xl bg-slate-50/70 border border-slate-200/80 dark:bg-white/[0.03] dark:border-white/5 text-xs text-slate-500 dark:text-gray-400">
+              <ShieldCheck
+                size={14}
+                className="text-sky-500 dark:text-sky-400 flex-shrink-0"
+              />
+              <span className="leading-relaxed">
+                凭据将安全加密写入本地 Trae
+                状态数据库，通过本地端点与服务网关直连通信。
+              </span>
+            </div>
+          </SpotlightCard>
+
+          {/* 卡片 5: 模型管理与自定义配置 */}
+          <SpotlightCard
+            className="p-5 rounded-2xl border border-slate-200/90 dark:border-white/10 bg-white/80 dark:bg-[#121524]/60 shadow-sm dark:shadow-none space-y-4"
+            spotlightColor="rgba(2, 132, 199, 0.12)"
+          >
+            {/* 已配置模型标签组与切换 */}
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <Label className="text-xs font-semibold text-slate-800 dark:text-gray-200 flex items-center gap-2">
+                  <Layers size={14} className="text-sky-500" />
+                  已配置模型列表 ({configuredModels.length})
+                </Label>
+                <button
+                  type="button"
+                  onClick={handleAddNewModel}
+                  className="flex items-center gap-1 px-2 py-0.5 text-[11px] font-medium text-sky-600 dark:text-sky-400 bg-sky-500/10 hover:bg-sky-500/20 border border-sky-500/20 rounded-md transition-colors cursor-pointer"
+                  title="清空当前输入，准备新增模型"
+                >
+                  <Plus size={12} />
+                  <span>新增模型</span>
+                </button>
+              </div>
+
+              {configuredModels.length > 0 ? (
+                <div className="flex flex-wrap gap-1.5 p-2 rounded-xl bg-slate-50/70 dark:bg-white/[0.02] border border-slate-200/70 dark:border-white/5 max-h-[110px] overflow-y-auto">
+                  {configuredModels.map((item) => {
+                    const rawId = item.name.includes("//")
+                      ? item.name.split("//").pop() || item.name
+                      : item.name;
+                    const isSelected =
+                      rawId.trim().toLowerCase() ===
+                        model.trim().toLowerCase() ||
+                      item.display_name.trim().toLowerCase() ===
+                        displayName.trim().toLowerCase();
+                    const isDeleting = deletingModelName === item.name;
+                    return (
+                      <div
+                        key={item.name}
+                        onClick={() => applyModelConfig(item)}
+                        className={`group relative flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs cursor-pointer border transition-all ${
+                          isSelected
+                            ? "bg-sky-500/15 border-sky-500/60 text-sky-800 dark:text-sky-300 font-semibold shadow-2xs"
+                            : "bg-white dark:bg-white/5 border-slate-200 dark:border-white/10 text-slate-700 dark:text-gray-300 hover:border-slate-300 dark:hover:border-white/20"
+                        }`}
+                        title={`点击查看并编辑 ${item.display_name || rawId} 的配置参数`}
+                      >
+                        <span className="truncate max-w-[130px] font-mono">
+                          {item.display_name || rawId}
+                        </span>
+
+                        <button
+                          type="button"
+                          onClick={(e) => void handleDeleteModel(item.name, e)}
+                          disabled={isDeleting}
+                          className="opacity-40 group-hover:opacity-100 hover:text-red-500 transition-opacity p-0.5 rounded ml-0.5 cursor-pointer"
+                          title={`从 Trae 中移除模型 ${rawId}`}
+                        >
+                          {isDeleting ? (
+                            <Loader2 size={11} className="animate-spin" />
+                          ) : (
+                            <Trash2 size={11} />
+                          )}
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div className="text-[11px] text-slate-400 dark:text-gray-500 py-1 italic">
+                  尚未配置自定义模型，点击下方保存即可新增首个模型。
+                </div>
+              )}
+            </div>
+
+            {/* 当前目标模型输入与请求地址配置 */}
+            <div className="pt-2 border-t border-slate-100 dark:border-white/5 space-y-3">
+              {/* 模型 ID 输入（已完全移除下方的硬编码示例模型） */}
+              <div className="space-y-1.5">
+                <Label className="text-xs font-semibold text-slate-800 dark:text-gray-200 flex items-center gap-1">
+                  <span className="text-destructive">*</span> 模型 ID (Model ID)
+                </Label>
+                <ModelInput
+                  value={model}
+                  onChange={(newModel: string) => {
+                    setModel(newModel);
+                    if (!displayName || displayName === model) {
+                      setDisplayName(newModel);
+                    }
+                    if (newModel.toLowerCase().includes("sol")) {
+                      setApiFormat("custom_responses_compatible");
+                      setUrl(
+                        buildTraeUrl(
+                          url,
+                          "custom_responses_compatible",
+                          isFullUrl,
+                        ),
+                      );
+                    } else if (newModel.toLowerCase().includes("claude")) {
+                      setApiFormat("custom_anthropic_compatible");
+                      setUrl(
+                        buildTraeUrl(
+                          url,
+                          "custom_anthropic_compatible",
+                          isFullUrl,
+                        ),
+                      );
+                    }
+                  }}
+                  models={models}
+                  placeholder="选择或输入模型名称 (如 gpt-5.6-sol / claude-3-7-sonnet)"
+                  id="traework-models"
+                  onRefresh={() => void refreshModels()}
+                  refreshing={refreshingModels}
+                  accentColor="blue"
+                />
+              </div>
+
+              {/* 模型展示名称 */}
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <Label className="text-xs font-semibold text-slate-800 dark:text-gray-200">
+                    模型展示名称
+                  </Label>
+                  <span className="text-[11px] text-slate-400 dark:text-gray-500">
+                    {displayName.length}/64
+                  </span>
+                </div>
+                <input
+                  type="text"
+                  maxLength={64}
+                  value={displayName}
+                  onChange={(e) => setDisplayName(e.target.value)}
+                  placeholder="在 Trae 列表中展示的名称，未设置时默认使用 Model ID"
+                  disabled={saving}
+                  className="w-full text-xs bg-slate-50 dark:bg-[#181b2a] border border-slate-200 dark:border-white/10 rounded-lg px-2.5 py-1.5 text-slate-800 dark:text-gray-200 focus:outline-none focus:ring-1 focus:ring-sky-500"
+                />
+              </div>
+
+              {/* 自定义请求地址与完整 URL 切换 */}
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <Label className="text-xs font-semibold text-slate-800 dark:text-gray-200 flex items-center gap-1">
+                    <span className="text-destructive">*</span> 自定义请求地址
+                  </Label>
+                  <div className="flex items-center gap-2">
+                    <span className="text-[11px] text-slate-400 dark:text-gray-500">
+                      完整 URL
+                    </span>
+                    <button
+                      type="button"
+                      role="switch"
+                      aria-checked={isFullUrl}
+                      onClick={() => {
+                        const next = !isFullUrl;
+                        setIsFullUrl(next);
+                        setUrl(buildTraeUrl(url, apiFormat, next));
+                      }}
+                      className={`relative inline-flex h-4 w-7 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                        isFullUrl
+                          ? "bg-sky-500"
+                          : "bg-slate-300 dark:bg-white/20"
+                      }`}
+                    >
+                      <span
+                        className={`pointer-events-none inline-block h-3 w-3 transform rounded-full bg-white shadow-sm ring-0 transition duration-200 ease-in-out ${
+                          isFullUrl ? "translate-x-3" : "translate-x-0"
+                        }`}
+                      />
+                    </button>
+                  </div>
+                </div>
+
+                <input
+                  type="text"
+                  value={url}
+                  onChange={(e) => setUrl(e.target.value)}
+                  placeholder={
+                    isFullUrl
+                      ? currentFormatMeta.fullPlaceholder
+                      : currentFormatMeta.placeholder
+                  }
+                  disabled={saving}
+                  className="w-full text-xs font-mono bg-slate-50 dark:bg-[#181b2a] border border-slate-200 dark:border-white/10 rounded-lg px-2.5 py-1.5 text-slate-800 dark:text-gray-200 focus:outline-none focus:ring-1 focus:ring-sky-500"
+                />
+
+                <div className="text-[11px] text-slate-400 dark:text-gray-500 line-clamp-1">
+                  {isFullUrl
+                    ? `完整端点：${currentFormatMeta.fullPlaceholder}`
+                    : currentFormatMeta.hint}
+                </div>
+              </div>
+
+              {/* 动态模式指示条 */}
+              <div className="pt-1">
+                {isExistingModel ? (
+                  <div className="flex items-center gap-1.5 p-2 rounded-lg bg-blue-500/10 border border-blue-500/20 text-blue-700 dark:text-blue-300 text-xs">
+                    <Info size={13} className="flex-shrink-0" />
+                    <span>
+                      当前模型已存在于 Trae
+                      中，保存将更新此模型的各项配置参数。
+                    </span>
+                  </div>
+                ) : model.trim() ? (
+                  <div className="flex items-center gap-1.5 p-2 rounded-lg bg-sky-500/10 border border-sky-500/20 text-sky-700 dark:text-sky-300 text-xs">
+                    <Sparkles size={13} className="flex-shrink-0" />
+                    <span>
+                      新增模型模式：保存将作为新模型追加至 Trae
+                      自定义模型列表。
+                    </span>
+                  </div>
+                ) : null}
+              </div>
+            </div>
+          </SpotlightCard>
+
+          {/* 卡片 6: 上下文窗口与 Token 限制 */}
+          <SpotlightCard
+            className="p-5 rounded-2xl border border-slate-200/90 dark:border-white/10 bg-white/80 dark:bg-[#121524]/60 shadow-sm dark:shadow-none flex flex-col justify-between"
+            spotlightColor="rgba(2, 132, 199, 0.12)"
+          >
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <Label className="text-xs font-semibold text-slate-800 dark:text-gray-200 flex items-center gap-2">
+                  <Sliders size={14} className="text-sky-500" />
+                  上下文窗口与 Token 限制
+                </Label>
+                <span className="text-[11px] text-slate-400 dark:text-gray-500">
+                  Context & Tokens
+                </span>
+              </div>
+
+              {/* 输入 Token 上限 */}
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-medium text-slate-700 dark:text-gray-300">
+                    输入 Token 上限 (Prompt Context):
+                  </span>
+                  <span className="text-[10px] text-slate-400 dark:text-gray-500">
+                    留空使用模型最佳默认
+                  </span>
+                </div>
+                <input
+                  type="number"
+                  value={tokenInput}
+                  onChange={(e) =>
+                    setTokenInput(
+                      e.target.value === "" ? "" : Number(e.target.value),
+                    )
+                  }
+                  placeholder="留空使用最佳默认值 (例如 131072, 200000)"
+                  className="w-full text-xs font-mono bg-slate-50 dark:bg-[#181b2a] border border-slate-200 dark:border-white/10 rounded-lg px-2.5 py-1.5 text-slate-800 dark:text-gray-200 focus:outline-none focus:ring-1 focus:ring-sky-500"
+                />
+                <div className="flex flex-wrap gap-1">
+                  {INPUT_TOKEN_PRESETS.map((p) => (
+                    <button
+                      key={p.label}
+                      type="button"
+                      onClick={() => setTokenInput(p.value)}
+                      className={`text-[10px] px-2 py-0.5 rounded border transition-colors cursor-pointer ${
+                        Number(tokenInput) === p.value
+                          ? "bg-sky-500/20 border-sky-500/40 text-sky-700 dark:text-sky-300 font-semibold"
+                          : "bg-slate-100 dark:bg-white/5 border-slate-200 dark:border-white/10 text-slate-500 dark:text-gray-400 hover:text-slate-700 dark:hover:text-gray-200"
+                      }`}
+                    >
+                      {p.label}
+                    </button>
+                  ))}
+                  {tokenInput !== "" && (
+                    <button
+                      type="button"
+                      onClick={() => setTokenInput("")}
+                      className="text-[10px] px-1.5 py-0.5 rounded border border-transparent text-slate-400 hover:text-slate-600 dark:hover:text-gray-300 transition-colors cursor-pointer"
+                      title="清除数值"
+                    >
+                      清除
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* 输出 Token 上限 */}
+              <div className="space-y-1.5 pt-2 border-t border-slate-100 dark:border-white/5">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-medium text-slate-700 dark:text-gray-300">
+                    输出 Token 上限 (Max Completion):
+                  </span>
+                  <span className="text-[10px] text-slate-400 dark:text-gray-500">
+                    留空使用模型最佳默认
+                  </span>
+                </div>
+                <input
+                  type="number"
+                  value={tokenOutput}
+                  onChange={(e) =>
+                    setTokenOutput(
+                      e.target.value === "" ? "" : Number(e.target.value),
+                    )
+                  }
+                  placeholder="留空使用最佳默认值 (例如 8192, 16384, 32768)"
+                  className="w-full text-xs font-mono bg-slate-50 dark:bg-[#181b2a] border border-slate-200 dark:border-white/10 rounded-lg px-2.5 py-1.5 text-slate-800 dark:text-gray-200 focus:outline-none focus:ring-1 focus:ring-sky-500"
+                />
+                <div className="flex flex-wrap gap-1">
+                  {OUTPUT_TOKEN_PRESETS.map((p) => (
+                    <button
+                      key={p.label}
+                      type="button"
+                      onClick={() => setTokenOutput(p.value)}
+                      className={`text-[10px] px-2 py-0.5 rounded border transition-colors cursor-pointer ${
+                        Number(tokenOutput) === p.value
+                          ? "bg-sky-500/20 border-sky-500/40 text-sky-700 dark:text-sky-300 font-semibold"
+                          : "bg-slate-100 dark:bg-white/5 border-slate-200 dark:border-white/10 text-slate-500 dark:text-gray-400 hover:text-slate-700 dark:hover:text-gray-200"
+                      }`}
+                    >
+                      {p.label}
+                    </button>
+                  ))}
+                  {tokenOutput !== "" && (
+                    <button
+                      type="button"
+                      onClick={() => setTokenOutput("")}
+                      className="text-[10px] px-1.5 py-0.5 rounded border border-transparent text-slate-400 hover:text-slate-600 dark:hover:text-gray-300 transition-colors cursor-pointer"
+                      title="清除数值"
+                    >
+                      清除
+                    </button>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            <div className="mt-3 flex items-center gap-1.5 text-[11px] text-slate-400 dark:text-gray-500">
+              <Info size={12} className="text-sky-500 flex-shrink-0" />
+              <span>
+                数值将作为 prompt_max_tokens 与 max_tokens 写入 Trae 数据库，留空则由上游模型原生限制决定。
+              </span>
+            </div>
+          </SpotlightCard>
+        </div>
+      </div>
+
+      {/* ── 底部保存与联机验证操作栏 ── */}
+      <div className="pt-2 flex-shrink-0 flex flex-col gap-2">
+        <div className="flex items-center gap-3 w-full">
+          <button
+            type="button"
+            onClick={() => {
+              if (!apiKey.trim()) {
+                toast.error("请先输入 API 密钥后再进行测试");
+                return;
+              }
+              if (apiKey.includes("•")) {
+                toast.warning(
+                  "当前检测到本地数据库安全加密密文，无法直接用于网络请求。如需在线测试连通性，请输入明文 API Key 后再测。",
+                );
+                return;
+              }
+              setTestModalOpen(true);
+            }}
+            disabled={saving}
+            className="flex items-center justify-center gap-1.5 px-4 py-3 rounded-xl border border-sky-500/40 text-sky-700 dark:text-sky-300 hover:bg-sky-500/10 text-xs font-semibold transition-all cursor-pointer shadow-xs whitespace-nowrap"
+            title="发起一次真实请求测试上游连通性与模型输出"
+          >
+            <Sparkles size={15} />
+            <span>连通性测试</span>
+          </button>
+
+          <StarBorder
+            className="w-full flex-1 shadow-md"
+            color="#0284c7"
+            speed="3.5s"
+            onClick={handleSave}
+            disabled={saving}
+            innerClassName="bg-sky-600 hover:bg-sky-700 text-white dark:bg-[#0c1829] dark:text-sky-100 py-3 cursor-pointer"
+          >
+            <div className="flex items-center justify-center gap-2 font-semibold tracking-wide">
               {saving ? (
                 <>
-                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                  <span>正在保存...</span>
+                  <Loader2
+                    size={18}
+                    className="animate-spin text-white dark:text-sky-400"
+                  />
+                  <span className="text-sm">正在同步至 Trae...</span>
+                </>
+              ) : isExistingModel ? (
+                <>
+                  <Save
+                    size={18}
+                    className="text-white dark:text-sky-400 group-hover:scale-110 transition-transform"
+                  />
+                  <span className="text-sm">
+                    保存并更新 Trae 模型配置 ({displayName || model})
+                  </span>
                 </>
               ) : (
                 <>
-                  <Save className="h-3.5 w-3.5" />
-                  <span>添加模型 / 同步至 Trae</span>
+                  <Plus
+                    size={18}
+                    className="text-white dark:text-sky-400 group-hover:scale-110 transition-transform"
+                  />
+                  <span className="text-sm">
+                    保存并新增模型至 Trae ({displayName || model || "新模型"})
+                  </span>
                 </>
               )}
-            </button>
-          </div>
+            </div>
+          </StarBorder>
         </div>
-      </SpotlightCard>
+
+        <p className="text-[11px] text-center text-slate-500 dark:text-gray-400">
+          点击直接将模型参数写入本地 Trae 状态数据库 (state.vscdb)；亦可先通过“连通性测试”验证上游服务响应
+        </p>
+      </div>
 
       {/* 流式终端连通性测试模态框 */}
       <TerminalTestModal
@@ -964,7 +1279,7 @@ export function TraeWorkPanel() {
         isFullUrl={isFullUrl}
         traeworkPayload={{
           api_format: apiFormat,
-          base_url: url.trim(),
+          base_url: buildTraeUrl(url, apiFormat, isFullUrl),
           is_full_url: isFullUrl,
           model: model.trim(),
           display_name: displayName.trim() || model.trim(),
@@ -986,3 +1301,5 @@ export function TraeWorkPanel() {
     </div>
   );
 }
+
+export default TraeWorkPanel;

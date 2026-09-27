@@ -33,6 +33,50 @@ $pkg = Get-Content -LiteralPath (Join-Path $repoRoot 'package.json') -Encoding U
 $newVersion = $pkg.version
 $tag = "v$newVersion"
 
+# Ensure website files are strictly synced with $newVersion before commit
+$websiteDir = Join-Path $repoRoot 'website'
+if (Test-Path -LiteralPath $websiteDir) {
+    $utf8NoBom = [System.Text.UTF8Encoding]::new($false)
+    $scriptJsPath = Join-Path $websiteDir 'assets/script.js'
+    if (Test-Path -LiteralPath $scriptJsPath) {
+        $scriptJsContent = Get-Content -LiteralPath $scriptJsPath -Encoding UTF8 -Raw
+        if ($scriptJsContent -notmatch [regex]::Escape("const CURRENT_VERSION = `"v$newVersion`";")) {
+            $scriptJsContent = $scriptJsContent -replace 'const CURRENT_VERSION = "v[^"]+";', "const CURRENT_VERSION = `"v$newVersion`";"
+            [System.IO.File]::WriteAllText($scriptJsPath, $scriptJsContent, $utf8NoBom)
+            Write-Host "  Synced website/assets/script.js to v$newVersion" -ForegroundColor DarkGray
+        }
+    }
+    $indexHtmlPath = Join-Path $websiteDir 'index.html'
+    if (Test-Path -LiteralPath $indexHtmlPath) {
+        $indexHtmlContent = Get-Content -LiteralPath $indexHtmlPath -Encoding UTF8 -Raw
+        $indexHtmlContent = [System.Text.RegularExpressions.Regex]::Replace($indexHtmlContent, 'AI-Helper-v\d+\.\d+\.\d+', "AI-Helper-v$newVersion")
+        $indexHtmlContent = [System.Text.RegularExpressions.Regex]::Replace($indexHtmlContent, 'releases/download/v\d+\.\d+\.\d+', "releases/download/v$newVersion")
+        $indexHtmlContent = [System.Text.RegularExpressions.Regex]::Replace($indexHtmlContent, 'releases/tag/v\d+\.\d+\.\d+', "releases/tag/v$newVersion")
+        $indexHtmlContent = [System.Text.RegularExpressions.Regex]::Replace($indexHtmlContent, '<span class="tag-version current-version-tag">v\d+\.\d+\.\d+</span>', "<span class=`"tag-version current-version-tag`">v$newVersion</span>")
+        $indexHtmlContent = [System.Text.RegularExpressions.Regex]::Replace($indexHtmlContent, '<strong class="current-version-tag"[^>]*>v\d+\.\d+\.\d+</strong>', "<strong class=`"current-version-tag`" style=`"color: var(--accent-blue);`">v$newVersion</strong>")
+        $indexHtmlContent = [System.Text.RegularExpressions.Regex]::Replace($indexHtmlContent, '<span id="hero-btn-text">[^<]+</span>', "<span id=`"hero-btn-text`">立即下载 Windows 安装版 (v$newVersion)</span>")
+        $indexHtmlContent = [System.Text.RegularExpressions.Regex]::Replace($indexHtmlContent, '<span id="checksum-setup-filename">[^<]+</span>', "<span id=`"checksum-setup-filename`">AI-Helper-v$newVersion-Windows-x64-Setup.exe</span>")
+        [System.IO.File]::WriteAllText($indexHtmlPath, $indexHtmlContent, $utf8NoBom)
+    }
+    $versionJsonPath = Join-Path $websiteDir 'version.json'
+    $repoName = "TF49/AI-Helper"
+    $versionInfo = [ordered]@{
+        version = $newVersion
+        tag = "v$newVersion"
+        releaseDate = (Get-Date -Format "yyyy-MM-dd")
+        setupFileName = "AI-Helper-v$newVersion-Windows-x64-Setup.exe"
+        zipFileName = "AI-Helper-v$newVersion-Windows-x64-Standalone.zip"
+        setupDownloadUrl = "https://github.com/$repoName/releases/download/v$newVersion/AI-Helper-v$newVersion-Windows-x64-Setup.exe"
+        fastSetupDownloadUrl = "https://ghfast.top/https://github.com/$repoName/releases/download/v$newVersion/AI-Helper-v$newVersion-Windows-x64-Setup.exe"
+        zipDownloadUrl = "https://github.com/$repoName/releases/download/v$newVersion/AI-Helper-v$newVersion-Windows-x64-Standalone.zip"
+        fastZipDownloadUrl = "https://ghfast.top/https://github.com/$repoName/releases/download/v$newVersion/AI-Helper-v$newVersion-Windows-x64-Standalone.zip"
+        releasePageUrl = "https://github.com/$repoName/releases/tag/v$newVersion"
+    }
+    $versionJsonStr = ($versionInfo | ConvertTo-Json -Depth 4) + "`n"
+    [System.IO.File]::WriteAllText($versionJsonPath, $versionJsonStr, $utf8NoBom)
+    Write-Host "  Verified website files synced with $tag" -ForegroundColor Green
+}
+
 # Step 3: verify release notes exist and are not the default placeholder
 Write-Host ""
 Write-Host "==== Step 2: verify release notes ====" -ForegroundColor Cyan

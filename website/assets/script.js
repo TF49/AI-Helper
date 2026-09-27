@@ -3,7 +3,7 @@
  * Integrated: Anime.js (v3.2.2) + GSAP (v3.12.5) + React-Bits
  */
 
-const CURRENT_VERSION = "v1.0.29";
+const CURRENT_VERSION = "v1.0.31";
 const GITHUB_REPO = "TF49/AI-Helper";
 const GITHUB_RELEASES_URL = `https://github.com/${GITHUB_REPO}/releases`;
 const GHFAST_PREFIX = "https://ghfast.top/";
@@ -87,18 +87,35 @@ let isStreaming = false;
 
 // DOM Initialization
 document.addEventListener("DOMContentLoaded", () => {
-  initKineticTypography();
-  initAnimeDotGrid();
-  initSvgLaserPipeline();
-  initReactBitsSpotlight();
-  initReactBitsDecryptedText();
-  initReactBits3DTilt();
-  initReactBitsMagneticButtons();
-  initSimulator();
-  initFaqAccordion();
-  initReleaseInfo();
-  initNavScrollEffect();
-  initGsapAnimations();
+  // 核心版本与下载链接初始化优先执行，保证任何情况下下载按钮与版本展示立即可用
+  try {
+    initReleaseInfo();
+  } catch (e) {
+    console.error("[AI Helper] initReleaseInfo error:", e);
+  }
+
+  // 视觉与动画交互模块安全初始化（互不干扰）
+  const visualModules = [
+    initKineticTypography,
+    initAnimeDotGrid,
+    initSvgLaserPipeline,
+    initReactBitsSpotlight,
+    initReactBitsDecryptedText,
+    initReactBits3DTilt,
+    initReactBitsMagneticButtons,
+    initSimulator,
+    initFaqAccordion,
+    initNavScrollEffect,
+    initGsapAnimations
+  ];
+
+  visualModules.forEach(fn => {
+    try {
+      fn();
+    } catch (err) {
+      console.warn(`[AI Helper] 模块 ${fn.name || 'anonymous'} 初始化警告:`, err);
+    }
+  });
 });
 
 /**
@@ -655,61 +672,182 @@ function runSimulatorTerminalTest() {
 
 /**
  * ==========================================================================
- * Dynamic GitHub Release Fetcher
+ * Dynamic GitHub Release Fetcher & Multi-Source Auto-Sync
  * ==========================================================================
  */
-async function initReleaseInfo() {
-  const tagEls = document.querySelectorAll(".current-version-tag");
-  const setupDownloadLink = document.getElementById("link-dl-setup");
-  const zipDownloadLink = document.getElementById("link-dl-zip");
-  const fastSetupLink = document.getElementById("link-dl-fast-setup");
-  const fastZipLink = document.getElementById("link-dl-fast-zip");
+let activeReleaseTag = CURRENT_VERSION;
+let activeReleasePageUrl = `${GITHUB_RELEASES_URL}/tag/${CURRENT_VERSION}`;
+
+function copyReleaseChecksumUrl() {
+  copyToClipboard(activeReleasePageUrl, "已复制官方发布页链接以验证校验和！");
+}
+window.copyReleaseChecksumUrl = copyReleaseChecksumUrl;
+
+function applyReleaseData({
+  tag,
+  setupUrl,
+  zipUrl,
+  fastSetupUrl,
+  fastZipUrl,
+  releasePageUrl,
+  setupFileName
+}) {
+  if (!tag) return;
+  const normalizedTag = tag.startsWith("v") ? tag : `v${tag}`;
+  activeReleaseTag = normalizedTag;
+  activeReleasePageUrl = releasePageUrl || `${GITHUB_RELEASES_URL}/tag/${normalizedTag}`;
+
+  const resolvedSetupFileName = setupFileName || `AI-Helper-${normalizedTag}-Windows-x64-Setup.exe`;
+  const resolvedZipFileName = `AI-Helper-${normalizedTag}-Windows-x64-Standalone.zip`;
+
+  const finalSetupUrl = setupUrl || `${GITHUB_RELEASES_URL}/download/${normalizedTag}/${resolvedSetupFileName}`;
+  const finalZipUrl = zipUrl || `${GITHUB_RELEASES_URL}/download/${normalizedTag}/${resolvedZipFileName}`;
+  const finalFastSetupUrl = fastSetupUrl || `${GHFAST_PREFIX}${finalSetupUrl}`;
+  const finalFastZipUrl = fastZipUrl || `${GHFAST_PREFIX}${finalZipUrl}`;
+
+  // 1. 更新所有版本徽标与标签文本
+  document.querySelectorAll(".current-version-tag").forEach(el => {
+    el.innerText = normalizedTag;
+  });
+
+  // 2. 更新 Hero 区域主下载按钮
   const heroDownloadBtn = document.getElementById("btn-hero-download");
-
-  const tag = CURRENT_VERSION;
-  const setupFileName = `AI-Helper-${tag}-Windows-x64-Setup.exe`;
-  const zipFileName = `AI-Helper-${tag}-Windows-x64-Standalone.zip`;
-
-  const setupUrl = `${GITHUB_RELEASES_URL}/download/${tag}/${setupFileName}`;
-  const zipUrl = `${GITHUB_RELEASES_URL}/download/${tag}/${zipFileName}`;
-  const fastSetupUrl = `${GHFAST_PREFIX}${setupUrl}`;
-  const fastZipUrl = `${GHFAST_PREFIX}${zipUrl}`;
-
-  function applyUrls(ver, sUrl, zUrl, fSUrl, fZUrl) {
-    tagEls.forEach(el => el.innerText = ver);
-    if (setupDownloadLink) setupDownloadLink.href = sUrl;
-    if (zipDownloadLink) zipDownloadLink.href = zUrl;
-    if (fastSetupLink) fastSetupLink.href = fSUrl;
-    if (fastZipLink) fastZipLink.href = fZUrl;
-    if (heroDownloadBtn) heroDownloadBtn.href = sUrl;
+  if (heroDownloadBtn) {
+    heroDownloadBtn.href = finalSetupUrl;
+  }
+  const heroBtnText = document.getElementById("hero-btn-text");
+  if (heroBtnText) {
+    heroBtnText.innerText = `立即下载 Windows 安装版 (${normalizedTag})`;
   }
 
-  applyUrls(tag, setupUrl, zipUrl, fastSetupUrl, fastZipUrl);
+  // 3. 更新下载专区直链及国内镜像
+  const setupDownloadLink = document.getElementById("link-dl-setup");
+  if (setupDownloadLink) setupDownloadLink.href = finalSetupUrl;
 
+  const fastSetupLink = document.getElementById("link-dl-fast-setup");
+  if (fastSetupLink) fastSetupLink.href = finalFastSetupUrl;
+
+  const zipDownloadLink = document.getElementById("link-dl-zip");
+  if (zipDownloadLink) zipDownloadLink.href = finalZipUrl;
+
+  const fastZipLink = document.getElementById("link-dl-fast-zip");
+  if (fastZipLink) fastZipLink.href = finalFastZipUrl;
+
+  // 4. 更新系统校验与文件名展示
+  const checksumFilename = document.getElementById("checksum-setup-filename");
+  if (checksumFilename) {
+    checksumFilename.innerText = resolvedSetupFileName;
+  }
+}
+
+async function fetchWithTimeout(url, options = {}, timeoutMs = 4000) {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
   try {
-    const res = await fetch(`https://api.github.com/repos/${GITHUB_REPO}/releases/latest`, {
-      headers: { "Accept": "application/vnd.github.v3+json" }
-    });
+    const res = await fetch(url, { ...options, signal: controller.signal });
+    clearTimeout(timeoutId);
+    return res;
+  } catch (err) {
+    clearTimeout(timeoutId);
+    throw err;
+  }
+}
+
+async function initReleaseInfo() {
+  // 步骤 1: 使用内置常量瞬时初始化页面，确保首屏零等待
+  applyReleaseData({ tag: CURRENT_VERSION });
+
+  // 步骤 2: 尝试读取同源 version.json (本地构建/离线部署零延迟同步)
+  // 如果是 file:// 协议打开则跳过 fetch 以免控制台产生 CORS 警报
+  if (window.location.protocol !== "file:") {
+    try {
+      const localRes = await fetch(`./version.json?t=${Date.now()}`, { cache: "no-store" });
+      if (localRes.ok) {
+        const localData = await localRes.json();
+        if (localData && (localData.tag || localData.version)) {
+          applyReleaseData({
+            tag: localData.tag || `v${localData.version}`,
+            setupUrl: localData.setupDownloadUrl,
+            zipUrl: localData.zipDownloadUrl,
+            fastSetupUrl: localData.fastSetupDownloadUrl,
+            fastZipUrl: localData.fastZipDownloadUrl,
+            releasePageUrl: localData.releasePageUrl,
+            setupFileName: localData.setupFileName
+          });
+        }
+      }
+    } catch (_) {
+      // 容错处理
+    }
+  }
+
+  // 步骤 3: 异步探测 GitHub 官方最新 Release (获取完整 assets 列表与最新标签)
+  let syncSuccess = false;
+  try {
+    const res = await fetchWithTimeout(
+      `https://api.github.com/repos/${GITHUB_REPO}/releases/latest`,
+      { headers: { "Accept": "application/vnd.github.v3+json" } },
+      4000
+    );
+
     if (res.ok) {
       const release = await res.json();
-      const latestTag = release.tag_name || tag;
-      
-      const setupAsset = release.assets?.find(a => a.name.endsWith("-Setup.exe"));
-      const zipAsset = release.assets?.find(a => a.name.endsWith("-Standalone.zip"));
+      const latestTag = release.tag_name;
+      if (latestTag) {
+        const setupAsset = release.assets?.find(a => a.name.endsWith("-Setup.exe"));
+        const zipAsset = release.assets?.find(a => a.name.endsWith("-Standalone.zip"));
 
-      const finalSetupUrl = setupAsset ? setupAsset.browser_download_url : `${GITHUB_RELEASES_URL}/download/${latestTag}/AI-Helper-${latestTag}-Windows-x64-Setup.exe`;
-      const finalZipUrl = zipAsset ? zipAsset.browser_download_url : `${GITHUB_RELEASES_URL}/download/${latestTag}/AI-Helper-${latestTag}-Windows-x64-Standalone.zip`;
-      
-      applyUrls(
-        latestTag,
-        finalSetupUrl,
-        finalZipUrl,
-        `${GHFAST_PREFIX}${finalSetupUrl}`,
-        `${GHFAST_PREFIX}${finalZipUrl}`
-      );
+        const finalSetupUrl = setupAsset ? setupAsset.browser_download_url : `${GITHUB_RELEASES_URL}/download/${latestTag}/AI-Helper-${latestTag}-Windows-x64-Setup.exe`;
+        const finalZipUrl = zipAsset ? zipAsset.browser_download_url : `${GITHUB_RELEASES_URL}/download/${latestTag}/AI-Helper-${latestTag}-Windows-x64-Standalone.zip`;
+
+        applyReleaseData({
+          tag: latestTag,
+          setupUrl: finalSetupUrl,
+          zipUrl: finalZipUrl,
+          fastSetupUrl: `${GHFAST_PREFIX}${finalSetupUrl}`,
+          fastZipUrl: `${GHFAST_PREFIX}${finalZipUrl}`,
+          releasePageUrl: release.html_url || `${GITHUB_RELEASES_URL}/tag/${latestTag}`,
+          setupFileName: setupAsset ? setupAsset.name : `AI-Helper-${latestTag}-Windows-x64-Setup.exe`
+        });
+
+        syncSuccess = true;
+        console.info(`[AI Helper] 成功通过 GitHub API 同步最新版本: ${latestTag}`);
+      }
     }
   } catch (err) {
-    console.warn("Using offline v1.0.29 release links.", err);
+    // 官方 API 超时或遭遇 Rate Limit (403)
+  }
+
+  // 步骤 4: 若官方 API 失败，通过 Raw version.json 双通道探针兜底 (无限流限制，支持国内加速反代)
+  if (!syncSuccess) {
+    const rawSources = [
+      `${GHFAST_PREFIX}https://raw.githubusercontent.com/${GITHUB_REPO}/main/website/version.json`,
+      `https://raw.githubusercontent.com/${GITHUB_REPO}/main/website/version.json`
+    ];
+
+    for (const rawUrl of rawSources) {
+      try {
+        const res = await fetchWithTimeout(rawUrl, { cache: "no-store" }, 4000);
+        if (res.ok) {
+          const rawData = await res.json();
+          if (rawData && (rawData.tag || rawData.version)) {
+            applyReleaseData({
+              tag: rawData.tag || `v${rawData.version}`,
+              setupUrl: rawData.setupDownloadUrl,
+              zipUrl: rawData.zipDownloadUrl,
+              fastSetupUrl: rawData.fastSetupDownloadUrl,
+              fastZipUrl: rawData.fastZipDownloadUrl,
+              releasePageUrl: rawData.releasePageUrl,
+              setupFileName: rawData.setupFileName
+            });
+
+            syncSuccess = true;
+            console.info(`[AI Helper] 成功通过 Raw 镜像通道同步最新版本: ${rawData.tag || rawData.version}`);
+            break;
+          }
+        }
+      } catch (_) {}
+    }
   }
 }
 

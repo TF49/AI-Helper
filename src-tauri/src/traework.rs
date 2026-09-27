@@ -353,14 +353,11 @@ pub fn get_traework_config() -> Result<TraeWorkUIConfig, AppError> {
         api_format = entry.provider.clone();
 
         if let Some(b) = &entry.base_url {
-            base_url = b.clone();
-            // 如果 base_url 以特定后缀结尾且不是仅根路径，则推导为 full url
-            if b.ends_with("/chat/completions")
-                || b.ends_with("/responses")
-                || b.ends_with("/v1/messages")
-            {
-                is_full_url = true;
-            }
+            let clean = b.trim().trim_end_matches('/');
+            is_full_url = clean.ends_with("/chat/completions")
+                || clean.ends_with("/responses")
+                || clean.ends_with("/messages");
+            base_url = clean.to_string();
         }
 
         if let Some(m) = entry.multimodal {
@@ -387,11 +384,9 @@ pub fn get_traework_config() -> Result<TraeWorkUIConfig, AppError> {
         top_p = entry.top_p;
         top_k = entry.top_k;
 
-        // 若 ak 存在，脱敏显示指示已配置
+        // 回填 API Key (明文优先，方便在线测试与多模型复用)
         if let Some(k) = &entry.ak {
-            if !k.is_empty() {
-                api_key = "••••••••••••••••".to_string();
-            }
+            api_key = k.clone();
         }
     }
 
@@ -419,6 +414,68 @@ pub fn get_traework_config() -> Result<TraeWorkUIConfig, AppError> {
 }
 
 /// 保存模型配置至本地 SQLite (支持热更新与追加)
+/// 标准化 TraeWork 请求地址，兼容官方协议与第三方大模型网关 (如智谱 v4、火山 v3、Bob-API 等)
+pub fn normalize_traework_url(base_url: &str, provider: &str, is_full_url: bool) -> String {
+    let mut u = base_url.trim().trim_end_matches('/').to_string();
+    if u.ends_with("/chat/completions") {
+        u = u[..u.len() - 17].trim_end_matches('/').to_string();
+    } else if u.ends_with("/responses") {
+        u = u[..u.len() - 10].trim_end_matches('/').to_string();
+    } else if u.ends_with("/messages") {
+        u = u[..u.len() - 9].trim_end_matches('/').to_string();
+    }
+
+    if is_full_url {
+        match provider {
+            "custom_anthropic_compatible" => {
+                if u.ends_with("/v1") {
+                    format!("{u}/messages")
+                } else {
+                    format!("{u}/v1/messages")
+                }
+            }
+            "custom_responses_compatible" => {
+                if u.ends_with("/v1") {
+                    format!("{u}/responses")
+                } else {
+                    format!("{u}/v1/responses")
+                }
+            }
+            _ => {
+                let last_segment = u.rsplit('/').next().unwrap_or_default();
+                let is_version = last_segment.starts_with('v')
+                    && last_segment.len() > 1
+                    && last_segment[1..].chars().all(|c| c.is_ascii_digit());
+                if is_version {
+                    format!("{u}/chat/completions")
+                } else {
+                    format!("{u}/v1/chat/completions")
+                }
+            }
+        }
+    } else {
+        match provider {
+            "custom_anthropic_compatible" => {
+                while u.ends_with("/v1") {
+                    u = u[..u.len() - 3].trim_end_matches('/').to_string();
+                }
+                u
+            }
+            _ => {
+                let last_segment = u.rsplit('/').next().unwrap_or_default();
+                let is_version = last_segment.starts_with('v')
+                    && last_segment.len() > 1
+                    && last_segment[1..].chars().all(|c| c.is_ascii_digit());
+                if is_version {
+                    u
+                } else {
+                    format!("{u}/v1")
+                }
+            }
+        }
+    }
+}
+
 pub fn set_traework_config(payload: TraeWorkSavePayload) -> Result<(), AppError> {
     let db_path = traework_db_path()?;
     if !db_path.exists() {
@@ -511,35 +568,7 @@ pub fn set_traework_config(payload: TraeWorkSavePayload) -> Result<(), AppError>
         }
     }
 
-    // 格式化 base_url
-    let normalized_url = if payload.is_full_url {
-        payload.base_url.trim().to_string()
-    } else {
-        let trimmed = payload.base_url.trim().trim_end_matches('/');
-        match provider.as_str() {
-            "custom_openai_compatible" => {
-                if trimmed.ends_with("/chat/completions") {
-                    trimmed.to_string()
-                } else {
-                    format!("{}/chat/completions", trimmed)
-                }
-            }
-            "custom_anthropic_compatible" => {
-                if trimmed.ends_with("/v1/messages") {
-                    trimmed.to_string()
-                } else {
-                    format!("{}/v1/messages", trimmed)
-                }
-            }
-            _ => {
-                if trimmed.ends_with("/responses") {
-                    trimmed.to_string()
-                } else {
-                    format!("{}/responses", trimmed)
-                }
-            }
-        }
-    };
+    let normalized_url = normalize_traework_url(&payload.base_url, &provider, payload.is_full_url);
 
     let thinking_enable = match payload.thinking_mode.as_str() {
         "on" => 1,
@@ -664,7 +693,9 @@ pub fn set_traework_config(payload: TraeWorkSavePayload) -> Result<(), AppError>
                                 .get("display_name")
                                 .and_then(|v| v.as_str())
                                 .unwrap_or("");
-                            item_name == composite_name || item_disp == display_name
+                            item_name == composite_name
+                                || item_disp == display_name
+                                || item_name.ends_with(&format!("//{}", model_id))
                         }) {
                             arr[pos] = new_entry_val.clone();
                         } else {
@@ -760,6 +791,10 @@ pub fn delete_traework_model(model_name: String) -> Result<Vec<TraeWorkModelEntr
         .collect();
 
     let target = model_name.trim().to_string();
+    if target.is_empty() {
+        let (_uid, remaining) = read_traework_models(&db_path).unwrap_or((None, Vec::new()));
+        return Ok(remaining);
+    }
 
     for (key, json_str) in rows {
         if let Ok(mut json_val) = serde_json::from_str::<serde_json::Value>(&json_str) {
@@ -820,5 +855,87 @@ mod tests {
         assert_eq!(entry.provider, "custom_responses_compatible");
         assert_eq!(entry.multimodal, Some(true));
         assert_eq!(entry.max_turn, Some(500));
+    }
+
+    #[test]
+    fn test_normalize_traework_url_responses() {
+        assert_eq!(
+            normalize_traework_url("https://bob-api.com", "custom_responses_compatible", true),
+            "https://bob-api.com/v1/responses"
+        );
+        assert_eq!(
+            normalize_traework_url(
+                "https://bob-api.com/v1",
+                "custom_responses_compatible",
+                true
+            ),
+            "https://bob-api.com/v1/responses"
+        );
+        assert_eq!(
+            normalize_traework_url(
+                "https://bob-api.com/v1/responses",
+                "custom_responses_compatible",
+                true
+            ),
+            "https://bob-api.com/v1/responses"
+        );
+        assert_eq!(
+            normalize_traework_url(
+                "https://bob-api.com/v1/responses",
+                "custom_responses_compatible",
+                false
+            ),
+            "https://bob-api.com/v1"
+        );
+    }
+
+    #[test]
+    fn test_normalize_traework_url_openai_custom_versions() {
+        // 智谱 v4 不应被强制插入 /v1/
+        assert_eq!(
+            normalize_traework_url(
+                "https://open.bigmodel.cn/api/paas/v4/chat/completions",
+                "custom_openai_compatible",
+                true
+            ),
+            "https://open.bigmodel.cn/api/paas/v4/chat/completions"
+        );
+        assert_eq!(
+            normalize_traework_url(
+                "https://open.bigmodel.cn/api/paas/v4",
+                "custom_openai_compatible",
+                false
+            ),
+            "https://open.bigmodel.cn/api/paas/v4"
+        );
+        // 标准 OpenAI 自动补齐 /v1
+        assert_eq!(
+            normalize_traework_url("https://api.openai.com", "custom_openai_compatible", true),
+            "https://api.openai.com/v1/chat/completions"
+        );
+        assert_eq!(
+            normalize_traework_url("https://api.openai.com", "custom_openai_compatible", false),
+            "https://api.openai.com/v1"
+        );
+    }
+
+    #[test]
+    fn test_normalize_traework_url_anthropic() {
+        assert_eq!(
+            normalize_traework_url(
+                "https://api.anthropic.com",
+                "custom_anthropic_compatible",
+                true
+            ),
+            "https://api.anthropic.com/v1/messages"
+        );
+        assert_eq!(
+            normalize_traework_url(
+                "https://api.anthropic.com/v1/messages",
+                "custom_anthropic_compatible",
+                false
+            ),
+            "https://api.anthropic.com"
+        );
     }
 }
