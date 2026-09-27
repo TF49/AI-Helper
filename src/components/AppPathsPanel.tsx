@@ -18,7 +18,7 @@ import {
   ExternalLink,
   DownloadCloud,
 } from "lucide-react";
-import { ClaudeIcon, OpenAIIcon, WorkbuddyIcon } from "./BrandIcons";
+import { ClaudeIcon, OpenAIIcon, WorkbuddyIcon, TraeWorkIcon } from "./BrandIcons";
 import {
   browseAppPath,
   checkAppProcessStatus,
@@ -103,6 +103,7 @@ export function AppPathsPanel() {
   const [codexPath, setCodexPath] = useState("");
   const [chatgptPath, setChatgptPath] = useState("");
   const [workbuddyPath, setWorkbuddyPath] = useState("");
+  const [traeworkPath, setTraeworkPath] = useState("");
 
   // 运行与探测状态
   const [claudeInfo, setClaudeInfo] = useState<DetectedPathInfo | null>(null);
@@ -111,11 +112,15 @@ export function AppPathsPanel() {
   const [workbuddyInfo, setWorkbuddyInfo] = useState<DetectedPathInfo | null>(
     null,
   );
+  const [traeworkInfo, setTraeworkInfo] = useState<DetectedPathInfo | null>(
+    null,
+  );
 
   const [claudeRunning, setClaudeRunning] = useState(false);
   const [codexRunning, setCodexRunning] = useState(false);
   const [chatgptRunning, setChatgptRunning] = useState(false);
   const [workbuddyRunning, setWorkbuddyRunning] = useState(false);
+  const [traeworkRunning, setTraeworkRunning] = useState(false);
 
   const [detectingType, setDetectingType] = useState<string | null>(null);
   const [launchingType, setLaunchingType] = useState<string | null>(null);
@@ -179,18 +184,21 @@ export function AppPathsPanel() {
       setCodexPath(saved.codex_cli_path || "");
       setChatgptPath(saved.chatgpt_client_path || "");
       setWorkbuddyPath(saved.workbuddy_client_path || "");
+      setTraeworkPath(saved.traework_client_path || "");
 
       // 并发检查当前运行状态
-      const [cRun, xRun, gRun, wbRun] = await Promise.all([
+      const [cRun, xRun, gRun, wbRun, twRun] = await Promise.all([
         checkAppProcessStatus("claude").catch(() => false),
         checkAppProcessStatus("codex").catch(() => false),
         checkAppProcessStatus("chatgpt").catch(() => false),
         checkAppProcessStatus("workbuddy").catch(() => false),
+        checkAppProcessStatus("traework").catch(() => false),
       ]);
       setClaudeRunning(cRun);
       setCodexRunning(xRun);
       setChatgptRunning(gRun);
       setWorkbuddyRunning(wbRun);
+      setTraeworkRunning(twRun);
     } catch (err) {
       toast.error(`读取路径配置失败: ${err}`);
     } finally {
@@ -208,7 +216,7 @@ export function AppPathsPanel() {
 
   // 单项自动探测
   const handleDetectSingle = async (
-    type: "claude" | "codex" | "chatgpt" | "workbuddy",
+    type: "claude" | "codex" | "chatgpt" | "workbuddy" | "traework",
   ) => {
     setDetectingType(type);
     try {
@@ -229,6 +237,10 @@ export function AppPathsPanel() {
         setWorkbuddyInfo(info);
         if (info.path) setWorkbuddyPath(info.path);
         setWorkbuddyRunning(info.is_running);
+      } else if (type === "traework") {
+        setTraeworkInfo(info);
+        if (info.path) setTraeworkPath(info.path);
+        setTraeworkRunning(info.is_running);
       }
 
       if (info.exists && info.path) {
@@ -269,6 +281,10 @@ export function AppPathsPanel() {
           setWorkbuddyInfo(info);
           if (info.path) setWorkbuddyPath(info.path);
           setWorkbuddyRunning(info.is_running);
+        } else if (info.app_type === "traework") {
+          setTraeworkInfo(info);
+          if (info.path) setTraeworkPath(info.path);
+          setTraeworkRunning(info.is_running);
         }
       }
       toast.success("已完成全部应用与 CLI 路径深度探测！");
@@ -281,7 +297,7 @@ export function AppPathsPanel() {
 
   // 浏览选择文件
   const handleBrowse = async (
-    type: "claude" | "codex" | "chatgpt" | "workbuddy",
+    type: "claude" | "codex" | "chatgpt" | "workbuddy" | "traework",
   ) => {
     try {
       const selected = await browseAppPath(type);
@@ -290,6 +306,7 @@ export function AppPathsPanel() {
         if (type === "codex") setCodexPath(selected);
         if (type === "chatgpt") setChatgptPath(selected);
         if (type === "workbuddy") setWorkbuddyPath(selected);
+        if (type === "traework") setTraeworkPath(selected);
         toast.success(`已选择路径: ${selected}`);
       }
     } catch (err) {
@@ -306,6 +323,7 @@ export function AppPathsPanel() {
         codex_cli_path: codexPath.trim() || null,
         chatgpt_client_path: chatgptPath.trim() || null,
         workbuddy_client_path: workbuddyPath.trim() || null,
+        traework_client_path: traeworkPath.trim() || null,
       };
       await saveAppPaths(cfg);
       toast.success("安装路径配置已保存至 ~/.ai-helper/app_paths.json");
@@ -318,7 +336,7 @@ export function AppPathsPanel() {
 
   // 测试启动 / 重启目标
   const handleLaunchOrRestart = async (
-    type: "claude" | "codex" | "chatgpt" | "workbuddy",
+    type: "claude" | "codex" | "chatgpt" | "workbuddy" | "traework",
   ) => {
     setLaunchingType(type);
     try {
@@ -329,7 +347,9 @@ export function AppPathsPanel() {
             ? codexPath
             : type === "workbuddy"
               ? workbuddyPath
-              : chatgptPath;
+              : type === "traework"
+                ? traeworkPath
+                : chatgptPath;
 
       const result = await restartTargetApp(type, custom || undefined);
       toast.success(result);
@@ -345,6 +365,7 @@ export function AppPathsPanel() {
         if (type === "codex") setCodexRunning(isRun);
         if (type === "chatgpt") setChatgptRunning(isRun);
         if (type === "workbuddy") setWorkbuddyRunning(isRun);
+        if (type === "traework") setTraeworkRunning(isRun);
         delete refreshTimersRef.current[type];
       }, 1000);
     } catch (err) {
@@ -411,7 +432,7 @@ export function AppPathsPanel() {
               </span>
             </div>
             <p className="text-xs text-slate-500 dark:text-gray-400 mt-0.5">
-              自动探测、指定与验证 Claude CLI、Codex CLI 及 ChatGPT
+              自动探测、指定与验证 Claude CLI、Codex CLI、ChatGPT、WorkBuddy 及 Trae Work
               桌面端可执行程序路径，保障重启与唤醒顺畅
             </p>
           </div>
@@ -1590,6 +1611,115 @@ export function AppPathsPanel() {
             {workbuddyInfo?.extra_info && (
               <div className="text-[11px] text-emerald-600 dark:text-emerald-400 bg-emerald-50/50 dark:bg-emerald-500/10 px-2.5 py-1 rounded-lg border border-emerald-100 dark:border-emerald-500/20">
                 💡 {workbuddyInfo.extra_info}
+              </div>
+            )}
+          </div>
+        </SpotlightCard>
+
+        {/* 卡片 5: Trae Work 客户端 */}
+        <SpotlightCard
+          className="p-5 rounded-2xl border border-slate-200/90 dark:border-white/10 bg-white/80 dark:bg-[#121524]/60 shadow-sm dark:shadow-none flex-shrink-0 min-h-fit"
+          spotlightColor="rgba(14, 165, 233, 0.12)"
+        >
+          <div className="flex flex-col gap-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-lg bg-sky-100 text-sky-600 dark:bg-sky-500/20 dark:text-sky-400 flex items-center justify-center flex-shrink-0">
+                  <TraeWorkIcon size={16} />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-bold text-slate-900 dark:text-white">
+                      Trae Work (TRAE SOLO CN) 客户端路径
+                    </span>
+                    {traeworkRunning && (
+                      <span className="inline-flex items-center gap-1 text-[10px] font-medium px-2 py-0.2 rounded-full bg-sky-50 text-sky-700 border border-sky-200 dark:bg-sky-500/10 dark:text-sky-300 dark:border-sky-500/30">
+                        <span className="w-1.5 h-1.5 rounded-full bg-sky-500 animate-pulse" />
+                        运行中
+                      </span>
+                    )}
+                  </div>
+                  <span className="text-[11px] text-slate-400 dark:text-gray-500 font-mono">
+                    Win32 可执行程序 (TRAE SOLO CN.exe / trae.exe)
+                  </span>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2">
+                {traeworkPath ? (
+                  <span className="text-[11px] text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
+                    <CheckCircle2 size={13} />
+                    <span>已就绪</span>
+                  </span>
+                ) : (
+                  <span className="text-[11px] text-amber-600 dark:text-amber-400 flex items-center gap-1">
+                    <AlertCircle size={13} />
+                    <span>待配置</span>
+                  </span>
+                )}
+              </div>
+            </div>
+
+            {/* 路径输入框与操作按键 */}
+            <div className="flex flex-col sm:flex-row gap-2 items-center">
+              <div className="relative flex-1 w-full">
+                <input
+                  type="text"
+                  value={traeworkPath}
+                  onChange={(e) => setTraeworkPath(e.target.value)}
+                  placeholder="例如: E:\Developer Tool\TRAE SOLO CN\TRAE SOLO CN.exe"
+                  className="w-full text-xs font-mono px-3 py-2 rounded-xl border border-slate-200 dark:border-white/10 bg-slate-50/70 dark:bg-black/30 text-slate-800 dark:text-gray-200 focus:outline-none focus:ring-1 focus:ring-sky-500"
+                />
+              </div>
+
+              <div className="flex items-center gap-1.5 w-full sm:w-auto justify-end">
+                <button
+                  type="button"
+                  onClick={() => void handleDetectSingle("traework")}
+                  disabled={detectingType === "traework"}
+                  className="px-2.5 py-1.5 rounded-lg border border-sky-200 text-sky-700 bg-sky-50 hover:bg-sky-100 dark:border-sky-500/30 dark:bg-sky-500/10 dark:text-sky-300 text-xs font-medium flex items-center gap-1 cursor-pointer transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+                  title="自动探测 Trae Work 客户端安装路径"
+                >
+                  <Search
+                    size={12}
+                    className={
+                      detectingType === "traework" ? "animate-spin" : ""
+                    }
+                  />
+                  <span>探测</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => void handleBrowse("traework")}
+                  className="px-2.5 py-1.5 rounded-lg border border-slate-200 dark:border-white/10 text-slate-700 dark:text-gray-300 hover:bg-slate-100 dark:hover:bg-white/5 text-xs font-medium flex items-center gap-1 cursor-pointer transition-colors"
+                  title="通过文件管理器浏览路径"
+                >
+                  <FolderOpen size={12} />
+                  <span>浏览</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => void handleLaunchOrRestart("traework")}
+                  disabled={launchingType === "traework"}
+                  className="px-2.5 py-1.5 rounded-lg bg-sky-600 hover:bg-sky-700 text-white text-xs font-medium flex items-center gap-1 cursor-pointer transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+                  title="静默重启或拉起客户端"
+                >
+                  <Play
+                    size={12}
+                    className={
+                      launchingType === "traework" ? "animate-spin" : ""
+                    }
+                  />
+                  <span>{traeworkRunning ? "重启客户端" : "启动客户端"}</span>
+                </button>
+              </div>
+            </div>
+
+            {traeworkInfo?.extra_info && (
+              <div className="text-[11px] text-sky-600 dark:text-sky-400 bg-sky-50/50 dark:bg-sky-500/10 px-2.5 py-1 rounded-lg border border-sky-100 dark:border-sky-500/20">
+                💡 {traeworkInfo.extra_info}
               </div>
             )}
           </div>

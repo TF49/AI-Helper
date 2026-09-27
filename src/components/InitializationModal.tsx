@@ -30,7 +30,7 @@ import {
   X,
   ExternalLink,
 } from "lucide-react";
-import { OpenAIIcon, ClaudeIcon, WorkbuddyIcon } from "./BrandIcons";
+import { OpenAIIcon, ClaudeIcon, WorkbuddyIcon, TraeWorkIcon } from "./BrandIcons";
 import { motion, AnimatePresence } from "motion/react";
 import { toast } from "sonner";
 import { exit } from "@tauri-apps/plugin-process";
@@ -39,9 +39,11 @@ import {
   getCodexConfig,
   getClaudeConfig,
   getWorkbuddyConfig,
+  getTraeWorkConfig,
   setCodexConfig,
   setClaudeConfig,
   setWorkbuddyConfig,
+  setTraeWorkConfig,
   openConfigFile,
 } from "../lib/api";
 import type {
@@ -49,6 +51,7 @@ import type {
   NetworkStatus,
   StepStatus,
   WorkbuddyUIConfig,
+  TraeWorkUIConfig,
 } from "../types";
 import { cn } from "../lib/utils";
 
@@ -62,6 +65,7 @@ interface StepConfigData {
   codex: AgentConfig | null;
   claude: AgentConfig | null;
   workbuddy: WorkbuddyUIConfig | null;
+  traework: TraeWorkUIConfig | null;
 }
 
 interface ScanLogItem {
@@ -103,25 +107,27 @@ export function InitializationModal({
     codex: null,
     claude: null,
     workbuddy: null,
+    traework: null,
   });
   const [parseError, setParseError] = useState<string>("");
 
   // ── 环节 3 & 4 展示控制 ──
   const [activeConfigTab, setActiveConfigTab] = useState<
-    "chatgpt" | "claude" | "workbuddy"
+    "chatgpt" | "claude" | "workbuddy" | "traework"
   >("chatgpt");
   const [showCodexKey, setShowCodexKey] = useState<boolean>(false);
   const [showClaudeKey, setShowClaudeKey] = useState<boolean>(false);
   const [showWorkbuddyKey, setShowWorkbuddyKey] = useState<boolean>(false);
+  const [showTraeworkKey, setShowTraeworkKey] = useState<boolean>(false);
   const [copiedKey, setCopiedKey] = useState<string>("");
 
   // ── 环节 4 确认与快速修改模式 ──
   const [confirmationDecision, setConfirmationDecision] = useState<
     "none" | "confirmed" | "editing"
   >("none");
-  const [editTab, setEditTab] = useState<"chatgpt" | "claude" | "workbuddy">(
-    "chatgpt",
-  );
+  const [editTab, setEditTab] = useState<
+    "chatgpt" | "claude" | "workbuddy" | "traework"
+  >("chatgpt");
   const [editUrl, setEditUrl] = useState<string>("");
   const [editApiKey, setEditApiKey] = useState<string>("");
   const [editModel, setEditModel] = useState<string>("");
@@ -279,6 +285,7 @@ export function InitializationModal({
       scan_codex: "pending",
       scan_claude: "pending",
       scan_workbuddy: "pending",
+      scan_traework: "pending",
       acl_verify: "pending",
     });
     addLog(
@@ -293,7 +300,7 @@ export function InitializationModal({
       env_profile: "done",
       scan_codex: "scanning",
     }));
-    setStepSubProgress(25);
+    setStepSubProgress(20);
     setStepSubPhaseText(
       "深度遍历系统磁盘，扫描 %USERPROFILE%/.codex/ 目录树与运行入口...",
     );
@@ -304,7 +311,7 @@ export function InitializationModal({
     );
 
     if (!(await delay(800))) return false;
-    setStepSubProgress(42);
+    setStepSubProgress(38);
     setStepSubPhaseText("正在捕获 Codex CLI 本地配置载荷与运行环境属性...");
 
     let codex: AgentConfig;
@@ -345,7 +352,7 @@ export function InitializationModal({
     }
 
     if (!(await delay(800))) return false;
-    setStepSubProgress(60);
+    setStepSubProgress(55);
     setStepSubPhaseText(
       "深度检索 %USERPROFILE%/.claude/ 环境变量与运行入口...",
     );
@@ -356,7 +363,7 @@ export function InitializationModal({
     );
 
     if (!(await delay(800))) return false;
-    setStepSubProgress(75);
+    setStepSubProgress(70);
     setStepSubPhaseText("正在捕获 Claude Code 本地配置载荷与权限描述符...");
 
     let claude: AgentConfig;
@@ -397,7 +404,7 @@ export function InitializationModal({
     }
 
     if (!(await delay(800))) return false;
-    setStepSubProgress(85);
+    setStepSubProgress(78);
     setStepSubPhaseText(
       "深度检索 %USERPROFILE%/.workbuddy-ai/ 与 WorkBuddy 客户端运行入口...",
     );
@@ -429,7 +436,7 @@ export function InitializationModal({
       setCheckpoints((prev) => ({
         ...prev,
         scan_workbuddy: "done",
-        acl_verify: "scanning",
+        scan_traework: "scanning",
       }));
     } else {
       addLog(
@@ -440,16 +447,67 @@ export function InitializationModal({
       setCheckpoints((prev) => ({
         ...prev,
         scan_workbuddy: "error",
+        scan_traework: "scanning",
+      }));
+    }
+
+    if (!(await delay(800))) return false;
+    setStepSubProgress(88);
+    setStepSubPhaseText(
+      "深度检索 %APPDATA%/TRAE SOLO CN/ 与 Trae Work 客户端状态库...",
+    );
+    addLog(
+      "FS:TRAEWORK",
+      "检索本地 Trae Work 运行环境与 SQLite 状态库 (state.vscdb)...",
+      "scan",
+    );
+
+    let traework: TraeWorkUIConfig;
+    try {
+      traework = await getTraeWorkConfig();
+      setConfigData((prev) => ({ ...prev, traework }));
+    } catch (e) {
+      const msg = `Trae Work 检索失败: ${e}`;
+      setStep2Status("error");
+      setPathError(msg);
+      setCheckpoints((prev) => ({ ...prev, scan_traework: "error" }));
+      addLog("FS:ERR", msg, "error");
+      return false;
+    }
+
+    if (traework.is_installed) {
+      addLog(
+        "FS:TRAEWORK",
+        `锁定 Trae Work 客户端运行环境: ${traework.app_path || "已安装"} [状态库: ${traework.config_exists ? "已就绪" : "待初始化"}]`,
+        "match",
+      );
+      setCheckpoints((prev) => ({
+        ...prev,
+        scan_traework: "done",
+        acl_verify: "scanning",
+      }));
+    } else {
+      addLog(
+        "FS:TRAEWORK",
+        "未在系统检索到 Trae Work 客户端或 state.vscdb 状态数据库",
+        "warn",
+      );
+      setCheckpoints((prev) => ({
+        ...prev,
+        scan_traework: "error",
         acl_verify: "scanning",
       }));
     }
 
     const anyInstalled =
-      codex.is_installed || claude.is_installed || workbuddy.is_installed;
+      codex.is_installed ||
+      claude.is_installed ||
+      workbuddy.is_installed ||
+      traework.is_installed;
     if (!anyInstalled) {
       setStep2Status("error");
       setPathError(
-        "未在当前电脑检测到 Claude Code、ChatGPT (Codex) 或 WorkBuddy 的安装程序与配置文件。AI Helper 需要配合已安装的 Agent/客户端运行环境使用，请先安装对应应用或在路径管理中指定。",
+        "未在当前电脑检测到 Claude Code、ChatGPT (Codex)、WorkBuddy 或 Trae Work 的安装程序与配置文件。AI Helper 需要配合已安装的 Agent/客户端运行环境使用，请先安装对应应用或在路径管理中指定。",
       );
       setCheckpoints((prev) => ({ ...prev, acl_verify: "error" }));
       addLog(
@@ -473,7 +531,8 @@ export function InitializationModal({
     const count =
       (codex.is_installed ? 1 : 0) +
       (claude.is_installed ? 1 : 0) +
-      (workbuddy.is_installed ? 1 : 0);
+      (workbuddy.is_installed ? 1 : 0) +
+      (traework.is_installed ? 1 : 0);
     addLog(
       "HOST:DONE",
       `本机扫描完成，已锁定 ${count} 处本地 Agent / 客户端运行环境与配置上下文`,
@@ -490,6 +549,9 @@ export function InitializationModal({
     } else if (workbuddy.is_installed) {
       setActiveConfigTab("workbuddy");
       setEditTab("workbuddy");
+    } else if (traework.is_installed) {
+      setActiveConfigTab("traework");
+      setEditTab("traework");
     }
 
     await delay(500);
@@ -522,14 +584,20 @@ export function InitializationModal({
     let codex: AgentConfig;
     let claude: AgentConfig;
     let workbuddy: WorkbuddyUIConfig;
+    let traework: TraeWorkUIConfig;
     try {
-      [codex, claude, workbuddy] = await Promise.all([
+      [codex, claude, workbuddy, traework] = await Promise.all([
         getCodexConfig(),
         getClaudeConfig(),
         getWorkbuddyConfig(),
+        getTraeWorkConfig(),
       ]);
-      setConfigData({ codex, claude, workbuddy });
-      if (activeConfigTab === "workbuddy") {
+      setConfigData({ codex, claude, workbuddy, traework });
+      if (activeConfigTab === "traework") {
+        setEditUrl(traework.base_url || "https://bob-api.com/");
+        setEditApiKey(traework.api_key || "");
+        setEditModel(traework.model || "gpt-5.6-sol");
+      } else if (activeConfigTab === "workbuddy") {
         setEditUrl(workbuddy.base_url || "https://bob-api.com/v1");
         setEditApiKey(workbuddy.api_key || "");
         setEditModel(workbuddy.model || "gpt-5.6-sol");
@@ -574,7 +642,7 @@ export function InitializationModal({
     setStepSubPhaseText("校验认证密钥 (API Key) 前缀特征与安全掩码...");
     addLog(
       "PARSE:KEY",
-      `校验 API Key 密钥格式与散列完整性... [${codex.api_key || workbuddy.api_key ? "存在有效密钥" : "未配置密钥"}]`,
+      `校验 API Key 密钥格式与散列完整性... [${codex.api_key || workbuddy.api_key || traework.api_key ? "存在有效密钥" : "未配置密钥"}]`,
       "info",
     );
 
@@ -588,7 +656,7 @@ export function InitializationModal({
     setStepSubPhaseText("读取核心模型 (Model) 配置与调用链参数...");
     addLog(
       "PARSE:MODEL",
-      `读取核心模型: Codex -> ${codex.model || "未配置"}, Claude -> ${claude.model || "未配置"}, WorkBuddy -> ${workbuddy.model || "未配置"}`,
+      `读取核心模型: Codex -> ${codex.model || "未配置"}, Claude -> ${claude.model || "未配置"}, WorkBuddy -> ${workbuddy.model || "未配置"}, Trae Work -> ${traework.model || "未配置"}`,
       "match",
     );
 
@@ -682,7 +750,9 @@ export function InitializationModal({
   }, [open, runPipeline]);
 
   // 切换编辑 Tab 时同步表单数据
-  const handleSwitchEditTab = (tab: "chatgpt" | "claude" | "workbuddy") => {
+  const handleSwitchEditTab = (
+    tab: "chatgpt" | "claude" | "workbuddy" | "traework",
+  ) => {
     setEditTab(tab);
     if (tab === "chatgpt") {
       setEditUrl(configData.codex?.base_url || "https://bob-api.com/");
@@ -692,10 +762,14 @@ export function InitializationModal({
       setEditUrl(configData.claude?.base_url || "https://bob-api.com/");
       setEditApiKey(configData.claude?.api_key || "");
       setEditModel(configData.claude?.model || "");
-    } else {
+    } else if (tab === "workbuddy") {
       setEditUrl(configData.workbuddy?.base_url || "https://bob-api.com/v1");
       setEditApiKey(configData.workbuddy?.api_key || "");
       setEditModel(configData.workbuddy?.model || "gpt-5.6-sol");
+    } else {
+      setEditUrl(configData.traework?.base_url || "https://bob-api.com/");
+      setEditApiKey(configData.traework?.api_key || "");
+      setEditModel(configData.traework?.model || "gpt-5.6-sol");
     }
   };
 
@@ -721,7 +795,7 @@ export function InitializationModal({
           editModel.trim(),
         );
         toast.success("Claude Code 配置已保存更新");
-      } else {
+      } else if (editTab === "workbuddy") {
         const existing = configData.workbuddy;
         await setWorkbuddyConfig({
           url: editUrl.trim(),
@@ -739,20 +813,46 @@ export function InitializationModal({
           max_output_tokens: existing?.max_output_tokens ?? 32768,
         });
         toast.success("WorkBuddy 自定义模型配置已保存更新");
+      } else {
+        const existing = configData.traework;
+        await setTraeWorkConfig({
+          api_format: existing?.api_format || "custom_responses_compatible",
+          base_url: editUrl.trim(),
+          is_full_url: existing?.is_full_url ?? false,
+          model: editModel.trim() || "gpt-5.6-sol",
+          display_name:
+            existing?.display_name || editModel.trim() || "gpt-5.6-sol",
+          api_key: editApiKey.trim(),
+          supports_images: existing?.supports_images ?? true,
+          thinking_mode: existing?.thinking_mode ?? "auto",
+          max_turn: existing?.max_turn ?? 100,
+          token_input: existing?.token_input ?? 32768,
+          token_output: existing?.token_output ?? 32768,
+          temperature: existing?.temperature ?? 1,
+          top_p: existing?.top_p ?? 1,
+          top_k: existing?.top_k ?? null,
+        });
+        toast.success("Trae Work 自定义模型配置已保存更新");
       }
 
       // 重新读取并刷新展示
-      const [newCodex, newClaude, newWb] = await Promise.all([
+      const [newCodex, newClaude, newWb, newTrae] = await Promise.all([
         getCodexConfig(),
         getClaudeConfig(),
         getWorkbuddyConfig(),
+        getTraeWorkConfig(),
       ]);
-      setConfigData({ codex: newCodex, claude: newClaude, workbuddy: newWb });
+      setConfigData({
+        codex: newCodex,
+        claude: newClaude,
+        workbuddy: newWb,
+        traework: newTrae,
+      });
       setConfirmationDecision("confirmed");
       setStep4Status("success");
       addLog(
         "CONFIG:SAVE",
-        `${editTab === "chatgpt" ? "ChatGPT" : editTab === "claude" ? "Claude" : "WorkBuddy"} 配置已手动更新生效`,
+        `${editTab === "chatgpt" ? "ChatGPT" : editTab === "claude" ? "Claude" : editTab === "workbuddy" ? "WorkBuddy" : "Trae Work"} 配置已手动更新生效`,
         "success",
       );
     } catch (err) {
@@ -807,22 +907,35 @@ export function InitializationModal({
   const currentCodex = configData.codex;
   const currentClaude = configData.claude;
   const currentWorkbuddy = configData.workbuddy;
+  const currentTraework = configData.traework;
   const activeCfg: AgentConfig | null =
     activeConfigTab === "chatgpt"
       ? currentCodex
       : activeConfigTab === "claude"
         ? currentClaude
-        : currentWorkbuddy
-          ? {
-              base_url: currentWorkbuddy.base_url,
-              api_key: currentWorkbuddy.api_key,
-              model: currentWorkbuddy.model,
-              config_exists: currentWorkbuddy.config_exists,
-              config_path: currentWorkbuddy.config_path,
-              is_installed: currentWorkbuddy.is_installed,
-              app_path: currentWorkbuddy.app_path,
-            }
-          : null;
+        : activeConfigTab === "workbuddy"
+          ? currentWorkbuddy
+            ? {
+                base_url: currentWorkbuddy.base_url,
+                api_key: currentWorkbuddy.api_key,
+                model: currentWorkbuddy.model,
+                config_exists: currentWorkbuddy.config_exists,
+                config_path: currentWorkbuddy.config_path,
+                is_installed: currentWorkbuddy.is_installed,
+                app_path: currentWorkbuddy.app_path,
+              }
+            : null
+          : currentTraework
+            ? {
+                base_url: currentTraework.base_url,
+                api_key: currentTraework.api_key,
+                model: currentTraework.model,
+                config_exists: currentTraework.config_exists,
+                config_path: currentTraework.config_path,
+                is_installed: currentTraework.is_installed,
+                app_path: currentTraework.app_path,
+              }
+            : null;
 
   return (
     <AnimatePresence>
@@ -1244,6 +1357,23 @@ export function InitializationModal({
                                       : "正在检索运行环境...",
                           },
                           {
+                            key: "scan_traework",
+                            label: "Trae Work 状态库与自定义模型",
+                            status:
+                              checkpoints.scan_traework ||
+                              (step2Status === "success" ? "done" : "pending"),
+                            detail:
+                              checkpoints.scan_traework === "error"
+                                ? "未检测到安装"
+                                : configData.traework?.config_exists
+                                  ? "已就绪 (state.vscdb)"
+                                  : configData.traework?.is_installed
+                                    ? "客户端已就绪，待配置模型"
+                                    : checkpoints.scan_traework === "done"
+                                      ? "已就绪"
+                                      : "正在检索运行环境...",
+                          },
+                          {
                             key: "acl_verify",
                             label: "文件安全描述符与系统读写权限",
                             status:
@@ -1555,6 +1685,110 @@ export function InitializationModal({
                             ) : null}
                           </div>
                         </div>
+
+                        {/* Trae Work 路径卡片 */}
+                        <div className="p-3.5 rounded-xl border bg-slate-50/80 dark:bg-white/[0.02] border-slate-200 dark:border-white/10 space-y-2 relative">
+                          <div className="flex items-center justify-between">
+                            <span className="text-xs font-semibold text-slate-800 dark:text-gray-200 flex items-center gap-1.5">
+                              <TraeWorkIcon
+                                size={14}
+                                className="text-cyan-500"
+                              />
+                              Trae Work 状态数据库
+                            </span>
+                            <span
+                              className={cn(
+                                "px-2 py-0.5 rounded text-[10px] font-semibold flex items-center gap-1",
+                                step2Status === "running" &&
+                                  !configData.traework
+                                  ? "bg-blue-100 text-blue-700 dark:bg-blue-500/20 dark:text-blue-300"
+                                  : configData.traework?.config_exists
+                                    ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-500/20 dark:text-emerald-300"
+                                    : configData.traework?.is_installed
+                                      ? "bg-amber-100 text-amber-800 dark:bg-amber-500/20 dark:text-amber-300"
+                                      : "bg-rose-100 text-rose-800 dark:bg-rose-500/20 dark:text-rose-300",
+                              )}
+                            >
+                              {step2Status === "running" &&
+                              !configData.traework ? (
+                                <>
+                                  <Loader2 size={10} className="animate-spin" />
+                                  扫描磁盘中
+                                </>
+                              ) : configData.traework?.config_exists ? (
+                                <>
+                                  <CheckCircle2 size={10} />
+                                  已锁定路径
+                                </>
+                              ) : configData.traework?.is_installed ? (
+                                <>
+                                  <AlertCircle size={10} />
+                                  待初始化 (客户端已就绪)
+                                </>
+                              ) : (
+                                <>
+                                  <XCircle size={10} />
+                                  未安装
+                                </>
+                              )}
+                            </span>
+                          </div>
+                          <div className="flex items-center justify-between gap-2 p-2 rounded-lg bg-slate-100 dark:bg-black/30 border border-slate-200/60 dark:border-white/5">
+                            <code className="text-[11px] font-mono text-slate-700 dark:text-gray-300 break-all select-all">
+                              {configData.traework?.config_path
+                                ? configData.traework.config_path
+                                : step2Status === "running"
+                                  ? "正在遍历磁盘检索 Trae Work 路径..."
+                                  : configData.traework?.is_installed
+                                    ? "客户端已检测，待写入 state.vscdb"
+                                    : "未检测到安装环境，暂无状态库文件"}
+                            </code>
+                            {configData.traework?.config_path ? (
+                              <div className="flex items-center gap-1 flex-shrink-0">
+                                <button
+                                  onClick={async () => {
+                                    if (!configData.traework?.config_exists) {
+                                      toast.warning(
+                                        "状态库尚未创建，请先完成配置并保存",
+                                      );
+                                      return;
+                                    }
+                                    const ok = await openConfigFile(
+                                      configData.traework.config_path,
+                                    );
+                                    if (ok)
+                                      toast.success(
+                                        "已打开状态数据库文件或目录",
+                                      );
+                                  }}
+                                  className="p-1 rounded hover:bg-slate-200 dark:hover:bg-white/10 text-slate-500 dark:text-gray-400 cursor-pointer"
+                                  title="打开状态数据库文件"
+                                >
+                                  <ExternalLink size={12} />
+                                </button>
+                                <button
+                                  onClick={() =>
+                                    copyToClipboard(
+                                      configData.traework?.config_path || "",
+                                      "Trae Work 路径",
+                                    )
+                                  }
+                                  className="p-1 rounded hover:bg-slate-200 dark:hover:bg-white/10 text-slate-500 dark:text-gray-400 cursor-pointer"
+                                  title="复制路径"
+                                >
+                                  {copiedKey === "Trae Work 路径" ? (
+                                    <Check
+                                      size={12}
+                                      className="text-emerald-500"
+                                    />
+                                  ) : (
+                                    <Copy size={12} />
+                                  )}
+                                </button>
+                              </div>
+                            ) : null}
+                          </div>
+                        </div>
                       </div>
 
                       {step2Status === "success" && (
@@ -1567,16 +1801,19 @@ export function InitializationModal({
                             <span>
                               {(configData.codex?.is_installed ? 1 : 0) +
                                 (configData.claude?.is_installed ? 1 : 0) +
-                                (configData.workbuddy?.is_installed ? 1 : 0) >
+                                (configData.workbuddy?.is_installed ? 1 : 0) +
+                                (configData.traework?.is_installed ? 1 : 0) >
                               1
                                 ? `本机环境扫描完成！已准确定位多个本地 Agent / 客户端运行环境与配置文件。`
-                                : configData.workbuddy?.is_installed
-                                  ? "本机扫描完成！已检测到 WorkBuddy 客户端运行环境"
-                                  : configData.claude?.is_installed
-                                    ? "本机扫描完成！已检测到 Claude Code 运行环境"
-                                    : configData.codex?.is_installed
-                                      ? "本机扫描完成！已检测到 ChatGPT (Codex) 运行环境"
-                                      : "本机扫描通过！已准备预先配置核心参数。"}
+                                : configData.traework?.is_installed
+                                  ? "本机扫描完成！已检测到 Trae Work 客户端运行环境"
+                                  : configData.workbuddy?.is_installed
+                                    ? "本机扫描完成！已检测到 WorkBuddy 客户端运行环境"
+                                    : configData.claude?.is_installed
+                                      ? "本机扫描完成！已检测到 Claude Code 运行环境"
+                                      : configData.codex?.is_installed
+                                        ? "本机扫描完成！已检测到 ChatGPT (Codex) 运行环境"
+                                        : "本机扫描通过！已准备预先配置核心参数。"}
                             </span>
                           </div>
                           <button
@@ -1826,6 +2063,26 @@ export function InitializationModal({
                             </span>
                           )}
                         </button>
+                        <button
+                          onClick={() => {
+                            setActiveConfigTab("traework");
+                            setEditTab("traework");
+                          }}
+                          className={cn(
+                            "flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition cursor-pointer",
+                            activeConfigTab === "traework"
+                              ? "bg-white text-cyan-600 shadow-sm dark:bg-cyan-500/20 dark:text-cyan-300 font-bold"
+                              : "text-slate-600 dark:text-gray-400 hover:text-slate-900 dark:hover:text-white",
+                          )}
+                        >
+                          <TraeWorkIcon size={13} />
+                          Trae Work
+                          {!configData.traework?.is_installed && (
+                            <span className="text-[9px] px-1 py-0.2 rounded bg-slate-200 dark:bg-white/10 text-slate-500 dark:text-gray-400">
+                              未安装
+                            </span>
+                          )}
+                        </button>
                       </div>
 
                       {/* 核心配置展示卡片 (url, apikey, model) */}
@@ -1870,7 +2127,9 @@ export function InitializationModal({
                                       ? showCodexKey
                                       : activeConfigTab === "claude"
                                         ? showClaudeKey
-                                        : showWorkbuddyKey
+                                        : activeConfigTab === "workbuddy"
+                                          ? showWorkbuddyKey
+                                          : showTraeworkKey
                                   )
                                   ? activeCfg.api_key
                                   : `${activeCfg.api_key.slice(0, 6)}••••••••••••${activeCfg.api_key.slice(-4)}`
@@ -1883,8 +2142,10 @@ export function InitializationModal({
                                     setShowCodexKey(!showCodexKey);
                                   } else if (activeConfigTab === "claude") {
                                     setShowClaudeKey(!showClaudeKey);
-                                  } else {
+                                  } else if (activeConfigTab === "workbuddy") {
                                     setShowWorkbuddyKey(!showWorkbuddyKey);
+                                  } else {
+                                    setShowTraeworkKey(!showTraeworkKey);
                                   }
                                 }}
                                 className="text-slate-400 hover:text-slate-700 dark:hover:text-white"
@@ -1895,7 +2156,9 @@ export function InitializationModal({
                                     ? showCodexKey
                                     : activeConfigTab === "claude"
                                       ? showClaudeKey
-                                      : showWorkbuddyKey
+                                      : activeConfigTab === "workbuddy"
+                                        ? showWorkbuddyKey
+                                        : showTraeworkKey
                                 ) ? (
                                   <EyeOff size={13} />
                                 ) : (
@@ -2146,6 +2409,22 @@ export function InitializationModal({
                               >
                                 WorkBuddy
                                 {!configData.workbuddy?.is_installed && (
+                                  <span className="text-[9px] opacity-75">
+                                    (未安装)
+                                  </span>
+                                )}
+                              </button>
+                              <button
+                                onClick={() => handleSwitchEditTab("traework")}
+                                className={cn(
+                                  "px-2.5 py-1 rounded font-medium transition cursor-pointer flex items-center gap-1",
+                                  editTab === "traework"
+                                    ? "bg-white text-cyan-600 shadow-xs dark:bg-cyan-600 dark:text-white"
+                                    : "text-slate-600 dark:text-gray-400",
+                                )}
+                              >
+                                Trae Work
+                                {!configData.traework?.is_installed && (
                                   <span className="text-[9px] opacity-75">
                                     (未安装)
                                   </span>

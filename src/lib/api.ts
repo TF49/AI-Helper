@@ -11,6 +11,9 @@ import type {
   WorkbuddyUIConfig,
   WorkbuddySavePayload,
   WorkbuddyModelItem,
+  TraeWorkUIConfig,
+  TraeWorkSavePayload,
+  TraeWorkModelItem,
 } from "../types";
 
 export async function getAppPaths(): Promise<AppPathsConfig> {
@@ -22,7 +25,7 @@ export async function saveAppPaths(config: AppPathsConfig): Promise<void> {
 }
 
 export async function detectAppPath(
-  appType: "claude" | "codex" | "chatgpt" | "workbuddy",
+  appType: "claude" | "codex" | "chatgpt" | "workbuddy" | "traework",
 ): Promise<DetectedPathInfo> {
   return invoke<DetectedPathInfo>("detect_app_path", { appType });
 }
@@ -32,19 +35,19 @@ export async function detectAllAppPaths(): Promise<DetectedPathInfo[]> {
 }
 
 export async function browseAppPath(
-  appType: "claude" | "codex" | "chatgpt" | "workbuddy",
+  appType: "claude" | "codex" | "chatgpt" | "workbuddy" | "traework",
 ): Promise<string | null> {
   return invoke<string | null>("browse_app_path", { appType });
 }
 
 export async function checkAppProcessStatus(
-  appType: "claude" | "codex" | "chatgpt" | "workbuddy",
+  appType: "claude" | "codex" | "chatgpt" | "workbuddy" | "traework",
 ): Promise<boolean> {
   return invoke<boolean>("check_app_process_status", { appType });
 }
 
 export async function restartTargetApp(
-  appType: "claude" | "codex" | "chatgpt" | "workbuddy",
+  appType: "claude" | "codex" | "chatgpt" | "workbuddy" | "traework",
   customPath?: string,
 ): Promise<string> {
   return invoke<string>("restart_target_app", { appType, customPath });
@@ -88,6 +91,22 @@ export async function deleteWorkbuddyModel(
   modelId: string,
 ): Promise<WorkbuddyModelItem[]> {
   return invoke<WorkbuddyModelItem[]>("delete_workbuddy_model", { modelId });
+}
+
+export async function getTraeWorkConfig(): Promise<TraeWorkUIConfig> {
+  return invoke<TraeWorkUIConfig>("get_traework_config");
+}
+
+export async function setTraeWorkConfig(
+  payload: TraeWorkSavePayload,
+): Promise<void> {
+  return invoke("set_traework_config", { payload });
+}
+
+export async function deleteTraeWorkModel(
+  modelName: string,
+): Promise<TraeWorkModelItem[]> {
+  return invoke<TraeWorkModelItem[]>("delete_traework_model", { modelName });
 }
 
 export async function checkBobApiNetwork(): Promise<NetworkStatus> {
@@ -159,6 +178,25 @@ export async function testWorkbuddyStream(
     url,
     apiKey,
     model,
+    onEvent: channel,
+  });
+}
+
+export async function testTraeWorkStream(
+  url: string,
+  apiKey: string,
+  model: string,
+  apiFormat: string,
+  isFullUrl: boolean,
+  onEvent: (event: TestStreamEvent) => void,
+): Promise<ApiTestResult> {
+  const channel = new Channel<TestStreamEvent>(onEvent);
+  return invoke<ApiTestResult>("test_traework_stream", {
+    url,
+    apiKey,
+    model,
+    apiFormat,
+    isFullUrl,
     onEvent: channel,
   });
 }

@@ -1,6 +1,6 @@
 {
   "name": "ai-helper",
-  "version": "1.0.29",
+  "version": "1.0.30",
   "description": "AI Helper - AI Agent 配置管理工具",
   "type": "module",
   "scripts": {
@@ -14,7 +14,9 @@
     "format:rs": "cargo fmt --manifest-path src-tauri/Cargo.toml",
     "lint:rs": "cargo clippy --manifest-path src-tauri/Cargo.toml -- -D warnings",
     "bump": "powershell -ExecutionPolicy Bypass -File scripts/bump-version.ps1",
-    "release": "powershell -ExecutionPolicy Bypass -File scripts/release.ps1"
+    "release": "powershell -ExecutionPolicy Bypass -File scripts/release.ps1",
+    "preview:web": "powershell -Command \"Start-Process 'website/index.html'\"",
+    "serve:web": "python -m http.server 3000 --directory website"
   },
   "keywords": [],
   "author": "",

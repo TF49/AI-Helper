@@ -13,6 +13,8 @@ pub enum AppError {
     ConfigNotFound(String),
     #[error("注册表操作错误: {0}")]
     Registry(String),
+    #[error("操作错误: {0}")]
+    Other(String),
 }
 
 impl serde::Serialize for AppError {
