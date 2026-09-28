@@ -3,6 +3,54 @@ use rusqlite::{Connection, OpenFlags};
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use std::path::PathBuf;
+use std::time::UNIX_EPOCH;
+
+/// 选择真正包含 Trae 状态数据的数据库，而不是仅按目录名称命中第一个文件。
+/// 多个 Trae/TraeWork 发行版可能同时留下 state.vscdb，模型写入错误数据库会表现为
+/// “保存成功但客户端没有变化”。
+fn choose_traework_db(candidates: &[PathBuf]) -> Option<PathBuf> {
+    candidates
+        .iter()
+        .filter(|path| path.is_file())
+        .map(|path| {
+            let mut model_keys = 0usize;
+            let mut selection_keys = 0usize;
+            if let Ok(conn) = Connection::open_with_flags(
+                path,
+                OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_URI,
+            ) {
+                let _ = conn.busy_timeout(std::time::Duration::from_millis(250));
+                model_keys = conn
+                    .query_row(
+                        "SELECT COUNT(*) FROM ItemTable WHERE key LIKE '%AI.agent.model.model_list_map'",
+                        [],
+                        |row| row.get::<_, i64>(0),
+                    )
+                    .unwrap_or(0)
+                    .max(0) as usize;
+                selection_keys = conn
+                    .query_row(
+                        "SELECT COUNT(*) FROM ItemTable WHERE key LIKE '%AI.agent.model.recent_user_selection_by_agent_label'",
+                        [],
+                        |row| row.get::<_, i64>(0),
+                    )
+                    .unwrap_or(0)
+                    .max(0) as usize;
+            }
+            let modified = path
+                .metadata()
+                .and_then(|meta| meta.modified())
+                .ok()
+                .and_then(|time| time.duration_since(UNIX_EPOCH).ok())
+                .map(|duration| duration.as_secs())
+                .unwrap_or(0);
+            (path.clone(), model_keys, selection_keys, modified)
+        })
+        .max_by_key(|(_, model_keys, selection_keys, modified)| {
+            (*model_keys > 0, *selection_keys > 0, *model_keys, *selection_keys, *modified)
+        })
+        .map(|(path, _, _, _)| path)
+}
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 pub struct TraeWorkModelEntry {
@@ -122,6 +170,16 @@ pub struct TraeWorkSavePayload {
     pub top_k: Option<i32>,
 }
 
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct TraeWorkSaveResult {
+    /// 当前版本可安全完成的是本地兼容写入；Trae 官方服务端注册仍需走其 ai-agent RPC。
+    pub persistence_mode: String,
+    pub verified: bool,
+    pub model_name: String,
+    pub custom_model_id: Option<String>,
+    pub warning: Option<String>,
+}
+
 /// 获取 Trae Work 本地 SQLite 状态数据库路径
 pub fn traework_db_path() -> Result<PathBuf, AppError> {
     #[cfg(target_os = "windows")]
@@ -154,10 +212,8 @@ pub fn traework_db_path() -> Result<PathBuf, AppError> {
                     .join("globalStorage")
                     .join("state.vscdb"),
             ];
-            for cand in &candidates {
-                if cand.exists() {
-                    return Ok(cand.clone());
-                }
+            if let Some(path) = choose_traework_db(&candidates) {
+                return Ok(path);
             }
             return Ok(candidates[0].clone());
         }
@@ -194,10 +250,8 @@ pub fn traework_db_path() -> Result<PathBuf, AppError> {
                     .join("globalStorage")
                     .join("state.vscdb"),
             ];
-            for cand in &candidates {
-                if cand.exists() {
-                    return Ok(cand.clone());
-                }
+            if let Some(path) = choose_traework_db(&candidates) {
+                return Ok(path);
             }
             return Ok(candidates[0].clone());
         }
@@ -476,7 +530,7 @@ pub fn normalize_traework_url(base_url: &str, provider: &str, is_full_url: bool)
     }
 }
 
-pub fn set_traework_config(payload: TraeWorkSavePayload) -> Result<(), AppError> {
+pub fn set_traework_config(payload: TraeWorkSavePayload) -> Result<TraeWorkSaveResult, AppError> {
     let db_path = traework_db_path()?;
     if !db_path.exists() {
         return Err(AppError::ConfigNotFound(format!(
@@ -485,126 +539,118 @@ pub fn set_traework_config(payload: TraeWorkSavePayload) -> Result<(), AppError>
         )));
     }
 
-    let conn = Connection::open(&db_path)
-        .map_err(|e| AppError::Other(format!("打开 Trae SQLite 数据库失败: {}", e)))?;
-    let _ = conn.busy_timeout(std::time::Duration::from_secs(5));
-
-    // 1. 查找包含当前用户 ID 的 key (兼容 : 与 _ 分隔符)
-    let mut stmt = conn
-        .prepare("SELECT key, value FROM ItemTable WHERE key LIKE '%AI.agent.model.model_list_map'")
-        .map_err(|e| AppError::Other(format!("查询 ItemTable 失败: {}", e)))?;
-
-    let rows: Vec<(String, String)> = stmt
-        .query_map([], |row| {
-            let k: String = row.get(0)?;
-            let v: String = row.get(1)?;
-            Ok((k, v))
-        })
-        .map_err(|e| AppError::Other(e.to_string()))?
-        .filter_map(|r| r.ok())
-        .collect();
-
-    if rows.is_empty() {
-        return Err(AppError::Other(
-            "未检测到 Trae 登录用户配置项，请先启动并登录一次 Trae 客户端".to_string(),
-        ));
-    }
-
     let model_id = payload.model.trim().to_string();
+    if model_id.is_empty() {
+        return Err(AppError::Other("模型 ID 不能为空".to_string()));
+    }
     let display_name = payload
         .display_name
-        .filter(|s| !s.trim().is_empty())
-        .unwrap_or_else(|| model_id.clone());
-
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .unwrap_or(&model_id)
+        .to_string();
     let provider = if payload.api_format.trim().is_empty() {
         "custom_responses_compatible".to_string()
     } else {
         payload.api_format.trim().to_string()
     };
-
     let composite_name = format!("{}//{}", provider, model_id);
-
-    // 2. 先扫描现有记录中是否已有该模型，提取旧的 custom_model_id 与 ak，避免覆盖或遗失密文
-    let mut existing_custom_model_id: Option<String> = None;
-    let mut existing_ak: Option<String> = None;
-    let mut existing_icon: Option<serde_json::Value> = None;
-
-    for (_k, json_str) in &rows {
-        if let Ok(json_val) = serde_json::from_str::<serde_json::Value>(json_str) {
-            if let Some(map) = json_val.as_object() {
-                for (_cat, list_val) in map {
-                    if let Some(arr) = list_val.as_array() {
-                        for item in arr {
-                            let item_name = item.get("name").and_then(|v| v.as_str()).unwrap_or("");
-                            let item_disp = item
-                                .get("display_name")
-                                .and_then(|v| v.as_str())
-                                .unwrap_or("");
-                            if item_name == composite_name
-                                || item_disp == display_name
-                                || item_name.ends_with(&format!("//{}", model_id))
-                            {
-                                if existing_custom_model_id.is_none() {
-                                    existing_custom_model_id = item
-                                        .get("custom_model_id")
-                                        .and_then(|v| v.as_str())
-                                        .map(|s| s.to_string());
-                                }
-                                if existing_ak.is_none() {
-                                    existing_ak = item
-                                        .get("ak")
-                                        .and_then(|v| v.as_str())
-                                        .filter(|s| !s.trim().is_empty())
-                                        .map(|s| s.to_string());
-                                }
-                                if existing_icon.is_none() {
-                                    existing_icon = item.get("icon").cloned();
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-
     let normalized_url = normalize_traework_url(&payload.base_url, &provider, payload.is_full_url);
-
     let thinking_enable = match payload.thinking_mode.as_str() {
         "on" => 1,
         "off" => 2,
         _ => 0,
     };
 
-    // 保留原有 custom_model_id，若无则生成
+    let conn = Connection::open(&db_path)
+        .map_err(|e| AppError::Other(format!("打开 Trae SQLite 数据库失败: {}", e)))?;
+    let _ = conn.busy_timeout(std::time::Duration::from_secs(5));
+    let tx = conn
+        .unchecked_transaction()
+        .map_err(|e| AppError::Other(format!("开启 Trae SQLite 事务失败: {}", e)))?;
+
+    let rows: Vec<(String, String)> = {
+        let mut stmt = tx
+            .prepare(
+                "SELECT key, value FROM ItemTable WHERE key LIKE '%AI.agent.model.model_list_map'",
+            )
+            .map_err(|e| AppError::Other(format!("查询 ItemTable 失败: {}", e)))?;
+        let result = stmt
+            .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))
+            .map_err(|e| AppError::Other(format!("读取模型列表失败: {}", e)))?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|e| AppError::Other(format!("读取模型列表失败: {}", e)))?;
+        result
+    };
+    if rows.is_empty() {
+        return Err(AppError::Other(
+            "未检测到 Trae 登录用户配置项，请先启动并登录一次 Trae 客户端".to_string(),
+        ));
+    }
+
+    let mut existing_custom_model_id = None;
+    let mut existing_ak = None;
+    let mut existing_icon = None;
+    for (_, json_str) in &rows {
+        let Ok(json_val) = serde_json::from_str::<serde_json::Value>(json_str) else {
+            continue;
+        };
+        let Some(map) = json_val.as_object() else {
+            continue;
+        };
+        for list_val in map.values() {
+            let Some(arr) = list_val.as_array() else {
+                continue;
+            };
+            for item in arr {
+                let item_name = item.get("name").and_then(|v| v.as_str()).unwrap_or("");
+                let item_disp = item
+                    .get("display_name")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("");
+                if item_name == composite_name
+                    || item_disp == display_name
+                    || item_name.ends_with(&format!("//{}", model_id))
+                {
+                    existing_custom_model_id = existing_custom_model_id.or_else(|| {
+                        item.get("custom_model_id")
+                            .and_then(|v| v.as_str())
+                            .map(str::to_string)
+                    });
+                    existing_ak = existing_ak.or_else(|| {
+                        item.get("ak")
+                            .and_then(|v| v.as_str())
+                            .filter(|value| !value.trim().is_empty())
+                            .map(str::to_string)
+                    });
+                    existing_icon = existing_icon.or_else(|| item.get("icon").cloned());
+                }
+            }
+        }
+    }
+
     let final_custom_model_id = existing_custom_model_id.unwrap_or_else(|| {
         format!(
             "2800{:06}",
             (std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
+                .duration_since(UNIX_EPOCH)
                 .unwrap_or_default()
                 .as_millis()
                 % 1_000_000)
         )
     });
-
-    // 处理 API Key (ak)：若传入为空或包含掩码符 '•'，优先保留现有已存的 ak
     let final_ak = if payload.api_key.trim().is_empty() || payload.api_key.contains('•') {
         existing_ak
     } else {
         Some(payload.api_key.trim().to_string())
     };
 
-    let default_icon = serde_json::json!({
-        "dark": "https://lf-cdn.trae.com.cn/obj/trae-com-cn/model/default-custom-dark.svg",
-        "light": "https://lf-cdn.trae.com.cn/obj/trae-com-cn/model/default-custom-light.svg"
-    });
-
     let new_entry = TraeWorkModelEntry {
         name: composite_name.clone(),
         display_name: display_name.clone(),
         provider: provider.clone(),
-        base_url: Some(normalized_url.clone()),
+        base_url: Some(normalized_url),
         is_custom_base_url: Some(true),
         custom_model_id: Some(final_custom_model_id.clone()),
         model_type: Some("chat_model".to_string()),
@@ -629,7 +675,12 @@ pub fn set_traework_config(payload: TraeWorkSavePayload) -> Result<(), AppError>
         is_default: Some(false),
         custom_config: Some("".to_string()),
         sk: Some("".to_string()),
-        icon: Some(existing_icon.unwrap_or(default_icon)),
+        icon: Some(existing_icon.unwrap_or_else(|| {
+            serde_json::json!({
+                "dark": "https://lf-cdn.trae.com.cn/obj/trae-com-cn/model/default-custom-dark.svg",
+                "light": "https://lf-cdn.trae.com.cn/obj/trae-com-cn/model/default-custom-light.svg"
+            })
+        })),
         context_window_size: Some(serde_json::json!({
             "max": payload.token_input,
             "default": null
@@ -638,17 +689,9 @@ pub fn set_traework_config(payload: TraeWorkSavePayload) -> Result<(), AppError>
             "max": payload.max_turn,
             "default": null
         })),
-        saas_usage: Some(serde_json::json!({
-            "max": null,
-            "default": null
-        })),
+        saas_usage: Some(serde_json::json!({"max": null, "default": null})),
         features: Some(serde_json::json!({
-            "provider": {
-                "enable": true,
-                "data": {
-                    "provider_name": provider
-                }
-            },
+            "provider": {"enable": true, "data": {"provider_name": provider}},
             "context_windows": {
                 "enable": true,
                 "data": {
@@ -662,107 +705,175 @@ pub fn set_traework_config(payload: TraeWorkSavePayload) -> Result<(), AppError>
         })),
         extra: serde_json::Map::new(),
     };
-
     let new_entry_val = serde_json::to_value(&new_entry)?;
+    let suffix = format!("//{}", model_id);
+    let mut changed_model_rows = 0usize;
 
-    // 标准核心分类列表
-    let core_categories = [
-        "solo_work_lite",
-        "solo_agent_lite",
-        "solo_coder",
-        "solo_design_lite",
-        "solo_work_remote",
-        "solo_agent_remote",
-        "solo_design_remote",
-        "assistant",
-        "agent",
-    ];
-
-    // 遍历每一个 model_list_map 进行增量合并
-    for (key, json_str) in rows {
-        if let Ok(mut json_val) = serde_json::from_str::<serde_json::Value>(&json_str) {
-            if let Some(map) = json_val.as_object_mut() {
-                // 1. 先对 map 中现存的所有分类（如果是数组）做更新
-                let mut updated_categories = HashSet::new();
-                for (cat_name, list_val) in map.iter_mut() {
-                    if let Some(arr) = list_val.as_array_mut() {
-                        updated_categories.insert(cat_name.clone());
-                        if let Some(pos) = arr.iter().position(|item| {
-                            let item_name = item.get("name").and_then(|v| v.as_str()).unwrap_or("");
-                            let item_disp = item
-                                .get("display_name")
-                                .and_then(|v| v.as_str())
-                                .unwrap_or("");
-                            item_name == composite_name
-                                || item_disp == display_name
-                                || item_name.ends_with(&format!("//{}", model_id))
-                        }) {
-                            arr[pos] = new_entry_val.clone();
-                        } else {
-                            arr.push(new_entry_val.clone());
-                        }
+    // 只修改 Trae 已经创建的分类，不凭空生成不存在的分类；更新已有节点时以 merge
+    // 方式写入，从而保留新版本 Trae 增加的未知字段。
+    for (key, json_str) in &rows {
+        let Ok(mut json_val) = serde_json::from_str::<serde_json::Value>(json_str) else {
+            continue;
+        };
+        let Some(map) = json_val.as_object_mut() else {
+            continue;
+        };
+        let mut changed = false;
+        for list_val in map.values_mut() {
+            let Some(arr) = list_val.as_array_mut() else {
+                continue;
+            };
+            let matching = arr.iter().position(|item| {
+                let item_name = item.get("name").and_then(|v| v.as_str()).unwrap_or("");
+                let item_disp = item
+                    .get("display_name")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("");
+                item_name == composite_name
+                    || item_disp == display_name
+                    || item_name.ends_with(&suffix)
+            });
+            if let Some(index) = matching {
+                if let (Some(existing), Some(patch)) =
+                    (arr[index].as_object_mut(), new_entry_val.as_object())
+                {
+                    for (field, value) in patch {
+                        existing.insert(field.clone(), value.clone());
                     }
+                } else {
+                    arr[index] = new_entry_val.clone();
                 }
+            } else {
+                arr.push(new_entry_val.clone());
+            }
+            changed = true;
+        }
+        if changed {
+            let updated_json = serde_json::to_string(&json_val)?;
+            tx.execute(
+                "UPDATE ItemTable SET value = ? WHERE key = ?",
+                rusqlite::params![updated_json, key],
+            )
+            .map_err(|e| AppError::Other(format!("更新 ItemTable 失败: {}", e)))?;
+            changed_model_rows += 1;
+        }
+    }
+    if changed_model_rows == 0 {
+        return Err(AppError::Other(
+            "Trae 模型列表结构无法识别，未执行任何写入".to_string(),
+        ));
+    }
 
-                // 2. 补全尚未存在的核心常用分类
-                for cat in core_categories {
-                    if !updated_categories.contains(cat) {
-                        map.insert(
-                            cat.to_string(),
-                            serde_json::Value::Array(vec![new_entry_val.clone()]),
+    let make_model_id = |agent_label: &str| {
+        format!(
+            "{}_3_{}_{}_{}",
+            agent_label, provider, composite_name, final_custom_model_id
+        )
+    };
+    let selection_rows: Vec<(String, String)> = {
+        let mut stmt = tx
+            .prepare("SELECT key, value FROM ItemTable WHERE key LIKE '%AI.agent.model.recent_user_selection_by_agent_label'")
+            .map_err(|e| AppError::Other(format!("查询 Trae 最近选择失败: {}", e)))?;
+        let result = stmt
+            .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))
+            .map_err(|e| AppError::Other(format!("读取 Trae 最近选择失败: {}", e)))?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|e| AppError::Other(format!("读取 Trae 最近选择失败: {}", e)))?;
+        result
+    };
+    for (key, value) in selection_rows {
+        let Ok(mut json) = serde_json::from_str::<serde_json::Value>(&value) else {
+            continue;
+        };
+        let Some(map) = json.as_object_mut() else {
+            continue;
+        };
+        for agent_label in ["solo_work_lite", "solo_agent_lite"] {
+            if map.contains_key(agent_label) {
+                map.insert(
+                    agent_label.to_string(),
+                    serde_json::json!({"modelId": make_model_id(agent_label), "mode": 0}),
+                );
+            }
+        }
+        let updated_json = serde_json::to_string(&json)?;
+        tx.execute(
+            "UPDATE ItemTable SET value = ? WHERE key = ?",
+            rusqlite::params![updated_json, key],
+        )
+        .map_err(|e| AppError::Other(format!("更新 Trae 最近选择失败: {}", e)))?;
+    }
+
+    // session_selected_model 由较新版本使用。只改已有会话中的同名 agent，避免污染历史会话结构。
+    let session_rows: Vec<(String, String)> = {
+        let mut stmt = tx
+            .prepare("SELECT key, value FROM ItemTable WHERE key LIKE '%AI.agent.model.session_selected_model'")
+            .map_err(|e| AppError::Other(format!("查询 Trae 会话模型失败: {}", e)))?;
+        let result = stmt
+            .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))
+            .map_err(|e| AppError::Other(format!("读取 Trae 会话模型失败: {}", e)))?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|e| AppError::Other(format!("读取 Trae 会话模型失败: {}", e)))?;
+        result
+    };
+    for (key, value) in session_rows {
+        let Ok(mut json) = serde_json::from_str::<serde_json::Value>(&value) else {
+            continue;
+        };
+        let Some(sessions) = json.as_object_mut() else {
+            continue;
+        };
+        let mut changed = false;
+        for session in sessions.values_mut() {
+            let Some(session_map) = session.as_object_mut() else {
+                continue;
+            };
+            for agent_label in ["solo_work_lite", "solo_agent_lite"] {
+                if let Some(selection) = session_map.get_mut(agent_label) {
+                    if let Some(selection_map) = selection.as_object_mut() {
+                        selection_map.insert(
+                            "modelId".to_string(),
+                            serde_json::Value::String(make_model_id(agent_label)),
                         );
+                        selection_map.insert("mode".to_string(), serde_json::json!(0));
+                        changed = true;
                     }
                 }
-
-                let updated_json = serde_json::to_string(&json_val)?;
-                conn.execute(
-                    "UPDATE ItemTable SET value = ? WHERE key = ?",
-                    rusqlite::params![updated_json, key],
-                )
-                .map_err(|e| AppError::Other(format!("更新 ItemTable 失败: {}", e)))?;
             }
         }
-    }
-
-    // 3. 同步更新最近选中的模型记录 (recent_user_selection_by_agent_label)，以便客户端启动后自动激活该模型
-    let mut sel_stmt = conn
-        .prepare("SELECT key, value FROM ItemTable WHERE key LIKE '%AI.agent.model.recent_user_selection_by_agent_label'")
-        .map_err(|e| AppError::Other(format!("查询 ItemTable 选单记录失败: {}", e)))?;
-
-    let sel_rows: Vec<(String, String)> = sel_stmt
-        .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))
-        .map_err(|e| AppError::Other(e.to_string()))?
-        .filter_map(|r| r.ok())
-        .collect();
-
-    for (sel_key, sel_json_str) in sel_rows {
-        if let Ok(mut sel_json) = serde_json::from_str::<serde_json::Value>(&sel_json_str) {
-            if let Some(sel_map) = sel_json.as_object_mut() {
-                // 更新 solo_work_lite 与 solo_agent_lite 的激活模型
-                for agent_label in ["solo_work_lite", "solo_agent_lite"] {
-                    let agent_model_id = format!(
-                        "{}_3_{}_{}_{}",
-                        agent_label, provider, composite_name, final_custom_model_id
-                    );
-                    sel_map.insert(
-                        agent_label.to_string(),
-                        serde_json::json!({
-                            "modelId": agent_model_id,
-                            "mode": 0
-                        }),
-                    );
-                }
-                if let Ok(updated_sel_json) = serde_json::to_string(&sel_json) {
-                    let _ = conn.execute(
-                        "UPDATE ItemTable SET value = ? WHERE key = ?",
-                        rusqlite::params![updated_sel_json, sel_key],
-                    );
-                }
-            }
+        if changed {
+            let updated_json = serde_json::to_string(&json)?;
+            tx.execute(
+                "UPDATE ItemTable SET value = ? WHERE key = ?",
+                rusqlite::params![updated_json, key],
+            )
+            .map_err(|e| AppError::Other(format!("更新 Trae 会话模型失败: {}", e)))?;
         }
     }
+    tx.commit()
+        .map_err(|e| AppError::Other(format!("提交 Trae SQLite 配置失败: {}", e)))?;
 
-    Ok(())
+    // 写后重新读取验证，避免数据库被锁、路径选错或 JSON 结构变化时仍向前端报告成功。
+    let (_, verified_models) = read_traework_models(&db_path)?;
+    let verified = verified_models.iter().any(|entry| {
+        entry.name == composite_name
+            && entry.custom_model_id.as_deref() == Some(final_custom_model_id.as_str())
+    });
+    if !verified {
+        return Err(AppError::Other(
+            "Trae 状态库写入后校验失败，模型未出现在可解析的自定义模型列表中".to_string(),
+        ));
+    }
+
+    Ok(TraeWorkSaveResult {
+        persistence_mode: "local_cache_compatibility".to_string(),
+        verified: true,
+        model_name: composite_name,
+        custom_model_id: Some(final_custom_model_id),
+        warning: Some(
+            "已验证写入 Trae 本地 state.vscdb；Trae 启动后可能从服务端重建模型列表，因此这不是服务端永久注册。要永久保留，请在 Trae 官方模型管理器中添加，或接入其 ai-agent RPC。".to_string(),
+        ),
+    })
 }
 
 /// 删除指定的模型

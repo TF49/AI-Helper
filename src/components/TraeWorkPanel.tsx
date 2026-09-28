@@ -573,7 +573,7 @@ export function TraeWorkPanel() {
                     <strong className="text-sky-600 dark:text-sky-400 font-mono">
                       {configuredModels.length}
                     </strong>{" "}
-                    个自定义模型。Trae 支持配置热同步，保存后即时生效。
+                    个自定义模型。当前保存会先写入本地 state.vscdb 并校验；Trae 启动时可能从服务端重建列表，无法保证本地缓存永久保留。若需永久保留，请在 Trae 官方模型管理器中添加。
                   </span>
                 </div>
               )}
@@ -1160,7 +1160,7 @@ export function TraeWorkPanel() {
         </StarBorder>
 
         <p className="text-[11px] text-center text-slate-500 dark:text-gray-400 pt-2">
-          点击将唤起终端进行连通性测试，验证通过后自动写入本地 Trae 状态数据库 (state.vscdb)
+          点击将唤起终端进行连通性测试，验证通过后写入并校验本地 Trae 状态数据库 (state.vscdb)；这不等同于 Trae 服务端永久注册。
         </p>
       </div>
 

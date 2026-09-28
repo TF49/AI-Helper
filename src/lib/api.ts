@@ -14,6 +14,7 @@ import type {
   TraeWorkUIConfig,
   TraeWorkSavePayload,
   TraeWorkModelItem,
+  TraeWorkSaveResult,
 } from "../types";
 
 export const isTauri =
@@ -33,6 +34,18 @@ function getMockResponse<T>(cmd: string, _args?: Record<string, unknown>): T {
         is_full_url: true,
         configured_models: [],
       } as unknown as T;
+    case "set_traework_config": {
+      const payload = _args?.payload as { api_format?: string; model?: string } | undefined;
+      const provider = payload?.api_format || "custom_responses_compatible";
+      const model = payload?.model || "gpt-5.6-sol";
+      return {
+        persistence_mode: "web_preview_mock",
+        verified: true,
+        model_name: `${provider}//${model}`,
+        custom_model_id: null,
+        warning: "当前为 Web Preview 模拟写入，桌面版才会实际修改 Trae state.vscdb。",
+      } as unknown as T;
+    }
     case "get_codex_config":
       return {
         config_exists: true,
@@ -165,8 +178,8 @@ export async function getTraeWorkConfig(): Promise<TraeWorkUIConfig> {
 
 export async function setTraeWorkConfig(
   payload: TraeWorkSavePayload,
-): Promise<void> {
-  return invoke("set_traework_config", { payload });
+): Promise<TraeWorkSaveResult> {
+  return invoke<TraeWorkSaveResult>("set_traework_config", { payload });
 }
 
 export async function deleteTraeWorkModel(
@@ -352,5 +365,69 @@ export async function openConfigFile(path: string): Promise<boolean> {
 
 export async function executeInTerminal(command: string): Promise<string> {
   return invoke<string>("execute_in_terminal", { command });
+}
+
+export interface CandidateMirror {
+  name: string;
+  url: string;
+}
+
+export type UpdateDownloadEvent =
+  | {
+      event: "Started";
+      data: {
+        contentLength?: number;
+        source: string;
+      };
+    }
+  | {
+      event: "Progress";
+      data: {
+        chunkLength: number;
+        downloaded: number;
+        totalBytes: number;
+      };
+    }
+  | {
+      event: "SwitchSource";
+      data: {
+        fromSource: string;
+        toSource: string;
+        reason: string;
+      };
+    }
+  | {
+      event: "Finished";
+    };
+
+export async function downloadAndInstallUpdate(
+  version: string,
+  onEvent: (event: UpdateDownloadEvent) => void,
+): Promise<void> {
+  if (!isTauri) {
+    onEvent({
+      event: "Started",
+      data: { contentLength: 5000000, source: "Web Preview (模拟高速通道)" },
+    });
+    for (let i = 1; i <= 5; i++) {
+      await new Promise((r) => setTimeout(r, 200));
+      onEvent({
+        event: "Progress",
+        data: {
+          chunkLength: 1000000,
+          downloaded: i * 1000000,
+          totalBytes: 5000000,
+        },
+      });
+    }
+    onEvent({ event: "Finished" });
+    return;
+  }
+
+  const channel = new Channel<UpdateDownloadEvent>(onEvent);
+  return tauriInvoke<void>("download_and_install_update", {
+    version,
+    onEvent: channel,
+  });
 }
 

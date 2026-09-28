@@ -83,6 +83,7 @@ function AppContent() {
   const {
     phase: updatePhase,
     backendInfo: updateBackendInfo,
+    currentSource: updateCurrentSource,
     downloadProgress: updateDownloadProgress,
     progressBytes: updateProgressBytes,
     totalBytes: updateTotalBytes,
@@ -758,6 +759,7 @@ function AppContent() {
       <ForceUpdateModal
         phase={updatePhase}
         backendInfo={updateBackendInfo}
+        currentSource={updateCurrentSource}
         downloadProgress={updateDownloadProgress}
         progressBytes={updateProgressBytes}
         totalBytes={updateTotalBytes}

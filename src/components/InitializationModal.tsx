@@ -52,6 +52,7 @@ import type {
   StepStatus,
   WorkbuddyUIConfig,
   TraeWorkUIConfig,
+  TraeWorkSaveResult,
 } from "../types";
 import { cn } from "../lib/utils";
 
@@ -781,6 +782,7 @@ export function InitializationModal({
     }
     setSavingEdit(true);
     try {
+      let traeworkSaveResult: TraeWorkSaveResult | null = null;
       if (editTab === "chatgpt") {
         await setCodexConfig(
           editUrl.trim(),
@@ -815,7 +817,7 @@ export function InitializationModal({
         toast.success("WorkBuddy 自定义模型配置已保存更新");
       } else {
         const existing = configData.traework;
-        await setTraeWorkConfig({
+        traeworkSaveResult = await setTraeWorkConfig({
           api_format: existing?.api_format || "custom_responses_compatible",
           base_url: editUrl.trim(),
           is_full_url: existing?.is_full_url ?? false,
@@ -832,7 +834,14 @@ export function InitializationModal({
           top_p: existing?.top_p ?? 1,
           top_k: existing?.top_k ?? null,
         });
-        toast.success("Trae Work 自定义模型配置已保存更新");
+        if (!traeworkSaveResult.verified) {
+          throw new Error("Trae 本地状态库写入后校验失败");
+        }
+        toast.success("Trae Work 本地模型配置已保存并校验");
+        if (traeworkSaveResult.warning) {
+          toast.warning("Trae 本地写入已验证，但不保证重启后仍保留");
+          addLog("CONFIG:WARN", traeworkSaveResult.warning, "warn");
+        }
       }
 
       // 重新读取并刷新展示
@@ -850,9 +859,13 @@ export function InitializationModal({
       });
       setConfirmationDecision("confirmed");
       setStep4Status("success");
+      const saveSummary =
+        editTab === "traework"
+          ? "Trae Work 本地配置已更新；重启后的模型列表仍需实际确认"
+          : `${editTab === "chatgpt" ? "ChatGPT" : editTab === "claude" ? "Claude" : "WorkBuddy"} 配置已手动更新生效`;
       addLog(
         "CONFIG:SAVE",
-        `${editTab === "chatgpt" ? "ChatGPT" : editTab === "claude" ? "Claude" : editTab === "workbuddy" ? "WorkBuddy" : "Trae Work"} 配置已手动更新生效`,
+        saveSummary,
         "success",
       );
     } catch (err) {

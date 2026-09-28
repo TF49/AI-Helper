@@ -1,14 +1,15 @@
 /**
  * ForceUpdateModal — 自动更新组件
  *
- * 完全复用 Antigravity-Manager (https://github.com/lbjlaq/Antigravity-Manager) 升级更新逻辑：
- *   1. 应用启动静默检测（延时 1.5 秒不阻塞启动渲染）
+ * 全面升级为「多源容灾竞速 + 死代理自愈」机制：
+ *   1. 应用启动静默检测（毫秒级延时，2.5s 超时强制放行不阻断用户启动）
  *   2. 无更新 → 完全静默，不弹窗、不打扰用户
- *   3. 发现更新 → 立即展示更新卡片，并通过代理 (info.proxy_url) 自动调用 Tauri 原生 downloadAndInstall
- *   4. 下载进度实时显示（百分比 + 已下载字节 / 总字节）
- *   5. 安装完成 → 提示"更新已准备就绪"，提供"立即重启生效"（或 1.5s 后自动重启）
- *   6. 异常处理 → 显示错误信息，支持"重试"和"手动前往 GitHub 下载"
- *   7. 状态栏手动触发 → 点击"检查更新"若已是最新版则通过 Toast 明确提示
+ *   3. 发现更新 → 立即展示更新卡片，并自动调用 Rust 强化版多源容灾下载器
+ *   4. 容灾降级 → 官方直链、ghfast、gh-proxy、ghproxy.net 自动竞速探测；若某源受限自动秒级切换至下一可用镜像
+ *   5. 下载进度实时显示（百分比 + 已下载字节 / 总字节 + 当前连接通道）
+ *   6. 安装完成 → 提示"更新已准备就绪"，提供"立即重启生效"（或 2s 后自动重启）
+ *   7. 异常处理 → 显示错误信息，提供重试按键与全部多通道高速下载入口
+ *   8. 状态栏手动触发 → 点击"检查更新"若已是最新版则通过 Toast 明确提示
  */
 
 import { useState, useEffect, useRef, useCallback } from "react";
@@ -24,14 +25,16 @@ import {
   RotateCcw,
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
-import {
-  check as tauriCheck,
-  type DownloadEvent,
-} from "@tauri-apps/plugin-updater";
 import { relaunch, exit } from "@tauri-apps/plugin-process";
 import { invoke } from "@tauri-apps/api/core";
 import { toast } from "sonner";
-import { openUrl, isTauri } from "../lib/api";
+import {
+  openUrl,
+  isTauri,
+  downloadAndInstallUpdate,
+  type UpdateDownloadEvent,
+  type CandidateMirror,
+} from "../lib/api";
 
 // ── 类型定义 ─────────────────────────────────────────────────────────────────
 
@@ -44,6 +47,7 @@ export interface BackendUpdateInfo {
   published_at: string;
   source?: string;
   proxy_url?: string;
+  candidate_mirrors?: CandidateMirror[];
 }
 
 export type UpdatePhase =
@@ -65,10 +69,28 @@ function formatBytes(bytes: number): string {
 
 const GITHUB_RELEASES_URL = "https://github.com/TF49/AI-Helper/releases/latest";
 
-function getAcceleratedDownloadUrl(version?: string): string {
-  if (!version) return GITHUB_RELEASES_URL;
+function getAcceleratedDownloadUrls(version?: string) {
+  if (!version) return [];
   const cleanVer = version.replace(/^v/, "");
-  return `https://ghfast.top/https://github.com/TF49/AI-Helper/releases/download/v${cleanVer}/AI-Helper-v${cleanVer}-Windows-x64-Setup.exe`;
+  const setupName = `AI-Helper-v${cleanVer}-Windows-x64-Setup.exe`;
+  return [
+    {
+      name: "国内高速通道 1 (ghfast)",
+      url: `https://ghfast.top/https://github.com/TF49/AI-Helper/releases/download/v${cleanVer}/${setupName}`,
+    },
+    {
+      name: "国内高速通道 2 (gh-proxy)",
+      url: `https://gh-proxy.com/https://github.com/TF49/AI-Helper/releases/download/v${cleanVer}/${setupName}`,
+    },
+    {
+      name: "国内稳定通道 3 (ghproxy.net)",
+      url: `https://ghproxy.net/https://github.com/TF49/AI-Helper/releases/download/v${cleanVer}/${setupName}`,
+    },
+    {
+      name: "GitHub 官方直链 (推荐带 VPN)",
+      url: `https://github.com/TF49/AI-Helper/releases/download/v${cleanVer}/${setupName}`,
+    },
+  ];
 }
 
 // ── Hook ──────────────────────────────────────────────────────────────────────
@@ -78,6 +100,7 @@ export function useAppUpdater() {
   const [backendInfo, setBackendInfo] = useState<BackendUpdateInfo | null>(
     null,
   );
+  const [currentSource, setCurrentSource] = useState<string>("");
   const [downloadProgress, setDownloadProgress] = useState(0);
   const [progressBytes, setProgressBytes] = useState(0);
   const [totalBytes, setTotalBytes] = useState(0);
@@ -89,7 +112,7 @@ export function useAppUpdater() {
   const hasBootChecked = useRef(false);
 
   /**
-   * 执行检查与下载流程（复用 Antigravity-Manager checkAndDownload）
+   * 执行检查与下载流程
    * @param manual 是否为用户手动点击检查更新
    */
   const checkForUpdates = useCallback(async (manual = false) => {
@@ -138,44 +161,46 @@ export function useAppUpdater() {
       setProgressBytes(0);
       setTotalBytes(0);
 
-      // Step 2: 调用 Tauri 原生 check，支持 upstream 代理
-      const update = await tauriCheck(
-        info.proxy_url ? { proxy: info.proxy_url } : undefined,
-      );
-
-      if (!update) {
-        // updater.json 资产尚未同步完成，降级为提示手动下载
-        setPhase("manual");
-        downloadStarted.current = false;
-        return;
-      }
-
-      let downloaded = 0;
       let contentLength = 0;
 
-      // Step 3: 下载与静默安装
-      await update.downloadAndInstall((event: DownloadEvent) => {
-        switch (event.event) {
-          case "Started":
-            contentLength = event.data.contentLength ?? 0;
-            setTotalBytes(contentLength);
-            break;
-          case "Progress":
-            downloaded += event.data.chunkLength;
-            setProgressBytes(downloaded);
-            if (contentLength > 0) {
-              setDownloadProgress(
-                Math.round((downloaded / contentLength) * 100),
+      // Step 2: 调用 Rust 强化版多源容灾下载器 download_and_install_update
+      // 拥有代理健康嗅探、死代理自动回退直连、多镜像智能容灾降级
+      await downloadAndInstallUpdate(
+        info.latest_version,
+        (event: UpdateDownloadEvent) => {
+          switch (event.event) {
+            case "Started":
+              if (event.data.source) {
+                setCurrentSource(event.data.source);
+              }
+              contentLength = event.data.contentLength ?? 0;
+              setTotalBytes(contentLength);
+              break;
+            case "Progress":
+              setProgressBytes(event.data.downloaded);
+              if (event.data.totalBytes > 0) {
+                setTotalBytes(event.data.totalBytes);
+                setDownloadProgress(
+                  Math.round(
+                    (event.data.downloaded / event.data.totalBytes) * 100,
+                  ),
+                );
+              }
+              break;
+            case "SwitchSource":
+              toast.info(
+                `通道 [${event.data.fromSource}] 波动，已自动无缝切换至 [${event.data.toSource}]`,
               );
-            }
-            break;
-          case "Finished":
-            setPhase("installing");
-            break;
-        }
-      });
+              setCurrentSource(event.data.toSource);
+              break;
+            case "Finished":
+              setPhase("installing");
+              break;
+          }
+        },
+      );
 
-      // Step 4: 安装完成，准备重启
+      // 安装完成，准备重启（在 Windows 下二进制启动器会自动调起安装程序并退出；这里为 UI 状态收尾）
       setPhase("ready");
     } catch (err: unknown) {
       downloadStarted.current = false;
@@ -262,6 +287,7 @@ export function useAppUpdater() {
   return {
     phase,
     backendInfo,
+    currentSource,
     downloadProgress,
     progressBytes,
     totalBytes,
@@ -281,6 +307,7 @@ export function useAppUpdater() {
 interface ForceUpdateModalProps {
   phase: UpdatePhase;
   backendInfo: BackendUpdateInfo | null;
+  currentSource?: string;
   downloadProgress: number;
   progressBytes: number;
   totalBytes: number;
@@ -294,6 +321,7 @@ interface ForceUpdateModalProps {
 export function ForceUpdateModal({
   phase,
   backendInfo,
+  currentSource = "",
   downloadProgress,
   progressBytes,
   totalBytes,
@@ -335,6 +363,10 @@ export function ForceUpdateModal({
   if (!visible) return null;
 
   const pct = totalBytes > 0 ? Math.min(100, downloadProgress) : 0;
+  const downloadMirrors =
+    backendInfo?.candidate_mirrors && backendInfo.candidate_mirrors.length > 0
+      ? backendInfo.candidate_mirrors
+      : getAcceleratedDownloadUrls(backendInfo?.latest_version);
 
   return (
     <AnimatePresence>
@@ -349,7 +381,7 @@ export function ForceUpdateModal({
           initial={{ scale: 0.92, opacity: 0, y: 15 }}
           animate={{ scale: 1, opacity: 1, y: 0 }}
           transition={{ type: "spring", stiffness: 350, damping: 28 }}
-          className="relative w-full max-w-md rounded-2xl border border-blue-500/30 bg-[#0f1322] text-slate-100 shadow-[0_20px_60px_-15px_rgba(30,58,138,0.5)] overflow-hidden"
+          className="relative w-full max-w-lg rounded-2xl border border-blue-500/30 bg-[#0f1322] text-slate-100 shadow-[0_20px_60px_-15px_rgba(30,58,138,0.5)] overflow-hidden"
         >
           {/* 顶部流光色条 */}
           <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-blue-500 via-indigo-500 to-purple-500" />
@@ -387,12 +419,12 @@ export function ForceUpdateModal({
                   ? "发现新版本（需手动下载）"
                   : "正在自动下载新版本"}
             </h2>
-            <p className="text-xs text-slate-400 mt-1 max-w-xs">
+            <p className="text-xs text-slate-400 mt-1 max-w-sm">
               {phase === "ready"
                 ? restartCountdown !== null && restartCountdown > 0
                   ? `客户端将在 ${restartCountdown} 秒后自动重启生效...`
                   : "正在重启客户端生效..."
-                : "系统正在通过高速通道获取更新资源，稍候即可完成。"}
+                : "系统已开启多源竞速与死代理自愈模式，正在自动获取更新资源。"}
             </p>
 
             {/* 版本号对比 */}
@@ -427,14 +459,18 @@ export function ForceUpdateModal({
             {phase === "downloading" && (
               <div className="space-y-2">
                 <div className="flex justify-between items-center text-xs">
-                  <span className="text-slate-300 flex items-center gap-1.5">
+                  <span className="text-slate-300 flex items-center gap-1.5 truncate mr-2">
                     <RefreshCw
                       size={13}
-                      className="animate-spin text-blue-400"
+                      className="animate-spin text-blue-400 flex-shrink-0"
                     />
-                    正在下载更新资源...
+                    <span className="truncate">
+                      {currentSource
+                        ? `通道: ${currentSource}`
+                        : "正在连接最优高速通道..."}
+                    </span>
                   </span>
-                  <span className="font-mono text-blue-400 font-semibold">
+                  <span className="font-mono text-blue-400 font-semibold flex-shrink-0">
                     {pct > 0 ? `${pct}%` : "连接中..."}
                   </span>
                 </div>
@@ -492,38 +528,77 @@ export function ForceUpdateModal({
               </div>
             )}
 
-            {/* 手动下载分支 */}
-            {phase === "manual" && (
+            {/* 手动下载或失败分支 */}
+            {(phase === "manual" || phase === "error") && (
               <div className="space-y-3">
-                <div className="p-3 bg-amber-500/10 border border-amber-500/20 rounded-xl text-left">
-                  <div className="flex items-center gap-1.5 text-xs font-semibold text-amber-400 mb-1">
+                <div
+                  className={`p-3 rounded-xl text-left border ${
+                    phase === "error"
+                      ? "bg-red-500/10 border-red-500/20"
+                      : "bg-amber-500/10 border-amber-500/20"
+                  }`}
+                >
+                  <div
+                    className={`flex items-center gap-1.5 text-xs font-semibold mb-1 ${
+                      phase === "error" ? "text-red-400" : "text-amber-400"
+                    }`}
+                  >
                     <AlertTriangle size={14} />
-                    自动安装包暂未就绪
+                    {phase === "error"
+                      ? "更新下载遇到障碍"
+                      : "自动安装包暂未就绪"}
                   </div>
-                  <p className="text-[11px] text-amber-300/80 leading-relaxed">
-                    最新版本安装包可直接通过国内高速通道或前往 GitHub Releases
-                    下载。
+                  <p
+                    className={`text-[11px] leading-relaxed break-words ${
+                      phase === "error"
+                        ? "text-red-300/80"
+                        : "text-amber-300/80"
+                    }`}
+                  >
+                    {errorMessage ||
+                      "多源镜像连接受限。系统已检测到国内与海外网络差异，请尝试点击下方备用通道直接下载。"}
                   </p>
                 </div>
-                <div className="flex items-center gap-2">
-                  <a
-                    href={getAcceleratedDownloadUrl(
-                      backendInfo?.latest_version,
-                    )}
-                    onClick={(e) => {
-                      e.preventDefault();
-                      void openUrl(
-                        getAcceleratedDownloadUrl(backendInfo?.latest_version),
-                      );
-                    }}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="flex-1 flex items-center justify-center gap-1.5 py-2.5 px-3 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold transition-all active:scale-95 cursor-pointer"
-                    title="通过国内镜像加速下载安装包"
+
+                {/* 候选多通道高速下载入口 */}
+                <div className="space-y-1.5">
+                  <div className="text-[11px] font-medium text-slate-400 text-left">
+                    备选下载通道（点击在浏览器中打开）：
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    {downloadMirrors.map((m, i) => (
+                      <a
+                        key={i}
+                        href={m.url}
+                        onClick={(e) => {
+                          e.preventDefault();
+                          void openUrl(m.url);
+                        }}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="flex items-center justify-between py-2 px-3 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-slate-300 hover:text-white text-xs transition-colors cursor-pointer group"
+                        title={m.url}
+                      >
+                        <span className="truncate mr-1 text-[11px]">
+                          {m.name}
+                        </span>
+                        <ExternalLink
+                          size={11}
+                          className="flex-shrink-0 text-slate-400 group-hover:text-blue-400 transition-colors"
+                        />
+                      </a>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2 pt-1">
+                  <button
+                    onClick={onRetry}
+                    className="flex-1 flex items-center justify-center gap-1.5 py-2.5 px-3 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold shadow-lg shadow-blue-600/30 transition-all active:scale-95 cursor-pointer"
                   >
-                    <ExternalLink size={13} />
-                    国内高速下载
-                  </a>
+                    <RefreshCw size={13} />
+                    智能重新探测
+                  </button>
                   <a
                     href={backendInfo?.download_url ?? GITHUB_RELEASES_URL}
                     onClick={(e) => {
@@ -546,62 +621,15 @@ export function ForceUpdateModal({
                   >
                     稍后
                   </button>
-                </div>
-              </div>
-            )}
-
-            {/* 失败重试分支 */}
-            {phase === "error" && (
-              <div className="space-y-3">
-                <div className="p-3 bg-red-500/10 border border-red-500/20 rounded-xl text-left">
-                  <div className="flex items-center gap-1.5 text-xs font-semibold text-red-400 mb-1">
-                    <AlertTriangle size={14} />
-                    更新下载失败
-                  </div>
-                  <p className="text-[11px] text-red-300/80 leading-relaxed break-words">
-                    {errorMessage ||
-                      "网络连接超时或无法直连 GitHub，请检查网络或配置代理"}
-                  </p>
-                </div>
-                <div className="flex items-center gap-2">
-                  <button
-                    onClick={onRetry}
-                    className="flex-1 flex items-center justify-center gap-1.5 py-2.5 px-3 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold shadow-lg shadow-blue-600/30 transition-all active:scale-95 cursor-pointer"
-                  >
-                    <RefreshCw size={13} />
-                    重试下载
-                  </button>
-                  <a
-                    href={getAcceleratedDownloadUrl(
-                      backendInfo?.latest_version,
-                    )}
-                    onClick={(e) => {
-                      e.preventDefault();
-                      void openUrl(
-                        getAcceleratedDownloadUrl(backendInfo?.latest_version),
-                      );
-                    }}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="flex items-center justify-center gap-1.5 py-2.5 px-3 rounded-xl bg-emerald-600/20 hover:bg-emerald-600/30 border border-emerald-500/30 text-emerald-300 hover:text-emerald-200 text-xs transition-colors cursor-pointer"
-                    title="通过国内镜像加速下载安装包"
-                  >
-                    <ExternalLink size={13} />
-                    国内高速下载
-                  </a>
-                  <button
-                    onClick={onClose}
-                    className="px-3 py-2.5 rounded-xl text-slate-400 hover:text-white bg-white/5 hover:bg-white/10 text-xs transition-colors cursor-pointer"
-                  >
-                    稍后
-                  </button>
-                  <button
-                    onClick={onExit}
-                    className="flex items-center justify-center p-2.5 rounded-xl bg-white/5 hover:bg-red-500/20 hover:text-red-300 border border-white/10 text-slate-400 transition-colors cursor-pointer"
-                    title="退出软件"
-                  >
-                    <Power size={14} />
-                  </button>
+                  {phase === "error" && (
+                    <button
+                      onClick={onExit}
+                      className="flex items-center justify-center p-2.5 rounded-xl bg-white/5 hover:bg-red-500/20 hover:text-red-300 border border-white/10 text-slate-400 transition-colors cursor-pointer"
+                      title="退出软件"
+                    >
+                      <Power size={14} />
+                    </button>
+                  )}
                 </div>
               </div>
             )}

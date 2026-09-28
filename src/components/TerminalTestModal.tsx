@@ -30,6 +30,7 @@ import type {
   WorkbuddySavePayload,
   TraeWorkSavePayload,
   TraeApiFormat,
+  TraeWorkSaveResult,
 } from "../types";
 
 export interface TerminalTestModalProps {
@@ -282,6 +283,7 @@ export function TerminalTestModal({
 
       if (testSuccess) {
         // 保存配置
+        let traeworkSaveResult: TraeWorkSaveResult | null = null;
         if (type === "codex") {
           addLog(`💾 正在将配置写入本地配置文件与系统环境变量...`, "info");
           await setCodexConfig(url, apiKey.trim(), model.trim());
@@ -322,9 +324,9 @@ export function TerminalTestModal({
             "info",
           );
           if (traeworkPayload) {
-            await setTraeWorkConfig(traeworkPayload);
+            traeworkSaveResult = await setTraeWorkConfig(traeworkPayload);
           } else {
-            await setTraeWorkConfig({
+            traeworkSaveResult = await setTraeWorkConfig({
               api_format: apiFormat || "custom_responses_compatible",
               base_url: url.trim(),
               is_full_url: isFullUrl ?? true,
@@ -341,11 +343,16 @@ export function TerminalTestModal({
               top_k: null,
             });
           }
+          if (!traeworkSaveResult.verified) {
+            throw new Error("Trae 本地状态库写入后校验失败");
+          }
           addLog(
-            `✓ Trae Work 模型配置已成功合并同步至本地数据库`,
+            `✓ Trae Work 模型已写入本地数据库并重新读取校验通过 (${traeworkSaveResult.model_name})`,
             "success",
           );
-          addLog(`💡 Trae Work 重启或重新加载窗口后即可在模型列表中选择`, "info");
+          if (traeworkSaveResult.warning) {
+            addLog(`⚠️ ${traeworkSaveResult.warning}`, "warn");
+          }
         } else {
           addLog(`💾 正在将配置写入本地配置文件与系统环境变量...`, "info");
           await setClaudeConfig(url, apiKey.trim(), model.trim());
@@ -413,11 +420,20 @@ export function TerminalTestModal({
           setCountdown(8);
         }
 
-        addLog(`👉 配置部署成功！请在下方确认是否立即重启客户端生效`, "info");
+        addLog(
+          type === "traework"
+            ? `👉 本地兼容配置已写入并校验，请在下方重启 Trae 后检查模型列表`
+            : `👉 配置部署成功！请在下方确认是否立即重启客户端生效`,
+          "info",
+        );
         setStatus("success");
         setShowRestartCard(true);
         onSuccess?.();
-        toast.success(`${platformName} 连通性测试通过，配置已成功保存！`);
+        if (type === "traework" && traeworkSaveResult?.warning) {
+          toast.warning("Trae 本地写入已验证，但不保证重启后仍保留");
+        } else {
+          toast.success(`${platformName} 连通性测试通过，配置已成功保存！`);
+        }
       } else {
         if (!openRef.current) return;
         setStatus("error");
@@ -432,7 +448,7 @@ export function TerminalTestModal({
       setStatus("error");
       const msg = err instanceof Error ? err.message : String(err);
       addLog(`❌ 执行过程发生异常: ${msg}`, "error");
-      addLog(`✗ 本地配置未更改。`, "error");
+      addLog(`✗ 未确认本地配置已保存，请重新读取配置后再试。`, "error");
       toast.error(`测试异常: ${msg}`);
     }
   };
@@ -618,7 +634,9 @@ export function TerminalTestModal({
               <div className="flex items-center gap-2">
                 <RotateCcw size={14} className="text-amber-400" />
                 <span className="text-xs font-semibold text-slate-200">
-                  配置已部署成功，是否立即重启客户端应用新配置？
+                  {type === "traework"
+                    ? "本地配置已写入并校验，是否立即重启 Trae 检查模型列表？"
+                    : "配置已部署成功，是否立即重启客户端应用新配置？"}
                 </span>
               </div>
               <span className="text-[11px] text-slate-400">
@@ -745,7 +763,11 @@ export function TerminalTestModal({
               <button
                 type="button"
                 onClick={() => {
-                  toast.info("已保存配置，请稍后手动重启客户端生效");
+                  toast.info(
+                    type === "traework"
+                      ? "已保存本地兼容配置；重启后请检查模型列表，服务端同步可能覆盖它"
+                      : "已保存配置，请稍后手动重启客户端生效",
+                  );
                   onClose();
                 }}
                 className="px-3 py-1.5 rounded-lg text-xs font-medium text-slate-400 hover:text-white hover:bg-white/10 transition-colors cursor-pointer"
@@ -771,7 +793,9 @@ export function TerminalTestModal({
               <>
                 <CheckCircle2 size={16} className="text-emerald-400" />
                 <span className="text-emerald-400 font-medium">
-                  测试通过，配置已生效！
+                  {type === "traework"
+                    ? "测试通过，本地配置已写入并校验"
+                    : "测试通过，配置已生效！"}
                 </span>
               </>
             )}

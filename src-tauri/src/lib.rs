@@ -119,7 +119,9 @@ fn get_traework_config() -> Result<traework::TraeWorkUIConfig, error::AppError> 
 }
 
 #[tauri::command]
-fn set_traework_config(payload: traework::TraeWorkSavePayload) -> Result<(), error::AppError> {
+fn set_traework_config(
+    payload: traework::TraeWorkSavePayload,
+) -> Result<traework::TraeWorkSaveResult, error::AppError> {
     traework::set_traework_config(payload)
 }
 
@@ -145,6 +147,14 @@ async fn test_traework_stream(
 #[tauri::command]
 async fn check_for_updates() -> Result<updater::UpdateInfo, String> {
     updater::check_for_updates().await
+}
+
+#[tauri::command]
+async fn download_and_install_update(
+    version: String,
+    on_event: tauri::ipc::Channel<updater::UpdateDownloadEvent>,
+) -> Result<(), String> {
+    updater::download_and_install_update(version, on_event).await
 }
 
 #[tauri::command]
@@ -332,6 +342,7 @@ pub fn run() {
             delete_traework_model,
             test_traework_stream,
             check_for_updates,
+            download_and_install_update,
             check_bob_api_network,
             test_codex_config,
             test_claude_config,

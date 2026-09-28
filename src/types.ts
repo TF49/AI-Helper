@@ -247,3 +247,12 @@ export interface TraeWorkSavePayload {
   top_p?: number | null;
   top_k?: number | null;
 }
+
+export interface TraeWorkSaveResult {
+  /** 当前实现只保证本地 state.vscdb 兼容写入，不代表 Trae 服务端注册成功。 */
+  persistence_mode: string;
+  verified: boolean;
+  model_name: string;
+  custom_model_id?: string | null;
+  warning?: string | null;
+}
