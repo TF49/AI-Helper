@@ -21,10 +21,11 @@ export interface AppPathsConfig {
   codex_cli_path?: string | null;
   chatgpt_client_path?: string | null;
   workbuddy_client_path?: string | null;
+  accio_client_path?: string | null;
 }
 
 export interface DetectedPathInfo {
-  app_type: "claude" | "codex" | "chatgpt" | "workbuddy";
+  app_type: "claude" | "codex" | "chatgpt" | "workbuddy" | "acciowork";
   path: string;
   exists: boolean;
   source: string;
@@ -109,6 +110,16 @@ export const WORKBUDDY_MODEL_SUGGESTIONS = [
   "chatgpt-4o-latest",
 ] as const;
 
+export const ACCIO_MODEL_SUGGESTIONS = [
+  "claude-3-7-sonnet",
+  "claude-3-5-sonnet",
+  "gpt-4o",
+  "gpt-4.1-mini",
+  "deepseek-r1",
+  "deepseek-v3",
+  "qwen-2.5-max",
+] as const;
+
 export interface WorkbuddyModelItem {
   id: string;
   name: string;
@@ -161,3 +172,25 @@ export interface WorkbuddySavePayload {
   max_input_tokens?: number | null;
   max_output_tokens?: number | null;
 }
+
+export interface AccioConfig {
+  base_url: string;
+  api_key: string;
+  model: string;
+  bridge_port: number;
+  official_gateway: string;
+  fallback_official: boolean;
+  prevent_official_leak: boolean;
+  config_exists?: boolean;
+  config_path?: string;
+  is_installed?: boolean;
+  app_path?: string | null;
+  bridge_running?: boolean;
+  actual_port?: number | null;
+}
+
+export interface AccioBridgeStatus {
+  is_running: boolean;
+  port?: number | null;
+}
+

@@ -115,3 +115,37 @@ export const WorkbuddyIcon: React.FC<BrandIconProps> = ({
     </svg>
   );
 };
+
+export const ACCIO_BRAND_COLOR = "#FF6A00";
+
+/**
+ * Accio Work (阿里巴巴国际站) 品牌图标
+ */
+export const AccioWorkIcon: React.FC<
+  BrandIconProps & { useOfficialColor?: boolean }
+> = ({ size = 16, className = "", color, useOfficialColor = false }) => {
+  const iconFill =
+    color || (useOfficialColor ? ACCIO_BRAND_COLOR : "currentColor");
+
+  return (
+    <svg
+      fill={iconFill}
+      height={size}
+      width={size}
+      className={cn("flex-shrink-0 transition-colors", className)}
+      viewBox="0 0 24 24"
+      xmlns="http://www.w3.org/2000/svg"
+    >
+      <title>Accio Work</title>
+      <path
+        d="M13.5 2.5L5.5 13.5H11.5L10.5 21.5L18.5 10.5H12.5L13.5 2.5Z"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <circle cx="12" cy="12" r="1.5" fill="currentColor" />
+    </svg>
+  );
+};
+

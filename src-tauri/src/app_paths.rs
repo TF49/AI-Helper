@@ -10,6 +10,8 @@ pub struct AppPathsConfig {
     pub chatgpt_client_path: Option<String>,
     #[serde(default)]
     pub workbuddy_client_path: Option<String>,
+    #[serde(default)]
+    pub accio_client_path: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -130,6 +132,20 @@ fn matches_process(
                 || name_lower == "workbuddy"
                 || cmd_line.contains("workbuddyai.exe")
                 || cmd_line.contains("workbuddy.exe")
+        }
+        "acciowork" => {
+            if name_lower.contains("crashpad")
+                || name_lower.contains("uninstall")
+                || name_lower.contains("helper")
+            {
+                return false;
+            }
+            name_lower == "accio.exe"
+                || name_lower == "accio"
+                || name_lower == "accio work.exe"
+                || name_lower == "accio work"
+                || cmd_line.contains("accio.exe")
+                || cmd_line.contains("accio work.exe")
         }
         _ => false,
     }
@@ -826,6 +842,273 @@ pub fn detect_workbuddy_client_path() -> DetectedPathInfo {
     detect_workbuddy_client_path_internal(is_running, running_exe)
 }
 
+#[cfg(target_os = "windows")]
+fn find_accio_in_registry() -> Option<(String, String)> {
+    use winreg::enums::*;
+    use winreg::RegKey;
+
+    for root_hkey in [HKEY_CURRENT_USER, HKEY_LOCAL_MACHINE] {
+        let root = RegKey::predef(root_hkey);
+        for uninstall_prefix in &[
+            "Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall",
+            "Software\\WOW6432Node\\Microsoft\\Windows\\CurrentVersion\\Uninstall",
+        ] {
+            if let Ok(uninstall_key) = root.open_subkey(uninstall_prefix) {
+                for subkey_name in uninstall_key.enum_keys().flatten() {
+                    let subkey_lower = subkey_name.to_lowercase();
+                    if subkey_lower.contains("accio") {
+                        if let Ok(item) = uninstall_key.open_subkey(&subkey_name) {
+                            let display_name: String =
+                                item.get_value("DisplayName").unwrap_or_default();
+                            if let Ok(loc) = item.get_value::<String, _>("InstallLocation") {
+                                let clean_loc = loc.trim().trim_matches('"');
+                                if !clean_loc.is_empty() {
+                                    for exe in &["Accio.exe", "Accio Work.exe", "AccioWork.exe"] {
+                                        let cand = Path::new(clean_loc).join(exe);
+                                        if cand.exists() {
+                                            return Some((
+                                                cand.to_string_lossy().to_string(),
+                                                display_name,
+                                            ));
+                                        }
+                                    }
+                                }
+                            }
+                            if let Ok(uninst) = item.get_value::<String, _>("UninstallString") {
+                                let clean_uninst = uninst.trim().trim_matches('"');
+                                let p = Path::new(clean_uninst);
+                                if let Some(parent) = p.parent() {
+                                    for exe in &["Accio.exe", "Accio Work.exe", "AccioWork.exe"] {
+                                        let cand = parent.join(exe);
+                                        if cand.exists() {
+                                            return Some((
+                                                cand.to_string_lossy().to_string(),
+                                                display_name,
+                                            ));
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // 检查 App Paths 注册表
+    for root_hkey in [HKEY_LOCAL_MACHINE, HKEY_CURRENT_USER] {
+        let root = RegKey::predef(root_hkey);
+        for exe_name in &["Accio.exe", "Accio Work.exe", "AccioWork.exe"] {
+            let app_path_key = format!(
+                "Software\\Microsoft\\Windows\\CurrentVersion\\App Paths\\{}",
+                exe_name
+            );
+            if let Ok(key) = root.open_subkey(&app_path_key) {
+                if let Ok(default_val) = key.get_value::<String, _>("") {
+                    let clean = default_val.trim().trim_matches('"');
+                    if !clean.is_empty() && Path::new(clean).exists() {
+                        return Some((clean.to_string(), format!("App Paths ({})", exe_name)));
+                    }
+                }
+            }
+        }
+    }
+    None
+}
+
+pub fn detect_accio_client_path_internal(
+    is_running: bool,
+    running_exe: Option<PathBuf>,
+) -> DetectedPathInfo {
+    // 1. 尝试从运行中进程获取真实可执行路径
+    if let Some(path) = running_exe {
+        return DetectedPathInfo {
+            app_type: "acciowork".to_string(),
+            path: path.to_string_lossy().to_string(),
+            exists: true,
+            source: "running_process".to_string(),
+            is_running,
+            extra_info: Some("探测自当前运行中进程".to_string()),
+        };
+    }
+
+    #[cfg(target_os = "windows")]
+    {
+        // 2. 检查注册表
+        if let Some((reg_path, display_name)) = find_accio_in_registry() {
+            return DetectedPathInfo {
+                app_type: "acciowork".to_string(),
+                path: reg_path,
+                exists: true,
+                source: "registry".to_string(),
+                is_running,
+                extra_info: Some(format!("探测自 Windows 注册表安装记录 ({})", display_name)),
+            };
+        }
+
+        // 3. 检查 LocalAppData 常见安装路径
+        if let Ok(local_appdata) = std::env::var("LOCALAPPDATA") {
+            let local_base = PathBuf::from(&local_appdata);
+            let candidates = [
+                local_base.join("Programs").join("Accio").join("Accio.exe"),
+                local_base
+                    .join("Programs")
+                    .join("Accio Work")
+                    .join("Accio Work.exe"),
+                local_base
+                    .join("Programs")
+                    .join("AccioWork")
+                    .join("AccioWork.exe"),
+                local_base.join("Accio").join("Accio.exe"),
+                local_base.join("Accio Work").join("Accio Work.exe"),
+            ];
+            for cand in candidates {
+                if cand.exists() {
+                    return DetectedPathInfo {
+                        app_type: "acciowork".to_string(),
+                        path: cand.to_string_lossy().to_string(),
+                        exists: true,
+                        source: "standard_dir".to_string(),
+                        is_running,
+                        extra_info: Some("标准用户安装目录 (%LOCALAPPDATA%\\Programs)".to_string()),
+                    };
+                }
+            }
+        }
+
+        // 4. 检查 APPDATA 路径
+        if let Ok(appdata) = std::env::var("APPDATA") {
+            let base = PathBuf::from(&appdata);
+            let candidates = [
+                base.join("Accio").join("Accio.exe"),
+                base.join("Accio Work").join("Accio Work.exe"),
+            ];
+            for cand in candidates {
+                if cand.exists() {
+                    return DetectedPathInfo {
+                        app_type: "acciowork".to_string(),
+                        path: cand.to_string_lossy().to_string(),
+                        exists: true,
+                        source: "standard_dir".to_string(),
+                        is_running,
+                        extra_info: Some("漫游应用目录 (%APPDATA%)".to_string()),
+                    };
+                }
+            }
+        }
+
+        // 5. 检查系统 Program Files 目录
+        let mut pf_dirs = Vec::new();
+        if let Ok(pf) = std::env::var("ProgramFiles") {
+            pf_dirs.push(PathBuf::from(pf));
+        }
+        if let Ok(pfx86) = std::env::var("ProgramFiles(x86)") {
+            pf_dirs.push(PathBuf::from(pfx86));
+        }
+        if let Ok(pfw64) = std::env::var("ProgramW6432") {
+            pf_dirs.push(PathBuf::from(pfw64));
+        }
+        for pf in pf_dirs {
+            let candidates = [
+                pf.join("Accio").join("Accio.exe"),
+                pf.join("Accio Work").join("Accio Work.exe"),
+                pf.join("Alibaba").join("Accio").join("Accio.exe"),
+            ];
+            for cand in candidates {
+                if cand.exists() {
+                    return DetectedPathInfo {
+                        app_type: "acciowork".to_string(),
+                        path: cand.to_string_lossy().to_string(),
+                        exists: true,
+                        source: "standard_dir".to_string(),
+                        is_running,
+                        extra_info: Some("系统安装目录 (Program Files)".to_string()),
+                    };
+                }
+            }
+        }
+
+        // 6. 检查常见多盘符开发者与自定义安装目录
+        for drive_letter in ['C', 'D', 'E', 'F'] {
+            let custom_candidates = [
+                format!("{}:\\Accio\\Accio.exe", drive_letter),
+                format!("{}:\\Accio Work\\Accio Work.exe", drive_letter),
+                format!("{}:\\AccioWork\\Accio.exe", drive_letter),
+                format!("{}:\\AccioWork\\Accio Work.exe", drive_letter),
+                format!("{}:\\Developer Tool\\Accio\\Accio.exe", drive_letter),
+                format!("{}:\\Developer Tool\\AccioWork\\Accio.exe", drive_letter),
+                format!("{}:\\Developer Tools\\Accio\\Accio.exe", drive_letter),
+                format!("{}:\\Developer Tools\\AccioWork\\Accio.exe", drive_letter),
+                format!("{}:\\Software\\Accio\\Accio.exe", drive_letter),
+                format!("{}:\\Software\\AccioWork\\Accio.exe", drive_letter),
+                format!("{}:\\Tools\\Accio\\Accio.exe", drive_letter),
+                format!("{}:\\Tools\\AccioWork\\Accio.exe", drive_letter),
+            ];
+            for cand_str in &custom_candidates {
+                let p = Path::new(cand_str);
+                if p.exists() {
+                    return DetectedPathInfo {
+                        app_type: "acciowork".to_string(),
+                        path: cand_str.clone(),
+                        exists: true,
+                        source: "standard_dir".to_string(),
+                        is_running,
+                        extra_info: Some("本地磁盘安装目录".to_string()),
+                    };
+                }
+            }
+        }
+    }
+
+    #[cfg(target_os = "macos")]
+    {
+        let mac_candidates = [
+            "/Applications/Accio.app/Contents/MacOS/Accio",
+            "/Applications/Accio Work.app/Contents/MacOS/Accio Work",
+        ];
+        for cand in mac_candidates {
+            if Path::new(cand).exists() {
+                return DetectedPathInfo {
+                    app_type: "acciowork".to_string(),
+                    path: cand.to_string(),
+                    exists: true,
+                    source: "standard_dir".to_string(),
+                    is_running,
+                    extra_info: Some("macOS 应用目录 (/Applications)".to_string()),
+                };
+            }
+        }
+    }
+
+    // 7. 检查 PATH 环境变量
+    if let Some(path) = find_in_path("accio").or_else(|| find_in_path("accio work")) {
+        return DetectedPathInfo {
+            app_type: "acciowork".to_string(),
+            path: path.to_string_lossy().to_string(),
+            exists: true,
+            source: "path_env".to_string(),
+            is_running,
+            extra_info: Some("探测自系统 PATH 环境变量".to_string()),
+        };
+    }
+
+    DetectedPathInfo {
+        app_type: "acciowork".to_string(),
+        path: String::new(),
+        exists: false,
+        source: "not_found".to_string(),
+        is_running: false,
+        extra_info: None,
+    }
+}
+
+/// 探测 Accio Work 客户端路径
+pub fn detect_accio_client_path() -> DetectedPathInfo {
+    let (is_running, running_exe) = inspect_target_process("acciowork");
+    detect_accio_client_path_internal(is_running, running_exe)
+}
+
 /// 单次扫描系统进程树，高效全量探测所有应用路径
 pub fn detect_all_app_paths() -> Vec<DetectedPathInfo> {
     let mut system = System::new();
@@ -835,12 +1118,14 @@ pub fn detect_all_app_paths() -> Vec<DetectedPathInfo> {
     let (codex_run, codex_exe) = inspect_target_process_with_system("codex", &system);
     let (chatgpt_run, chatgpt_exe) = inspect_target_process_with_system("chatgpt", &system);
     let (workbuddy_run, workbuddy_exe) = inspect_target_process_with_system("workbuddy", &system);
+    let (accio_run, accio_exe) = inspect_target_process_with_system("acciowork", &system);
 
     vec![
         detect_claude_cli_path_internal(claude_run, claude_exe),
         detect_codex_cli_path_internal(codex_run, codex_exe),
         detect_chatgpt_client_path_internal(chatgpt_run, chatgpt_exe),
         detect_workbuddy_client_path_internal(workbuddy_run, workbuddy_exe),
+        detect_accio_client_path_internal(accio_run, accio_exe),
     ]
 }
 
@@ -871,6 +1156,11 @@ pub fn browse_path_dialog(app_type: &str) -> Result<Option<String>, String> {
             "可执行文件 (*.exe)",
             "*.exe",
             "选择 WorkBuddy 客户端路径 (WorkBuddyAI.exe)",
+        ),
+        "acciowork" => (
+            "可执行文件 (*.exe)",
+            "*.exe",
+            "选择 Accio Work 客户端路径 (Accio.exe / Accio Work.exe)",
         ),
         _ => return Err(format!("不支持的应用类型选择: {}", app_type)),
     };
@@ -943,6 +1233,13 @@ mod tests {
     }
 
     #[test]
+    fn test_detect_accio_client_path_does_not_panic() {
+        let detected = detect_accio_client_path();
+        assert_eq!(detected.app_type, "acciowork");
+        println!("Detected Accio: {:?}", detected);
+    }
+
+    #[test]
     fn test_app_paths_config_serde() {
         let cfg = AppPathsConfig {
             claude_cli_path: Some("C:\\bin\\claude.cmd".to_string()),
@@ -950,6 +1247,9 @@ mod tests {
             chatgpt_client_path: Some("C:\\Program Files\\ChatGPT\\ChatGPT.exe".to_string()),
             workbuddy_client_path: Some(
                 "E:\\Developer Tool\\Workbuddy\\WorkBuddyAI\\WorkBuddyAI.exe".to_string(),
+            ),
+            accio_client_path: Some(
+                "C:\\Users\\Administrator\\AppData\\Local\\Programs\\Accio\\Accio.exe".to_string(),
             ),
         };
 
@@ -963,5 +1263,6 @@ mod tests {
             deserialized.workbuddy_client_path,
             cfg.workbuddy_client_path
         );
+        assert_eq!(deserialized.accio_client_path, cfg.accio_client_path);
     }
 }

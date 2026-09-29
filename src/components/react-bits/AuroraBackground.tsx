@@ -1,7 +1,7 @@
 import React from "react";
 
 export interface AuroraBackgroundProps {
-  theme?: "chatgpt" | "claude";
+  theme?: "chatgpt" | "claude" | "workbuddy" | "acciowork";
   className?: string;
   children?: React.ReactNode;
 }
@@ -11,7 +11,25 @@ export const AuroraBackground: React.FC<AuroraBackgroundProps> = ({
   className = "",
   children,
 }) => {
-  const isChatGPT = theme === "chatgpt";
+  const isClaude = theme === "claude";
+  const isWorkbuddy = theme === "workbuddy";
+  const isAccio = theme === "acciowork";
+
+  const topGradient = isAccio
+    ? "radial-gradient(circle, #fb923c 0%, #f97316 40%, transparent 70%)"
+    : isWorkbuddy
+      ? "radial-gradient(circle, #34d399 0%, #10b981 40%, transparent 70%)"
+      : isClaude
+        ? "radial-gradient(circle, #fbbf24 0%, #f472b6 40%, transparent 70%)"
+        : "radial-gradient(circle, #38bdf8 0%, #60a5fa 40%, transparent 70%)";
+
+  const bottomGradient = isAccio
+    ? "radial-gradient(circle, #ea580c 0%, #f59e0b 50%, transparent 70%)"
+    : isWorkbuddy
+      ? "radial-gradient(circle, #059669 0%, #06b6d4 50%, transparent 70%)"
+      : isClaude
+        ? "radial-gradient(circle, #c084fc 0%, #fb7185 50%, transparent 70%)"
+        : "radial-gradient(circle, #34d399 0%, #3b82f6 50%, transparent 70%)";
 
   return (
     <div
@@ -20,19 +38,11 @@ export const AuroraBackground: React.FC<AuroraBackgroundProps> = ({
       {/* 极光发光光晕层 */}
       <div
         className="pointer-events-none absolute -top-[20%] -left-[10%] w-[75vw] h-[50vh] rounded-full blur-[110px] opacity-35 dark:opacity-25 transition-all duration-700 ease-in-out"
-        style={{
-          background: isChatGPT
-            ? "radial-gradient(circle, #38bdf8 0%, #60a5fa 40%, transparent 70%)"
-            : "radial-gradient(circle, #fbbf24 0%, #f472b6 40%, transparent 70%)",
-        }}
+        style={{ background: topGradient }}
       />
       <div
         className="pointer-events-none absolute -bottom-[20%] -right-[10%] w-[65vw] h-[50vh] rounded-full blur-[120px] opacity-30 dark:opacity-20 transition-all duration-700 ease-in-out"
-        style={{
-          background: isChatGPT
-            ? "radial-gradient(circle, #34d399 0%, #3b82f6 50%, transparent 70%)"
-            : "radial-gradient(circle, #c084fc 0%, #fb7185 50%, transparent 70%)",
-        }}
+        style={{ background: bottomGradient }}
       />
 
       {/* 细腻点阵网格 */}

@@ -17,7 +17,7 @@ interface StatusBadgeProps {
   path: string;
   onReload?: () => void;
   onOpen?: () => void;
-  accentColor?: "blue" | "purple" | "emerald";
+  accentColor?: "blue" | "purple" | "emerald" | "orange";
   className?: string;
 }
 
@@ -84,7 +84,9 @@ export function StatusBadge({
               ? "bg-blue-100 text-blue-600 dark:bg-blue-500/20 dark:text-blue-400"
               : accentColor === "emerald"
                 ? "bg-emerald-100 text-emerald-600 dark:bg-emerald-500/20 dark:text-emerald-400"
-                : "bg-purple-100 text-purple-600 dark:bg-purple-500/20 dark:text-purple-400",
+                : accentColor === "orange"
+                  ? "bg-orange-100 text-orange-600 dark:bg-orange-500/20 dark:text-orange-400"
+                  : "bg-purple-100 text-purple-600 dark:bg-purple-500/20 dark:text-purple-400",
           )}
         >
           <FileCode size={15} />

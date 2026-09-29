@@ -11,13 +11,13 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { openUrl } from "../lib/api";
-import { OpenAIIcon, ClaudeIcon, WorkbuddyIcon } from "./BrandIcons";
+import { OpenAIIcon, ClaudeIcon, WorkbuddyIcon, AccioWorkIcon } from "./BrandIcons";
 import { ThemeToggle } from "./ThemeToggle";
 
 interface QuickToolsModalProps {
   open: boolean;
   onClose: () => void;
-  activeTab: "chatgpt" | "claude" | "workbuddy";
+  activeTab: "chatgpt" | "claude" | "workbuddy" | "acciowork";
   currentUrl: string;
   currentKey: string;
   currentModel: string;
@@ -33,7 +33,7 @@ export function QuickToolsModal({
 }: QuickToolsModalProps) {
   const [copiedCurl, setCopiedCurl] = useState(false);
   const [selectedProtocol, setSelectedProtocol] = useState<
-    "chatgpt" | "claude" | "workbuddy"
+    "chatgpt" | "claude" | "workbuddy" | "acciowork"
   >(activeTab);
 
   useEffect(() => {
@@ -49,13 +49,17 @@ export function QuickToolsModal({
       ? "claude-3-7-sonnet-20250219"
       : selectedProtocol === "workbuddy"
         ? "gpt-5.6-sol"
-        : "gpt-4o");
+        : selectedProtocol === "acciowork"
+          ? "claude-3-7-sonnet"
+          : "gpt-4o");
   const base = currentUrl.endsWith("/") ? currentUrl : `${currentUrl}/`;
 
   const curlCommand =
     selectedProtocol === "claude"
       ? `curl ${base}v1/messages \\\n  -H "Content-Type: application/json" \\\n  -H "x-api-key: ${effectiveKey}" \\\n  -H "anthropic-version: 2023-06-01" \\\n  -d '{\n    "model": "${effectiveModel}",\n    "max_tokens": 100,\n    "messages": [{"role": "user", "content": "Hi!"}]\n  }'`
-      : `curl ${base}v1/chat/completions \\\n  -H "Content-Type: application/json" \\\n  -H "Authorization: Bearer ${effectiveKey}" \\\n  -d '{\n    "model": "${effectiveModel}",\n    "messages": [{"role": "user", "content": "Hi!"}]\n  }'`;
+      : selectedProtocol === "acciowork"
+        ? `# 1. 测试上游服务商 OpenAI 兼容接口\ncurl ${base}v1/chat/completions \\\n  -H "Content-Type: application/json" \\\n  -H "Authorization: Bearer ${effectiveKey}" \\\n  -d '{\n    "model": "${effectiveModel}",\n    "messages": [{"role": "user", "content": "Hi!"}]\n  }'\n\n# 2. 测试本地 Accio Work Bridge 伪造模型列表 (Bridge 运行状态下)\ncurl http://127.0.0.1:8787/api/llm/config/v2`
+        : `curl ${base}v1/chat/completions \\\n  -H "Content-Type: application/json" \\\n  -H "Authorization: Bearer ${effectiveKey}" \\\n  -d '{\n    "model": "${effectiveModel}",\n    "messages": [{"role": "user", "content": "Hi!"}]\n  }'`;
 
   const handleCopyCurl = async () => {
     try {
@@ -150,6 +154,18 @@ export function QuickToolsModal({
                   >
                     <WorkbuddyIcon size={11} />
                     WorkBuddy
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setSelectedProtocol("acciowork")}
+                    className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md font-medium transition-colors cursor-pointer ${
+                      selectedProtocol === "acciowork"
+                        ? "bg-orange-600 text-white shadow-2xs"
+                        : "text-slate-600 dark:text-gray-400 hover:text-slate-900 dark:hover:text-white"
+                    }`}
+                  >
+                    <AccioWorkIcon size={11} />
+                    Accio Work
                   </button>
                 </div>
                 <button

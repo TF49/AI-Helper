@@ -15,7 +15,7 @@ export interface ModelInputProps {
   id: string;
   onRefresh: () => void;
   refreshing: boolean;
-  accentColor?: "blue" | "purple" | "emerald";
+  accentColor?: "blue" | "purple" | "emerald" | "orange";
 }
 
 export function ModelInput({
@@ -39,6 +39,7 @@ export function ModelInput({
 
   const isBlue = accentColor === "blue";
   const isEmerald = accentColor === "emerald";
+  const isOrange = accentColor === "orange";
 
   return (
     <div className="space-y-2">
@@ -54,7 +55,9 @@ export function ModelInput({
                 ? "text-blue-500 dark:text-blue-400"
                 : isEmerald
                   ? "text-emerald-500 dark:text-emerald-400"
-                  : "text-purple-500 dark:text-purple-400"
+                  : isOrange
+                    ? "text-orange-500 dark:text-orange-400"
+                    : "text-purple-500 dark:text-purple-400"
             }
           />
           测试模型
@@ -98,7 +101,9 @@ export function ModelInput({
               ? "focus:bg-white dark:focus:bg-[#141724] focus:border-blue-500 focus:ring-1 focus:ring-blue-500/30"
               : isEmerald
                 ? "focus:bg-white dark:focus:bg-[#141724] focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500/30"
-                : "focus:bg-white dark:focus:bg-[#141724] focus:border-purple-500 focus:ring-1 focus:ring-purple-500/30",
+                : isOrange
+                  ? "focus:bg-white dark:focus:bg-[#141724] focus:border-orange-500 focus:ring-1 focus:ring-orange-500/30"
+                  : "focus:bg-white dark:focus:bg-[#141724] focus:border-purple-500 focus:ring-1 focus:ring-purple-500/30",
           )}
         />
         {models.length > 0 && (
@@ -157,7 +162,9 @@ export function ModelInput({
                                 ? "data-[selected=true]:bg-blue-50 data-[selected=true]:text-blue-600 dark:data-[selected=true]:bg-blue-500/20 dark:data-[selected=true]:text-blue-300"
                                 : isEmerald
                                   ? "data-[selected=true]:bg-emerald-50 data-[selected=true]:text-emerald-600 dark:data-[selected=true]:bg-emerald-500/20 dark:data-[selected=true]:text-emerald-300"
-                                  : "data-[selected=true]:bg-purple-50 data-[selected=true]:text-purple-600 dark:data-[selected=true]:bg-purple-500/20 dark:data-[selected=true]:text-purple-300",
+                                  : isOrange
+                                    ? "data-[selected=true]:bg-orange-50 data-[selected=true]:text-orange-600 dark:data-[selected=true]:bg-orange-500/20 dark:data-[selected=true]:text-orange-300"
+                                    : "data-[selected=true]:bg-purple-50 data-[selected=true]:text-purple-600 dark:data-[selected=true]:bg-purple-500/20 dark:data-[selected=true]:text-purple-300",
                             )}
                           >
                             {m.id}

@@ -30,7 +30,12 @@ import {
   X,
   ExternalLink,
 } from "lucide-react";
-import { OpenAIIcon, ClaudeIcon, WorkbuddyIcon } from "./BrandIcons";
+import {
+  OpenAIIcon,
+  ClaudeIcon,
+  WorkbuddyIcon,
+  AccioWorkIcon,
+} from "./BrandIcons";
 import { motion, AnimatePresence } from "motion/react";
 import { toast } from "sonner";
 import { exit } from "@tauri-apps/plugin-process";
@@ -39,9 +44,11 @@ import {
   getCodexConfig,
   getClaudeConfig,
   getWorkbuddyConfig,
+  getAccioConfig,
   setCodexConfig,
   setClaudeConfig,
   setWorkbuddyConfig,
+  setAccioConfig,
   openConfigFile,
 } from "../lib/api";
 import type {
@@ -49,6 +56,7 @@ import type {
   NetworkStatus,
   StepStatus,
   WorkbuddyUIConfig,
+  AccioConfig,
 } from "../types";
 import { cn } from "../lib/utils";
 
@@ -62,6 +70,7 @@ interface StepConfigData {
   codex: AgentConfig | null;
   claude: AgentConfig | null;
   workbuddy: WorkbuddyUIConfig | null;
+  accio: AccioConfig | null;
 }
 
 interface ScanLogItem {
@@ -103,16 +112,18 @@ export function InitializationModal({
     codex: null,
     claude: null,
     workbuddy: null,
+    accio: null,
   });
   const [parseError, setParseError] = useState<string>("");
 
   // ── 环节 3 & 4 展示控制 ──
   const [activeConfigTab, setActiveConfigTab] = useState<
-    "chatgpt" | "claude" | "workbuddy"
+    "chatgpt" | "claude" | "workbuddy" | "acciowork"
   >("chatgpt");
   const [showCodexKey, setShowCodexKey] = useState<boolean>(false);
   const [showClaudeKey, setShowClaudeKey] = useState<boolean>(false);
   const [showWorkbuddyKey, setShowWorkbuddyKey] = useState<boolean>(false);
+  const [showAccioKey, setShowAccioKey] = useState<boolean>(false);
   const [copiedKey, setCopiedKey] = useState<string>("");
 
   // ── 环节 4 确认与快速修改模式 ──
@@ -120,7 +131,7 @@ export function InitializationModal({
     "none" | "confirmed" | "editing"
   >("none");
   const [editTab, setEditTab] = useState<
-    "chatgpt" | "claude" | "workbuddy"
+    "chatgpt" | "claude" | "workbuddy" | "acciowork"
   >("chatgpt");
   const [editUrl, setEditUrl] = useState<string>("");
   const [editApiKey, setEditApiKey] = useState<string>("");
@@ -279,6 +290,7 @@ export function InitializationModal({
       scan_codex: "pending",
       scan_claude: "pending",
       scan_workbuddy: "pending",
+      scan_accio: "pending",
       acl_verify: "pending",
     });
     addLog(
@@ -345,7 +357,7 @@ export function InitializationModal({
     }
 
     if (!(await delay(800))) return false;
-    setStepSubProgress(55);
+    setStepSubProgress(50);
     setStepSubPhaseText(
       "深度检索 %USERPROFILE%/.claude/ 环境变量与运行入口...",
     );
@@ -356,7 +368,7 @@ export function InitializationModal({
     );
 
     if (!(await delay(800))) return false;
-    setStepSubProgress(70);
+    setStepSubProgress(65);
     setStepSubPhaseText("正在捕获 Claude Code 本地配置载荷与权限描述符...");
 
     let claude: AgentConfig;
@@ -397,7 +409,7 @@ export function InitializationModal({
     }
 
     if (!(await delay(800))) return false;
-    setStepSubProgress(78);
+    setStepSubProgress(75);
     setStepSubPhaseText(
       "深度检索 %USERPROFILE%/.workbuddy-ai/ 与 WorkBuddy 客户端运行入口...",
     );
@@ -429,7 +441,7 @@ export function InitializationModal({
       setCheckpoints((prev) => ({
         ...prev,
         scan_workbuddy: "done",
-        acl_verify: "scanning",
+        scan_accio: "scanning",
       }));
     } else {
       addLog(
@@ -440,6 +452,54 @@ export function InitializationModal({
       setCheckpoints((prev) => ({
         ...prev,
         scan_workbuddy: "error",
+        scan_accio: "scanning",
+      }));
+    }
+
+    if (!(await delay(800))) return false;
+    setStepSubProgress(86);
+    setStepSubPhaseText(
+      "深度检索 %USERPROFILE%/.accio/ 与 Accio Work 客户端运行入口...",
+    );
+    addLog(
+      "FS:ACCIO",
+      "检索本地 Accio Work 客户端运行环境与 ~/.ai-helper/accio_config.json...",
+      "scan",
+    );
+
+    let accio: AccioConfig;
+    try {
+      accio = await getAccioConfig();
+      setConfigData((prev) => ({ ...prev, accio }));
+    } catch (e) {
+      const msg = `Accio Work 检索失败: ${e}`;
+      setStep2Status("error");
+      setPathError(msg);
+      setCheckpoints((prev) => ({ ...prev, scan_accio: "error" }));
+      addLog("FS:ERR", msg, "error");
+      return false;
+    }
+
+    if (accio.is_installed) {
+      addLog(
+        "FS:ACCIO",
+        `锁定 Accio Work 客户端运行环境: ${accio.app_path || "已安装"} [配置文件: ${accio.config_exists ? "已就绪" : "待初始化"}]`,
+        "match",
+      );
+      setCheckpoints((prev) => ({
+        ...prev,
+        scan_accio: "done",
+        acl_verify: "scanning",
+      }));
+    } else {
+      addLog(
+        "FS:ACCIO",
+        "未在系统检索到 Accio Work 客户端或配置文件",
+        "warn",
+      );
+      setCheckpoints((prev) => ({
+        ...prev,
+        scan_accio: "error",
         acl_verify: "scanning",
       }));
     }
@@ -447,11 +507,12 @@ export function InitializationModal({
     const anyInstalled =
       codex.is_installed ||
       claude.is_installed ||
-      workbuddy.is_installed;
+      workbuddy.is_installed ||
+      accio.is_installed;
     if (!anyInstalled) {
       setStep2Status("error");
       setPathError(
-        "未在当前电脑检测到 Claude Code、ChatGPT (Codex) 或 WorkBuddy 的安装程序与配置文件。AI Helper 需要配合已安装的 Agent/客户端运行环境使用，请先安装对应应用或在路径管理中指定。",
+        "未在当前电脑检测到 Claude Code、ChatGPT (Codex)、WorkBuddy 或 Accio Work 的安装程序与配置文件。AI Helper 需要配合已安装的 Agent/客户端运行环境使用，请先安装对应应用或在路径管理中指定。",
       );
       setCheckpoints((prev) => ({ ...prev, acl_verify: "error" }));
       addLog(
@@ -475,7 +536,8 @@ export function InitializationModal({
     const count =
       (codex.is_installed ? 1 : 0) +
       (claude.is_installed ? 1 : 0) +
-      (workbuddy.is_installed ? 1 : 0);
+      (workbuddy.is_installed ? 1 : 0) +
+      (accio.is_installed ? 1 : 0);
     addLog(
       "HOST:DONE",
       `本机扫描完成，已锁定 ${count} 处本地 Agent / 客户端运行环境与配置上下文`,
@@ -492,6 +554,9 @@ export function InitializationModal({
     } else if (workbuddy.is_installed) {
       setActiveConfigTab("workbuddy");
       setEditTab("workbuddy");
+    } else if (accio.is_installed) {
+      setActiveConfigTab("acciowork");
+      setEditTab("acciowork");
     }
 
     await delay(500);
@@ -524,14 +589,20 @@ export function InitializationModal({
     let codex: AgentConfig;
     let claude: AgentConfig;
     let workbuddy: WorkbuddyUIConfig;
+    let accio: AccioConfig;
     try {
-      [codex, claude, workbuddy] = await Promise.all([
+      [codex, claude, workbuddy, accio] = await Promise.all([
         getCodexConfig(),
         getClaudeConfig(),
         getWorkbuddyConfig(),
+        getAccioConfig(),
       ]);
-      setConfigData({ codex, claude, workbuddy });
-      if (activeConfigTab === "workbuddy") {
+      setConfigData({ codex, claude, workbuddy, accio });
+      if (activeConfigTab === "acciowork") {
+        setEditUrl(accio.base_url || "https://bob-api.com/v1");
+        setEditApiKey(accio.api_key || "");
+        setEditModel(accio.model || "claude-3-7-sonnet");
+      } else if (activeConfigTab === "workbuddy") {
         setEditUrl(workbuddy.base_url || "https://bob-api.com/v1");
         setEditApiKey(workbuddy.api_key || "");
         setEditModel(workbuddy.model || "gpt-5.6-sol");
@@ -576,7 +647,7 @@ export function InitializationModal({
     setStepSubPhaseText("校验认证密钥 (API Key) 前缀特征与安全掩码...");
     addLog(
       "PARSE:KEY",
-      `校验 API Key 密钥格式与散列完整性... [${codex.api_key || workbuddy.api_key ? "存在有效密钥" : "未配置密钥"}]`,
+      `校验 API Key 密钥格式与散列完整性... [${codex.api_key || workbuddy.api_key || accio.api_key ? "存在有效密钥" : "未配置密钥"}]`,
       "info",
     );
 
@@ -590,7 +661,7 @@ export function InitializationModal({
     setStepSubPhaseText("读取核心模型 (Model) 配置与调用链参数...");
     addLog(
       "PARSE:MODEL",
-      `读取核心模型: Codex -> ${codex.model || "未配置"}, Claude -> ${claude.model || "未配置"}, WorkBuddy -> ${workbuddy.model || "未配置"}`,
+      `读取核心模型: Codex -> ${codex.model || "未配置"}, Claude -> ${claude.model || "未配置"}, WorkBuddy -> ${workbuddy.model || "未配置"}, Accio -> ${accio.model || "未配置"}`,
       "match",
     );
 
@@ -601,7 +672,7 @@ export function InitializationModal({
     setStep3Status("success");
     addLog(
       "PARSE:DONE",
-      "三大核心参数（url、apikey、model）解析呈现就绪，进入操作确认环节",
+      "四大客户端核心参数（url、apikey、model）解析呈现就绪，进入操作确认环节",
       "success",
     );
 
@@ -685,7 +756,7 @@ export function InitializationModal({
 
   // 切换编辑 Tab 时同步表单数据
   const handleSwitchEditTab = (
-    tab: "chatgpt" | "claude" | "workbuddy",
+    tab: "chatgpt" | "claude" | "workbuddy" | "acciowork",
   ) => {
     setEditTab(tab);
     if (tab === "chatgpt") {
@@ -696,10 +767,14 @@ export function InitializationModal({
       setEditUrl(configData.claude?.base_url || "https://bob-api.com/");
       setEditApiKey(configData.claude?.api_key || "");
       setEditModel(configData.claude?.model || "");
-    } else {
+    } else if (tab === "workbuddy") {
       setEditUrl(configData.workbuddy?.base_url || "https://bob-api.com/v1");
       setEditApiKey(configData.workbuddy?.api_key || "");
       setEditModel(configData.workbuddy?.model || "gpt-5.6-sol");
+    } else {
+      setEditUrl(configData.accio?.base_url || "https://bob-api.com/v1");
+      setEditApiKey(configData.accio?.api_key || "");
+      setEditModel(configData.accio?.model || "claude-3-7-sonnet");
     }
   };
 
@@ -725,7 +800,7 @@ export function InitializationModal({
           editModel.trim(),
         );
         toast.success("Claude Code 配置已保存更新");
-      } else {
+      } else if (editTab === "workbuddy") {
         const existing = configData.workbuddy;
         await setWorkbuddyConfig({
           url: editUrl.trim(),
@@ -743,22 +818,37 @@ export function InitializationModal({
           max_output_tokens: existing?.max_output_tokens ?? 32768,
         });
         toast.success("WorkBuddy 自定义模型配置已保存更新");
+      } else {
+        const existing = configData.accio;
+        await setAccioConfig({
+          base_url: editUrl.trim(),
+          api_key: editApiKey.trim(),
+          model: editModel.trim() || "claude-3-7-sonnet",
+          bridge_port: existing?.bridge_port ?? 51740,
+          official_gateway:
+            existing?.official_gateway ?? "https://work.alibabacloud.com",
+          fallback_official: existing?.fallback_official ?? true,
+          prevent_official_leak: existing?.prevent_official_leak ?? true,
+        });
+        toast.success("Accio Work 模型桥接配置已保存更新");
       }
 
       // 重新读取并刷新展示
-      const [newCodex, newClaude, newWb] = await Promise.all([
+      const [newCodex, newClaude, newWb, newAccio] = await Promise.all([
         getCodexConfig(),
         getClaudeConfig(),
         getWorkbuddyConfig(),
+        getAccioConfig(),
       ]);
       setConfigData({
         codex: newCodex,
         claude: newClaude,
         workbuddy: newWb,
+        accio: newAccio,
       });
       setConfirmationDecision("confirmed");
       setStep4Status("success");
-      const saveSummary = `${editTab === "chatgpt" ? "ChatGPT" : editTab === "claude" ? "Claude" : "WorkBuddy"} 配置已手动更新生效`;
+      const saveSummary = `${editTab === "chatgpt" ? "ChatGPT" : editTab === "claude" ? "Claude" : editTab === "workbuddy" ? "WorkBuddy" : "Accio Work"} 配置已手动更新生效`;
       addLog(
         "CONFIG:SAVE",
         saveSummary,
@@ -816,22 +906,35 @@ export function InitializationModal({
   const currentCodex = configData.codex;
   const currentClaude = configData.claude;
   const currentWorkbuddy = configData.workbuddy;
+  const currentAccio = configData.accio;
   const activeCfg: AgentConfig | null =
     activeConfigTab === "chatgpt"
       ? currentCodex
       : activeConfigTab === "claude"
         ? currentClaude
-        : currentWorkbuddy
-          ? {
-              base_url: currentWorkbuddy.base_url,
-              api_key: currentWorkbuddy.api_key,
-              model: currentWorkbuddy.model,
-              config_exists: currentWorkbuddy.config_exists,
-              config_path: currentWorkbuddy.config_path,
-              is_installed: currentWorkbuddy.is_installed,
-              app_path: currentWorkbuddy.app_path,
-            }
-          : null;
+        : activeConfigTab === "workbuddy"
+          ? currentWorkbuddy
+            ? {
+                base_url: currentWorkbuddy.base_url,
+                api_key: currentWorkbuddy.api_key,
+                model: currentWorkbuddy.model,
+                config_exists: currentWorkbuddy.config_exists,
+                config_path: currentWorkbuddy.config_path,
+                is_installed: currentWorkbuddy.is_installed,
+                app_path: currentWorkbuddy.app_path,
+              }
+            : null
+          : currentAccio
+            ? {
+                base_url: currentAccio.base_url,
+                api_key: currentAccio.api_key,
+                model: currentAccio.model,
+                config_exists: currentAccio.config_exists ?? false,
+                config_path: currentAccio.config_path ?? "",
+                is_installed: currentAccio.is_installed ?? false,
+                app_path: currentAccio.app_path,
+              }
+            : null;
 
   return (
     <AnimatePresence>
@@ -1253,6 +1356,23 @@ export function InitializationModal({
                                       : "正在检索运行环境...",
                           },
                           {
+                            key: "scan_accio",
+                            label: "Accio Work 客户端与桥接配置",
+                            status:
+                              checkpoints.scan_accio ||
+                              (step2Status === "success" ? "done" : "pending"),
+                            detail:
+                              checkpoints.scan_accio === "error"
+                                ? "未检测到安装"
+                                : configData.accio?.config_exists
+                                  ? "已就绪 (accio_config.json)"
+                                  : configData.accio?.is_installed
+                                    ? "客户端已就绪，待配置模型"
+                                    : checkpoints.scan_accio === "done"
+                                      ? "已就绪"
+                                      : "正在检索运行环境...",
+                          },
+                          {
                             key: "acl_verify",
                             label: "文件安全描述符与系统读写权限",
                             status:
@@ -1565,6 +1685,107 @@ export function InitializationModal({
                           </div>
                         </div>
 
+                        {/* Accio Work 路径卡片 */}
+                        <div className="p-3.5 rounded-xl border bg-slate-50/80 dark:bg-white/[0.02] border-slate-200 dark:border-white/10 space-y-2 relative">
+                          <div className="flex items-center justify-between">
+                            <span className="text-xs font-semibold text-slate-800 dark:text-gray-200 flex items-center gap-1.5">
+                              <AccioWorkIcon
+                                size={14}
+                                className="text-orange-500"
+                              />
+                              Accio Work 配置文件
+                            </span>
+                            <span
+                              className={cn(
+                                "px-2 py-0.5 rounded text-[10px] font-semibold flex items-center gap-1",
+                                step2Status === "running" &&
+                                  !configData.accio
+                                  ? "bg-blue-100 text-blue-700 dark:bg-blue-500/20 dark:text-blue-300"
+                                  : configData.accio?.config_exists
+                                    ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-500/20 dark:text-emerald-300"
+                                    : configData.accio?.is_installed
+                                      ? "bg-amber-100 text-amber-800 dark:bg-amber-500/20 dark:text-amber-300"
+                                      : "bg-rose-100 text-rose-800 dark:bg-rose-500/20 dark:text-rose-300",
+                              )}
+                            >
+                              {step2Status === "running" &&
+                              !configData.accio ? (
+                                <>
+                                  <Loader2 size={10} className="animate-spin" />
+                                  扫描磁盘中
+                                </>
+                              ) : configData.accio?.config_exists ? (
+                                <>
+                                  <CheckCircle2 size={10} />
+                                  已锁定路径
+                                </>
+                              ) : configData.accio?.is_installed ? (
+                                <>
+                                  <AlertCircle size={10} />
+                                  待初始化 (客户端已就绪)
+                                </>
+                              ) : (
+                                <>
+                                  <XCircle size={10} />
+                                  未安装
+                                </>
+                              )}
+                            </span>
+                          </div>
+                          <div className="flex items-center justify-between gap-2 p-2 rounded-lg bg-slate-100 dark:bg-black/30 border border-slate-200/60 dark:border-white/5">
+                            <code className="text-[11px] font-mono text-slate-700 dark:text-gray-300 break-all select-all">
+                              {configData.accio?.config_path
+                                ? configData.accio.config_path
+                                : step2Status === "running"
+                                  ? "正在遍历磁盘检索 Accio Work 路径..."
+                                  : configData.accio?.is_installed
+                                    ? "客户端已检测，待写入 ~/.ai-helper/accio_config.json"
+                                    : "未检测到安装环境，暂无配置文件"}
+                            </code>
+                            {configData.accio?.config_path ? (
+                              <div className="flex items-center gap-1 flex-shrink-0">
+                                <button
+                                  onClick={async () => {
+                                    if (!configData.accio?.config_exists) {
+                                      toast.warning(
+                                        "配置文件尚未创建，请先完成配置并保存",
+                                      );
+                                      return;
+                                    }
+                                    const ok = await openConfigFile(
+                                      configData.accio.config_path || "",
+                                    );
+                                    if (ok) toast.success("已打开配置文件");
+                                  }}
+                                  className="p-1 rounded hover:bg-slate-200 dark:hover:bg-white/10 text-slate-500 dark:text-gray-400 cursor-pointer"
+                                  title="打开配置文件"
+                                >
+                                  <ExternalLink size={12} />
+                                </button>
+                                <button
+                                  onClick={() =>
+                                    copyToClipboard(
+                                      configData.accio?.config_path || "",
+                                      "Accio Work 路径",
+                                    )
+                                  }
+                                  className="p-1 rounded hover:bg-slate-200 dark:hover:bg-white/10 text-slate-500 dark:text-gray-400 cursor-pointer"
+                                  title="复制路径"
+                                >
+                                  {copiedKey === "Accio Work 路径" ? (
+                                    <Check
+                                      size={12}
+                                      className="text-emerald-500"
+                                    />
+                                  ) : (
+                                    <Copy size={12} />
+                                  )}
+                                </button>
+                              </div>
+                            ) : null}
+                          </div>
+                        </div>
+
                       </div>
 
                       {step2Status === "success" && (
@@ -1577,16 +1798,19 @@ export function InitializationModal({
                             <span>
                               {(configData.codex?.is_installed ? 1 : 0) +
                                 (configData.claude?.is_installed ? 1 : 0) +
-                                (configData.workbuddy?.is_installed ? 1 : 0) >
+                                (configData.workbuddy?.is_installed ? 1 : 0) +
+                                (configData.accio?.is_installed ? 1 : 0) >
                               1
                                 ? `本机环境扫描完成！已准确定位多个本地 Agent / 客户端运行环境与配置文件。`
-                                : configData.workbuddy?.is_installed
-                                  ? "本机扫描完成！已检测到 WorkBuddy 客户端运行环境"
-                                  : configData.claude?.is_installed
-                                    ? "本机扫描完成！已检测到 Claude Code 运行环境"
-                                    : configData.codex?.is_installed
-                                      ? "本机扫描完成！已检测到 ChatGPT (Codex) 运行环境"
-                                      : "本机扫描通过！已准备预先配置核心参数。"}
+                                : configData.accio?.is_installed
+                                  ? "本机扫描完成！已检测到 Accio Work 客户端运行环境"
+                                  : configData.workbuddy?.is_installed
+                                    ? "本机扫描完成！已检测到 WorkBuddy 客户端运行环境"
+                                    : configData.claude?.is_installed
+                                      ? "本机扫描完成！已检测到 Claude Code 运行环境"
+                                      : configData.codex?.is_installed
+                                        ? "本机扫描完成！已检测到 ChatGPT (Codex) 运行环境"
+                                        : "本机扫描通过！已准备预先配置核心参数。"}
                             </span>
                           </div>
                           <button
@@ -1836,6 +2060,26 @@ export function InitializationModal({
                             </span>
                           )}
                         </button>
+                        <button
+                          onClick={() => {
+                            setActiveConfigTab("acciowork");
+                            setEditTab("acciowork");
+                          }}
+                          className={cn(
+                            "flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition cursor-pointer",
+                            activeConfigTab === "acciowork"
+                              ? "bg-white text-orange-600 shadow-sm dark:bg-orange-500/20 dark:text-orange-300 font-bold"
+                              : "text-slate-600 dark:text-gray-400 hover:text-slate-900 dark:hover:text-white",
+                          )}
+                        >
+                          <AccioWorkIcon size={13} />
+                          Accio Work
+                          {!configData.accio?.is_installed && (
+                            <span className="text-[9px] px-1 py-0.2 rounded bg-slate-200 dark:bg-white/10 text-slate-500 dark:text-gray-400">
+                              未安装
+                            </span>
+                          )}
+                        </button>
                       </div>
 
                       {/* 核心配置展示卡片 (url, apikey, model) */}
@@ -1880,7 +2124,9 @@ export function InitializationModal({
                                       ? showCodexKey
                                       : activeConfigTab === "claude"
                                         ? showClaudeKey
-                                        : showWorkbuddyKey
+                                        : activeConfigTab === "workbuddy"
+                                          ? showWorkbuddyKey
+                                          : showAccioKey
                                   )
                                   ? activeCfg.api_key
                                   : `${activeCfg.api_key.slice(0, 6)}••••••••••••${activeCfg.api_key.slice(-4)}`
@@ -1893,8 +2139,10 @@ export function InitializationModal({
                                     setShowCodexKey(!showCodexKey);
                                   } else if (activeConfigTab === "claude") {
                                     setShowClaudeKey(!showClaudeKey);
-                                  } else {
+                                  } else if (activeConfigTab === "workbuddy") {
                                     setShowWorkbuddyKey(!showWorkbuddyKey);
+                                  } else {
+                                    setShowAccioKey(!showAccioKey);
                                   }
                                 }}
                                 className="text-slate-400 hover:text-slate-700 dark:hover:text-white"
@@ -1905,7 +2153,9 @@ export function InitializationModal({
                                     ? showCodexKey
                                     : activeConfigTab === "claude"
                                       ? showClaudeKey
-                                      : showWorkbuddyKey
+                                      : activeConfigTab === "workbuddy"
+                                        ? showWorkbuddyKey
+                                        : showAccioKey
                                 ) ? (
                                   <EyeOff size={13} />
                                 ) : (
@@ -2161,6 +2411,22 @@ export function InitializationModal({
                                   </span>
                                 )}
                               </button>
+                              <button
+                                onClick={() => handleSwitchEditTab("acciowork")}
+                                className={cn(
+                                  "px-2.5 py-1 rounded font-medium transition cursor-pointer flex items-center gap-1",
+                                  editTab === "acciowork"
+                                    ? "bg-white text-orange-600 shadow-xs dark:bg-orange-600 dark:text-white"
+                                    : "text-slate-600 dark:text-gray-400",
+                                )}
+                              >
+                                Accio Work
+                                {!configData.accio?.is_installed && (
+                                  <span className="text-[9px] opacity-75">
+                                    (未安装)
+                                  </span>
+                                )}
+                              </button>
                             </div>
                           </div>
 
@@ -2207,7 +2473,9 @@ export function InitializationModal({
                                   ? "gpt-4o / gpt-5.6-sol"
                                   : editTab === "claude"
                                     ? "claude-3-7-sonnet-20250219"
-                                    : "gpt-5.6-sol"
+                                    : editTab === "workbuddy"
+                                      ? "gpt-5.6-sol"
+                                      : "claude-3-7-sonnet"
                               }
                             />
                           </div>

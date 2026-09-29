@@ -18,7 +18,12 @@ import {
   ExternalLink,
   DownloadCloud,
 } from "lucide-react";
-import { ClaudeIcon, OpenAIIcon, WorkbuddyIcon } from "./BrandIcons";
+import {
+  ClaudeIcon,
+  OpenAIIcon,
+  WorkbuddyIcon,
+  AccioWorkIcon,
+} from "./BrandIcons";
 import {
   browseAppPath,
   checkAppProcessStatus,
@@ -103,6 +108,7 @@ export function AppPathsPanel() {
   const [codexPath, setCodexPath] = useState("");
   const [chatgptPath, setChatgptPath] = useState("");
   const [workbuddyPath, setWorkbuddyPath] = useState("");
+  const [accioPath, setAccioPath] = useState("");
 
   // 运行与探测状态
   const [claudeInfo, setClaudeInfo] = useState<DetectedPathInfo | null>(null);
@@ -111,11 +117,13 @@ export function AppPathsPanel() {
   const [workbuddyInfo, setWorkbuddyInfo] = useState<DetectedPathInfo | null>(
     null,
   );
+  const [accioInfo, setAccioInfo] = useState<DetectedPathInfo | null>(null);
 
   const [claudeRunning, setClaudeRunning] = useState(false);
   const [codexRunning, setCodexRunning] = useState(false);
   const [chatgptRunning, setChatgptRunning] = useState(false);
   const [workbuddyRunning, setWorkbuddyRunning] = useState(false);
+  const [accioRunning, setAccioRunning] = useState(false);
 
   const [detectingType, setDetectingType] = useState<string | null>(null);
   const [launchingType, setLaunchingType] = useState<string | null>(null);
@@ -179,18 +187,21 @@ export function AppPathsPanel() {
       setCodexPath(saved.codex_cli_path || "");
       setChatgptPath(saved.chatgpt_client_path || "");
       setWorkbuddyPath(saved.workbuddy_client_path || "");
+      setAccioPath(saved.accio_client_path || "");
 
       // 并发检查当前运行状态
-      const [cRun, xRun, gRun, wbRun] = await Promise.all([
+      const [cRun, xRun, gRun, wbRun, accioRun] = await Promise.all([
         checkAppProcessStatus("claude").catch(() => false),
         checkAppProcessStatus("codex").catch(() => false),
         checkAppProcessStatus("chatgpt").catch(() => false),
         checkAppProcessStatus("workbuddy").catch(() => false),
+        checkAppProcessStatus("acciowork").catch(() => false),
       ]);
       setClaudeRunning(cRun);
       setCodexRunning(xRun);
       setChatgptRunning(gRun);
       setWorkbuddyRunning(wbRun);
+      setAccioRunning(accioRun);
     } catch (err) {
       toast.error(`读取路径配置失败: ${err}`);
     } finally {
@@ -208,7 +219,7 @@ export function AppPathsPanel() {
 
   // 单项自动探测
   const handleDetectSingle = async (
-    type: "claude" | "codex" | "chatgpt" | "workbuddy",
+    type: "claude" | "codex" | "chatgpt" | "workbuddy" | "acciowork",
   ) => {
     setDetectingType(type);
     try {
@@ -229,6 +240,10 @@ export function AppPathsPanel() {
         setWorkbuddyInfo(info);
         if (info.path) setWorkbuddyPath(info.path);
         setWorkbuddyRunning(info.is_running);
+      } else if (type === "acciowork") {
+        setAccioInfo(info);
+        if (info.path) setAccioPath(info.path);
+        setAccioRunning(info.is_running);
       }
 
       if (info.exists && info.path) {
@@ -269,6 +284,10 @@ export function AppPathsPanel() {
           setWorkbuddyInfo(info);
           if (info.path) setWorkbuddyPath(info.path);
           setWorkbuddyRunning(info.is_running);
+        } else if (info.app_type === "acciowork") {
+          setAccioInfo(info);
+          if (info.path) setAccioPath(info.path);
+          setAccioRunning(info.is_running);
         }
       }
       toast.success("已完成全部应用与 CLI 路径深度探测！");
@@ -281,7 +300,7 @@ export function AppPathsPanel() {
 
   // 浏览选择文件
   const handleBrowse = async (
-    type: "claude" | "codex" | "chatgpt" | "workbuddy",
+    type: "claude" | "codex" | "chatgpt" | "workbuddy" | "acciowork",
   ) => {
     try {
       const selected = await browseAppPath(type);
@@ -290,6 +309,7 @@ export function AppPathsPanel() {
         if (type === "codex") setCodexPath(selected);
         if (type === "chatgpt") setChatgptPath(selected);
         if (type === "workbuddy") setWorkbuddyPath(selected);
+        if (type === "acciowork") setAccioPath(selected);
         toast.success(`已选择路径: ${selected}`);
       }
     } catch (err) {
@@ -306,6 +326,7 @@ export function AppPathsPanel() {
         codex_cli_path: codexPath.trim() || null,
         chatgpt_client_path: chatgptPath.trim() || null,
         workbuddy_client_path: workbuddyPath.trim() || null,
+        accio_client_path: accioPath.trim() || null,
       };
       await saveAppPaths(cfg);
       toast.success("安装路径配置已保存至 ~/.ai-helper/app_paths.json");
@@ -318,7 +339,7 @@ export function AppPathsPanel() {
 
   // 测试启动 / 重启目标
   const handleLaunchOrRestart = async (
-    type: "claude" | "codex" | "chatgpt" | "workbuddy",
+    type: "claude" | "codex" | "chatgpt" | "workbuddy" | "acciowork",
   ) => {
     setLaunchingType(type);
     try {
@@ -329,7 +350,9 @@ export function AppPathsPanel() {
             ? codexPath
             : type === "workbuddy"
               ? workbuddyPath
-              : chatgptPath;
+              : type === "acciowork"
+                ? accioPath
+                : chatgptPath;
 
       const result = await restartTargetApp(type, custom || undefined);
       toast.success(result);
@@ -345,6 +368,7 @@ export function AppPathsPanel() {
         if (type === "codex") setCodexRunning(isRun);
         if (type === "chatgpt") setChatgptRunning(isRun);
         if (type === "workbuddy") setWorkbuddyRunning(isRun);
+        if (type === "acciowork") setAccioRunning(isRun);
         delete refreshTimersRef.current[type];
       }, 1000);
     } catch (err) {
@@ -1592,6 +1616,122 @@ export function AppPathsPanel() {
                 💡 {workbuddyInfo.extra_info}
               </div>
             )}
+          </div>
+        </SpotlightCard>
+
+        {/* 卡片 5: Accio Work 桌面客户端 */}
+        <SpotlightCard
+          className="p-5 rounded-2xl border border-slate-200/90 dark:border-white/10 bg-white/80 dark:bg-[#121524]/60 shadow-sm dark:shadow-none flex-shrink-0 min-h-fit"
+          spotlightColor="rgba(255, 106, 0, 0.12)"
+        >
+          <div className="flex flex-col gap-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-lg bg-orange-100 text-orange-600 dark:bg-orange-500/20 dark:text-orange-400 flex items-center justify-center flex-shrink-0">
+                  <AccioWorkIcon size={16} />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-bold text-slate-900 dark:text-white">
+                      Accio Work 桌面客户端路径
+                    </span>
+                    {accioRunning && (
+                      <span className="inline-flex items-center gap-1 text-[10px] font-medium px-2 py-0.2 rounded-full bg-orange-50 text-orange-700 border border-orange-200 dark:bg-orange-500/10 dark:text-orange-300 dark:border-orange-500/30">
+                        <span className="w-1.5 h-1.5 rounded-full bg-orange-500 animate-pulse" />
+                        运行中
+                      </span>
+                    )}
+                  </div>
+                  <span className="text-[11px] text-slate-400 dark:text-gray-500 font-mono">
+                    Win32 可执行程序 (Accio Work.exe) / 注册表安装路径
+                  </span>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2">
+                {accioPath ? (
+                  <span className="text-[11px] text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
+                    <CheckCircle2 size={13} />
+                    <span>已就绪</span>
+                  </span>
+                ) : (
+                  <span className="text-[11px] text-amber-600 dark:text-amber-400 flex items-center gap-1">
+                    <AlertCircle size={13} />
+                    <span>待配置</span>
+                  </span>
+                )}
+              </div>
+            </div>
+
+            {/* 路径输入框与操作按键 */}
+            <div className="flex flex-col sm:flex-row gap-2 items-center">
+              <div className="relative flex-1 w-full">
+                <input
+                  type="text"
+                  value={accioPath}
+                  onChange={(e) => setAccioPath(e.target.value)}
+                  placeholder="例如: C:\Users\Administrator\AppData\Local\Programs\Accio Work\Accio Work.exe"
+                  className="w-full text-xs font-mono px-3 py-2 rounded-xl border border-slate-200 dark:border-white/10 bg-slate-50/70 dark:bg-black/30 text-slate-800 dark:text-gray-200 focus:outline-none focus:ring-1 focus:ring-orange-500"
+                />
+              </div>
+
+              <div className="flex items-center gap-1.5 w-full sm:w-auto justify-end">
+                <button
+                  type="button"
+                  onClick={() => void handleDetectSingle("acciowork")}
+                  disabled={detectingType === "acciowork"}
+                  className="px-2.5 py-1.5 rounded-lg border border-orange-200 text-orange-700 bg-orange-50 hover:bg-orange-100 dark:border-orange-500/30 dark:bg-orange-500/10 dark:text-orange-300 text-xs font-medium flex items-center gap-1 cursor-pointer transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+                  title="自动探测 Accio Work 客户端安装路径"
+                >
+                  <Search
+                    size={12}
+                    className={
+                      detectingType === "acciowork" ? "animate-spin" : ""
+                    }
+                  />
+                  <span>探测</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => void handleBrowse("acciowork")}
+                  className="px-2.5 py-1.5 rounded-lg border border-slate-200 dark:border-white/10 text-slate-700 dark:text-gray-300 hover:bg-slate-100 dark:hover:bg-white/5 text-xs font-medium flex items-center gap-1 cursor-pointer transition-colors"
+                  title="通过文件管理器浏览路径"
+                >
+                  <FolderOpen size={12} />
+                  <span>浏览</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => void handleLaunchOrRestart("acciowork")}
+                  disabled={launchingType === "acciowork"}
+                  className="px-2.5 py-1.5 rounded-lg bg-orange-600 hover:bg-orange-700 text-white text-xs font-medium flex items-center gap-1 cursor-pointer transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+                  title="启动或重启 Accio Work 客户端 (自动注入本地网关环境)"
+                >
+                  <Play
+                    size={12}
+                    className={
+                      launchingType === "acciowork" ? "animate-spin" : ""
+                    }
+                  />
+                  <span>{accioRunning ? "重启客户端" : "启动客户端"}</span>
+                </button>
+              </div>
+            </div>
+
+            {accioInfo?.extra_info && (
+              <div className="text-[11px] text-orange-600 dark:text-orange-400 bg-orange-50/50 dark:bg-orange-500/10 px-2.5 py-1 rounded-lg border border-orange-100 dark:border-orange-500/20">
+                💡 {accioInfo.extra_info}
+              </div>
+            )}
+
+            <div className="text-[11px] text-slate-500 dark:text-gray-400 bg-slate-50/60 dark:bg-white/[0.03] px-2.5 py-1.5 rounded-lg border border-slate-200/60 dark:border-white/5 flex items-start gap-1.5">
+              <span className="text-orange-500 font-bold">ℹ️</span>
+              <span>
+                启动说明：在此拉起 Accio Work 客户端时，AI-Helper 将在进程中注入本地 Bridge 网关地址环境变量，使应用与后台转译网关实时协同，阻断官方直连以保护 i 豆。
+              </span>
+            </div>
           </div>
         </SpotlightCard>
 

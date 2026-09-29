@@ -23,10 +23,12 @@ import {
   OpenAIIcon,
   ClaudeIcon,
   WorkbuddyIcon,
+  AccioWorkIcon,
 } from "./components/BrandIcons";
 import { ChatGPTPanel } from "./components/ChatGPTPanel";
 import { ClaudePanel } from "./components/ClaudePanel";
 import { WorkbuddyPanel } from "./components/WorkbuddyPanel";
+import { AccioWorkPanel } from "./components/AccioWorkPanel";
 import { AppPathsPanel } from "./components/AppPathsPanel";
 import { QuickToolsModal } from "./components/QuickToolsModal";
 import { InitializationModal } from "./components/InitializationModal";
@@ -39,7 +41,7 @@ import { cn } from "./lib/utils";
 import { checkBobApiNetwork, openUrl, isTauri } from "./lib/api";
 import { ForceUpdateModal, useAppUpdater } from "./components/ForceUpdateModal";
 
-type Tab = "chatgpt" | "claude" | "workbuddy" | "paths";
+type Tab = "chatgpt" | "claude" | "workbuddy" | "acciowork" | "paths";
 type NetworkState = "checking" | "reachable" | "unreachable";
 
 const mockWindow = {
@@ -57,7 +59,7 @@ export default function App() {
 function AppContent() {
   const [tab, setTab] = useState<Tab>("chatgpt");
   const [lastAgentTab, setLastAgentTab] = useState<
-    "chatgpt" | "claude" | "workbuddy"
+    "chatgpt" | "claude" | "workbuddy" | "acciowork"
   >("chatgpt");
   const [networkState, setNetworkState] = useState<NetworkState>("checking");
   const [toolsOpen, setToolsOpen] = useState(false);
@@ -71,7 +73,8 @@ function AppContent() {
     if (
       newTab === "chatgpt" ||
       newTab === "claude" ||
-      newTab === "workbuddy"
+      newTab === "workbuddy" ||
+      newTab === "acciowork"
     ) {
       setLastAgentTab(newTab);
     }
@@ -238,7 +241,15 @@ function AppContent() {
 
   return (
     <AuroraBackground
-      theme={tab === "claude" ? "claude" : "chatgpt"}
+      theme={
+        tab === "claude"
+          ? "claude"
+          : tab === "workbuddy"
+            ? "workbuddy"
+            : tab === "acciowork"
+              ? "acciowork"
+              : "chatgpt"
+      }
       className="text-slate-800 dark:text-gray-200 transition-colors duration-200 h-screen w-screen overflow-hidden flex flex-col"
     >
       {/* ── 顶部无缝桌面标题栏 ── */}
@@ -454,6 +465,45 @@ function AppContent() {
                   )}
                 </button>
 
+                {/* Accio Work 选项 */}
+                <button
+                  type="button"
+                  onClick={() => switchTab("acciowork")}
+                  className={cn(
+                    "relative w-full flex items-center justify-between p-2.5 rounded-xl border text-left transition-all cursor-pointer",
+                    tab === "acciowork"
+                      ? "border-orange-500/70 bg-orange-50/80 text-orange-900 dark:bg-orange-500/15 dark:border-orange-500/50 dark:text-orange-100 shadow-xs"
+                      : "border-transparent text-slate-600 dark:text-gray-400 hover:bg-slate-100/80 dark:hover:bg-white/5 hover:text-slate-900 dark:hover:text-gray-200",
+                  )}
+                >
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <div
+                      className={cn(
+                        "w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 transition-colors",
+                        tab === "acciowork"
+                          ? "bg-orange-600 text-white dark:bg-orange-500 dark:text-white"
+                          : "bg-slate-100 text-slate-500 dark:bg-white/5 dark:text-gray-400",
+                      )}
+                    >
+                      <AccioWorkIcon size={16} />
+                    </div>
+                    <div className="min-w-0">
+                      <div className="text-xs font-semibold truncate leading-tight">
+                        Accio Work
+                      </div>
+                      <div className="text-[10px] font-mono text-slate-400 dark:text-gray-500 truncate mt-0.5">
+                        accio_config.json
+                      </div>
+                    </div>
+                  </div>
+                  {tab === "acciowork" && (
+                    <ChevronRight
+                      size={14}
+                      className="text-orange-600 dark:text-orange-400 flex-shrink-0"
+                    />
+                  )}
+                </button>
+
                 {/* 应用与 CLI 路径选项 */}
                 <button
                   type="button"
@@ -662,6 +712,17 @@ function AppContent() {
                 >
                   <WorkbuddyPanel />
                 </motion.div>
+              ) : tab === "acciowork" ? (
+                <motion.div
+                  key="acciowork"
+                  initial={{ opacity: 0, y: 8 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -8 }}
+                  transition={{ duration: 0.2, ease: "easeOut" }}
+                  className="w-full flex-1 flex flex-col min-h-0"
+                >
+                  <AccioWorkPanel />
+                </motion.div>
               ) : (
                 <motion.div
                   key="paths"
@@ -688,7 +749,9 @@ function AppContent() {
             ? "claude"
             : lastAgentTab === "workbuddy"
               ? "workbuddy"
-              : "chatgpt"
+              : lastAgentTab === "acciowork"
+                ? "acciowork"
+                : "chatgpt"
         }
         currentUrl="https://bob-api.com/"
         currentKey=""
@@ -697,7 +760,9 @@ function AppContent() {
             ? "claude-3-7-sonnet-20250219"
             : lastAgentTab === "workbuddy"
               ? "gpt-5.6-sol"
-              : "gpt-4o"
+              : lastAgentTab === "acciowork"
+                ? "claude-3-7-sonnet"
+                : "gpt-4o"
         }
       />
 

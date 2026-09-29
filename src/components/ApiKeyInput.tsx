@@ -10,7 +10,7 @@ export interface ApiKeyInputProps {
   placeholder?: string;
   envVarName?: string;
   hintText?: string;
-  accentColor?: "blue" | "purple" | "emerald";
+  accentColor?: "blue" | "purple" | "emerald" | "orange";
 }
 
 export function ApiKeyInput({
@@ -54,6 +54,7 @@ export function ApiKeyInput({
 
   const isEmerald = accentColor === "emerald";
   const isPurple = accentColor === "purple";
+  const isOrange = accentColor === "orange";
 
   return (
     <div className="space-y-1.5">
@@ -65,7 +66,9 @@ export function ApiKeyInput({
               ? "group-focus-within:text-emerald-500"
               : isPurple
                 ? "group-focus-within:text-purple-500"
-                : "group-focus-within:text-blue-500",
+                : isOrange
+                  ? "group-focus-within:text-orange-500"
+                  : "group-focus-within:text-blue-500",
           )}
         >
           <KeyRound size={15} />
@@ -84,7 +87,9 @@ export function ApiKeyInput({
               ? "focus:bg-white dark:focus:bg-[#141724] focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500/30"
               : isPurple
                 ? "focus:bg-white dark:focus:bg-[#141724] focus:border-purple-500 focus:ring-1 focus:ring-purple-500/30"
-                : "focus:bg-white dark:focus:bg-[#141724] focus:border-blue-500 focus:ring-1 focus:ring-blue-500/30",
+                : isOrange
+                  ? "focus:bg-white dark:focus:bg-[#141724] focus:border-orange-500 focus:ring-1 focus:ring-orange-500/30"
+                  : "focus:bg-white dark:focus:bg-[#141724] focus:border-blue-500 focus:ring-1 focus:ring-blue-500/30",
           )}
         />
 
@@ -119,7 +124,9 @@ export function ApiKeyInput({
                   ? "border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-400"
                   : isPurple
                     ? "border-purple-200 bg-purple-50 text-purple-700 hover:bg-purple-100 dark:border-purple-500/30 dark:bg-purple-500/10 dark:text-purple-400"
-                    : "border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100 dark:border-blue-500/30 dark:bg-blue-500/10 dark:text-blue-400",
+                    : isOrange
+                      ? "border-orange-200 bg-orange-50 text-orange-700 hover:bg-orange-100 dark:border-orange-500/30 dark:bg-orange-500/10 dark:text-orange-400"
+                      : "border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100 dark:border-blue-500/30 dark:bg-blue-500/10 dark:text-blue-400",
               )}
               title="一键粘贴剪贴板内容"
             >

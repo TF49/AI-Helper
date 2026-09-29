@@ -1,5 +1,6 @@
 use tauri::Manager;
 
+mod accio;
 mod api_test;
 mod app_paths;
 mod claude;
@@ -28,6 +29,7 @@ fn detect_app_path(app_type: String) -> Result<app_paths::DetectedPathInfo, Stri
         "codex" => Ok(app_paths::detect_codex_cli_path()),
         "chatgpt" => Ok(app_paths::detect_chatgpt_client_path()),
         "workbuddy" => Ok(app_paths::detect_workbuddy_client_path()),
+        "acciowork" => Ok(app_paths::detect_accio_client_path()),
         _ => Err(format!("未知应用类型: {}", app_type)),
     }
 }
@@ -173,6 +175,53 @@ async fn test_workbuddy_stream(
     api_test::test_workbuddy_stream(url, api_key, model, on_event).await
 }
 
+#[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct AccioBridgeStatus {
+    pub is_running: bool,
+    pub port: Option<u16>,
+}
+
+#[tauri::command]
+fn get_accio_config() -> accio::AccioUIConfig {
+    let running = accio::is_bridge_running();
+    let port = accio::get_bridge_port();
+    accio::get_accio_ui_config(running, port)
+}
+
+#[tauri::command]
+fn set_accio_config(config: accio::AccioConfig) -> Result<(), error::AppError> {
+    accio::save_accio_config(&config)
+}
+
+#[tauri::command]
+async fn start_accio_bridge(port: Option<u16>) -> Result<u16, String> {
+    accio::start_bridge(port).await
+}
+
+#[tauri::command]
+async fn stop_accio_bridge() -> Result<(), String> {
+    accio::stop_bridge().await
+}
+
+#[tauri::command]
+fn get_accio_bridge_status() -> AccioBridgeStatus {
+    AccioBridgeStatus {
+        is_running: accio::is_bridge_running(),
+        port: accio::get_bridge_port(),
+    }
+}
+
+#[tauri::command]
+async fn test_accio_stream(
+    url: String,
+    api_key: String,
+    model: String,
+    on_event: tauri::ipc::Channel<api_test::TestStreamEvent>,
+) -> api_test::ApiTestResult {
+    api_test::test_accio_stream(url, api_key, model, on_event).await
+}
+
 #[tauri::command]
 async fn fetch_codex_models(
     url: String,
@@ -312,6 +361,12 @@ pub fn run() {
             test_codex_stream,
             test_claude_stream,
             test_workbuddy_stream,
+            get_accio_config,
+            set_accio_config,
+            start_accio_bridge,
+            stop_accio_bridge,
+            get_accio_bridge_status,
+            test_accio_stream,
             fetch_codex_models,
             fetch_claude_models,
             open_url,

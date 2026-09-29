@@ -11,31 +11,41 @@ import {
   Clock,
   RotateCcw,
 } from "lucide-react";
-import { OpenAIIcon, ClaudeIcon, WorkbuddyIcon } from "./BrandIcons";
+import {
+  OpenAIIcon,
+  ClaudeIcon,
+  WorkbuddyIcon,
+  AccioWorkIcon,
+} from "./BrandIcons";
 import { toast } from "sonner";
 import {
   setCodexConfig,
   setClaudeConfig,
   setWorkbuddyConfig,
+  setAccioConfig,
   testCodexStream,
   testClaudeStream,
   testWorkbuddyStream,
+  testAccioStream,
+  startAccioBridge,
   checkAppProcessStatus,
   restartTargetApp,
 } from "../lib/api";
 import type {
   TestStreamEvent,
   WorkbuddySavePayload,
+  AccioConfig,
 } from "../types";
 
 export interface TerminalTestModalProps {
   open: boolean;
   onClose: () => void;
-  type: "codex" | "claude" | "workbuddy";
+  type: "codex" | "claude" | "workbuddy" | "acciowork";
   url: string;
   apiKey: string;
   model: string;
   workbuddyPayload?: WorkbuddySavePayload;
+  accioPayload?: AccioConfig;
   onSuccess?: () => void;
 }
 
@@ -54,6 +64,7 @@ export function TerminalTestModal({
   apiKey,
   model,
   workbuddyPayload,
+  accioPayload,
   onSuccess,
 }: TerminalTestModalProps) {
   const [status, setStatus] = useState<"running" | "success" | "error">(
@@ -71,6 +82,7 @@ export function TerminalTestModal({
   const [codexRunning, setCodexRunning] = useState(false);
   const [claudeRunning, setClaudeRunning] = useState(false);
   const [workbuddyRunning, setWorkbuddyRunning] = useState(false);
+  const [accioRunning, setAccioRunning] = useState(false);
   const [restartingTarget, setRestartingTarget] = useState<string | null>(null);
   const [showRestartCard, setShowRestartCard] = useState(false);
 
@@ -129,7 +141,7 @@ export function TerminalTestModal({
   }, [countdown, onClose]);
 
   const handleRestart = async (
-    target: "chatgpt" | "codex" | "claude" | "workbuddy",
+    target: "chatgpt" | "codex" | "claude" | "workbuddy" | "acciowork",
   ) => {
     setRestartingTarget(target);
     const targetName =
@@ -139,7 +151,9 @@ export function TerminalTestModal({
           ? "Codex CLI"
           : target === "workbuddy"
             ? "WorkBuddy 客户端"
-            : "Claude Code CLI";
+            : target === "acciowork"
+              ? "Accio Work 客户端"
+              : "Claude Code CLI";
 
     addLog(`🚀 正在执行 ${targetName} 重启/拉起流程...`, "info");
     try {
@@ -153,6 +167,7 @@ export function TerminalTestModal({
       if (target === "codex") setCodexRunning(true);
       if (target === "claude") setClaudeRunning(true);
       if (target === "workbuddy") setWorkbuddyRunning(true);
+      if (target === "acciowork") setAccioRunning(true);
       toast.success(`${targetName} 操作成功！`);
       setCountdown(5);
     } catch (err) {
@@ -184,13 +199,17 @@ export function TerminalTestModal({
         ? "ChatGPT (Codex)"
         : type === "workbuddy"
           ? "WorkBuddy"
-          : "Claude Code";
+          : type === "acciowork"
+            ? "Accio Work"
+            : "Claude Code";
     const protocolName =
       type === "codex"
         ? "OpenAI Responses Protocol"
         : type === "workbuddy"
           ? "OpenAI Chat Completions Protocol"
-          : "Anthropic Messages Protocol";
+          : type === "acciowork"
+            ? "OpenAI Chat Completions -> Accio Gemini Bridge"
+            : "Anthropic Messages Protocol";
 
     addLog(`🚀 启动 ${platformName} 连通性测试与配置流程...`, "info");
     addLog(`目标协议: ${protocolName}`, "dim");
@@ -224,6 +243,13 @@ export function TerminalTestModal({
         );
       } else if (type === "workbuddy") {
         testResult = await testWorkbuddyStream(
+          url,
+          apiKey.trim(),
+          model.trim(),
+          handleEvent,
+        );
+      } else if (type === "acciowork") {
+        testResult = await testAccioStream(
           url,
           apiKey.trim(),
           model.trim(),
@@ -285,6 +311,26 @@ export function TerminalTestModal({
             "success",
           );
           addLog(`💡 WorkBuddy 已通过内部热重载机制自动感知新模型`, "info");
+        } else if (type === "acciowork") {
+          addLog(`💾 正在将配置写入本地 ~/.ai-helper/accio_config.json...`, "info");
+          const payload: AccioConfig = accioPayload || {
+            base_url: url,
+            api_key: apiKey.trim(),
+            model: model.trim(),
+            bridge_port: 8787,
+            official_gateway: "https://phoenix-gw.alibaba.com",
+            fallback_official: false,
+            prevent_official_leak: true,
+          };
+          await setAccioConfig(payload);
+          addLog(`✓ 配置文件 ~/.ai-helper/accio_config.json 已成功写入`, "success");
+          addLog(`🔌 正在唤醒/刷新本地 Bridge 中继网关服务...`, "info");
+          try {
+            const port = await startAccioBridge(payload.bridge_port);
+            addLog(`✓ 本地中继网关已就绪，监听于 http://127.0.0.1:${port}`, "success");
+          } catch (bridgeErr) {
+            addLog(`⚠️ Bridge 启动告警: ${bridgeErr}`, "warn");
+          }
         } else {
           addLog(`💾 正在将配置写入本地配置文件与系统环境变量...`, "info");
           await setClaudeConfig(url, apiKey.trim(), model.trim());
@@ -325,6 +371,12 @@ export function TerminalTestModal({
               "info",
             );
           else addLog(`💡 当前未检测到运行中的 WorkBuddy 进程`, "dim");
+        } else if (type === "acciowork") {
+          const aRun = await checkAppProcessStatus("acciowork").catch(() => false);
+          setAccioRunning(aRun);
+          anyRunning = aRun;
+          if (aRun) addLog(`💡 检测到 Accio Work 客户端正在运行中`, "info");
+          else addLog(`💡 当前未检测到运行中的 Accio Work 进程`, "dim");
         } else {
           const cRun = await checkAppProcessStatus("claude").catch(() => false);
           setClaudeRunning(cRun);
@@ -425,7 +477,9 @@ export function TerminalTestModal({
                   ? "Codex"
                   : type === "workbuddy"
                     ? "WorkBuddy"
-                    : "Claude Code"}{" "}
+                    : type === "acciowork"
+                      ? "Accio Work"
+                      : "Claude Code"}{" "}
                 连通性测试与配置部署终端
               </span>
             </div>
@@ -558,9 +612,13 @@ export function TerminalTestModal({
                     ? workbuddyRunning
                       ? "检测到 WorkBuddy 运行中 (新模型已热重载生效)"
                       : "当前未运行"
-                    : claudeRunning
-                      ? "检测到 CLI 运行中"
-                      : "当前未运行"}
+                    : type === "acciowork"
+                      ? accioRunning
+                        ? "检测到 Accio Work 客户端运行中"
+                        : "当前未运行"
+                      : claudeRunning
+                        ? "检测到 CLI 运行中"
+                        : "当前未运行"}
               </span>
             </div>
 
@@ -623,6 +681,25 @@ export function TerminalTestModal({
                       {workbuddyRunning
                         ? "重启 WorkBuddy 客户端"
                         : "启动 WorkBuddy 客户端"}
+                    </span>
+                  </button>
+                ) : type === "acciowork" ? (
+                  <button
+                    type="button"
+                    onClick={() => void handleRestart("acciowork")}
+                    disabled={restartingTarget !== null}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-orange-600 hover:bg-orange-700 text-white text-xs font-medium transition-colors shadow-xs cursor-pointer disabled:opacity-60"
+                    title="安全终止并重新拉起 Accio Work 客户端 (自动注入本地网关)"
+                  >
+                    {restartingTarget === "acciowork" ? (
+                      <Loader2 size={13} className="animate-spin" />
+                    ) : (
+                      <AccioWorkIcon size={13} />
+                    )}
+                    <span>
+                      {accioRunning
+                        ? "重启 Accio Work 客户端"
+                        : "启动 Accio Work 客户端"}
                     </span>
                   </button>
                 ) : (

@@ -85,6 +85,11 @@ pub fn resolve_app_path(app_type: &str, custom_path: Option<&str>) -> Option<Str
             .as_deref()
             .filter(|p| !p.trim().is_empty())
             .map(|s| s.to_string()),
+        "acciowork" => saved
+            .accio_client_path
+            .as_deref()
+            .filter(|p| !p.trim().is_empty())
+            .map(|s| s.to_string()),
         _ => None,
     };
 
@@ -106,6 +111,7 @@ pub fn resolve_app_path(app_type: &str, custom_path: Option<&str>) -> Option<Str
         "codex" => detect_codex_cli_path(),
         "chatgpt" => detect_chatgpt_client_path(),
         "workbuddy" => crate::app_paths::detect_workbuddy_client_path(),
+        "acciowork" => crate::app_paths::detect_accio_client_path(),
         _ => return None,
     };
 
@@ -123,6 +129,9 @@ pub fn resolve_app_path(app_type: &str, custom_path: Option<&str>) -> Option<Str
             let _ = crate::app_paths::save_app_paths(&updated);
         } else if app_type == "workbuddy" {
             updated.workbuddy_client_path = Some(detected.path.clone());
+            let _ = crate::app_paths::save_app_paths(&updated);
+        } else if app_type == "acciowork" {
+            updated.accio_client_path = Some(detected.path.clone());
             let _ = crate::app_paths::save_app_paths(&updated);
         }
         Some(detected.path)
@@ -272,7 +281,179 @@ pub fn launch_app(app_type: &str, custom_path: Option<&str>) -> Result<String, S
                 Err("当前平台不支持自动拉起 WorkBuddy 客户端".to_string())
             }
         }
+
+        "acciowork" => {
+            let path_str = resolved_path.ok_or_else(|| {
+                "未找到 Accio Work 安装路径，请先在路径管理中配置或执行自动探测".to_string()
+            })?;
+
+            #[cfg(target_os = "windows")]
+            {
+                let path = Path::new(&path_str);
+                if path.exists() {
+                    let bridge_port =
+                        crate::accio::bridge::get_bridge_port().unwrap_or_else(|| {
+                            tauri::async_runtime::block_on(async {
+                                crate::accio::bridge::start_bridge(None)
+                                    .await
+                                    .unwrap_or(8787)
+                            })
+                        });
+                    let config = crate::accio::config::load_accio_config();
+
+                    let mut cmd = Command::new(path);
+                    cmd.env(
+                        "GATEWAY_BASE_URL",
+                        format!("http://127.0.0.1:{}", bridge_port),
+                    )
+                    .env(
+                        "ADK_BASE_URL",
+                        format!("http://127.0.0.1:{}/api/adk/llm", bridge_port),
+                    )
+                    .env("ADK_MODEL", &config.model)
+                    .env(
+                        "EMBEDDING_BASE_URL",
+                        format!("http://127.0.0.1:{}/api/adk/embedding/embed", bridge_port),
+                    )
+                    .env("EMBEDDING_MODEL", "text-embedding-3-small");
+
+                    if let Some(parent) = path.parent() {
+                        cmd.current_dir(parent);
+                    }
+                    cmd.spawn()
+                        .map_err(|e| format!("启动 Accio Work 客户端失败: {}", e))?;
+
+                    let launched_at_ms = chrono::Local::now().timestamp_millis();
+                    let initial_log_len = dirs::home_dir()
+                        .map(|h| h.join(".accio").join("logs").join("sdk.log"))
+                        .and_then(|p| std::fs::metadata(p).ok())
+                        .map(|m| m.len())
+                        .unwrap_or(0);
+
+                    if config.prevent_official_leak {
+                        tokio::spawn(async move {
+                            verify_accio_gateway_safety(
+                                bridge_port,
+                                launched_at_ms,
+                                initial_log_len,
+                            )
+                            .await;
+                        });
+                    }
+
+                    return Ok(format!(
+                        "Accio Work 客户端已成功注入本地网关 (127.0.0.1:{}) 并拉起: {}",
+                        bridge_port, path_str
+                    ));
+                }
+                Err(format!("Accio Work 可执行文件不存在: {}", path_str))
+            }
+
+            #[cfg(not(target_os = "windows"))]
+            {
+                Err("当前平台不支持自动拉起 Accio Work 客户端".to_string())
+            }
+        }
         _ => Err(format!("未知应用类型: {}", app_type)),
+    }
+}
+
+/// 监控 Accio Work 日志，检测是否漏跑阿里官方网关；若违规直连官方则触发熔断强杀
+pub async fn verify_accio_gateway_safety(
+    expected_port: u16,
+    launched_at_ms: i64,
+    initial_log_len: u64,
+) {
+    let Some(home) = dirs::home_dir() else {
+        return;
+    };
+    let sdk_log = home.join(".accio").join("logs").join("sdk.log");
+    let expected_gw = format!("127.0.0.1:{}", expected_port);
+
+    for _ in 0..60 {
+        tokio::time::sleep(Duration::from_millis(500)).await;
+        if !crate::app_paths::is_target_running("acciowork") {
+            break;
+        }
+        if !sdk_log.exists() {
+            continue;
+        }
+        if let Ok(metadata) = std::fs::metadata(&sdk_log) {
+            let file_size = metadata.len();
+            // 若文件尚未增长且早于启动时间，等待应用写入新日志
+            if file_size <= initial_log_len && file_size > 0 {
+                continue;
+            }
+
+            let read_bytes = file_size.min(512 * 1024) as usize;
+            if let Ok(file) = std::fs::File::open(&sdk_log) {
+                use std::io::{Read, Seek, SeekFrom};
+                let mut reader = std::io::BufReader::new(file);
+                if file_size > read_bytes as u64 {
+                    let _ = reader.seek(SeekFrom::End(-(read_bytes as i64)));
+                }
+                let mut buffer = Vec::with_capacity(read_bytes);
+                if reader.read_to_end(&mut buffer).is_ok() {
+                    let text = String::from_utf8_lossy(&buffer);
+                    for line in text.lines().rev() {
+                        let trimmed = line.trim();
+                        if trimmed.is_empty() {
+                            continue;
+                        }
+
+                        // 尝试从 JSON 日志行提取时间戳，过滤启动前的旧日志
+                        if let Ok(entry) = serde_json::from_str::<serde_json::Value>(trimmed) {
+                            if let Some(ts) = entry.get("timestamp").and_then(|t| t.as_i64()) {
+                                if ts < launched_at_ms - 1000 {
+                                    continue;
+                                }
+                            }
+                            let msg = entry.get("message").and_then(|m| m.as_str()).unwrap_or("");
+                            if msg.contains("[Gateway] Config: gatewayBaseUrl=") {
+                                if msg.contains(&format!("gatewayBaseUrl=http://{}", expected_gw))
+                                    || msg.contains(&format!(
+                                        "gatewayBaseUrl=http://localhost:{}",
+                                        expected_port
+                                    ))
+                                {
+                                    log::info!(
+                                        "Accio Work 环境变量注入成功，网关校验合规 (127.0.0.1:{})",
+                                        expected_port
+                                    );
+                                    return;
+                                } else if msg.contains("phoenix-gw.alibaba.com") {
+                                    log::error!(
+                                        "【安全熔断警报】检测到 Accio Work 直连了阿里官方网关 (phoenix-gw.alibaba.com)！为防官方“i豆”资产被误扣，正在立即强制熔断终止 Accio 进程..."
+                                    );
+                                    let _ = kill_app_processes("acciowork");
+                                    return;
+                                }
+                            }
+                        } else if trimmed.contains("[Gateway] Config: gatewayBaseUrl=") {
+                            // 非标准 JSON 但包含网关标记
+                            if trimmed.contains(&format!("gatewayBaseUrl=http://{}", expected_gw))
+                                || trimmed.contains(&format!(
+                                    "gatewayBaseUrl=http://localhost:{}",
+                                    expected_port
+                                ))
+                            {
+                                log::info!(
+                                    "Accio Work 环境变量注入成功，网关校验合规 (127.0.0.1:{})",
+                                    expected_port
+                                );
+                                return;
+                            } else if trimmed.contains("phoenix-gw.alibaba.com") {
+                                log::error!(
+                                    "【安全熔断警报】检测到 Accio Work 直连了阿里官方网关 (phoenix-gw.alibaba.com)！为防官方“i豆”资产被误扣，正在立即强制熔断终止 Accio 进程..."
+                                );
+                                let _ = kill_app_processes("acciowork");
+                                return;
+                            }
+                        }
+                    }
+                }
+            }
+        }
     }
 }
 
