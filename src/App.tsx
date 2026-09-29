@@ -23,12 +23,10 @@ import {
   OpenAIIcon,
   ClaudeIcon,
   WorkbuddyIcon,
-  TraeWorkIcon,
 } from "./components/BrandIcons";
 import { ChatGPTPanel } from "./components/ChatGPTPanel";
 import { ClaudePanel } from "./components/ClaudePanel";
 import { WorkbuddyPanel } from "./components/WorkbuddyPanel";
-import { TraeWorkPanel } from "./components/TraeWorkPanel";
 import { AppPathsPanel } from "./components/AppPathsPanel";
 import { QuickToolsModal } from "./components/QuickToolsModal";
 import { InitializationModal } from "./components/InitializationModal";
@@ -41,7 +39,7 @@ import { cn } from "./lib/utils";
 import { checkBobApiNetwork, openUrl, isTauri } from "./lib/api";
 import { ForceUpdateModal, useAppUpdater } from "./components/ForceUpdateModal";
 
-type Tab = "chatgpt" | "claude" | "workbuddy" | "traework" | "paths";
+type Tab = "chatgpt" | "claude" | "workbuddy" | "paths";
 type NetworkState = "checking" | "reachable" | "unreachable";
 
 const mockWindow = {
@@ -59,7 +57,7 @@ export default function App() {
 function AppContent() {
   const [tab, setTab] = useState<Tab>("chatgpt");
   const [lastAgentTab, setLastAgentTab] = useState<
-    "chatgpt" | "claude" | "workbuddy" | "traework"
+    "chatgpt" | "claude" | "workbuddy"
   >("chatgpt");
   const [networkState, setNetworkState] = useState<NetworkState>("checking");
   const [toolsOpen, setToolsOpen] = useState(false);
@@ -73,8 +71,7 @@ function AppContent() {
     if (
       newTab === "chatgpt" ||
       newTab === "claude" ||
-      newTab === "workbuddy" ||
-      newTab === "traework"
+      newTab === "workbuddy"
     ) {
       setLastAgentTab(newTab);
     }
@@ -457,45 +454,6 @@ function AppContent() {
                   )}
                 </button>
 
-                {/* Trae Work 选项 */}
-                <button
-                  type="button"
-                  onClick={() => switchTab("traework")}
-                  className={cn(
-                    "relative w-full flex items-center justify-between p-2.5 rounded-xl border text-left transition-all cursor-pointer",
-                    tab === "traework"
-                      ? "border-sky-500/70 bg-sky-50/80 text-sky-900 dark:bg-sky-500/15 dark:border-sky-500/50 dark:text-sky-100 shadow-xs"
-                      : "border-transparent text-slate-600 dark:text-gray-400 hover:bg-slate-100/80 dark:hover:bg-white/5 hover:text-slate-900 dark:hover:text-gray-200",
-                  )}
-                >
-                  <div className="flex items-center gap-2.5 min-w-0">
-                    <div
-                      className={cn(
-                        "w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 transition-colors",
-                        tab === "traework"
-                          ? "bg-sky-600 text-white dark:bg-sky-500 dark:text-white"
-                          : "bg-slate-100 text-slate-500 dark:bg-white/5 dark:text-gray-400",
-                      )}
-                    >
-                      <TraeWorkIcon size={16} />
-                    </div>
-                    <div className="min-w-0">
-                      <div className="text-xs font-semibold truncate leading-tight">
-                        Trae Work
-                      </div>
-                      <div className="text-[10px] font-mono text-slate-400 dark:text-gray-500 truncate mt-0.5">
-                        state.vscdb
-                      </div>
-                    </div>
-                  </div>
-                  {tab === "traework" && (
-                    <ChevronRight
-                      size={14}
-                      className="text-sky-600 dark:text-sky-400 flex-shrink-0"
-                    />
-                  )}
-                </button>
-
                 {/* 应用与 CLI 路径选项 */}
                 <button
                   type="button"
@@ -704,17 +662,6 @@ function AppContent() {
                 >
                   <WorkbuddyPanel />
                 </motion.div>
-              ) : tab === "traework" ? (
-                <motion.div
-                  key="traework"
-                  initial={{ opacity: 0, y: 8 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -8 }}
-                  transition={{ duration: 0.2, ease: "easeOut" }}
-                  className="w-full flex-1 flex flex-col min-h-0"
-                >
-                  <TraeWorkPanel />
-                </motion.div>
               ) : (
                 <motion.div
                   key="paths"
@@ -741,16 +688,14 @@ function AppContent() {
             ? "claude"
             : lastAgentTab === "workbuddy"
               ? "workbuddy"
-              : lastAgentTab === "traework"
-                ? "traework"
-                : "chatgpt"
+              : "chatgpt"
         }
         currentUrl="https://bob-api.com/"
         currentKey=""
         currentModel={
           lastAgentTab === "claude"
             ? "claude-3-7-sonnet-20250219"
-            : lastAgentTab === "workbuddy" || lastAgentTab === "traework"
+            : lastAgentTab === "workbuddy"
               ? "gpt-5.6-sol"
               : "gpt-4o"
         }

@@ -8,7 +8,6 @@ mod error;
 mod model_fetch;
 mod network;
 mod process_manager;
-mod traework;
 mod updater;
 mod workbuddy;
 
@@ -29,7 +28,6 @@ fn detect_app_path(app_type: String) -> Result<app_paths::DetectedPathInfo, Stri
         "codex" => Ok(app_paths::detect_codex_cli_path()),
         "chatgpt" => Ok(app_paths::detect_chatgpt_client_path()),
         "workbuddy" => Ok(app_paths::detect_workbuddy_client_path()),
-        "traework" => Ok(app_paths::detect_traework_client_path()),
         _ => Err(format!("未知应用类型: {}", app_type)),
     }
 }
@@ -111,37 +109,6 @@ fn delete_workbuddy_model(
     model_id: String,
 ) -> Result<Vec<workbuddy::WorkbuddyModelEntry>, error::AppError> {
     workbuddy::delete_workbuddy_model(model_id)
-}
-
-#[tauri::command]
-fn get_traework_config() -> Result<traework::TraeWorkUIConfig, error::AppError> {
-    traework::get_traework_config()
-}
-
-#[tauri::command]
-fn set_traework_config(
-    payload: traework::TraeWorkSavePayload,
-) -> Result<traework::TraeWorkSaveResult, error::AppError> {
-    traework::set_traework_config(payload)
-}
-
-#[tauri::command]
-fn delete_traework_model(
-    model_name: String,
-) -> Result<Vec<traework::TraeWorkModelEntry>, error::AppError> {
-    traework::delete_traework_model(model_name)
-}
-
-#[tauri::command]
-async fn test_traework_stream(
-    url: String,
-    api_key: String,
-    model: String,
-    api_format: String,
-    is_full_url: bool,
-    on_event: tauri::ipc::Channel<api_test::TestStreamEvent>,
-) -> api_test::ApiTestResult {
-    api_test::test_traework_stream(url, api_key, model, api_format, is_full_url, on_event).await
 }
 
 #[tauri::command]
@@ -337,10 +304,6 @@ pub fn run() {
             get_workbuddy_config,
             set_workbuddy_config,
             delete_workbuddy_model,
-            get_traework_config,
-            set_traework_config,
-            delete_traework_model,
-            test_traework_stream,
             check_for_updates,
             download_and_install_update,
             check_bob_api_network,

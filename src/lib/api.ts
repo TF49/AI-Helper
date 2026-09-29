@@ -11,10 +11,6 @@ import type {
   WorkbuddyUIConfig,
   WorkbuddySavePayload,
   WorkbuddyModelItem,
-  TraeWorkUIConfig,
-  TraeWorkSavePayload,
-  TraeWorkModelItem,
-  TraeWorkSaveResult,
 } from "../types";
 
 export const isTauri =
@@ -25,27 +21,6 @@ function getMockResponse<T>(cmd: string, _args?: Record<string, unknown>): T {
   switch (cmd) {
     case "check_bob_api_network":
       return { reachable: true, latency_ms: 45, checked_at: Date.now() } as unknown as T;
-    case "get_traework_config":
-      return {
-        config_exists: true,
-        config_path: "C:\\Users\\Administrator\\AppData\\Roaming\\Trae\\User\\globalStorage\\state.vscdb",
-        api_format: "custom_responses_compatible",
-        base_url: "https://bob-api.com/v1/responses",
-        is_full_url: true,
-        configured_models: [],
-      } as unknown as T;
-    case "set_traework_config": {
-      const payload = _args?.payload as { api_format?: string; model?: string } | undefined;
-      const provider = payload?.api_format || "custom_responses_compatible";
-      const model = payload?.model || "gpt-5.6-sol";
-      return {
-        persistence_mode: "web_preview_mock",
-        verified: true,
-        model_name: `${provider}//${model}`,
-        custom_model_id: null,
-        warning: "当前为 Web Preview 模拟写入，桌面版才会实际修改 Trae state.vscdb。",
-      } as unknown as T;
-    }
     case "get_codex_config":
       return {
         config_exists: true,
@@ -69,7 +44,7 @@ function getMockResponse<T>(cmd: string, _args?: Record<string, unknown>): T {
         configured_models: [],
       } as unknown as T;
     case "get_app_paths":
-      return { claude: null, codex: null, chatgpt: null, workbuddy: null, traework: null } as unknown as T;
+      return { claude: null, codex: null, chatgpt: null, workbuddy: null } as unknown as T;
     case "detect_all_app_paths":
       return [] as unknown as T;
     case "fetch_codex_models":
@@ -104,7 +79,7 @@ export async function saveAppPaths(config: AppPathsConfig): Promise<void> {
 }
 
 export async function detectAppPath(
-  appType: "claude" | "codex" | "chatgpt" | "workbuddy" | "traework",
+  appType: "claude" | "codex" | "chatgpt" | "workbuddy",
 ): Promise<DetectedPathInfo> {
   return invoke<DetectedPathInfo>("detect_app_path", { appType });
 }
@@ -114,19 +89,19 @@ export async function detectAllAppPaths(): Promise<DetectedPathInfo[]> {
 }
 
 export async function browseAppPath(
-  appType: "claude" | "codex" | "chatgpt" | "workbuddy" | "traework",
+  appType: "claude" | "codex" | "chatgpt" | "workbuddy",
 ): Promise<string | null> {
   return invoke<string | null>("browse_app_path", { appType });
 }
 
 export async function checkAppProcessStatus(
-  appType: "claude" | "codex" | "chatgpt" | "workbuddy" | "traework",
+  appType: "claude" | "codex" | "chatgpt" | "workbuddy",
 ): Promise<boolean> {
   return invoke<boolean>("check_app_process_status", { appType });
 }
 
 export async function restartTargetApp(
-  appType: "claude" | "codex" | "chatgpt" | "workbuddy" | "traework",
+  appType: "claude" | "codex" | "chatgpt" | "workbuddy",
   customPath?: string,
 ): Promise<string> {
   return invoke<string>("restart_target_app", { appType, customPath });
@@ -170,22 +145,6 @@ export async function deleteWorkbuddyModel(
   modelId: string,
 ): Promise<WorkbuddyModelItem[]> {
   return invoke<WorkbuddyModelItem[]>("delete_workbuddy_model", { modelId });
-}
-
-export async function getTraeWorkConfig(): Promise<TraeWorkUIConfig> {
-  return invoke<TraeWorkUIConfig>("get_traework_config");
-}
-
-export async function setTraeWorkConfig(
-  payload: TraeWorkSavePayload,
-): Promise<TraeWorkSaveResult> {
-  return invoke<TraeWorkSaveResult>("set_traework_config", { payload });
-}
-
-export async function deleteTraeWorkModel(
-  modelName: string,
-): Promise<TraeWorkModelItem[]> {
-  return invoke<TraeWorkModelItem[]>("delete_traework_model", { modelName });
 }
 
 export async function checkBobApiNetwork(): Promise<NetworkStatus> {
@@ -272,31 +231,6 @@ export async function testWorkbuddyStream(
     url,
     apiKey,
     model,
-    onEvent: channel,
-  });
-}
-
-export async function testTraeWorkStream(
-  url: string,
-  apiKey: string,
-  model: string,
-  apiFormat: string,
-  isFullUrl: boolean,
-  onEvent: (event: TestStreamEvent) => void,
-): Promise<ApiTestResult> {
-  if (!isTauri) {
-    onEvent({ type: "log", data: { text: "[Web Preview] 模拟发起 Trae Work 连接测试...", level: "info" } });
-    onEvent({ type: "log", data: { text: `端点: ${url} | 格式: ${apiFormat}`, level: "dim" } });
-    onEvent({ type: "finish", data: { success: true, message: "测试连接成功", latency_ms: 60, status_code: 200 } });
-    return { success: true, message: "测试连接成功", latencyMs: 60, statusCode: 200 };
-  }
-  const channel = new Channel<TestStreamEvent>(onEvent);
-  return invoke<ApiTestResult>("test_traework_stream", {
-    url,
-    apiKey,
-    model,
-    apiFormat,
-    isFullUrl,
     onEvent: channel,
   });
 }

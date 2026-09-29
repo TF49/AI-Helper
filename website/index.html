@@ -4,8 +4,8 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>AI Helper - 惊艳，不止于快。专为 AI 开发者打造的配置管理中枢 & 进程调度平台</title>
-  <meta name="description" content="AI Helper 采用 Rust 2024 与 Tauri v2 打造，配备 Anime.js 电影级动态引擎与极简纯白工业美学，全面纳管 Claude Code CLI、OpenAI Codex、Trae Work 与 Workbuddy。">
-  <meta name="keywords" content="AI Helper, Claude Code, OpenAI Codex, Trae Work, Tauri, Rust, Anime.js, AI Agent, 进程管理, 配置中心">
+  <meta name="description" content="AI Helper 采用 Rust 2024 与 Tauri v2 打造，配备 Anime.js 电影级动态引擎与极简纯白工业美学，全面纳管 Claude Code CLI、OpenAI Codex 与 Workbuddy。">
+  <meta name="keywords" content="AI Helper, Claude Code, OpenAI Codex, Workbuddy, Tauri, Rust, Anime.js, AI Agent, 进程管理, 配置中心">
   <link rel="icon" type="image/x-icon" href="assets/favicon.ico">
   <link rel="stylesheet" href="assets/style.css">
 </head>
@@ -27,7 +27,7 @@
         <img src="assets/logo.png" alt="AI Helper Logo" class="brand-symbol">
         <span class="brand-title">
           <span>AI Helper</span>
-          <span class="tag-version current-version-tag">v1.0.33</span>
+          <span class="tag-version current-version-tag">v1.0.34</span>
         </span>
       </a>
 
@@ -69,17 +69,17 @@
       </h1>
 
       <p class="keynote-subhead">
-        专为专业开发者打磨的桌面中枢平台。全面接管 <strong>Claude Code</strong>、<strong>OpenAI Codex</strong>、<strong>Trae Work</strong> 与 <strong>Workbuddy</strong>，带来极速感知、原子下发、流式握手与进程树安全热重启。
+        专为专业开发者打磨的桌面中枢平台。全面接管 <strong>Claude Code</strong>、<strong>OpenAI Codex</strong> 与 <strong>Workbuddy</strong>，带来极速感知、原子下发、流式握手与进程树安全热重启。
       </p>
 
       <div class="hero-cta-group">
-        <a id="btn-hero-download" href="https://github.com/TF49/AI-Helper/releases/download/v1.0.33/AI-Helper-v1.0.33-Windows-x64-Setup.exe" class="btn-hero-primary">
+        <a id="btn-hero-download" href="https://github.com/TF49/AI-Helper/releases/download/v1.0.34/AI-Helper-v1.0.34-Windows-x64-Setup.exe" class="btn-hero-primary">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
             <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
             <polyline points="7 10 12 15 17 10"></polyline>
             <line x1="12" y1="15" x2="12" y2="3"></line>
           </svg>
-          <span id="hero-btn-text">绔嬪嵆涓嬭浇 Windows 瀹夎鐗?(v1.0.33)</span>
+          <span id="hero-btn-text">绔嬪嵆涓嬭浇 Windows 瀹夎鐗?(v1.0.34)</span>
         </a>
 
         <a href="#downloads" class="btn-hero-secondary">
@@ -173,11 +173,6 @@
                 <span>🟣</span>
                 <span>Claude Code CLI</span>
                 <span class="sim-badge-tag">v3.7</span>
-              </button>
-              <button class="sim-tab-button" data-tab="traework">
-                <span>🔵</span>
-                <span>TRAE Work (字节)</span>
-                <span class="sim-badge-tag">SQLite</span>
               </button>
               <button class="sim-tab-button" data-tab="workbuddy">
                 <span>🟠</span>
@@ -289,7 +284,7 @@
             </li>
             <li>
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"></polyline></svg>
-              <span><strong>🔵 Trae Work (字节跳动)</strong>：直连 SQLite 3 <code>state.vscdb</code> 数据库，自定义模型热注入！</span>
+              <span><strong>🟠 Workbuddy AI</strong>：调阅与原子写入 <code>~/.workbuddy-ai/models.json</code>，提供进程内环境变量即时注入；</span>
             </li>
           </ul>
         </div>
@@ -393,7 +388,7 @@
         <span class="keynote-label">Official Downloads</span>
         <h2 class="keynote-h2">立即下载体验</h2>
         <p class="keynote-lead">
-          当前官方最新版本：<strong class="current-version-tag" style="color: var(--accent-blue);">v1.0.33</strong> · 纯净无广告 · 永久开源免费
+          当前官方最新版本：<strong class="current-version-tag" style="color: var(--accent-blue);">v1.0.34</strong> · 纯净无广告 · 永久开源免费
         </p>
       </div>
 
@@ -426,11 +421,11 @@
             </li>
           </ul>
 
-          <a id="link-dl-setup" href="https://github.com/TF49/AI-Helper/releases/download/v1.0.33/AI-Helper-v1.0.33-Windows-x64-Setup.exe" class="btn-dl-apple">
+          <a id="link-dl-setup" href="https://github.com/TF49/AI-Helper/releases/download/v1.0.34/AI-Helper-v1.0.34-Windows-x64-Setup.exe" class="btn-dl-apple">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
             <span>GitHub 直链下载 (Setup.exe)</span>
           </a>
-          <a id="link-dl-fast-setup" href="https://ghfast.top/https://github.com/TF49/AI-Helper/releases/download/v1.0.33/AI-Helper-v1.0.33-Windows-x64-Setup.exe" class="btn-dl-fast-mirror">
+          <a id="link-dl-fast-setup" href="https://ghfast.top/https://github.com/TF49/AI-Helper/releases/download/v1.0.34/AI-Helper-v1.0.34-Windows-x64-Setup.exe" class="btn-dl-fast-mirror">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#38bdf8" stroke-width="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon></svg>
             <span>🚀 国内高速镜像下载 (直连不卡顿)</span>
           </a>
@@ -462,11 +457,11 @@
             </li>
           </ul>
 
-          <a id="link-dl-zip" href="https://github.com/TF49/AI-Helper/releases/download/v1.0.33/AI-Helper-v1.0.33-Windows-x64-Standalone.zip" class="btn-dl-apple">
+          <a id="link-dl-zip" href="https://github.com/TF49/AI-Helper/releases/download/v1.0.34/AI-Helper-v1.0.34-Windows-x64-Standalone.zip" class="btn-dl-apple">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
             <span>GitHub 直链下载 (ZIP)</span>
           </a>
-          <a id="link-dl-fast-zip" href="https://ghfast.top/https://github.com/TF49/AI-Helper/releases/download/v1.0.33/AI-Helper-v1.0.33-Windows-x64-Standalone.zip" class="btn-dl-fast-mirror">
+          <a id="link-dl-fast-zip" href="https://ghfast.top/https://github.com/TF49/AI-Helper/releases/download/v1.0.34/AI-Helper-v1.0.34-Windows-x64-Standalone.zip" class="btn-dl-fast-mirror">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#a855f7" stroke-width="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon></svg>
             <span>🚀 国内高速镜像下载 (免安装)</span>
           </a>
@@ -523,7 +518,7 @@
         </div>
 
         <div class="hash-record-pill">
-          <span id="checksum-setup-filename">AI-Helper-v1.0.33-Windows-x64-Setup.exe</span>
+          <span id="checksum-setup-filename">AI-Helper-v1.0.34-Windows-x64-Setup.exe</span>
           <button id="btn-copy-checksum" class="btn-copy-hash" onclick="copyReleaseChecksumUrl()">
             <span>查看发布页 SHA256</span>
           </button>
@@ -558,7 +553,7 @@
             <svg class="faq-trigger-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
           </button>
           <div class="faq-content-drawer">
-            绝对安全！AI Helper 所有配置下发操作均在本地进行，直接原子读写你本地的配置文件（如 <code>~/.claude.json</code>、<code>~/.codex/config.toml</code>、以及 Trae 的 SQLite <code>state.vscdb</code> 本地数据库）。除向你指定的 API 网关发起流式连通性测试握手外，绝不向任何第三方云端或遥测服务器上传你的任何凭证。全部代码均开源可供审计。
+            绝对安全！AI Helper 所有配置下发操作均在本地进行，直接原子读写你本地的配置文件（如 <code>~/.claude.json</code>、<code>~/.codex/config.toml</code>、以及 <code>~/.workbuddy-ai/models.json</code>）。除向你指定的 API 网关发起流式连通性测试握手外，绝不向任何第三方云端或遥测服务器上传你的任何凭证。全部代码均开源可供审计。
           </div>
         </div>
 
@@ -584,11 +579,11 @@
 
         <div class="faq-accordion-row">
           <button class="faq-trigger-btn">
-            <span>5. 如何支持自定义模型与字节跳动 Trae Work？</span>
+            <span>5. 如何支持自定义模型与 Workbuddy AI？</span>
             <svg class="faq-trigger-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
           </button>
           <div class="faq-content-drawer">
-            从最新版本起，AI Helper 全面引入了对 Trae Work (TRAE SOLO CN) 的专有支持。在界面中选择 Trae 标签页，填入你的自定义模型名称（如 <code>gpt-5.6-sol</code>、<code>claude-3-7-sonnet</code>）及 Base URL，点击保存即可由 Rust 后端自动直写入本地 SQLite 状态数据库，启动 Trae 后无需复杂配置直接可用！
+            AI Helper 全面引入了对 Workbuddy AI 自定义模型的专有支持。在界面中选择 WorkBuddy 标签页，填入你的自定义模型名称（如 <code>gpt-5.6-sol</code>、<code>claude-3-7-sonnet</code>）及 Base URL，点击保存即可由 Rust 后端自动直写入本地配置并热重载生效，启动 WorkBuddy 后无需复杂配置直接可用！
           </div>
         </div>
       </div>
@@ -635,7 +630,6 @@
             <ul>
               <li><a href="#">Claude Code CLI</a></li>
               <li><a href="#">OpenAI Codex / ChatGPT</a></li>
-              <li><a href="#">Trae Work (字节跳动)</a></li>
               <li><a href="#">Workbuddy AI</a></li>
             </ul>
           </div>

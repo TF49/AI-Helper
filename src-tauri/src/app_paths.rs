@@ -10,8 +10,6 @@ pub struct AppPathsConfig {
     pub chatgpt_client_path: Option<String>,
     #[serde(default)]
     pub workbuddy_client_path: Option<String>,
-    #[serde(default)]
-    pub traework_client_path: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -132,28 +130,6 @@ fn matches_process(
                 || name_lower == "workbuddy"
                 || cmd_line.contains("workbuddyai.exe")
                 || cmd_line.contains("workbuddy.exe")
-        }
-        "traework" => {
-            if name_lower.contains("crashpad")
-                || name_lower.contains("doctor")
-                || name_lower.contains("unins")
-                || name_lower.contains("wer")
-                || name_lower.contains("sandbox")
-                || name_lower.contains("helper")
-            {
-                return false;
-            }
-            name_lower == "trae solo cn.exe"
-                || name_lower == "trae solo cn"
-                || name_lower == "traework.exe"
-                || name_lower == "traework"
-                || name_lower == "trae.exe"
-                || name_lower == "trae"
-                || name_lower.contains("traework cn")
-                || cmd_line.contains("trae solo cn.exe")
-                || cmd_line.contains("traework.exe")
-                || cmd_line.contains("trae.exe")
-                || cmd_line.contains("trae solo cn")
         }
         _ => false,
     }
@@ -850,295 +826,6 @@ pub fn detect_workbuddy_client_path() -> DetectedPathInfo {
     detect_workbuddy_client_path_internal(is_running, running_exe)
 }
 
-#[cfg(target_os = "windows")]
-fn find_traework_in_registry() -> Option<(String, String)> {
-    use winreg::{
-        enums::{HKEY_CURRENT_USER, HKEY_LOCAL_MACHINE},
-        RegKey,
-    };
-
-    let uninstall_targets = [
-        (
-            HKEY_CURRENT_USER,
-            "Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall",
-        ),
-        (
-            HKEY_LOCAL_MACHINE,
-            "Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall",
-        ),
-        (
-            HKEY_LOCAL_MACHINE,
-            "Software\\Wow6432Node\\Microsoft\\Windows\\CurrentVersion\\Uninstall",
-        ),
-    ];
-
-    for (root_hkey, subkey_path) in uninstall_targets {
-        let root = RegKey::predef(root_hkey);
-        if let Ok(uninstall_key) = root.open_subkey(subkey_path) {
-            for sub_name in uninstall_key.enum_keys().filter_map(|r| r.ok()) {
-                if let Ok(sub) = uninstall_key.open_subkey(&sub_name) {
-                    let display_name: String = sub.get_value("DisplayName").unwrap_or_default();
-                    let display_lower = display_name.to_lowercase();
-                    let name_lower = sub_name.to_lowercase();
-
-                    if display_lower.contains("trae")
-                        || name_lower.contains("trae")
-                        || display_lower.contains("traework")
-                        || name_lower.contains("traework")
-                    {
-                        // 1. 优先尝试 DisplayIcon
-                        if let Ok(icon) = sub.get_value::<String, _>("DisplayIcon") {
-                            let clean_icon = icon
-                                .split(',')
-                                .next()
-                                .unwrap_or("")
-                                .trim()
-                                .trim_matches('"');
-                            if !clean_icon.is_empty() {
-                                let p = Path::new(clean_icon);
-                                if p.exists() {
-                                    let label = if !display_name.is_empty() {
-                                        display_name
-                                    } else {
-                                        "Trae Work".to_string()
-                                    };
-                                    return Some((p.to_string_lossy().to_string(), label));
-                                }
-                            }
-                        }
-
-                        // 2. 尝试 InstallLocation
-                        if let Ok(install_loc) = sub.get_value::<String, _>("InstallLocation") {
-                            let clean_loc = install_loc.trim().trim_matches('"');
-                            if !clean_loc.is_empty() {
-                                let loc_path = Path::new(clean_loc);
-                                for exe_name in &["TRAE SOLO CN.exe", "TraeWork.exe", "Trae.exe"] {
-                                    let cand = loc_path.join(exe_name);
-                                    if cand.exists() {
-                                        let label = if !display_name.is_empty() {
-                                            display_name
-                                        } else {
-                                            "Trae Work".to_string()
-                                        };
-                                        return Some((cand.to_string_lossy().to_string(), label));
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    // 检查 App Paths 注册表
-    for root_hkey in [HKEY_CURRENT_USER, HKEY_LOCAL_MACHINE] {
-        let root = RegKey::predef(root_hkey);
-        for exe_name in &["TRAE SOLO CN.exe", "TraeWork.exe", "Trae.exe"] {
-            let app_path_key = format!(
-                "Software\\Microsoft\\Windows\\CurrentVersion\\App Paths\\{}",
-                exe_name
-            );
-            if let Ok(key) = root.open_subkey(&app_path_key) {
-                if let Ok(default_val) = key.get_value::<String, _>("") {
-                    let clean = default_val.trim().trim_matches('"');
-                    if !clean.is_empty() && Path::new(clean).exists() {
-                        return Some((clean.to_string(), format!("App Paths ({})", exe_name)));
-                    }
-                }
-            }
-        }
-    }
-
-    None
-}
-
-/// 探测 Trae Work 客户端路径
-pub fn detect_traework_client_path_internal(
-    is_running: bool,
-    running_exe: Option<PathBuf>,
-) -> DetectedPathInfo {
-    // 0. 优先检查用户已保存的自定义安装路径
-    let saved = load_app_paths();
-    if let Some(ref custom) = saved.traework_client_path {
-        let p = PathBuf::from(custom);
-        if p.exists() {
-            return DetectedPathInfo {
-                app_type: "traework".to_string(),
-                path: custom.clone(),
-                exists: true,
-                source: "user_custom".to_string(),
-                is_running,
-                extra_info: Some("用户自定义配置路径".to_string()),
-            };
-        }
-    }
-
-    // 1. 尝试从运行中进程获取真实可执行路径
-    if let Some(path) = running_exe {
-        return DetectedPathInfo {
-            app_type: "traework".to_string(),
-            path: path.to_string_lossy().to_string(),
-            exists: true,
-            source: "running_process".to_string(),
-            is_running,
-            extra_info: Some("探测自当前运行中进程".to_string()),
-        };
-    }
-
-    #[cfg(target_os = "windows")]
-    {
-        // 2. 检查注册表
-        if let Some((reg_path, display_name)) = find_traework_in_registry() {
-            return DetectedPathInfo {
-                app_type: "traework".to_string(),
-                path: reg_path,
-                exists: true,
-                source: "registry".to_string(),
-                is_running,
-                extra_info: Some(format!("探测自 Windows 注册表安装记录 ({})", display_name)),
-            };
-        }
-
-        // 3. 检查特定盘符与标准开发者路径（如 E:\Developer Tool\TRAE SOLO CN\TRAE SOLO CN.exe）
-        for drive_letter in ['E', 'C', 'D', 'F'] {
-            let custom_candidates = [
-                format!(
-                    "{}:\\Developer Tool\\TRAE SOLO CN\\TRAE SOLO CN.exe",
-                    drive_letter
-                ),
-                format!(
-                    "{}:\\Developer Tools\\TRAE SOLO CN\\TRAE SOLO CN.exe",
-                    drive_letter
-                ),
-                format!("{}:\\Developer Tool\\Trae\\Trae.exe", drive_letter),
-                format!("{}:\\Developer Tool\\TraeWork\\TraeWork.exe", drive_letter),
-                format!("{}:\\TRAE SOLO CN\\TRAE SOLO CN.exe", drive_letter),
-                format!("{}:\\TraeWork\\TraeWork.exe", drive_letter),
-                format!("{}:\\Trae\\Trae.exe", drive_letter),
-            ];
-            for cand_str in &custom_candidates {
-                let p = Path::new(cand_str);
-                if p.exists() {
-                    return DetectedPathInfo {
-                        app_type: "traework".to_string(),
-                        path: cand_str.clone(),
-                        exists: true,
-                        source: "standard_dir".to_string(),
-                        is_running,
-                        extra_info: Some("本地磁盘安装目录".to_string()),
-                    };
-                }
-            }
-        }
-
-        // 4. 检查常见 LocalAppData 安装路径
-        if let Ok(local_appdata) = std::env::var("LOCALAPPDATA") {
-            let local_base = PathBuf::from(&local_appdata);
-            let candidates = [
-                local_base
-                    .join("Programs")
-                    .join("TRAE SOLO CN")
-                    .join("TRAE SOLO CN.exe"),
-                local_base.join("Programs").join("Trae").join("Trae.exe"),
-                local_base
-                    .join("Programs")
-                    .join("TraeWork")
-                    .join("TraeWork.exe"),
-                local_base.join("TRAE SOLO CN").join("TRAE SOLO CN.exe"),
-                local_base.join("Trae").join("Trae.exe"),
-            ];
-            for cand in candidates {
-                if cand.exists() {
-                    return DetectedPathInfo {
-                        app_type: "traework".to_string(),
-                        path: cand.to_string_lossy().to_string(),
-                        exists: true,
-                        source: "standard_dir".to_string(),
-                        is_running,
-                        extra_info: Some("标准用户安装目录 (%LOCALAPPDATA%\\Programs)".to_string()),
-                    };
-                }
-            }
-        }
-
-        // 5. 检查系统 Program Files 目录
-        let mut pf_dirs = Vec::new();
-        if let Ok(pf) = std::env::var("ProgramFiles") {
-            pf_dirs.push(PathBuf::from(pf));
-        }
-        if let Ok(pfx86) = std::env::var("ProgramFiles(x86)") {
-            pf_dirs.push(PathBuf::from(pfx86));
-        }
-        for pf in pf_dirs {
-            let candidates = [
-                pf.join("TRAE SOLO CN").join("TRAE SOLO CN.exe"),
-                pf.join("Trae").join("Trae.exe"),
-                pf.join("TraeWork").join("TraeWork.exe"),
-            ];
-            for cand in candidates {
-                if cand.exists() {
-                    return DetectedPathInfo {
-                        app_type: "traework".to_string(),
-                        path: cand.to_string_lossy().to_string(),
-                        exists: true,
-                        source: "standard_dir".to_string(),
-                        is_running,
-                        extra_info: Some("系统安装目录 (Program Files)".to_string()),
-                    };
-                }
-            }
-        }
-    }
-
-    #[cfg(target_os = "macos")]
-    {
-        let mac_candidates = [
-            "/Applications/Trae.app/Contents/MacOS/Trae",
-            "/Applications/TRAE SOLO.app/Contents/MacOS/TRAE SOLO",
-        ];
-        for cand in mac_candidates {
-            if Path::new(cand).exists() {
-                return DetectedPathInfo {
-                    app_type: "traework".to_string(),
-                    path: cand.to_string(),
-                    exists: true,
-                    source: "standard_dir".to_string(),
-                    is_running,
-                    extra_info: Some("macOS 应用目录 (/Applications)".to_string()),
-                };
-            }
-        }
-    }
-
-    // 6. 检查 PATH 环境变量
-    if let Some(path) = find_in_path("trae").or_else(|| find_in_path("traework")) {
-        return DetectedPathInfo {
-            app_type: "traework".to_string(),
-            path: path.to_string_lossy().to_string(),
-            exists: true,
-            source: "path_env".to_string(),
-            is_running,
-            extra_info: Some("探测自系统 PATH 环境变量".to_string()),
-        };
-    }
-
-    DetectedPathInfo {
-        app_type: "traework".to_string(),
-        path: String::new(),
-        exists: false,
-        source: "not_found".to_string(),
-        is_running: false,
-        extra_info: None,
-    }
-}
-
-/// 探测 Trae Work 客户端路径
-pub fn detect_traework_client_path() -> DetectedPathInfo {
-    let (is_running, running_exe) = inspect_target_process("traework");
-    detect_traework_client_path_internal(is_running, running_exe)
-}
-
 /// 单次扫描系统进程树，高效全量探测所有应用路径
 pub fn detect_all_app_paths() -> Vec<DetectedPathInfo> {
     let mut system = System::new();
@@ -1148,14 +835,12 @@ pub fn detect_all_app_paths() -> Vec<DetectedPathInfo> {
     let (codex_run, codex_exe) = inspect_target_process_with_system("codex", &system);
     let (chatgpt_run, chatgpt_exe) = inspect_target_process_with_system("chatgpt", &system);
     let (workbuddy_run, workbuddy_exe) = inspect_target_process_with_system("workbuddy", &system);
-    let (traework_run, traework_exe) = inspect_target_process_with_system("traework", &system);
 
     vec![
         detect_claude_cli_path_internal(claude_run, claude_exe),
         detect_codex_cli_path_internal(codex_run, codex_exe),
         detect_chatgpt_client_path_internal(chatgpt_run, chatgpt_exe),
         detect_workbuddy_client_path_internal(workbuddy_run, workbuddy_exe),
-        detect_traework_client_path_internal(traework_run, traework_exe),
     ]
 }
 
@@ -1186,11 +871,6 @@ pub fn browse_path_dialog(app_type: &str) -> Result<Option<String>, String> {
             "可执行文件 (*.exe)",
             "*.exe",
             "选择 WorkBuddy 客户端路径 (WorkBuddyAI.exe)",
-        ),
-        "traework" => (
-            "可执行文件 (*.exe)",
-            "*.exe",
-            "选择 Trae Work 客户端路径 (TRAE SOLO CN.exe)",
         ),
         _ => return Err(format!("不支持的应用类型选择: {}", app_type)),
     };
@@ -1263,13 +943,6 @@ mod tests {
     }
 
     #[test]
-    fn test_detect_traework_client_path_does_not_panic() {
-        let detected = detect_traework_client_path();
-        assert_eq!(detected.app_type, "traework");
-        println!("Detected Trae Work: {:?}", detected);
-    }
-
-    #[test]
     fn test_app_paths_config_serde() {
         let cfg = AppPathsConfig {
             claude_cli_path: Some("C:\\bin\\claude.cmd".to_string()),
@@ -1277,9 +950,6 @@ mod tests {
             chatgpt_client_path: Some("C:\\Program Files\\ChatGPT\\ChatGPT.exe".to_string()),
             workbuddy_client_path: Some(
                 "E:\\Developer Tool\\Workbuddy\\WorkBuddyAI\\WorkBuddyAI.exe".to_string(),
-            ),
-            traework_client_path: Some(
-                "E:\\Developer Tool\\TRAE SOLO CN\\TRAE SOLO CN.exe".to_string(),
             ),
         };
 
@@ -1293,6 +963,5 @@ mod tests {
             deserialized.workbuddy_client_path,
             cfg.workbuddy_client_path
         );
-        assert_eq!(deserialized.traework_client_path, cfg.traework_client_path);
     }
 }

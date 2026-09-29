@@ -11,39 +11,31 @@ import {
   Clock,
   RotateCcw,
 } from "lucide-react";
-import { OpenAIIcon, ClaudeIcon, WorkbuddyIcon, TraeWorkIcon } from "./BrandIcons";
+import { OpenAIIcon, ClaudeIcon, WorkbuddyIcon } from "./BrandIcons";
 import { toast } from "sonner";
 import {
   setCodexConfig,
   setClaudeConfig,
   setWorkbuddyConfig,
-  setTraeWorkConfig,
   testCodexStream,
   testClaudeStream,
   testWorkbuddyStream,
-  testTraeWorkStream,
   checkAppProcessStatus,
   restartTargetApp,
 } from "../lib/api";
 import type {
   TestStreamEvent,
   WorkbuddySavePayload,
-  TraeWorkSavePayload,
-  TraeApiFormat,
-  TraeWorkSaveResult,
 } from "../types";
 
 export interface TerminalTestModalProps {
   open: boolean;
   onClose: () => void;
-  type: "codex" | "claude" | "workbuddy" | "traework";
+  type: "codex" | "claude" | "workbuddy";
   url: string;
   apiKey: string;
   model: string;
   workbuddyPayload?: WorkbuddySavePayload;
-  traeworkPayload?: TraeWorkSavePayload;
-  apiFormat?: TraeApiFormat;
-  isFullUrl?: boolean;
   onSuccess?: () => void;
 }
 
@@ -62,9 +54,6 @@ export function TerminalTestModal({
   apiKey,
   model,
   workbuddyPayload,
-  traeworkPayload,
-  apiFormat,
-  isFullUrl,
   onSuccess,
 }: TerminalTestModalProps) {
   const [status, setStatus] = useState<"running" | "success" | "error">(
@@ -82,7 +71,6 @@ export function TerminalTestModal({
   const [codexRunning, setCodexRunning] = useState(false);
   const [claudeRunning, setClaudeRunning] = useState(false);
   const [workbuddyRunning, setWorkbuddyRunning] = useState(false);
-  const [traeworkRunning, setTraeworkRunning] = useState(false);
   const [restartingTarget, setRestartingTarget] = useState<string | null>(null);
   const [showRestartCard, setShowRestartCard] = useState(false);
 
@@ -141,7 +129,7 @@ export function TerminalTestModal({
   }, [countdown, onClose]);
 
   const handleRestart = async (
-    target: "chatgpt" | "codex" | "claude" | "workbuddy" | "traework",
+    target: "chatgpt" | "codex" | "claude" | "workbuddy",
   ) => {
     setRestartingTarget(target);
     const targetName =
@@ -151,9 +139,7 @@ export function TerminalTestModal({
           ? "Codex CLI"
           : target === "workbuddy"
             ? "WorkBuddy 客户端"
-            : target === "traework"
-              ? "Trae Work 客户端"
-              : "Claude Code CLI";
+            : "Claude Code CLI";
 
     addLog(`🚀 正在执行 ${targetName} 重启/拉起流程...`, "info");
     try {
@@ -167,7 +153,6 @@ export function TerminalTestModal({
       if (target === "codex") setCodexRunning(true);
       if (target === "claude") setClaudeRunning(true);
       if (target === "workbuddy") setWorkbuddyRunning(true);
-      if (target === "traework") setTraeworkRunning(true);
       toast.success(`${targetName} 操作成功！`);
       setCountdown(5);
     } catch (err) {
@@ -199,21 +184,13 @@ export function TerminalTestModal({
         ? "ChatGPT (Codex)"
         : type === "workbuddy"
           ? "WorkBuddy"
-          : type === "traework"
-            ? "Trae Work"
-            : "Claude Code";
+          : "Claude Code";
     const protocolName =
       type === "codex"
         ? "OpenAI Responses Protocol"
         : type === "workbuddy"
           ? "OpenAI Chat Completions Protocol"
-          : type === "traework"
-            ? (apiFormat === "custom_anthropic_compatible"
-                ? "Anthropic Messages Protocol"
-                : apiFormat === "custom_responses_compatible"
-                  ? "OpenAI Responses Protocol"
-                  : "OpenAI Chat Completions Protocol")
-            : "Anthropic Messages Protocol";
+          : "Anthropic Messages Protocol";
 
     addLog(`🚀 启动 ${platformName} 连通性测试与配置流程...`, "info");
     addLog(`目标协议: ${protocolName}`, "dim");
@@ -252,15 +229,6 @@ export function TerminalTestModal({
           model.trim(),
           handleEvent,
         );
-      } else if (type === "traework") {
-        testResult = await testTraeWorkStream(
-          url,
-          apiKey.trim(),
-          model.trim(),
-          apiFormat || "custom_responses_compatible",
-          isFullUrl ?? true,
-          handleEvent,
-        );
       } else {
         testResult = await testClaudeStream(
           url,
@@ -283,7 +251,6 @@ export function TerminalTestModal({
 
       if (testSuccess) {
         // 保存配置
-        let traeworkSaveResult: TraeWorkSaveResult | null = null;
         if (type === "codex") {
           addLog(`💾 正在将配置写入本地配置文件与系统环境变量...`, "info");
           await setCodexConfig(url, apiKey.trim(), model.trim());
@@ -318,41 +285,6 @@ export function TerminalTestModal({
             "success",
           );
           addLog(`💡 WorkBuddy 已通过内部热重载机制自动感知新模型`, "info");
-        } else if (type === "traework") {
-          addLog(
-            `💾 正在将配置写入 Trae 本地 SQLite 状态库 (state.vscdb)...`,
-            "info",
-          );
-          if (traeworkPayload) {
-            traeworkSaveResult = await setTraeWorkConfig(traeworkPayload);
-          } else {
-            traeworkSaveResult = await setTraeWorkConfig({
-              api_format: apiFormat || "custom_responses_compatible",
-              base_url: url.trim(),
-              is_full_url: isFullUrl ?? true,
-              model: model.trim(),
-              display_name: model.trim(),
-              api_key: apiKey.trim(),
-              supports_images: true,
-              thinking_mode: "default",
-              max_turn: 500,
-              token_input: null,
-              token_output: null,
-              temperature: null,
-              top_p: null,
-              top_k: null,
-            });
-          }
-          if (!traeworkSaveResult.verified) {
-            throw new Error("Trae 本地状态库写入后校验失败");
-          }
-          addLog(
-            `✓ Trae Work 模型已写入本地数据库并重新读取校验通过 (${traeworkSaveResult.model_name})`,
-            "success",
-          );
-          if (traeworkSaveResult.warning) {
-            addLog(`⚠️ ${traeworkSaveResult.warning}`, "warn");
-          }
         } else {
           addLog(`💾 正在将配置写入本地配置文件与系统环境变量...`, "info");
           await setClaudeConfig(url, apiKey.trim(), model.trim());
@@ -393,18 +325,6 @@ export function TerminalTestModal({
               "info",
             );
           else addLog(`💡 当前未检测到运行中的 WorkBuddy 进程`, "dim");
-        } else if (type === "traework") {
-          const twRun = await checkAppProcessStatus("traework").catch(
-            () => false,
-          );
-          setTraeworkRunning(twRun);
-          anyRunning = twRun;
-          if (twRun)
-            addLog(
-              `💡 检测到 Trae Work 客户端正在运行中`,
-              "info",
-            );
-          else addLog(`💡 当前未检测到运行中的 Trae Work 进程`, "dim");
         } else {
           const cRun = await checkAppProcessStatus("claude").catch(() => false);
           setClaudeRunning(cRun);
@@ -421,19 +341,13 @@ export function TerminalTestModal({
         }
 
         addLog(
-          type === "traework"
-            ? `👉 本地兼容配置已写入并校验，请在下方重启 Trae 后检查模型列表`
-            : `👉 配置部署成功！请在下方确认是否立即重启客户端生效`,
+          `👉 配置部署成功！请在下方确认是否立即重启客户端生效`,
           "info",
         );
         setStatus("success");
         setShowRestartCard(true);
         onSuccess?.();
-        if (type === "traework" && traeworkSaveResult?.warning) {
-          toast.warning("Trae 本地写入已验证，但不保证重启后仍保留");
-        } else {
-          toast.success(`${platformName} 连通性测试通过，配置已成功保存！`);
-        }
+        toast.success(`${platformName} 连通性测试通过，配置已成功保存！`);
       } else {
         if (!openRef.current) return;
         setStatus("error");
@@ -511,9 +425,7 @@ export function TerminalTestModal({
                   ? "Codex"
                   : type === "workbuddy"
                     ? "WorkBuddy"
-                    : type === "traework"
-                      ? "Trae Work"
-                      : "Claude Code"}{" "}
+                    : "Claude Code"}{" "}
                 连通性测试与配置部署终端
               </span>
             </div>
@@ -634,9 +546,7 @@ export function TerminalTestModal({
               <div className="flex items-center gap-2">
                 <RotateCcw size={14} className="text-amber-400" />
                 <span className="text-xs font-semibold text-slate-200">
-                  {type === "traework"
-                    ? "本地配置已写入并校验，是否立即重启 Trae 检查模型列表？"
-                    : "配置已部署成功，是否立即重启客户端应用新配置？"}
+                  配置已部署成功，是否立即重启客户端应用新配置？
                 </span>
               </div>
               <span className="text-[11px] text-slate-400">
@@ -648,13 +558,9 @@ export function TerminalTestModal({
                     ? workbuddyRunning
                       ? "检测到 WorkBuddy 运行中 (新模型已热重载生效)"
                       : "当前未运行"
-                    : type === "traework"
-                      ? traeworkRunning
-                        ? "检测到 Trae Work 运行中"
-                        : "当前未运行"
-                      : claudeRunning
-                        ? "检测到 CLI 运行中"
-                        : "当前未运行"}
+                    : claudeRunning
+                      ? "检测到 CLI 运行中"
+                      : "当前未运行"}
               </span>
             </div>
 
@@ -719,25 +625,6 @@ export function TerminalTestModal({
                         : "启动 WorkBuddy 客户端"}
                     </span>
                   </button>
-                ) : type === "traework" ? (
-                  <button
-                    type="button"
-                    onClick={() => void handleRestart("traework")}
-                    disabled={restartingTarget !== null}
-                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-sky-600 hover:bg-sky-700 text-white text-xs font-medium transition-colors shadow-xs cursor-pointer disabled:opacity-60"
-                    title="重启 Trae Work 客户端"
-                  >
-                    {restartingTarget === "traework" ? (
-                      <Loader2 size={13} className="animate-spin" />
-                    ) : (
-                      <TraeWorkIcon size={13} />
-                    )}
-                    <span>
-                      {traeworkRunning
-                        ? "重启 Trae Work 客户端"
-                        : "启动 Trae Work 客户端"}
-                    </span>
-                  </button>
                 ) : (
                   <button
                     type="button"
@@ -763,11 +650,7 @@ export function TerminalTestModal({
               <button
                 type="button"
                 onClick={() => {
-                  toast.info(
-                    type === "traework"
-                      ? "已保存本地兼容配置；重启后请检查模型列表，服务端同步可能覆盖它"
-                      : "已保存配置，请稍后手动重启客户端生效",
-                  );
+                  toast.info("已保存配置，请稍后手动重启客户端生效");
                   onClose();
                 }}
                 className="px-3 py-1.5 rounded-lg text-xs font-medium text-slate-400 hover:text-white hover:bg-white/10 transition-colors cursor-pointer"
@@ -793,9 +676,7 @@ export function TerminalTestModal({
               <>
                 <CheckCircle2 size={16} className="text-emerald-400" />
                 <span className="text-emerald-400 font-medium">
-                  {type === "traework"
-                    ? "测试通过，本地配置已写入并校验"
-                    : "测试通过，配置已生效！"}
+                  测试通过，配置已生效！
                 </span>
               </>
             )}

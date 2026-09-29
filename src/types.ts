@@ -21,11 +21,10 @@ export interface AppPathsConfig {
   codex_cli_path?: string | null;
   chatgpt_client_path?: string | null;
   workbuddy_client_path?: string | null;
-  traework_client_path?: string | null;
 }
 
 export interface DetectedPathInfo {
-  app_type: "claude" | "codex" | "chatgpt" | "workbuddy" | "traework";
+  app_type: "claude" | "codex" | "chatgpt" | "workbuddy";
   path: string;
   exists: boolean;
   source: string;
@@ -161,98 +160,4 @@ export interface WorkbuddySavePayload {
   supported_efforts: string[];
   max_input_tokens?: number | null;
   max_output_tokens?: number | null;
-}
-
-export type TraeApiFormat =
-  | "custom_openai_compatible"
-  | "custom_responses_compatible"
-  | "custom_anthropic_compatible";
-
-export const TRAEWORK_MODEL_SUGGESTIONS = [
-  "gpt-5.6-sol",
-  "gpt-4o",
-  "gpt-4o-mini",
-  "claude-sonnet-4-5",
-  "claude-opus-4-5",
-  "deepseek-v3.1",
-  "deepseek-r1",
-] as const;
-
-export interface TraeWorkModelItem {
-  name: string;
-  display_name: string;
-  provider: string;
-  base_url?: string | null;
-  is_custom_base_url?: boolean | null;
-  custom_model_id?: string | null;
-  model_type?: string | null;
-  builder?: boolean | null;
-  is_preset?: boolean | null;
-  client_connect?: boolean | null;
-  status?: boolean | null;
-  ak?: string | null;
-  multimodal?: boolean | null;
-  config_source?: number | null;
-  selectable?: boolean | null;
-  auth_type?: number | null;
-  thinking_enable?: number | null;
-  max_turn?: number | null;
-  temperature?: number | null;
-  top_p?: number | null;
-  top_k?: number | null;
-  max_tokens?: number | null;
-  prompt_max_tokens?: number | null;
-}
-
-export interface TraeWorkUIConfig {
-  base_url: string;
-  api_key: string;
-  model: string;
-  api_format: string;
-  display_name: string;
-  config_exists: boolean;
-  config_path: string;
-  is_installed: boolean;
-  app_path?: string | null;
-  is_full_url: boolean;
-
-  supports_images: boolean;
-  thinking_mode: string;
-  max_turn: number;
-  token_input?: number | null;
-  token_output?: number | null;
-
-  temperature?: number | null;
-  top_p?: number | null;
-  top_k?: number | null;
-
-  configured_models: TraeWorkModelItem[];
-}
-
-export interface TraeWorkSavePayload {
-  api_format: string;
-  base_url: string;
-  is_full_url: boolean;
-  model: string;
-  display_name?: string | null;
-  api_key: string;
-
-  supports_images: boolean;
-  thinking_mode: string;
-  max_turn: number;
-  token_input?: number | null;
-  token_output?: number | null;
-
-  temperature?: number | null;
-  top_p?: number | null;
-  top_k?: number | null;
-}
-
-export interface TraeWorkSaveResult {
-  /** 当前实现只保证本地 state.vscdb 兼容写入，不代表 Trae 服务端注册成功。 */
-  persistence_mode: string;
-  verified: boolean;
-  model_name: string;
-  custom_model_id?: string | null;
-  warning?: string | null;
 }

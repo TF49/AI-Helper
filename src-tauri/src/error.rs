@@ -13,6 +13,7 @@ pub enum AppError {
     ConfigNotFound(String),
     #[error("注册表操作错误: {0}")]
     Registry(String),
+    #[allow(dead_code)]
     #[error("操作错误: {0}")]
     Other(String),
 }

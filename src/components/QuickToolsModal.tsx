@@ -11,13 +11,13 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { openUrl } from "../lib/api";
-import { OpenAIIcon, ClaudeIcon, WorkbuddyIcon, TraeWorkIcon } from "./BrandIcons";
+import { OpenAIIcon, ClaudeIcon, WorkbuddyIcon } from "./BrandIcons";
 import { ThemeToggle } from "./ThemeToggle";
 
 interface QuickToolsModalProps {
   open: boolean;
   onClose: () => void;
-  activeTab: "chatgpt" | "claude" | "workbuddy" | "traework";
+  activeTab: "chatgpt" | "claude" | "workbuddy";
   currentUrl: string;
   currentKey: string;
   currentModel: string;
@@ -33,7 +33,7 @@ export function QuickToolsModal({
 }: QuickToolsModalProps) {
   const [copiedCurl, setCopiedCurl] = useState(false);
   const [selectedProtocol, setSelectedProtocol] = useState<
-    "chatgpt" | "claude" | "workbuddy" | "traework"
+    "chatgpt" | "claude" | "workbuddy"
   >(activeTab);
 
   useEffect(() => {
@@ -47,7 +47,7 @@ export function QuickToolsModal({
     currentModel ||
     (selectedProtocol === "claude"
       ? "claude-3-7-sonnet-20250219"
-      : selectedProtocol === "workbuddy" || selectedProtocol === "traework"
+      : selectedProtocol === "workbuddy"
         ? "gpt-5.6-sol"
         : "gpt-4o");
   const base = currentUrl.endsWith("/") ? currentUrl : `${currentUrl}/`;
@@ -55,9 +55,7 @@ export function QuickToolsModal({
   const curlCommand =
     selectedProtocol === "claude"
       ? `curl ${base}v1/messages \\\n  -H "Content-Type: application/json" \\\n  -H "x-api-key: ${effectiveKey}" \\\n  -H "anthropic-version: 2023-06-01" \\\n  -d '{\n    "model": "${effectiveModel}",\n    "max_tokens": 100,\n    "messages": [{"role": "user", "content": "Hi!"}]\n  }'`
-      : selectedProtocol === "traework"
-        ? `curl ${base}v1/responses \\\n  -H "Content-Type: application/json" \\\n  -H "Authorization: Bearer ${effectiveKey}" \\\n  -d '{\n    "model": "${effectiveModel}",\n    "input": "Hi!"\n  }'`
-        : `curl ${base}v1/chat/completions \\\n  -H "Content-Type: application/json" \\\n  -H "Authorization: Bearer ${effectiveKey}" \\\n  -d '{\n    "model": "${effectiveModel}",\n    "messages": [{"role": "user", "content": "Hi!"}]\n  }'`;
+      : `curl ${base}v1/chat/completions \\\n  -H "Content-Type: application/json" \\\n  -H "Authorization: Bearer ${effectiveKey}" \\\n  -d '{\n    "model": "${effectiveModel}",\n    "messages": [{"role": "user", "content": "Hi!"}]\n  }'`;
 
   const handleCopyCurl = async () => {
     try {
@@ -153,18 +151,6 @@ export function QuickToolsModal({
                     <WorkbuddyIcon size={11} />
                     WorkBuddy
                   </button>
-                  <button
-                    type="button"
-                    onClick={() => setSelectedProtocol("traework")}
-                    className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md font-medium transition-colors cursor-pointer ${
-                      selectedProtocol === "traework"
-                        ? "bg-sky-600 text-white shadow-2xs"
-                        : "text-slate-600 dark:text-gray-400 hover:text-slate-900 dark:hover:text-white"
-                    }`}
-                  >
-                    <TraeWorkIcon size={11} />
-                    Trae Work
-                  </button>
                 </div>
                 <button
                   type="button"
@@ -229,17 +215,6 @@ export function QuickToolsModal({
                 </code>
                 ，API Key
                 仅以明文形式直接保存在配置文件中（无需注入系统环境变量），支持客户端内部实时热重载。
-              </p>
-              <p>
-                •{" "}
-                <strong className="text-slate-800 dark:text-gray-200">
-                  Trae Work (TRAE SOLO CN)
-                </strong>
-                : 自定义模型参数与端点保存在 SQLite 全局状态库{" "}
-                <code className="text-sky-600 dark:text-sky-300 font-mono font-medium">
-                  %APPDATA%\TRAE SOLO CN\User\globalStorage\state.vscdb
-                </code>
-                ，API Key 经 Windows 机制安全加密存储，支持多模型并发配置与各工作模式（Solo Work / Solo Agent / Solo Design）自适应生效。
               </p>
               <p className="text-slate-400 dark:text-gray-500 text-[11px]">
                 提示：修改配置后，可通过应用与路径管理或主界面一键重启对应的客户端或
