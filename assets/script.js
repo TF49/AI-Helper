@@ -3,7 +3,7 @@
  * Integrated: Anime.js (v3.2.2) + GSAP (v3.12.5) + React-Bits
  */
 
-const CURRENT_VERSION = "v1.0.33";
+const CURRENT_VERSION = "v1.0.34";
 const GITHUB_REPO = "TF49/AI-Helper";
 const GITHUB_RELEASES_URL = `https://github.com/${GITHUB_REPO}/releases`;
 const GHFAST_PREFIX = "https://ghfast.top/";
@@ -37,20 +37,6 @@ const SIMULATOR_DATA = {
       " 200 OK | Stream completed safely with 0 errors."
     ],
     status: "已接管 · 运行良好"
-  },
-  traework: {
-    title: "🔵 字节跳动 Trae Work (SOLO CN)",
-    desc: "直连 SQLite 3 state.vscdb 全局状态数据库，秒级写入自定义模型与反代网关",
-    configPath: "%APPDATA%\\TRAE SOLO CN\\User\\globalStorage\\state.vscdb",
-    apiUrl: "https://bob-api.com/v1/responses",
-    model: "gpt-5.6-sol",
-    chips: ["gpt-5.6-sol", "claude-3-7-sonnet", "deepseek-r1", "qwen-max-latest"],
-    sampleTokens: [
-      "TRAE Work state.vscdb opened via SQLite3.",
-      " Injected ItemTable: 2297297108739577:AI.agent.model.model_list_map.",
-      " Hot sync complete! Custom models available in Trae workspace."
-    ],
-    status: "SQLite 握手就绪"
   },
   workbuddy: {
     title: "🟠 Workbuddy AI 工作流中枢",
