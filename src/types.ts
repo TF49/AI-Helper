@@ -194,3 +194,92 @@ export interface AccioBridgeStatus {
   port?: number | null;
 }
 
+// ── 用户认证与 API Key 凭据类型定义 (PRD 桌面登录方案 B) ──
+
+export interface SiteStatus {
+  password_login_enabled: boolean;
+  password_login_encryption_enabled: boolean;
+  captcha_enabled: boolean;
+  captcha_type?: string | null;
+  slide_captcha_check: boolean;
+}
+
+export interface EncryptionKeyData {
+  enabled: boolean;
+  kid: string;
+  public_key: string;
+}
+
+export interface CaptchaGenerateData {
+  captcha_id: string;
+  master_image: string;
+  tile_image: string;
+  master_width: number;
+  master_height: number;
+  tile_width: number;
+  tile_height: number;
+  thumb_display_x: number;
+  thumb_display_y: number;
+}
+
+export interface UserInfo {
+  id: number;
+  username: string;
+  display_name?: string | null;
+}
+
+export interface LoginPayload {
+  username: string;
+  password?: string | null;
+  password_encrypted?: string | null;
+  encryption_key_id?: string | null;
+}
+
+export interface TwoFaRequirement {
+  require_2fa: boolean;
+  flow_token: string;
+  expires_at: number;
+}
+
+export interface LoginSuccessData {
+  user: UserInfo;
+  access_token: string;
+  access_expires_at: number;
+  session_sid?: string | null;
+}
+
+export type LoginResult =
+  | {
+      type: "success";
+      user: UserInfo;
+      access_token: string;
+      access_expires_at: number;
+      session_sid?: string | null;
+    }
+  | {
+      type: "require_2fa";
+      require_2fa: boolean;
+      flow_token: string;
+      expires_at: number;
+    };
+
+export interface TokenItem {
+  id: number;
+  name: string;
+  key: string;
+  status: number; // 1: 正常可用, 2: 已禁用, 3: 已过期, 4: 额度耗尽
+  expired_time: number;
+  unlimited_quota: boolean;
+  remain_quota: number;
+  group?: string | null;
+}
+
+export interface CurrentAuthState {
+  is_logged_in: boolean;
+  user?: UserInfo | null;
+  selected_token_id?: number | null;
+  selected_token_name?: string | null;
+  access_token_expires_at?: number | null;
+}
+
+

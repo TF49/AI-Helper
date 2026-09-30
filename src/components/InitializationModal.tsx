@@ -36,6 +36,7 @@ import {
   WorkbuddyIcon,
   AccioWorkIcon,
 } from "./BrandIcons";
+import { ApiKeyInput } from "./ApiKeyInput";
 import { motion, AnimatePresence } from "motion/react";
 import { toast } from "sonner";
 import { exit } from "@tauri-apps/plugin-process";
@@ -2449,11 +2450,9 @@ export function InitializationModal({
                             <label className="text-[11px] text-slate-500 dark:text-gray-400 font-medium">
                               认证密钥 (API Key)
                             </label>
-                            <input
-                              type="password"
+                            <ApiKeyInput
                               value={editApiKey}
-                              onChange={(e) => setEditApiKey(e.target.value)}
-                              className="w-full px-3 py-1.5 rounded-lg border text-xs font-mono bg-white dark:bg-black/40 border-slate-200 dark:border-white/10 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                              onChange={setEditApiKey}
                               placeholder="sk-..."
                             />
                           </div>

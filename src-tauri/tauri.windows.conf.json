@@ -7,7 +7,7 @@
         "title": "AI Helper",
         "decorations": false,
         "shadow": true,
-        "visible": false,
+        "visible": true,
         "width": 1000,
         "height": 650,
         "minWidth": 900,

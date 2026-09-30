@@ -13,6 +13,14 @@ import type {
   WorkbuddyModelItem,
   AccioConfig,
   AccioBridgeStatus,
+  SiteStatus,
+  EncryptionKeyData,
+  CaptchaGenerateData,
+  LoginPayload,
+  LoginSuccessData,
+  LoginResult,
+  TokenItem,
+  CurrentAuthState,
 } from "../types";
 
 export const isTauri =
@@ -75,6 +83,44 @@ function getMockResponse<T>(cmd: string, _args?: Record<string, unknown>): T {
         { id: "gpt-5.6-sol", name: "gpt-5.6-sol" },
         { id: "claude-3-7-sonnet", name: "claude-3-7-sonnet" },
       ] as unknown as T;
+    case "get_site_status":
+      return {
+        password_login_enabled: true,
+        password_login_encryption_enabled: false,
+        captcha_enabled: true,
+        captcha_type: "slide",
+        slide_captcha_check: true,
+      } as unknown as T;
+    case "get_auth_state":
+      return {
+        is_logged_in: false,
+        user: null,
+      } as unknown as T;
+    case "get_user_tokens":
+      return [
+        {
+          id: 101,
+          name: "默认全功能 Key",
+          key: "sk-mock***101",
+          status: 1,
+          expired_time: -1,
+          unlimited_quota: true,
+          remain_quota: 0,
+          group: "default",
+        },
+        {
+          id: 102,
+          name: "项目专用 Key",
+          key: "sk-mock***102",
+          status: 1,
+          expired_time: -1,
+          unlimited_quota: true,
+          remain_quota: 0,
+          group: "vip",
+        },
+      ] as unknown as T;
+    case "get_token_key":
+      return "sk-mock-plain-key-for-preview" as unknown as T;
     case "open_url":
       if (_args && typeof _args.url === "string") {
         window.open(_args.url, "_blank");
@@ -426,4 +472,116 @@ export async function downloadAndInstallUpdate(
     onEvent: channel,
   });
 }
+
+// ── 用户认证与 API Key 凭据管理接口 (PRD 桌面登录方案 B) ──
+
+/**
+ * 使用 Web Crypto API 实现符合 PRD 第 6.1 节规范的 RSA-OAEP (SHA-256) 密码加密
+ */
+export async function encryptPasswordWithRsa(
+  password: string,
+  publicKeyPem: string,
+): Promise<string> {
+  const b64 = publicKeyPem
+    .replace(/-----BEGIN [A-Z ]+-----/g, "")
+    .replace(/-----END [A-Z ]+-----/g, "")
+    .replace(/\s+/g, "");
+  const binaryDer = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
+
+  const cryptoKey = await window.crypto.subtle.importKey(
+    "spki",
+    binaryDer.buffer,
+    {
+      name: "RSA-OAEP",
+      hash: "SHA-256",
+    },
+    false,
+    ["encrypt"],
+  );
+
+  const enc = new TextEncoder();
+  const cipherBuffer = await window.crypto.subtle.encrypt(
+    { name: "RSA-OAEP" },
+    cryptoKey,
+    enc.encode(password),
+  );
+
+  return btoa(String.fromCharCode(...new Uint8Array(cipherBuffer)));
+}
+
+export async function getSiteStatus(): Promise<SiteStatus> {
+  return invoke<SiteStatus>("get_site_status");
+}
+
+export async function getEncryptionKey(): Promise<EncryptionKeyData> {
+  return invoke<EncryptionKeyData>("get_encryption_key");
+}
+
+export async function generateCaptcha(): Promise<CaptchaGenerateData> {
+  return invoke<CaptchaGenerateData>("generate_captcha");
+}
+
+export async function verifyCaptcha(
+  captchaId: string,
+  x: number,
+  y: number,
+): Promise<void> {
+  return invoke<void>("verify_captcha", { captchaId, x, y });
+}
+
+export async function loginAccount(payload: LoginPayload): Promise<LoginResult> {
+  return invoke<LoginResult>("login_account", { payload });
+}
+
+export async function login2fa(
+  flowToken: string,
+  code: string,
+): Promise<LoginSuccessData> {
+  return invoke<LoginSuccessData>("login_2fa", { flowToken, code });
+}
+
+export async function getAuthState(): Promise<CurrentAuthState> {
+  return invoke<CurrentAuthState>("get_auth_state");
+}
+
+export async function refreshAuthSession(): Promise<LoginSuccessData> {
+  return invoke<LoginSuccessData>("refresh_auth_session");
+}
+
+export async function logoutAccount(): Promise<void> {
+  return invoke<void>("logout_account");
+}
+
+export async function getUserTokens(): Promise<TokenItem[]> {
+  return invoke<TokenItem[]>("get_user_tokens");
+}
+
+export async function getTokenKey(tokenId: number): Promise<string> {
+  return invoke<string>("get_token_key", { tokenId });
+}
+
+export async function createUserToken(name: string): Promise<TokenItem> {
+  return invoke<TokenItem>("create_user_token", { name });
+}
+
+export async function setSelectedToken(
+  tokenId?: number | null,
+  tokenName?: string | null,
+): Promise<void> {
+  return invoke<void>("set_selected_token", {
+    tokenId: tokenId ?? null,
+    tokenName: tokenName ?? null,
+  });
+}
+
+export async function applyApiKeyToAgents(
+  apiKey: string,
+  targets: string[] = ["chatgpt", "claude", "workbuddy", "acciowork"],
+): Promise<Record<string, boolean>> {
+  return invoke<Record<string, boolean>>("apply_api_key_to_agents", {
+    apiKey,
+    targets,
+  });
+}
+
 

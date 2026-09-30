@@ -3,6 +3,7 @@ use tauri::Manager;
 mod accio;
 mod api_test;
 mod app_paths;
+mod auth;
 mod claude;
 mod codex;
 mod error;
@@ -329,6 +330,79 @@ async fn open_config_file(path: String) -> Result<(), String> {
     .map_err(|e| format!("打开配置文件任务执行异常: {}", e))?
 }
 
+#[tauri::command]
+async fn get_site_status() -> Result<auth::SiteStatus, String> {
+    auth::get_site_status().await
+}
+
+#[tauri::command]
+async fn get_encryption_key() -> Result<auth::EncryptionKeyData, String> {
+    auth::get_encryption_key().await
+}
+
+#[tauri::command]
+async fn generate_captcha() -> Result<auth::CaptchaGenerateData, String> {
+    auth::generate_captcha().await
+}
+
+#[tauri::command]
+async fn verify_captcha(captcha_id: String, x: i32, y: i32) -> Result<(), String> {
+    auth::verify_captcha(captcha_id, x, y).await
+}
+
+#[tauri::command]
+async fn login_account(payload: auth::LoginPayload) -> Result<auth::LoginResult, String> {
+    auth::login(payload).await
+}
+
+#[tauri::command]
+async fn login_2fa(flow_token: String, code: String) -> Result<auth::LoginSuccessData, String> {
+    auth::login_2fa(flow_token, code).await
+}
+
+#[tauri::command]
+async fn get_auth_state() -> auth::CurrentAuthState {
+    auth::get_auth_state().await
+}
+
+#[tauri::command]
+async fn refresh_auth_session() -> Result<auth::LoginSuccessData, String> {
+    auth::refresh_session().await
+}
+
+#[tauri::command]
+async fn logout_account() -> Result<(), String> {
+    auth::logout().await
+}
+
+#[tauri::command]
+async fn get_user_tokens() -> Result<Vec<auth::TokenItem>, String> {
+    auth::get_user_tokens().await
+}
+
+#[tauri::command]
+async fn get_token_key(token_id: i64) -> Result<String, String> {
+    auth::get_token_key(token_id).await
+}
+
+#[tauri::command]
+async fn create_user_token(name: String) -> Result<auth::TokenItem, String> {
+    auth::create_user_token(name).await
+}
+
+#[tauri::command]
+async fn set_selected_token(token_id: Option<i64>, token_name: Option<String>) {
+    auth::set_selected_token(token_id, token_name).await
+}
+
+#[tauri::command]
+async fn apply_api_key_to_agents(
+    api_key: String,
+    targets: Vec<String>,
+) -> Result<std::collections::HashMap<String, bool>, String> {
+    auth::apply_api_key_to_agents(api_key, targets).await
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -379,6 +453,20 @@ pub fn run() {
             check_app_process_status,
             restart_target_app,
             execute_in_terminal,
+            get_site_status,
+            get_encryption_key,
+            generate_captcha,
+            verify_captcha,
+            login_account,
+            login_2fa,
+            get_auth_state,
+            refresh_auth_session,
+            logout_account,
+            get_user_tokens,
+            get_token_key,
+            create_user_token,
+            set_selected_token,
+            apply_api_key_to_agents,
         ])
         .run(tauri::generate_context!())
         .expect("error while running ai-helper");

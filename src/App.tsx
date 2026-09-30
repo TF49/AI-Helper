@@ -14,6 +14,8 @@ import {
   ChevronRight,
   Layers,
   FolderGit2,
+  User,
+  KeyRound,
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
@@ -32,6 +34,9 @@ import { AccioWorkPanel } from "./components/AccioWorkPanel";
 import { AppPathsPanel } from "./components/AppPathsPanel";
 import { QuickToolsModal } from "./components/QuickToolsModal";
 import { InitializationModal } from "./components/InitializationModal";
+import { LoginModal } from "./components/auth/LoginModal";
+import { TokenSelectModal } from "./components/auth/TokenSelectModal";
+import { AuthProvider, useAuth } from "./lib/useAuth";
 import { ThemeToggle } from "./components/ThemeToggle";
 import { useTheme } from "./components/theme-provider";
 import { AuroraBackground } from "./components/react-bits/AuroraBackground";
@@ -50,10 +55,18 @@ const mockWindow = {
   minimize: async () => {},
   close: async () => {},
   onResized: async (_cb: () => void) => () => {},
+  show: async () => {},
+  setFocus: async () => {},
 };
 
+const appWindow = isTauri ? getCurrentWindow() : mockWindow;
+
 export default function App() {
-  return <AppContent />;
+  return (
+    <AuthProvider>
+      <AppContent />
+    </AuthProvider>
+  );
 }
 
 function AppContent() {
@@ -66,7 +79,18 @@ function AppContent() {
   const [initModalOpen, setInitModalOpen] = useState(false);
   const [appVersion, setAppVersion] = useState("...");
   const { resolvedTheme } = useTheme();
-  const win = isTauri ? getCurrentWindow() : mockWindow;
+  const win = appWindow;
+
+  const {
+    authState,
+    loginModalOpen,
+    setLoginModalOpen,
+    tokenModalOpen,
+    setTokenModalOpen,
+    logout,
+    onLoginSuccess,
+    onTokenSelected,
+  } = useAuth();
 
   const switchTab = (newTab: Tab) => {
     setTab(newTab);
@@ -114,6 +138,10 @@ function AppContent() {
 
   useEffect(() => {
     void checkNetwork();
+    if (isTauri) {
+      void win.show();
+      void win.setFocus();
+    }
   }, []);
 
   // 全局拦截外部链接点击，在系统默认浏览器中打开
@@ -589,8 +617,80 @@ function AppContent() {
             </div>
           </div>
 
-          {/* 侧边栏底部：网络健康与系统状态 */}
-          <div className="space-y-3 pt-3 border-t border-slate-200/80 dark:border-white/10">
+          {/* 侧边栏底部：账号凭据与网络健康 */}
+          <div className="space-y-2.5 pt-3 border-t border-slate-200/80 dark:border-white/10">
+            {/* ── bob-api.com 账号与 API Key 管理 ── */}
+            <div>
+              <div className="px-1 pb-1 text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-gray-500 flex items-center justify-between">
+                <span>bob-api 账号</span>
+                {authState.is_logged_in && (
+                  <button
+                    type="button"
+                    onClick={() => void logout()}
+                    className="text-[10px] text-slate-400 hover:text-red-500 dark:hover:text-red-400 transition-colors cursor-pointer"
+                  >
+                    退出
+                  </button>
+                )}
+              </div>
+
+              {authState.is_logged_in ? (
+                <div className="p-2.5 rounded-xl border border-blue-500/20 bg-blue-50/50 dark:bg-blue-500/5 space-y-2">
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <div className="w-7 h-7 rounded-lg bg-blue-600 text-white flex items-center justify-center font-bold text-xs flex-shrink-0">
+                        {authState.user?.username?.slice(0, 1).toUpperCase() || "U"}
+                      </div>
+                      <div className="min-w-0">
+                        <div className="text-xs font-semibold truncate text-slate-900 dark:text-white leading-tight">
+                          {authState.user?.display_name || authState.user?.username}
+                        </div>
+                        <div className="text-[10px] text-slate-400 dark:text-gray-500 truncate font-mono">
+                          @{authState.user?.username}
+                        </div>
+                      </div>
+                    </div>
+                    <span className="text-[10px] px-1.5 py-0.2 rounded font-medium bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-400">
+                      已就绪
+                    </span>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => setTokenModalOpen(true)}
+                    className="w-full flex items-center justify-center gap-1.5 py-1 px-2 rounded-lg text-xs font-medium bg-white dark:bg-white/10 hover:bg-slate-50 dark:hover:bg-white/15 text-blue-700 dark:text-blue-300 border border-blue-200/80 dark:border-white/10 transition-colors shadow-2xs cursor-pointer"
+                  >
+                    <KeyRound size={12} />
+                    <span className="truncate">
+                      {authState.selected_token_name
+                        ? `选定: ${authState.selected_token_name}`
+                        : "选择 API Key 列表"}
+                    </span>
+                  </button>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => setLoginModalOpen(true)}
+                  className="w-full p-2.5 rounded-xl border border-blue-200/90 dark:border-blue-500/30 bg-blue-50/70 dark:bg-blue-500/10 hover:bg-blue-100/80 dark:hover:bg-blue-500/20 text-left transition-all cursor-pointer group shadow-2xs"
+                >
+                  <div className="flex items-center gap-2">
+                    <div className="w-7 h-7 rounded-lg bg-blue-600 text-white flex items-center justify-center font-bold text-xs flex-shrink-0 group-hover:scale-105 transition-transform">
+                      <User size={13} />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="text-xs font-semibold text-blue-900 dark:text-blue-200 leading-tight">
+                        登录 bob-api.com
+                      </div>
+                      <div className="text-[10px] text-blue-600/70 dark:text-blue-400/70 truncate mt-0.5">
+                        同步并挑选 API Key
+                      </div>
+                    </div>
+                  </div>
+                </button>
+              )}
+            </div>
+
             {/* 网络状态卡片 */}
             <div
               className={cn(
@@ -784,6 +884,21 @@ function AppContent() {
         open={initModalOpen}
         onClose={handleInitClose}
         onFinish={handleInitFinish}
+      />
+
+      {/* ── bob-api.com 登录弹窗 (PRD 桌面登录方案 B) ── */}
+      <LoginModal
+        open={loginModalOpen}
+        onSuccess={onLoginSuccess}
+        onClose={() => setLoginModalOpen(false)}
+      />
+
+      {/* ── 全局 API Key 选择弹窗 ── */}
+      <TokenSelectModal
+        open={tokenModalOpen}
+        selectedTokenId={authState.selected_token_id}
+        onSelectKey={onTokenSelected}
+        onClose={() => setTokenModalOpen(false)}
       />
 
       {/* ── 首次使用未初始化时，启动检查更新阶段的全屏过渡层 ── */}
