@@ -33,7 +33,6 @@ import { ModelInput } from "./ModelInput";
 import { Label } from "./ui/label";
 import {
   PRESET_URLS,
-  ACCIO_MODEL_SUGGESTIONS,
   type AccioConfig,
   type AccioBridgeStatus,
 } from "../types";
@@ -45,7 +44,7 @@ import { TerminalTestModal } from "./TerminalTestModal";
 export function AccioWorkPanel() {
   const [url, setUrl] = useState<string>(PRESET_URLS[0]);
   const [apiKey, setApiKey] = useState("");
-  const [model, setModel] = useState("claude-3-7-sonnet");
+  const [model, setModel] = useState("");
   const [bridgePort, setBridgePort] = useState<number>(8787);
   const [officialGateway, setOfficialGateway] = useState(
     "https://phoenix-gw.alibaba.com",
@@ -94,7 +93,7 @@ export function AccioWorkPanel() {
           setUrl(PRESET_URLS[0]);
         }
         setApiKey(cfg.api_key || "");
-        setModel(cfg.model || "claude-3-7-sonnet");
+        setModel(cfg.model || "");
         setBridgePort(cfg.bridge_port || 8787);
         setOfficialGateway(
           cfg.official_gateway || "https://phoenix-gw.alibaba.com",
@@ -194,6 +193,7 @@ export function AccioWorkPanel() {
     official_gateway: officialGateway.trim(),
     fallback_official: fallbackOfficial,
     prevent_official_leak: preventOfficialLeak,
+    cached_models: models.map((m) => m.id),
   };
 
   const handleSave = () => {
@@ -278,34 +278,36 @@ export function AccioWorkPanel() {
       </div>
 
       {/* ── 双列栅格配置区域 ── */}
-      <div className="flex-1 grid grid-cols-1 lg:grid-cols-2 gap-5 min-h-0">
+      <div className="flex-1 grid grid-cols-1 lg:grid-cols-2 gap-5 min-h-0 overflow-y-auto pr-1">
         {/* ── 左列：路由网络与本地安全网关 ── */}
         <div className="flex flex-col gap-5 flex-1 min-h-0">
           {/* 卡片 1: API 服务节点选择 */}
           <SpotlightCard
-            className="p-5 rounded-2xl border border-slate-200/90 dark:border-white/10 bg-white/80 dark:bg-[#121524]/60 shadow-sm dark:shadow-none flex-1 flex flex-col justify-between min-h-[160px]"
+            className="p-5 rounded-2xl border border-slate-200/90 dark:border-white/10 bg-white/80 dark:bg-[#121524]/60 shadow-sm dark:shadow-none flex flex-col justify-between"
             spotlightColor="rgba(255, 106, 0, 0.12)"
           >
             <div className="flex items-center justify-between mb-3 flex-shrink-0">
               <Label className="text-xs font-semibold text-slate-800 dark:text-gray-200 flex items-center gap-2">
                 <Server size={14} className="text-orange-500" />
-                API 服务节点
+                API 服务网关节点
               </Label>
               <span className="text-[11px] text-slate-400 dark:text-gray-500">
-                请求中转网关
+                支持多线路故障切换
               </span>
             </div>
-
-            <NodeCardSelector
-              value={url}
-              onChange={setUrl}
-              accentColor="orange"
-            />
+            <div className="flex-1 flex flex-col justify-center min-h-0">
+              <NodeCardSelector
+                value={url}
+                onChange={setUrl}
+                accentColor="orange"
+                className="h-full"
+              />
+            </div>
           </SpotlightCard>
 
           {/* 卡片 2: 本地 Bridge 网关 & 防耗豆安全熔断 */}
           <SpotlightCard
-            className="p-5 rounded-2xl border border-slate-200/90 dark:border-white/10 bg-white/80 dark:bg-[#121524]/60 shadow-sm dark:shadow-none flex-1 flex flex-col justify-between min-h-[190px]"
+            className="p-5 rounded-2xl border border-slate-200/90 dark:border-white/10 bg-white/80 dark:bg-[#121524]/60 shadow-sm dark:shadow-none flex flex-col justify-between"
             spotlightColor="rgba(255, 106, 0, 0.12)"
           >
             <div>
@@ -463,7 +465,7 @@ export function AccioWorkPanel() {
         <div className="flex flex-col gap-5 flex-1 min-h-0">
           {/* 卡片 4: API Key */}
           <SpotlightCard
-            className="p-5 rounded-2xl border border-slate-200/90 dark:border-white/10 bg-white/80 dark:bg-[#121524]/60 shadow-sm dark:shadow-none flex-1 flex flex-col justify-between min-h-[160px]"
+            className="p-5 rounded-2xl border border-slate-200/90 dark:border-white/10 bg-white/80 dark:bg-[#121524]/60 shadow-sm dark:shadow-none flex flex-col justify-between"
             spotlightColor="rgba(255, 106, 0, 0.12)"
           >
             <div>
@@ -482,6 +484,7 @@ export function AccioWorkPanel() {
                 placeholder="sk-... (填入所选服务商的 API 密钥)"
                 hintText="用于向中转节点发起大模型请求认证"
                 accentColor="orange"
+                toolName="Accio"
               />
             </div>
 
@@ -496,9 +499,9 @@ export function AccioWorkPanel() {
             </div>
           </SpotlightCard>
 
-          {/* 卡片 5: 模型路由映射与推荐 */}
+          {/* 卡片 5: 模型路由映射与测试 */}
           <SpotlightCard
-            className="p-5 rounded-2xl border border-slate-200/90 dark:border-white/10 bg-white/80 dark:bg-[#121524]/60 shadow-sm dark:shadow-none flex-1 flex flex-col justify-between min-h-[220px]"
+            className="p-5 rounded-2xl border border-slate-200/90 dark:border-white/10 bg-white/80 dark:bg-[#121524]/60 shadow-sm dark:shadow-none flex flex-col justify-between"
             spotlightColor="rgba(255, 106, 0, 0.12)"
           >
             <div>
@@ -506,7 +509,7 @@ export function AccioWorkPanel() {
                 value={model}
                 onChange={setModel}
                 models={models}
-                placeholder="输入或选择测试模型 (如 claude-3-7-sonnet)"
+                placeholder="选择或输入测试模型名称"
                 id="accio-models"
                 onRefresh={() => void refreshModels()}
                 refreshing={refreshingModels}
@@ -514,34 +517,11 @@ export function AccioWorkPanel() {
               />
             </div>
 
-            {/* 常用模型快捷填充芯片 */}
-            <div className="mt-3 pt-3 border-t border-slate-100 dark:border-white/5">
-              <span className="text-[10px] text-slate-400 dark:text-gray-500 uppercase tracking-wider block mb-1.5 font-medium">
-                推荐接入模型:
+            <div className="mt-3 p-2.5 rounded-xl bg-slate-50/70 dark:bg-white/[0.03] border border-slate-200/80 dark:border-white/5 text-[11px] text-slate-500 dark:text-gray-400 leading-relaxed flex items-start gap-2">
+              <Sparkles size={13} className="text-orange-500 shrink-0 mt-0.5" />
+              <span>
+                Accio Work 发送的内部 RLab 模型调用将由本地 Bridge 网关透明转译为您在此选定的通用大模型，并实时模拟 15 秒心跳保活。
               </span>
-              <div className="flex flex-wrap gap-1.5">
-                {ACCIO_MODEL_SUGGESTIONS.map((item) => (
-                  <button
-                    key={item}
-                    type="button"
-                    onClick={() => setModel(item)}
-                    className={`text-[11px] font-mono px-2 py-0.5 rounded-md border transition-all cursor-pointer ${
-                      model === item
-                        ? "bg-orange-100 border-orange-300 text-orange-700 dark:bg-orange-500/20 dark:border-orange-500/40 dark:text-orange-300 font-semibold"
-                        : "bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100 hover:text-slate-900 dark:bg-white/5 dark:border-white/10 dark:text-gray-400 dark:hover:bg-white/10 dark:hover:text-white"
-                    }`}
-                  >
-                    {item}
-                  </button>
-                ))}
-              </div>
-
-              <div className="mt-3 p-2.5 rounded-xl bg-slate-50/70 dark:bg-white/[0.03] border border-slate-200/80 dark:border-white/5 text-[11px] text-slate-500 dark:text-gray-400 leading-relaxed flex items-start gap-2">
-                <Sparkles size={13} className="text-orange-500 shrink-0 mt-0.5" />
-                <span>
-                  Accio Work 发送的内部 RLab 模型调用将由本地 Bridge 网关透明转译为您在此选定的通用大模型，并实时模拟 15 秒心跳保活。
-                </span>
-              </div>
             </div>
           </SpotlightCard>
         </div>

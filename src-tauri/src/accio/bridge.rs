@@ -124,6 +124,7 @@ pub async fn start_bridge(preferred_port: Option<u16>) -> Result<u16, String> {
         .map_err(|e| format!("构建 HTTP 客户端失败: {}", e))?;
 
     let app = Router::new()
+        .route("/health", get(handle_health))
         .route("/api/llm/config/v2", get(custom_model_list))
         .route("/api/tool/rlab/call", post(handle_tool_rlab_call))
         .route("/api/adk/embedding/embed", post(handle_embedding))
@@ -177,17 +178,30 @@ pub async fn stop_bridge() -> Result<(), String> {
     Ok(())
 }
 
-/// GET /api/llm/config/v2: 伪造模型列表，使 Accio Work 下拉框识别并选中当前配置的模型
+/// GET /health: 快速探活健康检查
+async fn handle_health() -> Json<Value> {
+    let config = load_accio_config();
+    Json(json!({
+        "ok": true,
+        "model": config.model,
+        "provider": "bob-api"
+    }))
+}
+
+/// GET /api/llm/config/v2: 注入模型列表，使 Accio Work 下拉框识别并选中当前配置的模型及 bob-api.com 丰富模型
 async fn custom_model_list() -> Json<Value> {
     let config = load_accio_config();
-    Json(json!([{
-        "provider": "ai-helper",
-        "providerDisplayName": "AI-Helper",
-        "modelList": [{
+    let mut model_list = Vec::new();
+    let mut seen = std::collections::HashSet::new();
+
+    // 1. 首选当前配置的模型
+    if !config.model.trim().is_empty() {
+        seen.insert(config.model.clone());
+        model_list.push(json!({
             "modelCode": config.model,
             "modelName": config.model,
             "modelDisplayName": config.model,
-            "modelDesc": format!("{} via AI-Helper", config.model),
+            "modelDesc": format!("{} via bob-api.com", config.model),
             "visible": true,
             "isDefault": true,
             "freeUse": true,
@@ -195,7 +209,63 @@ async fn custom_model_list() -> Json<Value> {
             "contextWindow": 128000,
             "reasoningEfforts": ["low", "medium", "high"],
             "defaultReasoningEffort": "medium"
-        }]
+        }));
+    }
+
+    // 2. 加入缓存探测的模型列表 (来自 bob-api.com 模型拉取)
+    for m in &config.cached_models {
+        let trimmed = m.trim();
+        if !trimmed.is_empty() && !seen.contains(trimmed) {
+            seen.insert(trimmed.to_string());
+            model_list.push(json!({
+                "modelCode": trimmed,
+                "modelName": trimmed,
+                "modelDisplayName": trimmed,
+                "modelDesc": format!("{} via bob-api.com", trimmed),
+                "visible": true,
+                "isDefault": trimmed == config.model,
+                "freeUse": true,
+                "multimodal": true,
+                "contextWindow": 128000,
+                "reasoningEfforts": ["low", "medium", "high"],
+                "defaultReasoningEffort": "medium"
+            }));
+        }
+    }
+
+    // 3. 预设常用推荐模型，确保 Accio 下拉框丰富可选
+    let presets = [
+        "claude-3-7-sonnet",
+        "claude-3-5-sonnet",
+        "gpt-4o",
+        "gpt-4.1-mini",
+        "deepseek-chat",
+        "deepseek-reasoner",
+        "qwen-2.5-max",
+    ];
+    for p in presets {
+        if !seen.contains(p) {
+            seen.insert(p.to_string());
+            model_list.push(json!({
+                "modelCode": p,
+                "modelName": p,
+                "modelDisplayName": p,
+                "modelDesc": format!("{} via bob-api.com", p),
+                "visible": true,
+                "isDefault": p == config.model,
+                "freeUse": true,
+                "multimodal": true,
+                "contextWindow": 128000,
+                "reasoningEfforts": ["low", "medium", "high"],
+                "defaultReasoningEffort": "medium"
+            }));
+        }
+    }
+
+    Json(json!([{
+        "provider": "ai-helper",
+        "providerDisplayName": "AI-Helper (bob-api.com)",
+        "modelList": model_list
     }]))
 }
 
@@ -350,7 +420,13 @@ async fn handle_llm(State(client): State<Client>, request: Request) -> Response 
         // 跳过首次即刻触发的 tick
         interval.tick().await;
 
-        let upstream_fut = async { call_upstream_llm(&client_clone, &config_clone, input).await };
+        let upstream_fut = async {
+            if crate::accio::protocol::is_image_output_request(&input) {
+                call_custom_image(&client_clone, &config_clone, input).await
+            } else {
+                call_upstream_llm(&client_clone, &config_clone, input).await
+            }
+        };
         tokio::pin!(upstream_fut);
 
         let mut final_frame: Option<Value> = None;
@@ -538,17 +614,29 @@ async fn call_upstream_llm(
                             .and_then(|f| f.get("name"))
                             .and_then(Value::as_str)
                             .unwrap_or("tool");
-                        let args_str = func
-                            .and_then(|f| f.get("arguments"))
-                            .and_then(Value::as_str)
-                            .unwrap_or("{}");
-                        let args: Value =
-                            serde_json::from_str(args_str).unwrap_or_else(|_| json!({}));
+                        let (args, args_str) = match func.and_then(|f| {
+                            f.get("arguments")
+                                .or_else(|| f.get("args"))
+                                .or_else(|| f.get("input"))
+                        }) {
+                            Some(Value::String(s)) => {
+                                let parsed: Value =
+                                    serde_json::from_str(s).unwrap_or_else(|_| json!({}));
+                                (parsed, s.clone())
+                            }
+                            Some(val @ Value::Object(_)) => {
+                                let s =
+                                    serde_json::to_string(val).unwrap_or_else(|_| "{}".to_string());
+                                (val.clone(), s)
+                            }
+                            _ => (json!({}), "{}".to_string()),
+                        };
                         parts.push(json!({
                             "functionCall": {
                                 "id": call_id,
                                 "name": name,
-                                "args": args
+                                "args": args,
+                                "argsJson": args_str
                             }
                         }));
                     }
@@ -585,6 +673,147 @@ async fn call_upstream_llm(
         config.model
     );
     Ok(payload)
+}
+
+/// 处理 Accio Work 的生图请求 (responseModalities: ["IMAGE"])
+async fn call_custom_image(
+    client: &Client,
+    config: &AccioConfig,
+    input: Value,
+) -> Result<Value, String> {
+    if config.api_key.trim().is_empty() {
+        return Err("API 密钥未配置，请先在 AI-Helper 中填写 API Key".to_string());
+    }
+    let root = clean_base_url(&config.base_url);
+    let endpoint = format!("{root}/v1/images/generations");
+
+    let mut prompts = Vec::new();
+    if let Some(contents) = input
+        .get("contents")
+        .or_else(|| input.get("messages"))
+        .and_then(Value::as_array)
+    {
+        for item in contents {
+            if let Some(parts) = item.get("parts").and_then(Value::as_array) {
+                for part in parts {
+                    if let Some(t) = part.get("text").and_then(Value::as_str) {
+                        prompts.push(t);
+                    }
+                }
+            } else if let Some(content) = item.get("content").and_then(Value::as_str) {
+                prompts.push(content);
+            }
+        }
+    }
+    let prompt = if prompts.is_empty() {
+        "Generate a high quality commercial product photo".to_string()
+    } else {
+        prompts.join("\n\n")
+    };
+
+    let gen_config = input
+        .get("generationConfig")
+        .or_else(|| input.get("generation_config"));
+    let aspect_ratio = gen_config
+        .and_then(|g| g.get("imageConfig").or_else(|| g.get("image_config")))
+        .and_then(|ic| ic.get("aspectRatio").or_else(|| ic.get("aspect_ratio")))
+        .and_then(Value::as_str)
+        .unwrap_or("1:1");
+
+    let size = match aspect_ratio {
+        "16:9" | "3:2" => "1792x1024",
+        "9:16" | "2:3" | "3:4" => "1024x1792",
+        _ => "1024x1024",
+    };
+
+    let image_model = "dall-e-3";
+
+    log::info!(
+        "Accio 生图转译：目标端点 {} (模型: {}, 尺寸: {}, prompt: {} 字符)",
+        endpoint,
+        image_model,
+        size,
+        prompt.chars().count()
+    );
+
+    let req_payload = json!({
+        "model": image_model,
+        "prompt": prompt,
+        "n": 1,
+        "size": size,
+        "response_format": "b64_json"
+    });
+
+    let resp = client
+        .post(&endpoint)
+        .bearer_auth(&config.api_key)
+        .json(&req_payload)
+        .timeout(Duration::from_secs(120))
+        .send()
+        .await
+        .map_err(|e| format!("请求生图服务失败: {}", e))?;
+
+    let status = resp.status();
+    let body_text = resp
+        .text()
+        .await
+        .map_err(|e| format!("读取生图响应失败: {}", e))?;
+
+    if !status.is_success() {
+        let err_preview = if body_text.chars().count() > 300 {
+            let truncated = crate::accio::protocol::safe_truncate_head(&body_text, 300);
+            format!("{}...", truncated)
+        } else {
+            body_text
+        };
+        return Err(format!("上游生图接口返回 HTTP {}: {}", status, err_preview));
+    }
+
+    let payload: Value =
+        serde_json::from_str(&body_text).map_err(|e| format!("解析生图响应 JSON 失败: {}", e))?;
+
+    let mut b64_opt: Option<String> = None;
+    if let Some(data_arr) = payload.get("data").and_then(Value::as_array) {
+        if let Some(first) = data_arr.first() {
+            if let Some(b64) = first.get("b64_json").and_then(Value::as_str) {
+                b64_opt = Some(b64.to_string());
+            } else if let Some(img_url) = first.get("url").and_then(Value::as_str) {
+                if let Ok(img_resp) = client
+                    .get(img_url)
+                    .timeout(Duration::from_secs(30))
+                    .send()
+                    .await
+                {
+                    if let Ok(bytes) = img_resp.bytes().await {
+                        use base64::Engine;
+                        b64_opt = Some(base64::engine::general_purpose::STANDARD.encode(&bytes));
+                    }
+                }
+            }
+        }
+    }
+
+    let b64_str =
+        b64_opt.ok_or_else(|| "生图接口未返回有效的图像数据 (b64_json / url)".to_string())?;
+
+    Ok(json!({
+        "content": {
+            "role": "model",
+            "parts": [{
+                "inlineData": {
+                    "mimeType": "image/png",
+                    "data": b64_str
+                }
+            }]
+        },
+        "turnComplete": true,
+        "partial": false,
+        "finishReason": "STOP",
+        "customMetadata": {
+            "model_name": image_model,
+            "bridge": "ai-helper-image"
+        }
+    }))
 }
 
 /// ANY /*: 透明反向代理至阿里巴巴官方网关 (保留 Cookies, 授权与原样数据)

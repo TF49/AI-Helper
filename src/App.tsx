@@ -45,6 +45,7 @@ import { ShinyText } from "./components/react-bits/ShinyText";
 import { cn } from "./lib/utils";
 import { checkBobApiNetwork, openUrl, isTauri } from "./lib/api";
 import { ForceUpdateModal, useAppUpdater } from "./components/ForceUpdateModal";
+import type { UserInfo } from "./types";
 
 type Tab = "chatgpt" | "claude" | "workbuddy" | "acciowork" | "paths";
 type NetworkState = "checking" | "reachable" | "unreachable";
@@ -83,6 +84,7 @@ function AppContent() {
 
   const {
     authState,
+    isAuthReady,
     loginModalOpen,
     setLoginModalOpen,
     tokenModalOpen,
@@ -91,6 +93,13 @@ function AppContent() {
     onLoginSuccess,
     onTokenSelected,
   } = useAuth();
+
+  const [isInitialized, setIsInitialized] = useState<boolean>(() => {
+    return Boolean(
+      localStorage.getItem("ai_helper_init_completed") ||
+        localStorage.getItem("bobapi_init_completed"),
+    );
+  });
 
   const switchTab = (newTab: Tab) => {
     setTab(newTab);
@@ -120,11 +129,6 @@ function AppContent() {
     handleClose: handleUpdateClose,
     handleExit: handleUpdateExit,
   } = useAppUpdater();
-
-  const isInitialized = Boolean(
-    localStorage.getItem("ai_helper_init_completed") ||
-      localStorage.getItem("bobapi_init_completed"),
-  );
 
   const checkNetwork = async () => {
     setNetworkState("checking");
@@ -181,28 +185,51 @@ function AppContent() {
     }
   }, []);
 
-  // 严格执行启动时序：优先更新检查与自动更新，当更新检查结束且未处于更新重启中时，再判定并弹出初始化向导
+  // ── 严格按序执行启动流水线：1. 检查更新 ➔ 2. 强制登录 ➔ 3. 环境初始化 ➔ 4. 就绪 ──
   useEffect(() => {
-    // 1. 若启动检查更新尚未结束，不进行初始化判定
+    // 阶段 1：启动检查更新尚未结束，或正处于更新流程（下载中、安装中、就绪重启），严禁进入后续阶段
     if (!isBootCheckComplete) return;
-
-    // 2. 若当前正处于更新流程（下载中、安装中、安装完毕等待重启），决不唤起初始化
     if (
       updatePhase === "downloading" ||
       updatePhase === "installing" ||
       updatePhase === "ready"
     ) {
+      setLoginModalOpen(false);
+      setInitModalOpen(false);
+      setTokenModalOpen(false);
       return;
     }
 
-    // 3. 检查更新确认无可用更新（或用户选择跳过），且未初始化过，此时才正式唤起初始化向导
-    const hasInit =
-      localStorage.getItem("ai_helper_init_completed") ||
-      localStorage.getItem("bobapi_init_completed");
-    if (!hasInit) {
-      setInitModalOpen(true);
+    // 阶段 1 已完成，若本地身份凭据校验尚未完成（如正在读取本地 session），等待其就绪以防界面闪烁
+    if (!isAuthReady) return;
+
+    // 阶段 2：强制登录判定（必须登录才能使用客户端）
+    if (!authState.is_logged_in) {
+      setLoginModalOpen(true);
+      setInitModalOpen(false);
+      setTokenModalOpen(false);
+      return;
     }
-  }, [isBootCheckComplete, updatePhase]);
+
+    // 已登录：关闭强制登录弹窗
+    setLoginModalOpen(false);
+
+    // 阶段 3：环境初始化向导（仅在已成功登录后，且属于首次使用未初始化时唤起）
+    if (!isInitialized) {
+      setInitModalOpen(true);
+      return;
+    }
+
+    // 阶段 4：已更新、已登录、已初始化，主工作区就绪
+  }, [
+    isBootCheckComplete,
+    updatePhase,
+    isAuthReady,
+    authState.is_logged_in,
+    isInitialized,
+    setLoginModalOpen,
+    setTokenModalOpen,
+  ]);
 
   // 兜底保护：确保启动检测过渡遮罩最多停留 2.5 秒，超时后无论任何网络情况均放行
   useEffect(() => {
@@ -213,15 +240,34 @@ function AppContent() {
     return () => clearTimeout(safety);
   }, [isBootCheckComplete, handleUpdateClose]);
 
+  const handleLoginSuccess = (user: UserInfo) => {
+    onLoginSuccess(user);
+    // 若此前已完成过初始化且尚未选定 Token，顺滑唤起 Token 选择弹窗
+    if (isInitialized && !authState.selected_token_id) {
+      setTokenModalOpen(true);
+    }
+  };
+
   const handleInitFinish = () => {
     localStorage.setItem("ai_helper_init_completed", "true");
     sessionStorage.setItem("ai_helper_init_completed", "true");
+    setIsInitialized(true);
+    setInitModalOpen(false);
+    // 初始化完成后，若尚未选择 Token，自动弹出 Token 挑选列表
+    if (authState.is_logged_in && !authState.selected_token_id) {
+      setTokenModalOpen(true);
+    }
   };
 
   const handleInitClose = () => {
     // 关闭时无论是否走完全部向导，都持久化标记已处理，防止后续重启重复弹窗打扰
     localStorage.setItem("ai_helper_init_completed", "true");
+    setIsInitialized(true);
     setInitModalOpen(false);
+    // 初始化关闭后，若尚未选择 Token，自动弹出 Token 挑选列表
+    if (authState.is_logged_in && !authState.selected_token_id) {
+      setTokenModalOpen(true);
+    }
   };
 
   const isDark = resolvedTheme === "dark";
@@ -365,7 +411,13 @@ function AppContent() {
       </div>
 
       {/* ── 桌面主工作区双栏布局 (左侧边栏导航 + 右侧宽阔配置展台) ── */}
-      <div className="flex-1 min-h-0 flex flex-row overflow-hidden relative z-10">
+      <div
+        className={cn(
+          "flex-1 min-h-0 flex flex-row overflow-hidden relative z-10 transition-all duration-300",
+          !authState.is_logged_in &&
+            "pointer-events-none select-none filter blur-[1.5px] opacity-40",
+        )}
+      >
         {/* ── 左侧固定侧边栏 (Navigation Sidebar) ── */}
         <aside className="w-64 flex-shrink-0 flex flex-col justify-between p-3.5 border-r border-slate-200/90 dark:border-white/10 bg-white/70 dark:bg-[#0c0e18]/70 backdrop-blur-xl transition-all">
           <div className="space-y-4">
@@ -886,11 +938,16 @@ function AppContent() {
         onFinish={handleInitFinish}
       />
 
-      {/* ── bob-api.com 登录弹窗 (PRD 桌面登录方案 B) ── */}
+      {/* ── bob-api.com 登录弹窗 (未登录时启用强制锁定模式) ── */}
       <LoginModal
         open={loginModalOpen}
-        onSuccess={onLoginSuccess}
-        onClose={() => setLoginModalOpen(false)}
+        mandatory={!authState.is_logged_in}
+        onSuccess={handleLoginSuccess}
+        onClose={() => {
+          if (authState.is_logged_in) {
+            setLoginModalOpen(false);
+          }
+        }}
       />
 
       {/* ── 全局 API Key 选择弹窗 ── */}
@@ -899,10 +956,12 @@ function AppContent() {
         selectedTokenId={authState.selected_token_id}
         onSelectKey={onTokenSelected}
         onClose={() => setTokenModalOpen(false)}
+        toolName="全局 Agent 配置"
+        accentColor="blue"
       />
 
-      {/* ── 首次使用未初始化时，启动检查更新阶段的全屏过渡层 ── */}
-      {!isInitialized && !isBootCheckComplete && updatePhase === "idle" && (
+      {/* ── 阶段 1：启动检查更新阶段的全屏过渡层 ── */}
+      {!isBootCheckComplete && updatePhase === "idle" && (
         <div className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-slate-950/80 backdrop-blur-xl select-none">
           <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-blue-600/30 to-purple-600/30 border border-blue-500/40 flex items-center justify-center shadow-lg shadow-blue-500/20 mb-4">
             <RefreshCw className="w-7 h-7 text-blue-400 animate-spin" />
@@ -920,6 +979,18 @@ function AppContent() {
           >
             跳过检查直接进入
           </button>
+        </div>
+      )}
+
+      {/* ── 阶段 2：启动凭据初次校验恢复微过渡 ── */}
+      {isBootCheckComplete && updatePhase === "idle" && !isAuthReady && (
+        <div className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-slate-950/80 backdrop-blur-xl select-none">
+          <div className="w-12 h-12 rounded-2xl bg-blue-500/10 border border-blue-500/30 flex items-center justify-center shadow-lg shadow-blue-500/10 mb-3">
+            <Loader2 className="w-6 h-6 text-blue-400 animate-spin" />
+          </div>
+          <p className="text-xs text-slate-300 font-medium tracking-wide">
+            正在校验用户登录状态...
+          </p>
         </div>
       )}
 

@@ -988,15 +988,12 @@ pub async fn apply_api_key_to_agents(
                         cur.base_url
                     },
                     api_key: api_key.clone(),
-                    model: if cur.model.is_empty() {
-                        "claude-3-7-sonnet".to_string()
-                    } else {
-                        cur.model
-                    },
+                    model: cur.model,
                     bridge_port: cur.bridge_port,
                     official_gateway: cur.official_gateway,
                     fallback_official: cur.fallback_official,
                     prevent_official_leak: cur.prevent_official_leak,
+                    cached_models: cur.cached_models,
                 };
                 match crate::accio::config::save_accio_config(&config) {
                     Ok(_) => {

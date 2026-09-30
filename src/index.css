@@ -66,3 +66,43 @@ html.dark {
   flex-direction: column;
   overflow: hidden;
 }
+
+@keyframes shine {
+  0% {
+    background-position: 100%;
+  }
+  100% {
+    background-position: -100%;
+  }
+}
+
+@keyframes star-movement-top {
+  0% {
+    transform: translate(0%, 0%);
+    opacity: 1;
+  }
+  100% {
+    transform: translate(100%, 0%);
+    opacity: 0;
+  }
+}
+
+@keyframes star-movement-bottom {
+  0% {
+    transform: translate(0%, 0%);
+    opacity: 1;
+  }
+  100% {
+    transform: translate(-100%, 0%);
+    opacity: 0;
+  }
+}
+
+.animate-star-movement-top {
+  animation: star-movement-top 4s linear infinite alternate;
+}
+
+.animate-star-movement-bottom {
+  animation: star-movement-bottom 4s linear infinite alternate;
+}
+

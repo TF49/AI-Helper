@@ -508,6 +508,7 @@ export function WorkbuddyPanel() {
                 placeholder="sk-... (填入 API Key)"
                 hintText="明文储存至 ~/.workbuddy-ai/models.json (无需环境变量)"
                 accentColor="emerald"
+                toolName="Workbuddy"
               />
             </div>
 

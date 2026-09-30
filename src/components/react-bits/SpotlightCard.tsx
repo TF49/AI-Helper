@@ -1,4 +1,5 @@
 import React, { useRef, useState } from "react";
+import { cn } from "../../lib/utils";
 
 interface Position {
   x: number;
@@ -8,12 +9,14 @@ interface Position {
 export interface SpotlightCardProps extends React.PropsWithChildren {
   className?: string;
   spotlightColor?: string;
+  onClick?: React.MouseEventHandler<HTMLDivElement>;
 }
 
 export const SpotlightCard: React.FC<SpotlightCardProps> = ({
   children,
   className = "",
   spotlightColor,
+  onClick,
 }) => {
   const divRef = useRef<HTMLDivElement>(null);
   const [isFocused, setIsFocused] = useState<boolean>(false);
@@ -51,12 +54,16 @@ export const SpotlightCard: React.FC<SpotlightCardProps> = ({
   return (
     <div
       ref={divRef}
+      onClick={onClick}
       onMouseMove={handleMouseMove}
       onFocus={handleFocus}
       onBlur={handleBlur}
       onMouseEnter={handleMouseEnter}
       onMouseLeave={handleMouseLeave}
-      className={`relative rounded-2xl border border-slate-200/80 dark:border-white/10 bg-white/85 dark:bg-[#121524]/65 backdrop-blur-md shadow-sm dark:shadow-none overflow-hidden transition-all duration-300 text-slate-800 dark:text-gray-200 ${className}`}
+      className={cn(
+        "relative rounded-2xl border border-slate-200/80 dark:border-white/10 bg-white/85 dark:bg-[#121524]/65 backdrop-blur-md shadow-sm dark:shadow-none overflow-hidden transition-all duration-300 text-slate-800 dark:text-gray-200",
+        className,
+      )}
     >
       <div
         className="pointer-events-none absolute inset-0 opacity-0 transition-opacity duration-300 ease-in-out"

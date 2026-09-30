@@ -19,6 +19,8 @@ pub struct AccioConfig {
     pub fallback_official: bool,
     #[serde(default = "default_true")]
     pub prevent_official_leak: bool,
+    #[serde(default)]
+    pub cached_models: Vec<String>,
 }
 
 fn default_base_url() -> String {
@@ -26,7 +28,7 @@ fn default_base_url() -> String {
 }
 
 fn default_model() -> String {
-    "claude-3-7-sonnet".to_string()
+    String::new()
 }
 
 fn default_bridge_port() -> u16 {
@@ -51,6 +53,7 @@ impl Default for AccioConfig {
             official_gateway: default_official_gateway(),
             fallback_official: false,
             prevent_official_leak: true,
+            cached_models: Vec::new(),
         }
     }
 }
@@ -64,6 +67,7 @@ pub struct AccioUIConfig {
     pub official_gateway: String,
     pub fallback_official: bool,
     pub prevent_official_leak: bool,
+    pub cached_models: Vec<String>,
     pub config_exists: bool,
     pub config_path: String,
     pub is_installed: bool,
@@ -118,6 +122,7 @@ pub fn get_accio_ui_config(bridge_running: bool, actual_port: Option<u16>) -> Ac
         official_gateway: config.official_gateway,
         fallback_official: config.fallback_official,
         prevent_official_leak: config.prevent_official_leak,
+        cached_models: config.cached_models,
         config_exists,
         config_path,
         is_installed: detected.exists,

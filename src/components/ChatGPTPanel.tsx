@@ -127,13 +127,13 @@ export function ChatGPTPanel() {
         </button>
       </div>
 
-      {/* ── 双列栅格配置区域 (垂直水平均匀铺满) ── */}
-      <div className="flex-1 grid grid-cols-1 lg:grid-cols-2 gap-5 min-h-0">
+      {/* ── 双列栅格配置区域 ── */}
+      <div className="flex-1 grid grid-cols-1 lg:grid-cols-2 gap-5 min-h-0 overflow-y-auto pr-1">
         {/* ── 左列：路由网络与本地配置文件 ── */}
         <div className="flex flex-col gap-5 flex-1 min-h-0">
           {/* 卡片 1: API 服务节点选择 */}
           <SpotlightCard
-            className="p-5 rounded-2xl border border-slate-200/90 dark:border-white/10 bg-white/80 dark:bg-[#121524]/60 shadow-sm dark:shadow-none flex-1 flex flex-col justify-between min-h-[160px]"
+            className="p-5 rounded-2xl border border-slate-200/90 dark:border-white/10 bg-white/80 dark:bg-[#121524]/60 shadow-sm dark:shadow-none flex flex-col justify-between"
             spotlightColor="rgba(59, 130, 246, 0.12)"
           >
             <div className="flex items-center justify-between mb-3 flex-shrink-0">
@@ -157,7 +157,7 @@ export function ChatGPTPanel() {
 
           {/* 卡片 2: 本地配置文件管理 */}
           <SpotlightCard
-            className="p-5 rounded-2xl border border-slate-200/90 dark:border-white/10 bg-white/80 dark:bg-[#121524]/60 shadow-sm dark:shadow-none flex-1 flex flex-col justify-between min-h-[160px]"
+            className="p-5 rounded-2xl border border-slate-200/90 dark:border-white/10 bg-white/80 dark:bg-[#121524]/60 shadow-sm dark:shadow-none flex flex-col justify-between"
             spotlightColor="rgba(59, 130, 246, 0.12)"
           >
             <div>
@@ -204,7 +204,7 @@ export function ChatGPTPanel() {
         <div className="flex flex-col gap-5 flex-1 min-h-0">
           {/* 卡片 3: OpenAI API Key */}
           <SpotlightCard
-            className="p-5 rounded-2xl border border-slate-200/90 dark:border-white/10 bg-white/80 dark:bg-[#121524]/60 shadow-sm dark:shadow-none flex-1 flex flex-col justify-between min-h-[160px]"
+            className="p-5 rounded-2xl border border-slate-200/90 dark:border-white/10 bg-white/80 dark:bg-[#121524]/60 shadow-sm dark:shadow-none flex flex-col justify-between"
             spotlightColor="rgba(59, 130, 246, 0.12)"
           >
             <div>
@@ -223,6 +223,7 @@ export function ChatGPTPanel() {
                 placeholder="sk-... (填入 BobAPI 密钥)"
                 envVarName="CUSTOM_OPENAI_API_KEY"
                 accentColor="blue"
+                toolName="ChatGPT"
               />
             </div>
 
@@ -239,7 +240,7 @@ export function ChatGPTPanel() {
 
           {/* 卡片 4: 测试模型与快捷选项 */}
           <SpotlightCard
-            className="p-5 rounded-2xl border border-slate-200/90 dark:border-white/10 bg-white/80 dark:bg-[#121524]/60 shadow-sm dark:shadow-none flex-1 flex flex-col justify-between min-h-[160px]"
+            className="p-5 rounded-2xl border border-slate-200/90 dark:border-white/10 bg-white/80 dark:bg-[#121524]/60 shadow-sm dark:shadow-none flex flex-col justify-between"
             spotlightColor="rgba(59, 130, 246, 0.12)"
           >
             <div>

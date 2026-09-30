@@ -492,7 +492,8 @@ pub fn merge_openai_chunks(chunks: &[Value]) -> Value {
             "functionCall": {
                 "id": call_id,
                 "name": call_name,
-                "args": parsed_args
+                "args": parsed_args,
+                "argsJson": args_str
             }
         }));
     }

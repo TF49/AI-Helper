@@ -10,8 +10,10 @@ import {
   ExternalLink,
   AlertCircle,
   ArrowRight,
+  Power,
 } from "lucide-react";
 import { toast } from "sonner";
+import { exit } from "@tauri-apps/plugin-process";
 import { Input } from "../ui/input";
 import { SlideCaptchaModal } from "./SlideCaptchaModal";
 import {
@@ -21,16 +23,25 @@ import {
   loginAccount,
   login2fa,
   openUrl,
+  isTauri,
 } from "../../lib/api";
 import type { UserInfo, LoginPayload } from "../../types";
 
 interface LoginModalProps {
   open: boolean;
+  mandatory?: boolean;
   onSuccess: (user: UserInfo) => void;
   onClose: () => void;
+  onExitApp?: () => void;
 }
 
-export function LoginModal({ open, onSuccess, onClose }: LoginModalProps) {
+export function LoginModal({
+  open,
+  mandatory = false,
+  onSuccess,
+  onClose,
+  onExitApp,
+}: LoginModalProps) {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
@@ -164,15 +175,44 @@ export function LoginModal({ open, onSuccess, onClose }: LoginModalProps) {
     }
   };
 
+  const handleExitApp = async () => {
+    if (onExitApp) {
+      onExitApp();
+      return;
+    }
+    try {
+      if (isTauri) {
+        await exit(0);
+      } else {
+        window.close();
+      }
+    } catch (e) {
+      console.error("Exit failed:", e);
+    }
+  };
+
   return (
     <>
       <AnimatePresence>
-        <div className="fixed inset-0 z-40 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs select-none">
+        <div
+          className={`fixed inset-0 flex items-center justify-center p-4 select-none ${
+            mandatory
+              ? "z-50 bg-slate-950/85 backdrop-blur-md"
+              : "z-40 bg-black/60 backdrop-blur-xs"
+          }`}
+          onClick={(e) => {
+            // 强制模式下点击遮罩不关闭
+            if (!mandatory && e.target === e.currentTarget) {
+              onClose();
+            }
+          }}
+        >
           <motion.div
             initial={{ opacity: 0, scale: 0.95 }}
             animate={{ opacity: 1, scale: 1 }}
             exit={{ opacity: 0, scale: 0.95 }}
             transition={{ duration: 0.15 }}
+            onClick={(e) => e.stopPropagation()}
             className="relative w-full max-w-[400px] bg-white dark:bg-[#141724] border border-slate-200 dark:border-white/10 rounded-2xl shadow-2xl overflow-hidden p-6 text-slate-800 dark:text-gray-200"
           >
             {/* 顶栏控制 */}
@@ -182,23 +222,47 @@ export function LoginModal({ open, onSuccess, onClose }: LoginModalProps) {
                   <ShieldCheck size={18} />
                 </div>
                 <div>
-                  <h3 className="text-sm font-bold text-slate-900 dark:text-white">
-                    {twoFaFlowToken ? "二次身份验证 (2FA)" : "登录 bob-api.com"}
-                  </h3>
+                  <div className="flex items-center gap-2">
+                    <h3 className="text-sm font-bold text-slate-900 dark:text-white">
+                      {twoFaFlowToken
+                        ? "二次身份验证 (2FA)"
+                        : "登录 bob-api.com"}
+                    </h3>
+                    {mandatory && (
+                      <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-600 dark:bg-amber-500/20 dark:text-amber-300 border border-amber-500/30">
+                        强制登录
+                      </span>
+                    )}
+                  </div>
                   <p className="text-[11px] text-slate-400 dark:text-gray-500">
                     {twoFaFlowToken
                       ? "请输入验证器动态码或备用码"
-                      : "登录以同步并选择您在平台上创建的 API Key"}
+                      : mandatory
+                        ? "客户端已启用强制登录，验证后方可使用"
+                        : "登录以同步并选择您在平台上创建的 API Key"}
                   </p>
                 </div>
               </div>
-              <button
-                type="button"
-                onClick={onClose}
-                className="p-1 rounded-md text-slate-400 hover:text-slate-700 dark:hover:text-gray-200 hover:bg-slate-100 dark:hover:bg-white/5 transition-colors cursor-pointer"
-              >
-                <X size={16} />
-              </button>
+              {mandatory ? (
+                <button
+                  type="button"
+                  onClick={handleExitApp}
+                  className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium text-slate-400 hover:text-red-500 hover:bg-red-500/10 dark:hover:bg-red-500/20 transition-colors cursor-pointer"
+                  title="退出客户端程序"
+                >
+                  <Power size={13} />
+                  <span>退出程序</span>
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={onClose}
+                  className="p-1 rounded-md text-slate-400 hover:text-slate-700 dark:hover:text-gray-200 hover:bg-slate-100 dark:hover:bg-white/5 transition-colors cursor-pointer"
+                  title="关闭"
+                >
+                  <X size={16} />
+                </button>
+              )}
             </div>
 
             {/* 错误提示条 */}

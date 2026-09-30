@@ -602,7 +602,7 @@ export function InitializationModal({
       if (activeConfigTab === "acciowork") {
         setEditUrl(accio.base_url || "https://bob-api.com/v1");
         setEditApiKey(accio.api_key || "");
-        setEditModel(accio.model || "claude-3-7-sonnet");
+        setEditModel(accio.model || "");
       } else if (activeConfigTab === "workbuddy") {
         setEditUrl(workbuddy.base_url || "https://bob-api.com/v1");
         setEditApiKey(workbuddy.api_key || "");
@@ -775,7 +775,7 @@ export function InitializationModal({
     } else {
       setEditUrl(configData.accio?.base_url || "https://bob-api.com/v1");
       setEditApiKey(configData.accio?.api_key || "");
-      setEditModel(configData.accio?.model || "claude-3-7-sonnet");
+      setEditModel(configData.accio?.model || "");
     }
   };
 
@@ -824,7 +824,7 @@ export function InitializationModal({
         await setAccioConfig({
           base_url: editUrl.trim(),
           api_key: editApiKey.trim(),
-          model: editModel.trim() || "claude-3-7-sonnet",
+          model: editModel.trim(),
           bridge_port: existing?.bridge_port ?? 51740,
           official_gateway:
             existing?.official_gateway ?? "https://work.alibabacloud.com",
@@ -2454,6 +2454,24 @@ export function InitializationModal({
                               value={editApiKey}
                               onChange={setEditApiKey}
                               placeholder="sk-..."
+                              accentColor={
+                                editTab === "claude"
+                                  ? "purple"
+                                  : editTab === "workbuddy"
+                                    ? "emerald"
+                                    : editTab === "acciowork"
+                                      ? "orange"
+                                      : "blue"
+                              }
+                              toolName={
+                                editTab === "claude"
+                                  ? "Claude Code"
+                                  : editTab === "workbuddy"
+                                    ? "WorkBuddy"
+                                    : editTab === "acciowork"
+                                      ? "Accio Work"
+                                      : "ChatGPT / Codex"
+                              }
                             />
                           </div>
 
@@ -2474,7 +2492,7 @@ export function InitializationModal({
                                     ? "claude-3-7-sonnet-20250219"
                                     : editTab === "workbuddy"
                                       ? "gpt-5.6-sol"
-                                      : "claude-3-7-sonnet"
+                                      : "选择或输入测试模型"
                               }
                             />
                           </div>

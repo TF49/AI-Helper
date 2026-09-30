@@ -362,7 +362,7 @@ pub fn launch_app(app_type: &str, custom_path: Option<&str>) -> Result<String, S
 pub async fn verify_accio_gateway_safety(
     expected_port: u16,
     launched_at_ms: i64,
-    initial_log_len: u64,
+    _initial_log_len: u64,
 ) {
     let Some(home) = dirs::home_dir() else {
         return;
@@ -375,13 +375,9 @@ pub async fn verify_accio_gateway_safety(
         if !crate::app_paths::is_target_running("acciowork") {
             break;
         }
-        if !sdk_log.exists() {
-            continue;
-        }
         if let Ok(metadata) = std::fs::metadata(&sdk_log) {
             let file_size = metadata.len();
-            // 若文件尚未增长且早于启动时间，等待应用写入新日志
-            if file_size <= initial_log_len && file_size > 0 {
+            if file_size == 0 {
                 continue;
             }
 

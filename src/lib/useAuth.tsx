@@ -15,6 +15,7 @@ import type { CurrentAuthState, UserInfo, TokenItem } from "../types";
 
 interface AuthContextType {
   authState: CurrentAuthState;
+  isAuthReady: boolean;
   refreshState: () => Promise<void>;
   loginModalOpen: boolean;
   setLoginModalOpen: (open: boolean) => void;
@@ -35,6 +36,7 @@ const defaultState: CurrentAuthState = {
 
 const AuthContext = createContext<AuthContextType>({
   authState: defaultState,
+  isAuthReady: false,
   refreshState: async () => {},
   loginModalOpen: false,
   setLoginModalOpen: () => {},
@@ -47,6 +49,7 @@ const AuthContext = createContext<AuthContextType>({
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [authState, setAuthState] = useState<CurrentAuthState>(defaultState);
+  const [isAuthReady, setIsAuthReady] = useState(false);
   const [loginModalOpen, setLoginModalOpen] = useState(false);
   const [tokenModalOpen, setTokenModalOpen] = useState(false);
 
@@ -56,6 +59,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setAuthState(state);
     } catch (err) {
       console.warn("Failed to get auth state:", err);
+    } finally {
+      setIsAuthReady(true);
     }
   }, []);
 
@@ -75,8 +80,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const onLoginSuccess = (_user: UserInfo) => {
     void refreshState();
-    // 登录成功后，如果还没有选中的 Token，自动弹出 Token 选择列表供用户选择！
-    setTokenModalOpen(true);
   };
 
   const onTokenSelected = (_key: string, token: TokenItem) => {
@@ -92,6 +95,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     <AuthContext.Provider
       value={{
         authState,
+        isAuthReady,
         refreshState,
         loginModalOpen,
         setLoginModalOpen,
