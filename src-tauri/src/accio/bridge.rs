@@ -161,7 +161,7 @@ pub async fn start_bridge(preferred_port: Option<u16>) -> Result<u16, String> {
 
     let app = Router::new()
         .route("/health", get(handle_health))
-        .route("/api/llm/config/v2", get(custom_model_list))
+        .route("/api/llm/config/v2", any(custom_model_list))
         .route("/api/tool/rlab/call", post(handle_tool_rlab_call))
         .route("/api/adk/embedding/embed", post(handle_embedding))
         .route("/api/adk/llm", post(handle_llm))
@@ -547,6 +547,16 @@ async fn handle_llm(State(client): State<Client>, request: Request) -> Response 
     }
 
     let config = load_accio_config();
+
+    // 诊断日志：记录 Accio Work 请求中携带的模型相关字段
+    log::info!(
+        "Accio LLM 请求诊断 - model: {:?}, modelCode: {:?}, modelName: {:?}, properties.model: {:?}, 配置模型: {}",
+        input.get("model").and_then(|v| v.as_str()),
+        input.get("modelCode").and_then(|v| v.as_str()),
+        input.get("modelName").and_then(|v| v.as_str()),
+        input.pointer("/properties/model").and_then(|v| v.as_str()),
+        config.model
+    );
     let (tx, rx) = tokio::sync::mpsc::channel::<Result<Bytes, std::convert::Infallible>>(32);
 
     // 建立连接立即返回连通注释帧

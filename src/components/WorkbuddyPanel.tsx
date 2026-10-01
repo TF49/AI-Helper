@@ -305,7 +305,7 @@ export function WorkbuddyPanel() {
         <div className="flex flex-col gap-5 flex-1 min-h-0">
           {/* 卡片 1: API 服务节点选择 */}
           <SpotlightCard
-            className="p-5 rounded-2xl border border-slate-200/90 dark:border-white/10 bg-white/80 dark:bg-[#121524]/60 shadow-sm dark:shadow-none flex flex-col justify-between"
+            className="p-5 rounded-2xl border border-slate-200/90 dark:border-white/10 bg-white/80 dark:bg-[#121524]/60 shadow-sm dark:shadow-none flex flex-col justify-between shrink-0"
             spotlightColor="rgba(16, 185, 129, 0.12)"
           >
             <div className="flex items-center justify-between mb-3 flex-shrink-0">

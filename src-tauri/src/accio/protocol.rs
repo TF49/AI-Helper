@@ -303,8 +303,16 @@ pub fn accio_to_openai(input: &Value, default_model: &str) -> Value {
         })
         .unwrap_or(Value::Null);
 
-    // 模型选择：多字段探测 (model / modelCode / modelName / properties.model)，显式非 auto 优先
-    let selected_model = extract_requested_model(input, default_model);
+    // 模型选择：始终使用 AI-Helper 配置的模型，防止 Accio Work 客户端携带的内部混淆模型名透传
+    let requested = extract_requested_model(input, default_model);
+    if requested != default_model {
+        log::warn!(
+            "Accio 请求携带模型名 '{}' 与配置模型 '{}' 不同，已强制使用配置模型",
+            requested,
+            default_model
+        );
+    }
+    let selected_model = default_model;
 
     let mut output = json!({
         "model": selected_model,
@@ -671,7 +679,8 @@ mod tests {
         });
 
         let req = accio_to_openai(&input, "default-model");
-        assert_eq!(req["model"], "deepseek-r1");
+        // 修复后：始终使用配置的 default_model，不受请求体 modelCode 影响
+        assert_eq!(req["model"], "default-model");
         let tools = req["tools"].as_array().expect("tools");
         assert_eq!(tools.len(), 1);
         assert_eq!(tools[0]["function"]["name"], "sql_query");

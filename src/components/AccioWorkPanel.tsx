@@ -11,10 +11,10 @@ import {
   Power,
   RotateCcw,
   Sparkles,
-  Layers,
   FolderOpen,
   Radio,
   AlertCircle,
+  FileCode,
 } from "lucide-react";
 import { AccioWorkIcon } from "./BrandIcons";
 import {
@@ -296,7 +296,7 @@ export function AccioWorkPanel() {
         <div className="flex flex-col gap-5 flex-1 min-h-0">
           {/* 卡片 1: API 服务节点选择 */}
           <SpotlightCard
-            className="p-5 rounded-2xl border border-slate-200/90 dark:border-white/10 bg-white/80 dark:bg-[#121524]/60 shadow-sm dark:shadow-none flex flex-col justify-between"
+            className="p-5 rounded-2xl border border-slate-200/90 dark:border-white/10 bg-white/80 dark:bg-[#121524]/60 shadow-sm dark:shadow-none flex flex-col justify-between shrink-0"
             spotlightColor="rgba(255, 106, 0, 0.12)"
           >
             <div className="flex items-center justify-between mb-3 flex-shrink-0">
@@ -318,9 +318,82 @@ export function AccioWorkPanel() {
             </div>
           </SpotlightCard>
 
-          {/* 卡片 2: 本地 Bridge 网关 & 防耗豆安全熔断 */}
+          {/* 卡片 2: 本地配置文件管理与客户端检测 */}
           <SpotlightCard
-            className="p-5 rounded-2xl border border-slate-200/90 dark:border-white/10 bg-white/80 dark:bg-[#121524]/60 shadow-sm dark:shadow-none flex flex-col justify-between"
+            className="p-5 rounded-2xl border border-slate-200/90 dark:border-white/10 bg-white/80 dark:bg-[#121524]/60 shadow-sm dark:shadow-none flex flex-col justify-between shrink-0"
+            spotlightColor="rgba(255, 106, 0, 0.12)"
+          >
+            <div>
+              <div className="flex items-center justify-between mb-3">
+                <Label className="text-xs font-semibold text-slate-800 dark:text-gray-200 flex items-center gap-2">
+                  <FileCode size={14} className="text-orange-500" />
+                  本地配置文件路径
+                </Label>
+                <div className="flex items-center gap-2">
+                  <span className="text-[11px] font-mono text-slate-400 dark:text-gray-500">
+                    ~/.ai-helper/accio_config.json
+                  </span>
+                  {configPath && (
+                    <button
+                      type="button"
+                      onClick={() => void openConfigFile(configPath)}
+                      className="flex items-center gap-1 text-[11px] text-orange-600 hover:text-orange-700 dark:text-orange-400 dark:hover:text-orange-300 cursor-pointer"
+                      title="在默认文本编辑器中打开"
+                    >
+                      <FolderOpen size={12} />
+                      <span>打开</span>
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              <StatusBadge
+                exists={configExists}
+                path={configPath}
+                onReload={() => void load(true)}
+                accentColor="orange"
+              />
+            </div>
+
+            <div className="mt-3">
+              <div className="flex items-center justify-between p-2.5 rounded-xl bg-slate-50/70 dark:bg-white/[0.03] border border-slate-200/80 dark:border-white/5 text-xs">
+                <div className="flex items-center gap-2 truncate pr-2">
+                  <span
+                    className={`w-2 h-2 rounded-full shrink-0 ${
+                      clientRunning
+                        ? "bg-emerald-500 animate-pulse"
+                        : isInstalled
+                          ? "bg-blue-400"
+                          : "bg-slate-400"
+                    }`}
+                  />
+                  <span className="text-slate-700 dark:text-gray-300 truncate">
+                    {clientRunning
+                      ? "Accio Work 客户端运行中"
+                      : isInstalled
+                        ? "客户端已安装就绪"
+                        : "未检测到默认安装路径"}
+                  </span>
+                </div>
+                {appPath ? (
+                  <span
+                    className="text-[10px] font-mono text-slate-400 dark:text-gray-500 truncate max-w-[160px]"
+                    title={appPath}
+                  >
+                    {appPath}
+                  </span>
+                ) : (
+                  <span className="text-[10px] text-amber-500">
+                    可在【路径管理】中指定
+                  </span>
+                )}
+              </div>
+            </div>
+          </SpotlightCard>
+
+          {/* 卡片 3: 本地 Bridge 网关 & 防耗豆安全熔断 */}
+          <SpotlightCard
+            className="p-5 rounded-2xl border border-slate-200/90 dark:border-white/10 bg-white/80 dark:bg-[#121524]/60 shadow-sm dark:shadow-none flex flex-col justify-between shrink-0"
             spotlightColor="rgba(255, 106, 0, 0.12)"
           >
             <div>
@@ -444,71 +517,6 @@ export function AccioWorkPanel() {
             <div className="mt-3 pt-2.5 border-t border-slate-100 dark:border-white/5 text-[11px] text-slate-400 dark:text-gray-500 flex items-center justify-between">
               <span>官方网关: {officialGateway}</span>
               <span className="text-[10px] font-mono">动态端口自动顺延</span>
-            </div>
-          </SpotlightCard>
-
-          {/* 卡片 3: 配置文件与客户端检测 */}
-          <SpotlightCard
-            className="p-5 rounded-2xl border border-slate-200/90 dark:border-white/10 bg-white/80 dark:bg-[#121524]/60 shadow-sm dark:shadow-none flex-shrink-0"
-            spotlightColor="rgba(255, 106, 0, 0.12)"
-          >
-            <div className="flex items-center justify-between mb-3">
-              <Label className="text-xs font-semibold text-slate-800 dark:text-gray-200 flex items-center gap-2">
-                <Layers size={14} className="text-orange-500" />
-                客户端与配置状态
-              </Label>
-              {configPath && (
-                <button
-                  type="button"
-                  onClick={() => void openConfigFile(configPath)}
-                  className="flex items-center gap-1 text-[11px] text-orange-600 hover:text-orange-700 dark:text-orange-400 dark:hover:text-orange-300 cursor-pointer"
-                  title="在默认文本编辑器中打开"
-                >
-                  <FolderOpen size={12} />
-                  <span>打开配置</span>
-                </button>
-              )}
-            </div>
-
-            <div className="space-y-2">
-              <StatusBadge
-                exists={configExists}
-                path={configPath}
-                accentColor="orange"
-              />
-
-              <div className="flex items-center justify-between p-2.5 rounded-xl bg-slate-50/70 dark:bg-white/[0.03] border border-slate-200/80 dark:border-white/5 text-xs">
-                <div className="flex items-center gap-2 truncate pr-2">
-                  <span
-                    className={`w-2 h-2 rounded-full shrink-0 ${
-                      clientRunning
-                        ? "bg-emerald-500 animate-pulse"
-                        : isInstalled
-                          ? "bg-blue-400"
-                          : "bg-slate-400"
-                    }`}
-                  />
-                  <span className="text-slate-700 dark:text-gray-300 truncate">
-                    {clientRunning
-                      ? "Accio Work 客户端运行中"
-                      : isInstalled
-                        ? "客户端已安装就绪"
-                        : "未检测到默认安装路径"}
-                  </span>
-                </div>
-                {appPath ? (
-                  <span
-                    className="text-[10px] font-mono text-slate-400 dark:text-gray-500 truncate max-w-[160px]"
-                    title={appPath}
-                  >
-                    {appPath}
-                  </span>
-                ) : (
-                  <span className="text-[10px] text-amber-500">
-                    可在【路径管理】中指定
-                  </span>
-                )}
-              </div>
             </div>
           </SpotlightCard>
         </div>
