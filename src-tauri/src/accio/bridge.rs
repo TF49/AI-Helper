@@ -40,14 +40,31 @@ pub struct BridgeHandle {
 
 static RUNNING_BRIDGE: Mutex<Option<BridgeHandle>> = Mutex::new(None);
 
-/// 判断当前 Bridge 是否正在运行
+/// 判断当前 Bridge 是否正在运行 (严格校验协程存活状态，防止僵尸句柄假在线)
 pub fn is_bridge_running() -> bool {
-    RUNNING_BRIDGE.lock().unwrap().is_some()
+    let mut guard = RUNNING_BRIDGE.lock().unwrap();
+    if let Some(ref handle) = *guard {
+        if handle.join_handle.is_finished() {
+            log::warn!("检测到 Accio Bridge 后台协程已结束，自动重置运行状态");
+            *guard = None;
+            return false;
+        }
+        return true;
+    }
+    false
 }
 
-/// 获取当前 Bridge 实际监听端口
+/// 获取当前 Bridge 实际监听端口 (严格校验协程存活状态)
 pub fn get_bridge_port() -> Option<u16> {
-    RUNNING_BRIDGE.lock().unwrap().as_ref().map(|h| h.port)
+    let mut guard = RUNNING_BRIDGE.lock().unwrap();
+    if let Some(ref handle) = *guard {
+        if handle.join_handle.is_finished() {
+            *guard = None;
+            return None;
+        }
+        return Some(handle.port);
+    }
+    None
 }
 
 /// 规整并去除 Base URL 结尾的斜杠与重复 /v1，避免生成 /v1/v1/... 路径
@@ -56,27 +73,38 @@ pub fn clean_base_url(url: &str) -> &str {
     trimmed.strip_suffix("/v1").unwrap_or(trimmed)
 }
 
-/// 查找空闲端口 (在 start_port..=start_port+20 范围内扫描)
-pub async fn find_available_port(start_port: u16) -> Result<u16, String> {
-    // 对首选端口进行快速重试 (针对刚停机后 TCP 端口处于短暂释放延时场景)
-    for retry in 0..5 {
-        if let Ok(listener) = std::net::TcpListener::bind(("127.0.0.1", start_port)) {
-            drop(listener);
-            return Ok(start_port);
-        }
-        if retry < 4 {
-            tokio::time::sleep(Duration::from_millis(60)).await;
+/// 尝试直接异步绑定空闲端口并返回已成功绑定的 TcpListener 和端口号
+/// 避免先 bind 再 drop 造成的 Windows TIME_WAIT 10048 端口冲突
+pub async fn bind_listener(start_port: u16) -> Result<(TcpListener, u16), String> {
+    // 1. 优先尝试首选端口，带有平滑重试以允许刚停机的 socket 彻底释放
+    for retry in 0..6 {
+        match TcpListener::bind(("127.0.0.1", start_port)).await {
+            Ok(listener) => return Ok((listener, start_port)),
+            Err(e) => {
+                log::debug!(
+                    "尝试绑定端口 {} 遇到 (重试 {}/6): {}",
+                    start_port,
+                    retry + 1,
+                    e
+                );
+                if retry < 5 {
+                    tokio::time::sleep(Duration::from_millis(150)).await;
+                }
+            }
         }
     }
-    for offset in 1..20 {
+
+    // 2. 首选端口无法获取，递增避让扫描可用端口
+    for offset in 1..=20 {
         let port = start_port.saturating_add(offset);
-        if let Ok(listener) = std::net::TcpListener::bind(("127.0.0.1", port)) {
-            drop(listener);
-            return Ok(port);
+        if let Ok(listener) = TcpListener::bind(("127.0.0.1", port)).await {
+            log::info!("首选端口 {} 被占用，已避让至可用端口 {}", start_port, port);
+            return Ok((listener, port));
         }
     }
+
     Err(format!(
-        "无法在端口 {}..={} 找到可用端口，请检查是否有残留进程占用",
+        "无法在端口 {}..={} 成功建立本地监听，请检查是否有残留进程占用",
         start_port,
         start_port.saturating_add(20)
     ))
@@ -85,10 +113,19 @@ pub async fn find_available_port(start_port: u16) -> Result<u16, String> {
 /// 启动 Accio Local Bridge 中继服务器
 pub async fn start_bridge(preferred_port: Option<u16>) -> Result<u16, String> {
     {
-        let guard = RUNNING_BRIDGE.lock().unwrap();
+        let mut guard = RUNNING_BRIDGE.lock().unwrap();
         if let Some(ref handle) = *guard {
-            if preferred_port.is_none() || preferred_port == Some(handle.port) {
-                return Ok(handle.port);
+            if !handle.join_handle.is_finished() {
+                if preferred_port.is_none() || preferred_port == Some(handle.port) {
+                    log::info!(
+                        "Accio Local Bridge 已经在端口 {} 上稳定运行，直接复用",
+                        handle.port
+                    );
+                    return Ok(handle.port);
+                }
+            } else {
+                log::warn!("先前的 Accio Bridge 实例已结束，正在清理旧状态并重新拉起");
+                *guard = None;
             }
         }
     }
@@ -96,11 +133,12 @@ pub async fn start_bridge(preferred_port: Option<u16>) -> Result<u16, String> {
     // 若当前正在运行但需要切换不同端口，先停止现存 bridge
     if is_bridge_running() {
         stop_bridge().await?;
+        tokio::time::sleep(Duration::from_millis(200)).await;
     }
 
     let config = load_accio_config();
     let base_port = preferred_port.unwrap_or(config.bridge_port);
-    let target_port = find_available_port(base_port).await?;
+    let (listener, target_port) = bind_listener(base_port).await?;
 
     // 若发现端口发生了递增避让，回写配置
     if target_port != config.bridge_port {
@@ -113,10 +151,6 @@ pub async fn start_bridge(preferred_port: Option<u16>) -> Result<u16, String> {
             target_port
         );
     }
-
-    let listener = TcpListener::bind(("127.0.0.1", target_port))
-        .await
-        .map_err(|e| format!("绑定端口 127.0.0.1:{} 失败: {}", target_port, e))?;
 
     let client = Client::builder()
         .timeout(Duration::from_secs(180))
@@ -143,12 +177,16 @@ pub async fn start_bridge(preferred_port: Option<u16>) -> Result<u16, String> {
         );
         let server = axum::serve(listener, app);
         let graceful = server.with_graceful_shutdown(async move {
-            let _ = shutdown_rx.await;
-            log::info!("Accio Local Bridge 收到退出信号，正在关闭服务...");
+            match shutdown_rx.await {
+                Ok(_) => log::info!("Accio Local Bridge 收到显式退出信号，正在关闭服务..."),
+                Err(_) => log::info!("Accio Local Bridge 收到停机指令，正在关闭服务..."),
+            }
         });
 
         if let Err(e) = graceful.await {
             log::error!("Accio Local Bridge 服务运行异常退出: {}", e);
+        } else {
+            log::info!("Accio Local Bridge 服务已优雅退出 (端口 {})", target_port);
         }
     });
 
@@ -172,8 +210,10 @@ pub async fn stop_bridge() -> Result<(), String> {
     };
     if let Some(handle) = handle_opt {
         let _ = handle.shutdown_tx.send(());
-        let _ = tokio::time::timeout(Duration::from_millis(1000), handle.join_handle).await;
-        log::info!("已释放 Accio Bridge 端口 {}", handle.port);
+        let _ = tokio::time::timeout(Duration::from_millis(1500), handle.join_handle).await;
+        // 给予底层系统短暂缓冲以释放套接字
+        tokio::time::sleep(Duration::from_millis(150)).await;
+        log::info!("已安全停止并释放 Accio Bridge 端口 {}", handle.port);
     }
     Ok(())
 }

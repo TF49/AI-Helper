@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   Eye,
   EyeOff,
@@ -25,6 +25,7 @@ export interface ApiKeyInputProps {
   hintText?: string;
   accentColor?: "blue" | "purple" | "emerald" | "orange";
   toolName?: string;
+  toolId?: string;
 }
 
 export function ApiKeyInput({
@@ -35,11 +36,55 @@ export function ApiKeyInput({
   hintText,
   accentColor = "blue",
   toolName = "当前工具",
+  toolId,
 }: ApiKeyInputProps) {
   const [show, setShow] = useState(false);
   const [localTokenModalOpen, setLocalTokenModalOpen] = useState(false);
 
-  const { authState, setLoginModalOpen, onTokenSelected } = useAuth();
+  const { authState, setLoginModalOpen } = useAuth();
+
+  const effectiveToolId =
+    toolId || toolName.toLowerCase().replace(/[^a-z0-9]/g, "") || "default";
+  const storageKey = `bound_token_${effectiveToolId}`;
+
+  const [boundToken, setBoundToken] = useState<{ id: number; name: string } | null>(() => {
+    try {
+      const saved = localStorage.getItem(storageKey);
+      return saved ? JSON.parse(saved) : null;
+    } catch {
+      return null;
+    }
+  });
+
+  // 当外部 value 被手动清空时，同步解除绑定
+  useEffect(() => {
+    if (!value.trim() && boundToken) {
+      setBoundToken(null);
+      try {
+        localStorage.removeItem(storageKey);
+      } catch {}
+    }
+  }, [value, boundToken, storageKey]);
+
+  // 监听全套同步事件 (仅在明确点击全套同步时联动)
+  useEffect(() => {
+    const handleSyncEvent = (e: Event) => {
+      const customEvent = e as CustomEvent<{ id: number; name: string; key: string }>;
+      if (customEvent.detail) {
+        setBoundToken({ id: customEvent.detail.id, name: customEvent.detail.name });
+        try {
+          localStorage.setItem(
+            storageKey,
+            JSON.stringify({ id: customEvent.detail.id, name: customEvent.detail.name }),
+          );
+        } catch {}
+      }
+    };
+    window.addEventListener("ai_helper_sync_all_tokens", handleSyncEvent);
+    return () => {
+      window.removeEventListener("ai_helper_sync_all_tokens", handleSyncEvent);
+    };
+  }, [storageKey]);
 
   const handlePaste = async () => {
     try {
@@ -76,7 +121,11 @@ export function ApiKeyInput({
 
   const handleKeySelected = (plainKey: string, token: TokenItem) => {
     onChange(plainKey);
-    onTokenSelected(plainKey, token);
+    const info = { id: token.id, name: token.name };
+    setBoundToken(info);
+    try {
+      localStorage.setItem(storageKey, JSON.stringify(info));
+    } catch {}
   };
 
   return (
@@ -98,9 +147,9 @@ export function ApiKeyInput({
                       ? "bg-orange-50/90 hover:bg-orange-100/90 text-orange-800 dark:bg-orange-500/15 dark:text-orange-200 border border-orange-200/90 dark:border-orange-500/35 hover:shadow-orange-500/15"
                       : "bg-blue-50/90 hover:bg-blue-100/90 text-blue-800 dark:bg-blue-500/15 dark:text-blue-200 border border-blue-200/90 dark:border-blue-500/35 hover:shadow-blue-500/15",
               )}
-              title="查看并在弹窗中选择、切换或新建您的 API Key"
+              title={`为当前「${toolName}」选择或关联 API Key`}
             >
-              {authState.selected_token_name ? (
+              {boundToken ? (
                 <>
                   <span className="relative flex h-2 w-2 mr-0.5">
                     <span
@@ -130,7 +179,7 @@ export function ApiKeyInput({
                   </span>
                   <KeyRound size={12} className="opacity-90 group-hover:rotate-12 transition-transform duration-200" />
                   <span className="font-semibold tracking-wide">
-                    已关联: {authState.selected_token_name}
+                    已关联: {boundToken.name}
                   </span>
                 </>
               ) : (
@@ -284,7 +333,7 @@ export function ApiKeyInput({
       {/* 当前工具专用的令牌选择弹窗（带有流畅 GSAP & React-Bits 动效） */}
       <TokenSelectModal
         open={localTokenModalOpen}
-        selectedTokenId={authState.selected_token_id}
+        selectedTokenId={boundToken?.id ?? null}
         onSelectKey={handleKeySelected}
         onClose={() => setLocalTokenModalOpen(false)}
         toolName={toolName}

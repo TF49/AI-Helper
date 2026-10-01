@@ -23,13 +23,7 @@ import { SpotlightCard } from "./react-bits/SpotlightCard";
 import { StarBorder } from "./react-bits/StarBorder";
 import { TerminalTestModal } from "./TerminalTestModal";
 
-const QUICK_MODELS = [
-  "gpt-4o",
-  "gpt-4o-mini",
-  "o1",
-  "o3-mini",
-  "chatgpt-4o-latest",
-];
+
 
 export function ChatGPTPanel() {
   const [url, setUrl] = useState<string>(PRESET_URLS[0]);
@@ -223,7 +217,8 @@ export function ChatGPTPanel() {
                 placeholder="sk-... (填入 BobAPI 密钥)"
                 envVarName="CUSTOM_OPENAI_API_KEY"
                 accentColor="blue"
-                toolName="ChatGPT"
+                toolName="ChatGPT (Codex)"
+                toolId="chatgpt"
               />
             </div>
 
@@ -256,28 +251,7 @@ export function ChatGPTPanel() {
               />
             </div>
 
-            {/* 常用模型快捷填充芯片 */}
-            <div className="mt-3 pt-3 border-t border-slate-100 dark:border-white/5">
-              <span className="text-[10px] text-slate-400 dark:text-gray-500 uppercase tracking-wider block mb-1.5 font-medium">
-                常用模型推荐:
-              </span>
-              <div className="flex flex-wrap gap-1.5">
-                {QUICK_MODELS.map((item) => (
-                  <button
-                    key={item}
-                    type="button"
-                    onClick={() => setModel(item)}
-                    className={`text-[11px] font-mono px-2 py-0.5 rounded-md border transition-all cursor-pointer ${
-                      model === item
-                        ? "bg-blue-100 border-blue-300 text-blue-700 dark:bg-blue-500/20 dark:border-blue-500/40 dark:text-blue-300 font-semibold"
-                        : "bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100 hover:text-slate-900 dark:bg-white/5 dark:border-white/10 dark:text-gray-400 dark:hover:bg-white/10 dark:hover:text-white"
-                    }`}
-                  >
-                    {item}
-                  </button>
-                ))}
-              </div>
-            </div>
+
           </SpotlightCard>
         </div>
       </div>

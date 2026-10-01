@@ -1,11 +1,9 @@
-import React, { useState, useEffect, useRef, useCallback, useMemo } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { createPortal } from "react-dom";
 import gsap from "gsap";
-import { motion, AnimatePresence } from "motion/react";
 import {
   KeyRound,
   RefreshCw,
-  Plus,
   Check,
   ExternalLink,
   X,
@@ -20,14 +18,12 @@ import {
   Eye,
   EyeOff,
   ShieldCheck,
-  Zap,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Input } from "../ui/input";
 import {
   getUserTokens,
   getTokenKey,
-  createUserToken,
   setSelectedToken,
   applyApiKeyToAgents,
   openUrl,
@@ -37,7 +33,6 @@ import { cn } from "../../lib/utils";
 import { SpotlightCard } from "../react-bits/SpotlightCard";
 import { ShinyText } from "../react-bits/ShinyText";
 import { DecryptedText } from "../react-bits/DecryptedText";
-import { StarBorder } from "../react-bits/StarBorder";
 
 export interface TokenSelectModalProps {
   open: boolean;
@@ -70,11 +65,6 @@ export function TokenSelectModal({
   const [revealedKeys, setRevealedKeys] = useState<Record<number, string>>({});
   const [revealingId, setRevealingId] = useState<number | null>(null);
   const [copiedId, setCopiedId] = useState<number | null>(null);
-
-  // 新建 Token 表单状态
-  const [showCreate, setShowCreate] = useState(false);
-  const [newTokenName, setNewTokenName] = useState("");
-  const [creating, setCreating] = useState(false);
 
   // DOM 引用（供 GSAP 流畅动效）
   const overlayRef = useRef<HTMLDivElement>(null);
@@ -196,8 +186,6 @@ export function TokenSelectModal({
       setIsRendered(true);
       setIsClosing(false);
       void loadTokens();
-      setShowCreate(false);
-      setNewTokenName("");
       setSearchQuery("");
       setFilterMode("all");
     } else if (isRendered && !isClosing) {
@@ -307,6 +295,23 @@ export function TokenSelectModal({
         `全套同步成功！已将「${token.name}」配置到 ${successCount} 个本地 Agent！`,
       );
 
+      // 同步更新所有工具的本地 boundToken 记录
+      ["chatgpt", "claude", "workbuddy", "acciowork", "default"].forEach((tid) => {
+        try {
+          localStorage.setItem(
+            `bound_token_${tid}`,
+            JSON.stringify({ id: token.id, name: token.name }),
+          );
+        } catch {}
+      });
+
+      // 广播全局全套同步事件
+      window.dispatchEvent(
+        new CustomEvent("ai_helper_sync_all_tokens", {
+          detail: { id: token.id, name: token.name, key: plainKey },
+        }),
+      );
+
       onSelectKey(plainKey, token);
       handleSmoothClose();
     } catch (err: unknown) {
@@ -353,30 +358,6 @@ export function TokenSelectModal({
       toast.error("获取明文失败");
     } finally {
       setRevealingId(null);
-    }
-  };
-
-  // 创建新 Token
-  const handleCreateToken = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newTokenName.trim()) {
-      toast.warning("请输入 Token 名称");
-      return;
-    }
-
-    setCreating(true);
-    try {
-      const created = await createUserToken(newTokenName.trim());
-      toast.success(`新 API Key「${created.name}」创建成功！`);
-      setShowCreate(false);
-      setNewTokenName("");
-      // 自动选中并绑定
-      void handleSelectToken(created);
-    } catch (err: unknown) {
-      const msg = typeof err === "string" ? err : "创建 API Key 失败";
-      toast.error(msg);
-    } finally {
-      setCreating(false);
     }
   };
 
@@ -562,80 +543,19 @@ export function TokenSelectModal({
             </div>
           </div>
 
-          {/* 新建与外部通道按钮 */}
+          {/* 外部通道按钮 */}
           <div className="flex items-center gap-2">
             <button
               type="button"
-              onClick={() => setShowCreate((v) => !v)}
-              className={cn(
-                "inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl font-semibold text-xs transition-all active:scale-95 cursor-pointer border shadow-2xs",
-                showCreate
-                  ? "bg-slate-200 text-slate-700 dark:bg-white/10 dark:text-gray-200 border-slate-300 dark:border-white/10"
-                  : theme.bgBadge,
-              )}
-            >
-              <Plus
-                size={13}
-                className={cn("transition-transform duration-200", showCreate && "rotate-45")}
-              />
-              <span>{showCreate ? "取消创建" : "新建 Key"}</span>
-            </button>
-
-            <button
-              type="button"
               onClick={() => void openUrl("https://bob-api.com/keys")}
-              className="inline-flex items-center gap-1 text-[11px] text-slate-400 hover:text-slate-700 dark:hover:text-gray-300 px-2 py-1 rounded-lg transition-colors cursor-pointer"
-              title="前往 bob-api.com 网页控制台查看更多额度与日志"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl font-medium text-xs text-slate-600 hover:text-slate-900 dark:text-gray-300 dark:hover:text-white bg-slate-100 hover:bg-slate-200/80 dark:bg-white/5 dark:hover:bg-white/10 border border-slate-200 dark:border-white/10 transition-all cursor-pointer shadow-2xs"
+              title="前往 bob-api.com 网页控制台查看或新建 API Key"
             >
               <span>网页控制台</span>
-              <ExternalLink size={11} />
+              <ExternalLink size={12} />
             </button>
           </div>
         </div>
-
-        {/* ── 新建 Token 展开表单（平滑折叠） ── */}
-        <AnimatePresence>
-          {showCreate && (
-            <motion.form
-              initial={{ height: 0, opacity: 0 }}
-              animate={{ height: "auto", opacity: 1 }}
-              exit={{ height: 0, opacity: 0 }}
-              transition={{ duration: 0.24, ease: "easeOut" }}
-              onSubmit={handleCreateToken}
-              className="relative z-10 px-6 py-3.5 bg-gradient-to-r from-slate-100/90 to-slate-50/90 dark:from-white/[0.04] dark:to-white/[0.02] border-b border-slate-200/80 dark:border-white/[0.08] flex items-center gap-2.5 overflow-hidden"
-            >
-              <Input
-                type="text"
-                value={newTokenName}
-                onChange={(e) => setNewTokenName(e.target.value)}
-                placeholder={`输入新 Key 名称 (例如: ${toolName}-Special-Key)`}
-                autoFocus
-                className="flex-1 text-xs h-9 bg-white dark:bg-black/40 border-slate-300 dark:border-white/15 rounded-xl shadow-inner"
-              />
-              <StarBorder
-                as="button"
-                type="submit"
-                disabled={creating || !newTokenName.trim()}
-                color={theme.starColor}
-                speed="3.5s"
-                className="flex-shrink-0"
-                innerClassName="px-3.5 py-2 text-xs font-semibold rounded-lg bg-blue-600 text-white hover:bg-blue-700"
-              >
-                {creating ? (
-                  <div className="flex items-center gap-1.5">
-                    <Loader2 size={13} className="animate-spin" />
-                    <span>创建中...</span>
-                  </div>
-                ) : (
-                  <div className="flex items-center gap-1.5">
-                    <Zap size={13} className="text-amber-300" />
-                    <span>创建并关联</span>
-                  </div>
-                )}
-              </StarBorder>
-            </motion.form>
-          )}
-        </AnimatePresence>
 
         {/* ── 令牌展示区域（核心内容区，内置 SpotlightCard） ── */}
         <div
@@ -678,16 +598,16 @@ export function TokenSelectModal({
               <p className="text-[11px] max-w-xs text-slate-400 dark:text-gray-500">
                 {searchQuery
                   ? "请尝试调整搜索关键词或重置筛选条件"
-                  : "点击上方「新建 Key」，即可快速创建并在本工具中即刻生效。"}
+                  : "可前往 bob-api.com 网页控制台管理或新建 Key，完成后点击刷新即可在此呈现。"}
               </p>
               {!searchQuery && (
                 <button
                   type="button"
-                  onClick={() => setShowCreate(true)}
+                  onClick={() => void openUrl("https://bob-api.com/keys")}
                   className="mt-2 inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-blue-600 text-white text-xs font-semibold hover:bg-blue-700 active:scale-95 transition-all shadow-md shadow-blue-500/20 cursor-pointer"
                 >
-                  <Plus size={13} />
-                  <span>立即新建首个 Key</span>
+                  <ExternalLink size={13} />
+                  <span>前往网页控制台管理 Key</span>
                 </button>
               )}
             </div>

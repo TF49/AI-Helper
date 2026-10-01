@@ -92,7 +92,6 @@ function AppContent() {
     setTokenModalOpen,
     logout,
     onLoginSuccess,
-    onTokenSelected,
   } = useAuth();
 
   const [isInitialized, setIsInitialized] = useState<boolean>(() => {
@@ -243,10 +242,6 @@ function AppContent() {
 
   const handleLoginSuccess = (user: UserInfo) => {
     onLoginSuccess(user);
-    // 若此前已完成过初始化且尚未选定 Token，顺滑唤起 Token 选择弹窗
-    if (isInitialized && !authState.selected_token_id) {
-      setTokenModalOpen(true);
-    }
   };
 
   const handleInitFinish = () => {
@@ -254,10 +249,6 @@ function AppContent() {
     sessionStorage.setItem("ai_helper_init_completed", "true");
     setIsInitialized(true);
     setInitModalOpen(false);
-    // 初始化完成后，若尚未选择 Token，自动弹出 Token 挑选列表
-    if (authState.is_logged_in && !authState.selected_token_id) {
-      setTokenModalOpen(true);
-    }
   };
 
   const handleInitClose = () => {
@@ -265,10 +256,6 @@ function AppContent() {
     localStorage.setItem("ai_helper_init_completed", "true");
     setIsInitialized(true);
     setInitModalOpen(false);
-    // 初始化关闭后，若尚未选择 Token，自动弹出 Token 挑选列表
-    if (authState.is_logged_in && !authState.selected_token_id) {
-      setTokenModalOpen(true);
-    }
   };
 
   const isDark = resolvedTheme === "dark";
@@ -403,13 +390,22 @@ function AppContent() {
           <button
             type="button"
             onClick={async () => {
-              if (isTauri) {
-                toast.info("已最小化至后台托盘，Bridge 网关持续为您守护", {
-                  duration: 3500,
-                });
-                await win.hide();
-              } else {
-                await win.close();
+              try {
+                if (isTauri) {
+                  toast.info("已最小化至后台托盘，Bridge 网关持续为您守护", {
+                    duration: 3500,
+                  });
+                  try {
+                    await win.hide();
+                  } catch (hideErr) {
+                    console.warn("win.hide() failed, fallback to win.close():", hideErr);
+                    await win.close();
+                  }
+                } else {
+                  await win.close();
+                }
+              } catch (err) {
+                console.error("Failed to close/hide window:", err);
               }
             }}
             className="w-7 h-7 flex items-center justify-center rounded-lg transition-colors hover:bg-red-500 hover:text-white text-slate-500 dark:hover:bg-red-500/90 dark:text-gray-400 dark:hover:text-white cursor-pointer"
@@ -721,12 +717,11 @@ function AppContent() {
                     type="button"
                     onClick={() => setTokenModalOpen(true)}
                     className="w-full flex items-center justify-center gap-1.5 py-1 px-2 rounded-lg text-xs font-medium bg-white dark:bg-white/10 hover:bg-slate-50 dark:hover:bg-white/15 text-blue-700 dark:text-blue-300 border border-blue-200/80 dark:border-white/10 transition-colors shadow-2xs cursor-pointer"
+                    title="查看并管理云端 API Key 资产"
                   >
                     <KeyRound size={12} />
                     <span className="truncate">
-                      {authState.selected_token_name
-                        ? `选定: ${authState.selected_token_name}`
-                        : "选择 API Key 列表"}
+                      管理 API Key 资产
                     </span>
                   </button>
                 </div>
@@ -960,14 +955,46 @@ function AppContent() {
         }}
       />
 
-      {/* ── 全局 API Key 选择弹窗 ── */}
+      {/* ── API Key 资产与关联弹窗 ── */}
       <TokenSelectModal
         open={tokenModalOpen}
-        selectedTokenId={authState.selected_token_id}
-        onSelectKey={onTokenSelected}
+        onSelectKey={(_plainKey, token) => {
+          const tid = lastAgentTab;
+          try {
+            localStorage.setItem(
+              `bound_token_${tid}`,
+              JSON.stringify({ id: token.id, name: token.name }),
+            );
+          } catch {}
+          toast.success(`已为当前目标「${
+            lastAgentTab === "claude"
+              ? "Claude Code"
+              : lastAgentTab === "workbuddy"
+                ? "WorkBuddy"
+                : lastAgentTab === "acciowork"
+                  ? "Accio Work"
+                  : "ChatGPT (Codex)"
+          }」成功关联 API Key：${token.name}`);
+        }}
         onClose={() => setTokenModalOpen(false)}
-        toolName="全局 Agent 配置"
-        accentColor="blue"
+        toolName={
+          lastAgentTab === "claude"
+            ? "Claude Code"
+            : lastAgentTab === "workbuddy"
+              ? "WorkBuddy"
+              : lastAgentTab === "acciowork"
+                ? "Accio Work"
+                : "ChatGPT (Codex)"
+        }
+        accentColor={
+          lastAgentTab === "claude"
+            ? "purple"
+            : lastAgentTab === "workbuddy"
+              ? "emerald"
+              : lastAgentTab === "acciowork"
+                ? "orange"
+                : "blue"
+        }
       />
 
       {/* ── 阶段 1：启动检查更新阶段的全屏过渡层 ── */}

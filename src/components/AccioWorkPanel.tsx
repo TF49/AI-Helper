@@ -146,8 +146,17 @@ export function AccioWorkPanel() {
         toast.info("已停止 Accio Work 本地 Bridge 网关");
       } else {
         const boundPort = await startAccioBridge(bridgePort);
-        setBridgeStatus({ is_running: true, port: boundPort });
-        toast.success(`Accio Work Bridge 已启动，监听端口: ${boundPort}`);
+        const actualStatus = await getAccioBridgeStatus().catch(() => ({
+          is_running: true,
+          port: boundPort,
+        }));
+        setBridgeStatus(actualStatus);
+        if (actualStatus.port) {
+          setBridgePort(actualStatus.port);
+        }
+        toast.success(
+          `Accio Work Bridge 已成功启动，监听端口: ${actualStatus.port || boundPort}`,
+        );
       }
     } catch (e) {
       toast.error(`Bridge 网关操作失败: ${e}`);
@@ -527,7 +536,8 @@ export function AccioWorkPanel() {
                 placeholder="sk-... (填入所选服务商的 API 密钥)"
                 hintText="用于向中转节点发起大模型请求认证"
                 accentColor="orange"
-                toolName="Accio"
+                toolName="Accio Work"
+                toolId="acciowork"
               />
             </div>
 

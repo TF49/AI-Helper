@@ -3,7 +3,7 @@
  * Integrated: Anime.js (v3.2.2) + GSAP (v3.12.5) + React-Bits
  */
 
-const CURRENT_VERSION = "v1.0.38";
+const CURRENT_VERSION = "v1.0.39";
 const GITHUB_REPO = "TF49/AI-Helper";
 const GITHUB_RELEASES_URL = `https://github.com/${GITHUB_REPO}/releases`;
 const GHFAST_PREFIX = "https://ghfast.top/";
