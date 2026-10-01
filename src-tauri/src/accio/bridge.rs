@@ -10,9 +10,11 @@ use axum::{
     routing::{any, get, post},
     Json, Router,
 };
+use flate2::read::GzDecoder;
 use futures_util::Stream;
 use reqwest::Client;
 use serde_json::{json, Value};
+use std::io::Read;
 use std::{
     pin::Pin,
     sync::Mutex,
@@ -164,6 +166,8 @@ pub async fn start_bridge(preferred_port: Option<u16>) -> Result<u16, String> {
         .route("/api/adk/embedding/embed", post(handle_embedding))
         .route("/api/adk/llm", post(handle_llm))
         .route("/api/adk/llm/*path", post(handle_llm))
+        .route("/api/mcp/proxy", any(handle_mcp_proxy))
+        .route("/api/mcp/proxy/*path", any(handle_mcp_proxy))
         .fallback(any(proxy_official))
         .layer(CorsLayer::permissive())
         .with_state(client);
@@ -312,7 +316,7 @@ async fn custom_model_list() -> Json<Value> {
 /// POST /api/tool/rlab/call: 处理 Accio 内部的自动模型路由请求 (model_routing)
 async fn handle_tool_rlab_call(
     State(client): State<Client>,
-    headers: HeaderMap,
+    mut headers: HeaderMap,
     request: Request,
 ) -> Response {
     let (parts, body) = request.into_parts();
@@ -326,6 +330,18 @@ async fn handle_tool_rlab_call(
                 .into_response();
         }
     };
+    let bytes = match decode_request_body(&headers, bytes) {
+        Ok(b) => b,
+        Err((status, message)) => {
+            return (
+                status,
+                Json(json!({"error_code": status.as_u16(), "error_message": message})),
+            )
+                .into_response();
+        }
+    };
+    headers.remove(header::CONTENT_ENCODING);
+    headers.remove(header::CONTENT_LENGTH);
 
     if let Ok(val) = serde_json::from_slice::<Value>(&bytes) {
         if val.get("function").and_then(Value::as_str) == Some("model_routing") {
@@ -350,7 +366,24 @@ async fn handle_tool_rlab_call(
 }
 
 /// POST /api/adk/embedding/embed: 映射转接向量嵌入请求
-async fn handle_embedding(State(client): State<Client>, body: Bytes) -> Response {
+async fn handle_embedding(State(client): State<Client>, request: Request) -> Response {
+    let (parts, body) = request.into_parts();
+    let raw_body = match axum::body::to_bytes(body, 16 * 1024 * 1024).await {
+        Ok(b) => b,
+        Err(e) => {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(json!({"error": {"message": format!("无法读取请求体: {}", e)}})),
+            )
+                .into_response();
+        }
+    };
+    let body = match decode_request_body(&parts.headers, raw_body) {
+        Ok(b) => b,
+        Err((status, message)) => {
+            return (status, Json(json!({"error": {"message": message}}))).into_response();
+        }
+    };
     let config = load_accio_config();
     if config.api_key.trim().is_empty() {
         return (
@@ -371,11 +404,28 @@ async fn handle_embedding(State(client): State<Client>, body: Bytes) -> Response
         }
     };
 
+    // 验证输入字段
     let texts = input
         .get("texts")
         .or_else(|| input.get("input"))
-        .cloned()
-        .unwrap_or_else(|| json!([]));
+        .and_then(Value::as_array);
+
+    if texts.is_none() {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(json!({"error": {"message": "缺少 texts 或 input 字段"}})),
+        )
+            .into_response();
+    }
+
+    let texts = texts.unwrap().clone();
+    if texts.is_empty() {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(json!({"error": {"message": "输入文本数组不能为空"}})),
+        )
+            .into_response();
+    }
     let root = clean_base_url(&config.base_url);
     let endpoint = format!("{root}/v1/embeddings");
 
@@ -392,7 +442,26 @@ async fn handle_embedding(State(client): State<Client>, body: Bytes) -> Response
     match res {
         Ok(upstream_res) => {
             let status = upstream_res.status();
-            match upstream_res.json::<Value>().await {
+            let body_bytes = match upstream_res.bytes().await {
+                Ok(b) => b,
+                Err(e) => {
+                    return (
+                        StatusCode::BAD_GATEWAY,
+                        Json(json!({"error": {"message": format!("读取上游响应失败: {}", e)}})),
+                    )
+                        .into_response();
+                }
+            };
+
+            if body_bytes.len() > MAX_RESPONSE_SIZE {
+                return (
+                    StatusCode::PAYLOAD_TOO_LARGE,
+                    Json(json!({"error": {"message": format!("上游响应体过大 ({} MB)", body_bytes.len() / 1024 / 1024)}})),
+                )
+                    .into_response();
+            }
+
+            match serde_json::from_slice::<Value>(&body_bytes) {
                 Ok(data) => (status, Json(data)).into_response(),
                 Err(e) => (
                     StatusCode::BAD_GATEWAY,
@@ -412,7 +481,7 @@ async fn handle_embedding(State(client): State<Client>, body: Bytes) -> Response
 /// POST /api/adk/llm*: 模型调用核心转译网关 (带 15s SSE 心跳保活与头尾压缩)
 async fn handle_llm(State(client): State<Client>, request: Request) -> Response {
     let (parts, body) = request.into_parts();
-    let bytes = match axum::body::to_bytes(body, 32 * 1024 * 1024).await {
+    let raw_bytes = match axum::body::to_bytes(body, 32 * 1024 * 1024).await {
         Ok(b) => b,
         Err(e) => {
             return (
@@ -423,18 +492,59 @@ async fn handle_llm(State(client): State<Client>, request: Request) -> Response 
         }
     };
 
+    let bytes = match decode_request_body(&parts.headers, raw_bytes) {
+        Ok(b) => b,
+        Err((status, message)) => {
+            return (
+                status,
+                Json(json!({
+                    "error_code": status.as_u16(),
+                    "error_message": message
+                })),
+            )
+                .into_response();
+        }
+    };
+
     let input: Value = match serde_json::from_slice(&bytes) {
         Ok(v) => v,
         Err(e) => {
-            log::warn!("收到非 JSON 格式 LLM 数据包，透明转交官方网关: {}", e);
-            let path = parts
-                .uri
-                .path_and_query()
-                .map(|p| p.as_str())
-                .unwrap_or(parts.uri.path());
-            return forward_to_official(&client, parts.method, parts.headers, path, bytes).await;
+            log::warn!("收到无法解析的 LLM JSON 请求: {}", e);
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(json!({
+                    "error_code": 400,
+                    "error_message": format!("LLM 请求体不是有效 JSON: {}", e)
+                })),
+            )
+                .into_response();
         }
     };
+
+    // 验证请求结构
+    if !input.is_object() {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(json!({
+                "error_code": 400,
+                "error_message": "LLM 请求体必须是 JSON 对象"
+            })),
+        )
+            .into_response();
+    }
+
+    let has_contents = input.get("contents").and_then(Value::as_array).is_some();
+    let has_messages = input.get("messages").and_then(Value::as_array).is_some();
+    if !has_contents && !has_messages {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(json!({
+                "error_code": 400,
+                "error_message": "LLM 请求体缺少 contents 或 messages 字段"
+            })),
+        )
+            .into_response();
+    }
 
     let config = load_accio_config();
     let (tx, rx) = tokio::sync::mpsc::channel::<Result<Bytes, std::convert::Infallible>>(32);
@@ -446,7 +556,9 @@ async fn handle_llm(State(client): State<Client>, request: Request) -> Response 
     let client_clone = client.clone();
     let config_clone = config.clone();
     let method_clone = parts.method.clone();
-    let headers_clone = parts.headers.clone();
+    let mut headers_clone = parts.headers.clone();
+    headers_clone.remove(header::CONTENT_ENCODING);
+    headers_clone.remove(header::CONTENT_LENGTH);
     let path_clone = parts
         .uri
         .path_and_query()
@@ -557,6 +669,156 @@ async fn handle_llm(State(client): State<Client>, request: Request) -> Response 
     response
 }
 
+/// POST /api/mcp/proxy: MCP 请求的显式代理入口。
+/// 上游响应保持 SSE/JSON 内容类型，传输错误转换为 JSON-RPC 错误，避免被官方网关的 HTML/文本错误污染。
+async fn handle_mcp_proxy(State(client): State<Client>, request: Request) -> Response {
+    let (parts, body) = request.into_parts();
+    let raw_bytes = match axum::body::to_bytes(body, 64 * 1024 * 1024).await {
+        Ok(b) => b,
+        Err(e) => {
+            return json_rpc_error_response(
+                StatusCode::BAD_REQUEST,
+                -32600,
+                format!("无法读取 MCP 请求体: {}", e),
+                None,
+            );
+        }
+    };
+    let mut headers = parts.headers;
+    let bytes = match decode_request_body(&headers, raw_bytes) {
+        Ok(b) => b,
+        Err((status, message)) => {
+            return json_rpc_error_response(status, -32600, message, None);
+        }
+    };
+    headers.remove(header::CONTENT_ENCODING);
+    headers.remove(header::CONTENT_LENGTH);
+
+    let path = parts
+        .uri
+        .path_and_query()
+        .map(|p| p.as_str().to_string())
+        .unwrap_or_else(|| parts.uri.path().to_string());
+
+    match forward_to_official_result(&client, parts.method, headers, &path, bytes).await {
+        Ok(response) => normalize_mcp_response(response).await,
+        Err((status, message)) => json_rpc_error_response(
+            status,
+            -32002,
+            format!("MCP 上游代理失败: {}", message),
+            None,
+        ),
+    }
+}
+
+fn json_rpc_error_response(
+    status: StatusCode,
+    code: i64,
+    message: String,
+    id: Option<Value>,
+) -> Response {
+    (
+        status,
+        [(
+            header::CONTENT_TYPE,
+            header::HeaderValue::from_static("application/json; charset=utf-8"),
+        )],
+        Json(json!({
+            "jsonrpc": "2.0",
+            "id": id.unwrap_or(Value::Null),
+            "error": { "code": code, "message": message }
+        })),
+    )
+        .into_response()
+}
+
+async fn normalize_mcp_response(response: Response) -> Response {
+    if response.status().is_success() {
+        return response;
+    }
+
+    let status = response.status();
+    let body = match axum::body::to_bytes(response.into_body(), 8 * 1024 * 1024).await {
+        Ok(body) => body,
+        Err(error) => {
+            return json_rpc_error_response(
+                status,
+                -32001,
+                format!("读取 MCP 上游错误响应失败: {}", error),
+                None,
+            );
+        }
+    };
+    if let Ok(payload) = serde_json::from_slice::<Value>(&body) {
+        if payload.get("jsonrpc").is_some() || payload.get("error").is_some() {
+            return (status, Json(payload)).into_response();
+        }
+    }
+    let preview = String::from_utf8_lossy(&body);
+    let preview = crate::accio::protocol::safe_truncate_head(&preview, 500);
+    json_rpc_error_response(
+        status,
+        -32001,
+        format!("MCP 上游返回 HTTP {}: {}", status, preview),
+        None,
+    )
+}
+
+/// 解压缩后上限：64MB，防止 gzip 炸弹
+const MAX_DECOMPRESSED_SIZE: usize = 64 * 1024 * 1024;
+
+fn decode_request_body(headers: &HeaderMap, body: Bytes) -> Result<Bytes, (StatusCode, String)> {
+    let Some(encoding) = headers.get(header::CONTENT_ENCODING) else {
+        return Ok(body);
+    };
+    let encoding = encoding.to_str().map_err(|_| {
+        (
+            StatusCode::UNSUPPORTED_MEDIA_TYPE,
+            "Content-Encoding 请求头不是有效 ASCII 文本".to_string(),
+        )
+    })?;
+    let encodings: Vec<_> = encoding
+        .split(',')
+        .map(|value| value.trim().to_ascii_lowercase())
+        .filter(|value| !value.is_empty() && value != "identity")
+        .collect();
+    if encodings.is_empty() {
+        return Ok(body);
+    }
+    if encodings.len() != 1 || encodings[0] != "gzip" {
+        return Err((
+            StatusCode::UNSUPPORTED_MEDIA_TYPE,
+            format!("暂不支持的请求 Content-Encoding: {}", encoding),
+        ));
+    }
+
+    let decoder = GzDecoder::new(body.as_ref());
+    let mut decoded = Vec::new();
+    // 限制解压后大小，防止 gzip 炸弹
+    let mut limited_reader = decoder.take(MAX_DECOMPRESSED_SIZE as u64 + 1);
+    limited_reader.read_to_end(&mut decoded).map_err(|e| {
+        (
+            StatusCode::BAD_REQUEST,
+            format!("无法解压 gzip 请求体: {}", e),
+        )
+    })?;
+
+    if decoded.len() > MAX_DECOMPRESSED_SIZE {
+        return Err((
+            StatusCode::PAYLOAD_TOO_LARGE,
+            format!(
+                "解压后的请求体超过 {} MB 上限",
+                MAX_DECOMPRESSED_SIZE / 1024 / 1024
+            ),
+        ));
+    }
+
+    Ok(Bytes::from(decoded))
+}
+
+/// 上游响应体大小上限：128MB
+const MAX_RESPONSE_SIZE: usize = 128 * 1024 * 1024;
+
 /// 请求上游 OpenAI 兼容服务
 async fn call_upstream_llm(
     client: &Client,
@@ -581,10 +843,22 @@ async fn call_upstream_llm(
         .map_err(|e| format!("请求上游服务失败: {}", e))?;
 
     let status = response.status();
-    let text = response
-        .text()
+
+    // 限制响应体大小
+    let body_bytes = response
+        .bytes()
         .await
         .map_err(|e| format!("读取上游响应内容失败: {}", e))?;
+
+    if body_bytes.len() > MAX_RESPONSE_SIZE {
+        return Err(format!(
+            "上游响应体过大 ({} MB)，超过 {} MB 上限",
+            body_bytes.len() / 1024 / 1024,
+            MAX_RESPONSE_SIZE / 1024 / 1024
+        ));
+    }
+
+    let text = String::from_utf8_lossy(&body_bytes).to_string();
 
     if !status.is_success() {
         let err_preview = if text.chars().count() > 300 {
@@ -886,44 +1160,92 @@ async fn forward_to_official(
     path: &str,
     body: Bytes,
 ) -> Response {
+    match forward_to_official_result(client, method, headers, path, body).await {
+        Ok(response) => response,
+        Err((status, message)) => (
+            status,
+            Json(json!({"error_message": format!("阿里官方网关透明反向代理失败: {}", message)})),
+        )
+            .into_response(),
+    }
+}
+
+/// 端到端请求头白名单，排除 hop-by-hop 头
+const END_TO_END_REQUEST_HEADERS: &[&str] = &[
+    "accept",
+    "accept-encoding",
+    "accept-language",
+    "authorization",
+    "cache-control",
+    "content-type",
+    "cookie",
+    "origin",
+    "referer",
+    "user-agent",
+    "x-request-id",
+    "x-forwarded-for",
+    "x-real-ip",
+];
+
+/// 端到端响应头白名单，排除 hop-by-hop 头
+const END_TO_END_RESPONSE_HEADERS: &[&str] = &[
+    "cache-control",
+    "content-type",
+    "date",
+    "etag",
+    "expires",
+    "last-modified",
+    "set-cookie",
+    "vary",
+    "x-request-id",
+];
+
+fn is_end_to_end_request_header(name: &str) -> bool {
+    END_TO_END_REQUEST_HEADERS
+        .iter()
+        .any(|&h| name.eq_ignore_ascii_case(h))
+}
+
+fn is_end_to_end_response_header(name: &str) -> bool {
+    END_TO_END_RESPONSE_HEADERS
+        .iter()
+        .any(|&h| name.eq_ignore_ascii_case(h))
+}
+
+async fn forward_to_official_result(
+    client: &Client,
+    method: axum::http::Method,
+    headers: HeaderMap,
+    path: &str,
+    body: Bytes,
+) -> Result<Response, (StatusCode, String)> {
     let config = load_accio_config();
     let url = format!("{}{}", config.official_gateway.trim_end_matches('/'), path);
 
     let mut req = client.request(method, &url).body(body);
     for (name, val) in &headers {
-        if name.as_str().eq_ignore_ascii_case("host")
-            || name.as_str().eq_ignore_ascii_case("content-length")
-        {
-            continue;
+        if is_end_to_end_request_header(name.as_str()) {
+            req = req.header(name, val);
         }
-        req = req.header(name, val);
     }
 
-    match req.send().await {
-        Ok(upstream) => {
-            let status = upstream.status();
-            let upstream_headers = upstream.headers().clone();
-            let stream = upstream.bytes_stream();
-            let mut response = Response::new(Body::from_stream(stream));
-            *response.status_mut() = status;
-            for (name, val) in upstream_headers {
-                if let Some(name) = name {
-                    if name.as_str().eq_ignore_ascii_case("content-length")
-                        || name.as_str().eq_ignore_ascii_case("content-encoding")
-                    {
-                        continue;
-                    }
-                    response.headers_mut().insert(name, val);
-                }
+    let upstream = req
+        .send()
+        .await
+        .map_err(|e| (StatusCode::BAD_GATEWAY, e.to_string()))?;
+    let status = upstream.status();
+    let upstream_headers = upstream.headers().clone();
+    let stream = upstream.bytes_stream();
+    let mut response = Response::new(Body::from_stream(stream));
+    *response.status_mut() = status;
+    for (name, val) in upstream_headers {
+        if let Some(name) = name {
+            if is_end_to_end_response_header(name.as_str()) {
+                response.headers_mut().insert(name, val);
             }
-            response
         }
-        Err(e) => (
-            StatusCode::BAD_GATEWAY,
-            Json(json!({"error_message": format!("阿里官方网关透明反向代理失败: {}", e)})),
-        )
-            .into_response(),
     }
+    Ok(response)
 }
 
 async fn proxy_official_stream(
@@ -940,15 +1262,37 @@ async fn proxy_official_stream(
 
     let mut req = client.request(method, &url).body(body);
     for (name, val) in &headers {
-        if name.as_str().eq_ignore_ascii_case("host")
-            || name.as_str().eq_ignore_ascii_case("content-length")
-        {
-            continue;
+        if is_end_to_end_request_header(name.as_str()) {
+            req = req.header(name, val);
         }
-        req = req.header(name, val);
     }
 
     let upstream = req.send().await.map_err(|e| e.to_string())?;
+    let status = upstream.status();
+    let content_type = upstream
+        .headers()
+        .get(header::CONTENT_TYPE)
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("");
+
+    // 如果不是 SSE 响应且状态码异常，转换为 Accio SSE 错误帧
+    if !status.is_success() && !content_type.contains("text/event-stream") {
+        let body_bytes = upstream.bytes().await.map_err(|e| e.to_string())?;
+        let preview = String::from_utf8_lossy(&body_bytes);
+        let preview = crate::accio::protocol::safe_truncate_head(&preview, 500);
+
+        let err_frame = serde_json::json!({
+            "errorCode": status.as_u16().to_string(),
+            "errorMessage": format!("官方网关返回 HTTP {}: {}", status, preview),
+            "turnComplete": true,
+            "partial": false
+        });
+        let sse_str = format_accio_sse(&err_frame);
+        let _ = tx.send(Ok(Bytes::from(sse_str))).await;
+        return Ok(());
+    }
+
+    // SSE 响应原样流式转发
     let mut stream = upstream.bytes_stream();
     while let Some(chunk_res) = stream.next().await {
         match chunk_res {
@@ -961,4 +1305,93 @@ async fn proxy_official_stream(
         }
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use flate2::{write::GzEncoder, Compression};
+    use std::io::Write;
+
+    #[test]
+    fn decode_request_body_supports_gzip() {
+        let source = br#"{"contents":[{"parts":[{"text":"hello"}]}]}"#;
+        let mut encoder = GzEncoder::new(Vec::new(), Compression::default());
+        encoder.write_all(source).expect("compress request");
+        let compressed = Bytes::from(encoder.finish().expect("finish gzip"));
+
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            header::CONTENT_ENCODING,
+            header::HeaderValue::from_static("gzip"),
+        );
+        let decoded = decode_request_body(&headers, compressed).expect("decode gzip");
+        assert_eq!(decoded.as_ref(), source);
+    }
+
+    #[test]
+    fn decode_request_body_rejects_unknown_encoding() {
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            header::CONTENT_ENCODING,
+            header::HeaderValue::from_static("br"),
+        );
+        let error = decode_request_body(&headers, Bytes::from_static(b"{}"))
+            .expect_err("unknown encoding must fail");
+        assert_eq!(error.0, StatusCode::UNSUPPORTED_MEDIA_TYPE);
+        assert!(error.1.contains("Content-Encoding"));
+    }
+
+    #[test]
+    fn decode_request_body_rejects_gzip_bomb() {
+        // 模拟 gzip 炸弹：压缩前很小，解压后超过上限
+        let huge = vec![b'A'; MAX_DECOMPRESSED_SIZE + 1024];
+        let mut encoder = GzEncoder::new(Vec::new(), Compression::best());
+        encoder.write_all(&huge).expect("compress bomb");
+        let compressed = Bytes::from(encoder.finish().expect("finish gzip"));
+
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            header::CONTENT_ENCODING,
+            header::HeaderValue::from_static("gzip"),
+        );
+        let error =
+            decode_request_body(&headers, compressed).expect_err("gzip bomb must be rejected");
+        assert_eq!(error.0, StatusCode::PAYLOAD_TOO_LARGE);
+        assert!(error.1.contains("超过"));
+    }
+
+    #[test]
+    fn end_to_end_headers_filter_hop_by_hop() {
+        assert!(is_end_to_end_request_header("authorization"));
+        assert!(is_end_to_end_request_header("content-type"));
+        assert!(!is_end_to_end_request_header("connection"));
+        assert!(!is_end_to_end_request_header("transfer-encoding"));
+        assert!(!is_end_to_end_request_header("upgrade"));
+
+        assert!(is_end_to_end_response_header("content-type"));
+        assert!(is_end_to_end_response_header("set-cookie"));
+        assert!(!is_end_to_end_response_header("connection"));
+        assert!(!is_end_to_end_response_header("transfer-encoding"));
+    }
+
+    #[test]
+    fn clean_base_url_removes_trailing_slash_and_v1() {
+        assert_eq!(
+            clean_base_url("https://api.example.com/"),
+            "https://api.example.com"
+        );
+        assert_eq!(
+            clean_base_url("https://api.example.com/v1"),
+            "https://api.example.com"
+        );
+        assert_eq!(
+            clean_base_url("https://api.example.com/v1/"),
+            "https://api.example.com"
+        );
+        assert_eq!(
+            clean_base_url("https://api.example.com"),
+            "https://api.example.com"
+        );
+    }
 }

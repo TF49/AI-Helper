@@ -24,6 +24,7 @@ const GITHUB_RAW_MIRROR_URL: &str =
 const GITHUB_API_URL: &str = "https://api.github.com/repos/TF49/AI-Helper/releases/latest";
 
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(5);
+const WINDOWS_UPDATE_INSTALLER_ARGS: [&str; 4] = ["/P", "/R", "/UPDATE", "/ARGS"];
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CandidateMirror {
@@ -726,8 +727,7 @@ pub async fn download_and_install_update(
             use std::os::windows::process::CommandExt;
             log::info!("Launching installer: {:?}", temp_file_path);
             let spawn_res = std::process::Command::new(&temp_file_path)
-                .arg("/UPDATE")
-                .arg("/passive")
+                .args(WINDOWS_UPDATE_INSTALLER_ARGS)
                 .creation_flags(0x00000008 | 0x00000200) // DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP
                 .spawn();
 
@@ -759,6 +759,14 @@ pub async fn download_and_install_update(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_windows_update_installer_args_enable_restart() {
+        assert_eq!(
+            WINDOWS_UPDATE_INSTALLER_ARGS,
+            ["/P", "/R", "/UPDATE", "/ARGS"]
+        );
+    }
 
     #[test]
     fn test_parse_host_port() {

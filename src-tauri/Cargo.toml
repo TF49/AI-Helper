@@ -1,6 +1,6 @@
 [package]
 name = "ai-helper"
-version = "1.0.40"
+version = "1.0.41"
 description = "AI Helper - ChatGPT & Claude Code 配置管理工具"
 authors = []
 license = "MIT"
@@ -31,7 +31,7 @@ tauri-plugin-store = "2"
 dirs = "5.0"
 toml_edit = "0.22"
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "net", "time", "sync"] }
-reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json", "stream", "cookies"] }
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json", "stream", "cookies", "gzip", "brotli", "deflate"] }
 axum = { version = "0.7", features = ["tokio", "http1"] }
 tower-http = { version = "0.5", features = ["cors"] }
 bytes = "1.0"
@@ -42,6 +42,7 @@ anyhow = "1.0"
 opener = "0.8.5"
 sysinfo = "0.31"
 base64 = "0.22"
+flate2 = "1"
 
 [target.'cfg(target_os = "windows")'.dependencies]
 winreg = "0.52"
