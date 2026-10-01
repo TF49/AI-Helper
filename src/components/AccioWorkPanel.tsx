@@ -14,6 +14,7 @@ import {
   Layers,
   FolderOpen,
   Radio,
+  AlertCircle,
 } from "lucide-react";
 import { AccioWorkIcon } from "./BrandIcons";
 import {
@@ -51,6 +52,7 @@ export function AccioWorkPanel() {
   );
   const [fallbackOfficial, setFallbackOfficial] = useState(false);
   const [preventOfficialLeak, setPreventOfficialLeak] = useState(true);
+  const [autoStartBridge, setAutoStartBridge] = useState(true);
 
   const [configExists, setConfigExists] = useState(false);
   const [configPath, setConfigPath] = useState("");
@@ -100,6 +102,7 @@ export function AccioWorkPanel() {
         );
         setFallbackOfficial(cfg.fallback_official ?? false);
         setPreventOfficialLeak(cfg.prevent_official_leak ?? true);
+        setAutoStartBridge(cfg.auto_start_bridge ?? true);
       }
 
       // 刷新 Bridge 状态与客户端运行状态
@@ -193,6 +196,7 @@ export function AccioWorkPanel() {
     official_gateway: officialGateway.trim(),
     fallback_official: fallbackOfficial,
     prevent_official_leak: preventOfficialLeak,
+    auto_start_bridge: autoStartBridge,
     cached_models: models.map((m) => m.id),
   };
 
@@ -319,6 +323,45 @@ export function AccioWorkPanel() {
                 <span className="text-[11px] text-slate-400 dark:text-gray-500">
                   进程安全守护
                 </span>
+              </div>
+
+              {/* 核心架构说明横幅：为什么必须开启 Bridge */}
+              <div className="p-3 rounded-xl border border-amber-200/80 bg-amber-50/70 dark:border-amber-500/25 dark:bg-amber-500/10 mb-3.5 flex items-start gap-2.5">
+                <AlertCircle size={15} className="text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+                <div className="space-y-0.5 text-[11px]">
+                  <span className="font-semibold text-amber-900 dark:text-amber-200">
+                    核心说明：必须开启 Bridge 才能在 Accio Work 中使用自定义模型
+                  </span>
+                  <p className="text-slate-600 dark:text-gray-300 leading-relaxed">
+                    Accio Work 桌面端通过专有的阿里巴巴 RLab ADK 协议通信，不支持直接配置第三方 API。必须保持本地 Bridge 网关在后台常驻运行，才能实时转译请求。AI Helper 支持托盘守护，关闭主窗口时网关不中断。
+                  </p>
+                </div>
+              </div>
+
+              {/* 随 AI Helper 自动拉起 Bridge 开关 */}
+              <div className="p-3 rounded-xl border border-slate-200/80 bg-slate-50/60 dark:border-white/10 dark:bg-white/[0.03] mb-3">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="space-y-0.5">
+                    <div className="flex items-center gap-2">
+                      <Radio size={14} className="text-orange-500" />
+                      <span className="text-xs font-semibold text-slate-900 dark:text-white">
+                        随 AI Helper 自动拉起 Bridge (后台常驻)
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-slate-500 dark:text-gray-400 leading-relaxed">
+                      开启后，AI Helper 启动时将自动在后台保持 Bridge 在线。关闭主窗口时将自动最小化至系统托盘，避免 Bridge 中断退出。
+                    </p>
+                  </div>
+                  <label className="relative inline-flex items-center cursor-pointer shrink-0 mt-0.5">
+                    <input
+                      type="checkbox"
+                      checked={autoStartBridge}
+                      onChange={(e) => setAutoStartBridge(e.target.checked)}
+                      className="sr-only peer"
+                    />
+                    <div className="w-9 h-5 bg-slate-200 peer-focus:outline-none rounded-full peer dark:bg-white/10 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-orange-500" />
+                  </label>
+                </div>
               </div>
 
               {/* 防耗豆熔断开关 */}
@@ -587,9 +630,26 @@ export function AccioWorkPanel() {
             </button>
           </div>
 
-          <span className="text-[11px] text-slate-400 dark:text-gray-500 font-mono">
-            GATEWAY_BASE_URL: http://127.0.0.1:{bridgeStatus.port || bridgePort}
-          </span>
+          <div className="flex items-center gap-2">
+            <span
+              className={`w-2 h-2 rounded-full ${
+                bridgeStatus.is_running
+                  ? "bg-emerald-500 animate-pulse"
+                  : "bg-rose-500"
+              }`}
+            />
+            <span className="text-[11px] font-mono">
+              {bridgeStatus.is_running ? (
+                <span className="text-emerald-600 dark:text-emerald-400">
+                  网关就绪: http://127.0.0.1:{bridgeStatus.port || bridgePort} (Accio Work 自定义模型生效中)
+                </span>
+              ) : (
+                <span className="text-rose-500 dark:text-rose-400">
+                  ⚠️ Bridge 未运行 (Accio Work 暂无法连接自定义模型，请点击启动网关)
+                </span>
+              )}
+            </span>
+          </div>
         </div>
 
         {/* 主保存按钮 */}

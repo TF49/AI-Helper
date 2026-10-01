@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Toaster } from "sonner";
+import { Toaster, toast } from "sonner";
 import {
   Minus,
   Maximize2,
@@ -55,6 +55,7 @@ const mockWindow = {
   toggleMaximize: async () => {},
   minimize: async () => {},
   close: async () => {},
+  hide: async () => {},
   onResized: async (_cb: () => void) => () => {},
   show: async () => {},
   setFocus: async () => {},
@@ -398,12 +399,21 @@ function AppContent() {
               <Maximize2 size={13} />
             )}
           </button>
-          {/* 关闭 */}
+          {/* 关闭/转入后台托盘守护 */}
           <button
             type="button"
-            onClick={() => win.close()}
+            onClick={async () => {
+              if (isTauri) {
+                toast.info("已最小化至后台托盘，Bridge 网关持续为您守护", {
+                  duration: 3500,
+                });
+                await win.hide();
+              } else {
+                await win.close();
+              }
+            }}
             className="w-7 h-7 flex items-center justify-center rounded-lg transition-colors hover:bg-red-500 hover:text-white text-slate-500 dark:hover:bg-red-500/90 dark:text-gray-400 dark:hover:text-white cursor-pointer"
-            title="关闭"
+            title="关闭窗口 (转入系统托盘保持后台常驻守护)"
           >
             <X size={13} />
           </button>

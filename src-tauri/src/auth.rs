@@ -993,6 +993,7 @@ pub async fn apply_api_key_to_agents(
                     official_gateway: cur.official_gateway,
                     fallback_official: cur.fallback_official,
                     prevent_official_leak: cur.prevent_official_leak,
+                    auto_start_bridge: cur.auto_start_bridge,
                     cached_models: cur.cached_models,
                 };
                 match crate::accio::config::save_accio_config(&config) {

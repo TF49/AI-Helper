@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from "react";
+import { createPortal } from "react-dom";
 import gsap from "gsap";
 import { motion, AnimatePresence } from "motion/react";
 import {
@@ -396,12 +397,12 @@ export function TokenSelectModal({
     });
   }, [tokens, searchQuery, filterMode, selectedTokenId]);
 
-  if (!isRendered) return null;
+  if (!isRendered || typeof document === "undefined") return null;
 
-  return (
+  return createPortal(
     <div
       ref={overlayRef}
-      className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/65 backdrop-blur-md select-none overflow-hidden"
+      className="fixed inset-0 z-[100] flex items-center justify-center p-3 sm:p-4 bg-black/65 backdrop-blur-md select-none overflow-hidden"
       onClick={(e) => {
         if (e.target === e.currentTarget) {
           handleSmoothClose();
@@ -901,7 +902,8 @@ export function TokenSelectModal({
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
 

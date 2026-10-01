@@ -397,53 +397,41 @@ pub async fn verify_accio_gateway_safety(
                             continue;
                         }
 
-                        // 尝试从 JSON 日志行提取时间戳，过滤启动前的旧日志
-                        if let Ok(entry) = serde_json::from_str::<serde_json::Value>(trimmed) {
-                            if let Some(ts) = entry.get("timestamp").and_then(|t| t.as_i64()) {
-                                if ts < launched_at_ms - 1000 {
-                                    continue;
+                        let line_text =
+                            if let Ok(entry) = serde_json::from_str::<serde_json::Value>(trimmed) {
+                                if let Some(ts) = entry.get("timestamp").and_then(|t| t.as_i64()) {
+                                    if ts < launched_at_ms - 2000 {
+                                        continue;
+                                    }
                                 }
-                            }
-                            let msg = entry.get("message").and_then(|m| m.as_str()).unwrap_or("");
-                            if msg.contains("[Gateway] Config: gatewayBaseUrl=") {
-                                if msg.contains(&format!("gatewayBaseUrl=http://{}", expected_gw))
-                                    || msg.contains(&format!(
-                                        "gatewayBaseUrl=http://localhost:{}",
-                                        expected_port
-                                    ))
-                                {
-                                    log::info!(
-                                        "Accio Work 环境变量注入成功，网关校验合规 (127.0.0.1:{})",
-                                        expected_port
-                                    );
-                                    return;
-                                } else if msg.contains("phoenix-gw.alibaba.com") {
-                                    log::error!(
-                                        "【安全熔断警报】检测到 Accio Work 直连了阿里官方网关 (phoenix-gw.alibaba.com)！为防官方“i豆”资产被误扣，正在立即强制熔断终止 Accio 进程..."
-                                    );
-                                    let _ = kill_app_processes("acciowork");
-                                    return;
-                                }
-                            }
-                        } else if trimmed.contains("[Gateway] Config: gatewayBaseUrl=") {
-                            // 非标准 JSON 但包含网关标记
-                            if trimmed.contains(&format!("gatewayBaseUrl=http://{}", expected_gw))
-                                || trimmed.contains(&format!(
+                                entry
+                                    .get("message")
+                                    .and_then(|m| m.as_str())
+                                    .unwrap_or("")
+                                    .to_string()
+                            } else {
+                                trimmed.to_string()
+                            };
+
+                        if line_text.contains("[Gateway] Config: gatewayBaseUrl=") {
+                            if line_text.contains(&format!("gatewayBaseUrl=http://{}", expected_gw))
+                                || line_text.contains(&format!(
                                     "gatewayBaseUrl=http://localhost:{}",
                                     expected_port
                                 ))
+                                || line_text.contains("gatewayBaseUrl=http://127.0.0.1")
                             {
                                 log::info!(
                                     "Accio Work 环境变量注入成功，网关校验合规 (127.0.0.1:{})",
                                     expected_port
                                 );
                                 return;
-                            } else if trimmed.contains("phoenix-gw.alibaba.com") {
-                                log::error!(
-                                    "【安全熔断警报】检测到 Accio Work 直连了阿里官方网关 (phoenix-gw.alibaba.com)！为防官方“i豆”资产被误扣，正在立即强制熔断终止 Accio 进程..."
+                            } else if line_text
+                                .contains("gatewayBaseUrl=https://phoenix-gw.alibaba.com")
+                            {
+                                log::warn!(
+                                    "【安全提醒】检测到 Accio Work 可能未加载本地网关环境变量 (直连了官方 gatewayBaseUrl=https://phoenix-gw.alibaba.com)"
                                 );
-                                let _ = kill_app_processes("acciowork");
-                                return;
                             }
                         }
                     }

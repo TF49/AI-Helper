@@ -181,6 +181,7 @@ export interface AccioConfig {
   official_gateway: string;
   fallback_official: boolean;
   prevent_official_leak: boolean;
+  auto_start_bridge?: boolean;
   cached_models?: string[];
   config_exists?: boolean;
   config_path?: string;

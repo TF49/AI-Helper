@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { createPortal } from "react-dom";
 import { motion, AnimatePresence } from "motion/react";
 import {
   User,
@@ -57,7 +58,7 @@ export function LoginModal({
   const [twoFaCode, setTwoFaCode] = useState("");
   const [twoFaSubmitting, setTwoFaSubmitting] = useState(false);
 
-  if (!open) return null;
+  if (!open || typeof document === "undefined") return null;
 
   // 提交第一阶段登录预备（检查密码加密并唤起滑块）
   const handleStartLogin = async (e?: React.FormEvent) => {
@@ -191,14 +192,14 @@ export function LoginModal({
     }
   };
 
-  return (
+  return createPortal(
     <>
       <AnimatePresence>
         <div
           className={`fixed inset-0 flex items-center justify-center p-4 select-none ${
             mandatory
-              ? "z-50 bg-slate-950/85 backdrop-blur-md"
-              : "z-40 bg-black/60 backdrop-blur-xs"
+              ? "z-[95] bg-slate-950/85 backdrop-blur-md"
+              : "z-[90] bg-black/60 backdrop-blur-xs"
           }`}
           onClick={(e) => {
             // 强制模式下点击遮罩不关闭
@@ -420,7 +421,8 @@ export function LoginModal({
         onSuccess={handleCaptchaSuccess}
         onClose={() => setCaptchaOpen(false)}
       />
-    </>
+    </>,
+    document.body,
   );
 }
 

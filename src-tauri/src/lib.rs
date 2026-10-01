@@ -403,6 +403,68 @@ async fn apply_api_key_to_agents(
     auth::apply_api_key_to_agents(api_key, targets).await
 }
 
+fn setup_tray(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
+    use tauri::menu::{MenuBuilder, MenuItemBuilder, PredefinedMenuItem};
+    use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
+
+    let show_item = MenuItemBuilder::with_id("show", "显示 AI Helper 窗口").build(app)?;
+    let hide_item = MenuItemBuilder::with_id("hide", "隐藏主窗口").build(app)?;
+    let sep1 = PredefinedMenuItem::separator(app)?;
+    let quit_item = MenuItemBuilder::with_id("quit", "彻底退出 AI Helper").build(app)?;
+
+    let menu = MenuBuilder::new(app)
+        .items(&[&show_item, &hide_item, &sep1, &quit_item])
+        .build()?;
+
+    if let Some(icon) = app.default_window_icon().cloned() {
+        let _tray = TrayIconBuilder::new()
+            .icon(icon)
+            .menu(&menu)
+            .show_menu_on_left_click(false)
+            .tooltip("AI Helper - 客户端后台守护中")
+            .on_menu_event(|app, event| match event.id.as_ref() {
+                "show" => {
+                    if let Some(window) = app.get_webview_window("main") {
+                        let _ = window.show();
+                        let _ = window.unminimize();
+                        let _ = window.set_focus();
+                    }
+                }
+                "hide" => {
+                    if let Some(window) = app.get_webview_window("main") {
+                        let _ = window.hide();
+                    }
+                }
+                "quit" => {
+                    app.exit(0);
+                }
+                _ => {}
+            })
+            .on_tray_icon_event(|tray, event| {
+                if let TrayIconEvent::Click {
+                    button: MouseButton::Left,
+                    button_state: MouseButtonState::Up,
+                    ..
+                } = event
+                {
+                    let app = tray.app_handle();
+                    if let Some(window) = app.get_webview_window("main") {
+                        if window.is_visible().unwrap_or(false) {
+                            let _ = window.hide();
+                        } else {
+                            let _ = window.show();
+                            let _ = window.unminimize();
+                            let _ = window.set_focus();
+                        }
+                    }
+                }
+            })
+            .build(app)?;
+    }
+
+    Ok(())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -411,13 +473,35 @@ pub fn run() {
         .plugin(tauri_plugin_updater::Builder::default().build())
         .plugin(tauri_plugin_store::Builder::default().build())
         .setup(|app| {
+            if let Err(e) = setup_tray(app) {
+                log::warn!("初始化系统托盘失败: {}", e);
+            }
+
             if let Some(window) = app.get_webview_window("main") {
                 let _ = window.maximize();
                 let _ = window.show();
                 #[cfg(debug_assertions)]
                 window.open_devtools();
             }
+
+            // 启动时自动恢复 Bridge (若开启了 auto_start_bridge 且配置了 API Key)
+            let accio_cfg = accio::config::load_accio_config();
+            if accio_cfg.auto_start_bridge && !accio_cfg.api_key.trim().is_empty() {
+                log::info!("正在自动拉起 Accio Work Bridge 网关...");
+                tauri::async_runtime::spawn(async move {
+                    if let Err(e) = accio::start_bridge(Some(accio_cfg.bridge_port)).await {
+                        log::error!("自启动 Accio Bridge 异常: {}", e);
+                    }
+                });
+            }
+
             Ok(())
+        })
+        .on_window_event(|window, event| {
+            if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                api.prevent_close();
+                let _ = window.hide();
+            }
         })
         .invoke_handler(tauri::generate_handler![
             get_codex_config,

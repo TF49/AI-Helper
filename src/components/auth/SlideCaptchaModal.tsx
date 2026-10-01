@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from "react";
+import { createPortal } from "react-dom";
 import { motion, AnimatePresence } from "motion/react";
 import { Loader2, RefreshCw, X, ShieldCheck, AlertCircle } from "lucide-react";
 import { generateCaptcha, verifyCaptcha } from "../../lib/api";
@@ -127,7 +128,7 @@ export function SlideCaptchaModal({
     void submitVerification(originX);
   };
 
-  if (!open) return null;
+  if (!open || typeof document === "undefined") return null;
 
   const displayHeight = captchaData
     ? captchaData.master_height * displayScale
@@ -145,9 +146,9 @@ export function SlideCaptchaModal({
 
   const sliderPercent = maxX > 0 ? (originX / maxX) * 100 : 0;
 
-  return (
+  return createPortal(
     <AnimatePresence>
-      <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs select-none">
+      <div className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs select-none">
         <motion.div
           initial={{ opacity: 0, scale: 0.95 }}
           animate={{ opacity: 1, scale: 1 }}
@@ -291,7 +292,8 @@ export function SlideCaptchaModal({
           </div>
         </motion.div>
       </div>
-    </AnimatePresence>
+    </AnimatePresence>,
+    document.body,
   );
 }
 export default SlideCaptchaModal;
