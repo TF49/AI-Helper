@@ -1,0 +1,358 @@
+- generic [active] [ref=e1]:
+  - link "跳到主要内容" [ref=e2] [cursor=pointer]:
+    - /url: "#main-content"
+  - banner [ref=e3]:
+    - generic [ref=e4]:
+      - link "返回 AI Helper 首页" [ref=e5] [cursor=pointer]:
+        - /url: "#home"
+        - generic [ref=e6]:
+          - strong [ref=e7]: AI Helper
+          - generic [ref=e8]: v1.0.43
+      - generic [ref=e9]:
+        - link "打开 GitHub 仓库" [ref=e10] [cursor=pointer]:
+          - /url: https://github.com/TF49/AI-Helper
+          - generic [ref=e13]: GitHub
+        - link "下载客户端" [ref=e14] [cursor=pointer]:
+          - /url: "#downloads"
+  - main [ref=e15]:
+    - generic [ref=e17]:
+      - generic [ref=e20]: TAURI V2 · RUST 2024 · WINDOWS
+      - heading "AI Helper. 配置、验证、重启， 在一个中枢完成。" [level=1] [ref=e23]:
+        - generic [ref=e24]: AI Helper.
+        - generic [ref=e26]: 配置、验证、重启，
+        - generic [ref=e28]: 在一个中枢完成。
+      - paragraph [ref=e30]: 统一管理 Claude Code、OpenAI Codex、Workbuddy 与 Accio Work。从网关配置到流式验证，再到进程树安全热重启，全程不打断开发节奏。
+      - generic [ref=e31]:
+        - link "立即下载 Windows 安装版 (v1.0.43)" [ref=e32] [cursor=pointer]:
+          - /url: https://github.com/TF49/AI-Helper/releases/download/v1.0.43/AI-Helper-v1.0.43-Windows-x64-Setup.exe
+        - link "观看动态演示" [ref=e36] [cursor=pointer]:
+          - /url: "#story"
+      - list "产品特性" [ref=e40]:
+        - listitem [ref=e41]:
+          - generic [ref=e42]: ✓
+          - text: Windows 10 / 11 64 位
+        - listitem [ref=e43]:
+          - generic [ref=e44]: ✓
+          - text: MIT 开源协议
+        - listitem [ref=e45]:
+          - generic [ref=e46]: ✓
+          - text: 常驻内存低于 35MB
+      - generic "AI Helper 数据调度流程" [ref=e47]:
+        - generic [ref=e50]:
+          - generic [ref=e51]: ◎
+          - generic [ref=e52]:
+            - generic [ref=e53]: INPUT
+            - text: AI 云端网关
+        - generic [ref=e54]:
+          - generic [ref=e56]: ✦
+          - generic [ref=e57]:
+            - generic [ref=e58]: ORCHESTRATE
+            - text: AI Helper 中枢
+        - generic [ref=e59]:
+          - generic [ref=e60]: ⌁
+          - generic [ref=e61]:
+            - generic [ref=e62]: OUTPUT
+            - text: Agent / CLI 进程
+      - link "向下滚动，进入产品演示" [ref=e63] [cursor=pointer]:
+        - /url: "#story"
+    - region [ref=e66]:
+      - generic [ref=e68]:
+        - generic [ref=e69]:
+          - generic [ref=e70]: PRODUCT FILM · 01—05
+          - heading "一次滚动，看完整条配置链路。" [level=2] [ref=e71]
+        - generic [ref=e72]:
+          - complementary "产品演示章节" [ref=e73]:
+            - button "01 环境发现" [ref=e74] [cursor=pointer]:
+              - generic [ref=e75]: "01"
+              - strong [ref=e77]: 环境发现
+            - button "02 统一配置" [ref=e78] [cursor=pointer]:
+              - generic [ref=e79]: "02"
+              - strong [ref=e81]: 统一配置
+            - button "03 流式验证" [ref=e82] [cursor=pointer]:
+              - generic [ref=e83]: "03"
+              - strong [ref=e85]: 流式验证
+            - button "04 原子写入" [ref=e86] [cursor=pointer]:
+              - generic [ref=e87]: "04"
+              - strong [ref=e89]: 原子写入
+            - button "05 安全热重启" [ref=e90] [cursor=pointer]:
+              - generic [ref=e91]: "05"
+              - strong [ref=e93]: 安全热重启
+          - generic [ref=e96]:
+            - generic [ref=e97]:
+              - generic [ref=e102]:
+                - generic [ref=e103]: AI Helper Studio
+                - generic [ref=e104]: LIVE
+              - generic [aria-hidden] [ref=e106]:
+                - generic [ref=e107]: —
+                - generic [ref=e108]: □
+                - generic [ref=e109]: ×
+            - generic [ref=e110]:
+              - tablist "选择 Agent" [ref=e111]:
+                - tab "Codex v1" [selected] [ref=e112] [cursor=pointer]:
+                  - generic [ref=e114]: Codex
+                  - generic [ref=e115]: v1
+                - tab "Claude 3.7" [ref=e116] [cursor=pointer]:
+                  - generic [ref=e118]: Claude
+                  - generic [ref=e119]: "3.7"
+                - tab "Workbuddy Sync" [ref=e120] [cursor=pointer]:
+                  - generic [ref=e122]: Workbuddy
+                  - generic [ref=e123]: Sync
+                - tab "Accio Work Bridge" [ref=e124] [cursor=pointer]:
+                  - generic [ref=e126]: Accio Work
+                  - generic [ref=e127]: Bridge
+                - tab "进程守护 On" [ref=e128] [cursor=pointer]:
+                  - generic [ref=e130]: 进程守护
+                  - generic [ref=e131]: "On"
+              - generic [ref=e132]:
+                - generic [ref=e133]:
+                  - generic [ref=e134]:
+                    - generic [ref=e135]: SCENE 01 · DISCOVERY
+                    - heading "正在发现本机 AI 开发环境" [level=3] [ref=e136]
+                    - paragraph [ref=e137]: 自动扫描 PATH、NPM 全局脚本与 Store 隔离包，定位全部可用客户端。
+                  - generic [ref=e138]: 扫描完成
+                - generic "Agent 扫描结果":
+                  - generic [ref=e140]:
+                    - generic [ref=e141]: ✓
+                    - generic [ref=e142]:
+                      - strong [ref=e143]: OpenAI Codex
+                      - generic [ref=e144]: Win32 · 已发现
+                  - generic [ref=e145]:
+                    - generic [ref=e146]: ✓
+                    - generic [ref=e147]:
+                      - strong [ref=e148]: Claude Code
+                      - generic [ref=e149]: NPM · 已发现
+                  - generic [ref=e150]:
+                    - generic [ref=e151]: ✓
+                    - generic [ref=e152]:
+                      - strong [ref=e153]: Workbuddy
+                      - generic [ref=e154]: Native · 已发现
+                  - generic [ref=e155]:
+                    - generic [ref=e156]: ✓
+                    - generic [ref=e157]:
+                      - strong [ref=e158]: Accio Work
+                      - generic [ref=e159]: Bridge · 已发现
+                - generic [ref=e160]:
+                  - generic [ref=e161]:
+                    - generic [ref=e162]:
+                      - text: 配置文件路径
+                      - button "配置文件路径 ~/.codex/config.toml" [ref=e163] [cursor=pointer]: 原生调阅 ↗
+                    - textbox [ref=e164]: ~/.codex/config.toml
+                  - generic [ref=e165]:
+                    - generic [ref=e166]: API 服务网关
+                    - textbox "API 服务网关" [ref=e167]: https://api.openai.com/v1
+                  - generic [ref=e168]:
+                    - generic [ref=e169]: 默认模型
+                    - textbox "默认模型" [ref=e170]: gpt-4o
+                  - generic "快速选择模型" [ref=e171]:
+                    - button "gpt-4o" [ref=e172] [cursor=pointer]
+                    - button "gpt-4o-mini" [ref=e173] [cursor=pointer]
+                    - button "o1" [ref=e174] [cursor=pointer]
+                    - button "o3-mini" [ref=e175] [cursor=pointer]
+                - generic [ref=e176]:
+                  - generic [ref=e177]:
+                    - generic [ref=e178]: STREAM DIAGNOSTIC
+                    - generic [ref=e180]: 4 AGENTS FOUND
+                  - generic [ref=e181]: "> scanning PATH and package locations... ✓ OpenAI Codex · Win32 ✓ Claude Code · NPM global ✓ Workbuddy · Native client ✓ Accio Work · RLab Bridge"
+                - generic [ref=e182]:
+                  - strong [ref=e187]: 环境扫描完成
+                  - button "环境扫描完成" [ref=e188] [cursor=pointer]
+    - region [ref=e191]:
+      - generic [ref=e192]:
+        - generic [ref=e193]:
+          - generic [ref=e194]: CORE CAPABILITIES
+          - heading "强悍内核，保持轻盈。" [level=2] [ref=e195]
+          - paragraph [ref=e196]: 复杂的配置差异和进程生命周期交给 AI Helper，你只需要继续编码。
+        - generic [ref=e197]:
+          - article [ref=e198]:
+            - generic [ref=e199]: 统一纳管
+            - heading "一个界面，接管主流 AI 编程终端。" [level=3] [ref=e200]
+            - paragraph [ref=e201]: 针对不同工具的底层配置格式进行专属适配，避免在多个隐藏目录和配置文件之间来回切换。
+            - generic "支持的 Agent" [ref=e202]:
+              - generic [ref=e203]:
+                - generic [ref=e205]:
+                  - strong [ref=e206]: Claude Code
+                  - generic [ref=e207]: ~/.claude.json
+                - generic [ref=e208]: READY
+              - generic [ref=e209]:
+                - generic [ref=e211]:
+                  - strong [ref=e212]: OpenAI Codex
+                  - generic [ref=e213]: ~/.codex/config.toml
+                - generic [ref=e214]: READY
+              - generic [ref=e215]:
+                - generic [ref=e217]:
+                  - strong [ref=e218]: Workbuddy AI
+                  - generic [ref=e219]: models.json
+                - generic [ref=e220]: READY
+              - generic [ref=e221]:
+                - generic [ref=e223]:
+                  - strong [ref=e224]: Accio Work
+                  - generic [ref=e225]: accio_config.json
+                - generic [ref=e226]: BRIDGE
+          - article [ref=e227]:
+            - generic [ref=e228]: ↯
+            - generic [ref=e229]: < 35 MB
+            - heading "轻量常驻" [level=3] [ref=e230]
+            - paragraph [ref=e231]: Rust 2024 原生编译与 Tauri v2 渲染，不让工具本身成为负担。
+          - article [ref=e232]:
+            - generic [ref=e233]: ◇
+            - heading "原子配置写入" [level=3] [ref=e234]
+            - paragraph [ref=e235]: 先校验、再落盘，同时注入进程内环境变量，减少配置损坏与重复重启。
+            - generic [ref=e236]:
+              - generic [ref=e237]: VALIDATE
+              - generic [ref=e239]: WRITE
+              - generic [ref=e241]: SYNC
+          - article [ref=e242]:
+            - generic [ref=e243]: ⌁
+            - heading "进程树安全热重启" [level=3] [ref=e244]
+            - paragraph [ref=e245]: 清理子进程树并轮询文件句柄释放，杜绝僵尸进程、端口冲突和多实例竞争。
+            - generic [ref=e246]:
+              - generic [ref=e247]: Process tree
+              - generic [ref=e249]: Handles released
+          - article [ref=e251]:
+            - generic [ref=e252]: ↗
+            - heading "配置文件原生直达" [level=3] [ref=e253]
+            - paragraph [ref=e254]: 默认编辑器、系统记事本、资源管理器三级降级，让每一份配置都能快速打开。
+            - button "演示原生调阅 ↗" [ref=e255] [cursor=pointer]:
+              - text: 演示原生调阅
+              - generic [ref=e256]: ↗
+    - region [ref=e257]:
+      - generic [ref=e258]:
+        - generic [ref=e259]:
+          - generic [ref=e260]: STREAMLINED WORKFLOW
+          - heading "从发现到生效，不到 10 秒。" [level=2] [ref=e261]
+          - paragraph [ref=e262]: 三步完成原本需要反复切换终端、编辑器和任务管理器的工作。
+        - generic [ref=e263]:
+          - article [ref=e265]:
+            - generic [ref=e266]: "01"
+            - heading "环境感知" [level=3] [ref=e269]
+            - paragraph [ref=e270]: 自动识别客户端、配置文件与运行状态，修复失效路径。
+            - generic [ref=e271]: DISCOVER
+          - article [ref=e272]:
+            - generic [ref=e273]: "02"
+            - heading "配置与验证" [level=3] [ref=e276]
+            - paragraph [ref=e277]: 选择模型和网关，通过真实流式握手确认首字延迟与连通状态。
+            - generic [ref=e278]: VERIFY
+          - article [ref=e279]:
+            - generic [ref=e280]: "03"
+            - heading "写入与热重启" [level=3] [ref=e283]
+            - paragraph [ref=e284]: 原子写入配置，等待句柄释放，再携最新配置重新拉起客户端。
+            - generic [ref=e285]: ACTIVATE
+    - region [ref=e286]:
+      - generic [ref=e287]:
+        - generic [ref=e288]:
+          - generic [ref=e289]: OFFICIAL DOWNLOADS
+          - heading "现在开始，把配置工作交出去。" [level=2] [ref=e290]
+          - paragraph [ref=e291]:
+            - text: 当前官方版本
+            - strong [ref=e292]: v1.0.43
+            - text: · 纯净无广告 · 永久开源免费
+        - generic [ref=e293]:
+          - article [ref=e294]:
+            - generic [ref=e295]: 推荐首选
+            - text: WINDOWS INSTALLER
+            - heading "Windows 官方安装包" [level=3] [ref=e299]
+            - paragraph [ref=e300]: NSIS 自动安装程序，包含快捷方式、开始菜单、WebView2 检测与平滑自动更新。
+            - list [ref=e301]:
+              - listitem [ref=e302]:
+                - generic [ref=e303]: ✓
+                - text: Windows 10 1809 及以上 / Windows 11
+              - listitem [ref=e304]:
+                - generic [ref=e305]: ✓
+                - text: 64 位系统 · 安装包约 12MB
+              - listitem [ref=e306]:
+                - generic [ref=e307]: ✓
+                - text: GitHub Actions 官方构建
+            - generic [ref=e308]:
+              - link "GitHub 直链下载" [ref=e309] [cursor=pointer]:
+                - /url: https://github.com/TF49/AI-Helper/releases/download/v1.0.43/AI-Helper-v1.0.43-Windows-x64-Setup.exe
+              - link "国内高速镜像" [ref=e313] [cursor=pointer]:
+                - /url: https://ghfast.top/https://github.com/TF49/AI-Helper/releases/download/v1.0.43/AI-Helper-v1.0.43-Windows-x64-Setup.exe
+          - generic [ref=e314]:
+            - article [ref=e315]:
+              - generic [ref=e316]: ▣
+              - generic [ref=e317]:
+                - text: PORTABLE ZIP
+                - heading "便携免安装版" [level=3] [ref=e318]
+                - paragraph [ref=e319]: 解压即用，不写入注册表，适合 U 盘或企业办公机。
+              - generic [ref=e320]:
+                - link "GitHub 下载 ↗" [ref=e321] [cursor=pointer]:
+                  - /url: https://github.com/TF49/AI-Helper/releases/download/v1.0.43/AI-Helper-v1.0.43-Windows-x64-Standalone.zip
+                - link "国内镜像 ↗" [ref=e322] [cursor=pointer]:
+                  - /url: https://ghfast.top/https://github.com/TF49/AI-Helper/releases/download/v1.0.43/AI-Helper-v1.0.43-Windows-x64-Standalone.zip
+            - article [ref=e323]:
+              - generic [ref=e324]: </>
+              - generic [ref=e325]:
+                - text: BUILD FROM SOURCE
+                - heading "源码本地构建" [level=3] [ref=e326]
+                - paragraph [ref=e327]: Tauri v2 + React 18 + Rust 2024，完整代码可审计、可扩展。
+              - generic [ref=e328]:
+                - link "访问 GitHub ↗" [ref=e329] [cursor=pointer]:
+                  - /url: https://github.com/TF49/AI-Helper
+                - button "复制克隆命令" [ref=e330] [cursor=pointer]
+        - generic [ref=e331]:
+          - generic [ref=e332]: ✓
+          - generic [ref=e333]:
+            - strong [ref=e334]: 官方构建与安全校验
+            - paragraph [ref=e335]: AI-Helper-v1.0.43-Windows-x64-Setup.exe · 可在 GitHub 发布页核验 SHA-256。
+          - button "复制发布页链接" [ref=e336] [cursor=pointer]
+    - region [ref=e337]:
+      - generic [ref=e338]:
+        - generic [ref=e339]:
+          - generic [ref=e340]: FAQ
+          - heading "常见问题与解答。" [level=2] [ref=e341]
+          - paragraph [ref=e342]: 关于费用、隐私、安装和网络连接，你关心的都在这里。
+        - generic [ref=e343]:
+          - article [ref=e344]:
+            - heading [level=3] [ref=e345]:
+              - button "AI Helper 是免费开源的吗？" [ref=e346] [cursor=pointer]
+            - paragraph [ref=e349]: 是。AI Helper 遵循 MIT 开源协议，个人、团队和企业均可免费使用，不含广告和付费墙。
+          - article [ref=e350]:
+            - heading [level=3] [ref=e351]:
+              - button "API Key 和本地配置会上传吗？" [ref=e352] [cursor=pointer]
+            - paragraph [ref=e355]: 不会。配置写入在本机完成；只有在你主动执行流式连通性测试时，才会向你指定的 API 网关发起请求。
+          - article [ref=e356]:
+            - heading [level=3] [ref=e357]:
+              - button "Windows SmartScreen 提示如何处理？" [ref=e358] [cursor=pointer]
+            - paragraph [ref=e361]: 开源构建未购买商业 EV 代码签名证书时，SmartScreen 可能提示未知发布者。你可以核验 GitHub 发布页和 SHA-256，或选择便携 ZIP 版本。
+          - article [ref=e362]:
+            - heading [level=3] [ref=e363]:
+              - button "国内网络下载 GitHub 很慢怎么办？" [ref=e364] [cursor=pointer]
+            - paragraph [ref=e367]: 下载区为安装包和便携版都提供了国内高速镜像入口，也保留 GitHub 官方直链供核验。
+          - article [ref=e368]:
+            - heading [level=3] [ref=e369]:
+              - button "支持 Workbuddy、Accio Work 与自定义模型吗？" [ref=e370] [cursor=pointer]
+            - paragraph [ref=e373]: 支持。Workbuddy 可直接维护自定义模型配置；Accio Work 通过本地 RLab Bridge 转译网关接入第三方模型，并由 AI Helper 负责配置和进程守护。
+  - complementary "快速下载":
+    - generic:
+      - strong: AI Helper
+      - generic: v1.0.43
+    - link "下载 Windows 版":
+      - /url: "#downloads"
+  - contentinfo [ref=e374]:
+    - generic [ref=e375]:
+      - generic [ref=e376]:
+        - link [ref=e377] [cursor=pointer]:
+          - /url: "#home"
+          - strong [ref=e379]: AI Helper
+        - paragraph [ref=e380]: 专为 AI 开发者打造的配置管理与进程生命周期调度中枢。
+      - generic [ref=e381]:
+        - generic [ref=e382]:
+          - strong [ref=e383]: 产品
+          - link "动态演示" [ref=e384] [cursor=pointer]:
+            - /url: "#story"
+          - link "核心能力" [ref=e385] [cursor=pointer]:
+            - /url: "#bento"
+          - link "下载" [ref=e386] [cursor=pointer]:
+            - /url: "#downloads"
+        - generic [ref=e387]:
+          - strong [ref=e388]: 开源
+          - link "GitHub" [ref=e389] [cursor=pointer]:
+            - /url: https://github.com/TF49/AI-Helper
+          - link "发布历史" [ref=e390] [cursor=pointer]:
+            - /url: https://github.com/TF49/AI-Helper/releases
+          - link "问题反馈" [ref=e391] [cursor=pointer]:
+            - /url: https://github.com/TF49/AI-Helper/issues
+    - generic [ref=e392]:
+      - generic [ref=e393]: © 2026 AI Helper. Released under the MIT License.
+      - generic [ref=e394]: Designed for AI developers.
+  - status

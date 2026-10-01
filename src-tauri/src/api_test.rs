@@ -680,6 +680,39 @@ async fn send_test_request(request: reqwest::RequestBuilder) -> ApiTestResult {
     }
 }
 
+/// 根据模型名称推断应使用的 API 端点协议
+///
+/// - `claude-*`                                           → Anthropic Messages   (/v1/messages)
+/// - `gpt-*` / `o1-*` / `o3-*` / `o4-*` / `codex-*` /
+///   `chatgpt-*`                                         → OpenAI Responses     (/v1/responses)
+/// - 其他（国产模型：deepseek, qwen, glm, moonshot 等）   → OpenAI Chat Completions (/v1/chat/completions)
+#[derive(Debug, PartialEq)]
+enum AccioModelProtocol {
+    AnthropicMessages,
+    OpenAIResponses,
+    OpenAIChatCompletions,
+}
+
+fn detect_accio_model_protocol(model: &str) -> AccioModelProtocol {
+    let lower = model.trim().to_lowercase();
+
+    if lower.starts_with("claude") {
+        return AccioModelProtocol::AnthropicMessages;
+    }
+
+    let openai_responses_prefixes = [
+        "gpt-4o", "gpt-4", "gpt-3.5", "gpt-5", "o1-", "o3-", "o4-", "codex-", "chatgpt-",
+    ];
+    for prefix in &openai_responses_prefixes {
+        if lower.starts_with(prefix) {
+            return AccioModelProtocol::OpenAIResponses;
+        }
+    }
+
+    // deepseek / qwen / glm / ernie / moonshot / yi / minimax / baichuan / hunyuan 等
+    AccioModelProtocol::OpenAIChatCompletions
+}
+
 pub async fn test_accio_stream(
     url: String,
     api_key: String,
@@ -687,11 +720,45 @@ pub async fn test_accio_stream(
     on_event: Channel<TestStreamEvent>,
 ) -> ApiTestResult {
     let root = api_root(&url);
-    let endpoint = format!("{root}/v1/responses");
     let masked_key = mask_api_key(&api_key);
 
+    // 根据模型名称自动选择端点与请求体格式
+    let protocol = detect_accio_model_protocol(&model);
+    let (endpoint, protocol_label, request_body) = match protocol {
+        AccioModelProtocol::AnthropicMessages => (
+            format!("{root}/v1/messages"),
+            "Anthropic Messages 协议",
+            json!({
+                "model": model,
+                "max_tokens": 16,
+                "messages": [{ "role": "user", "content": "Hi" }],
+            }),
+        ),
+        AccioModelProtocol::OpenAIResponses => (
+            format!("{root}/v1/responses"),
+            "OpenAI Responses 协议",
+            json!({
+                "model": model,
+                "input": "Hi",
+                "max_output_tokens": 16,
+            }),
+        ),
+        AccioModelProtocol::OpenAIChatCompletions => (
+            format!("{root}/v1/chat/completions"),
+            "OpenAI Chat Completions 协议",
+            json!({
+                "model": model,
+                "max_tokens": 16,
+                "messages": [{ "role": "user", "content": "Hi" }],
+            }),
+        ),
+    };
+
     let _ = on_event.send(TestStreamEvent::Log {
-        text: "正在初始化测试连接 (OpenAI Responses 协议 → Accio Gemini Bridge)...".to_string(),
+        text: format!(
+            "正在初始化测试连接 ({} → Accio Gemini Bridge)...",
+            protocol_label
+        ),
         level: "info".to_string(),
     });
     let _ = on_event.send(TestStreamEvent::Log {
@@ -702,17 +769,29 @@ pub async fn test_accio_stream(
         text: format!("测试模型: {} | 密钥凭证: {}", model, masked_key),
         level: "dim".to_string(),
     });
+    // 从 endpoint 提取路径部分用于日志展示
+    let path_part = endpoint.strip_prefix(root).unwrap_or(&endpoint);
     let _ = on_event.send(TestStreamEvent::Log {
-        text: "发送握手测试消息: [POST /v1/responses] input: \"Hi\"...".to_string(),
+        text: format!("发送握手测试消息: [POST {}] payload: \"Hi\"...", path_part),
         level: "info".to_string(),
     });
 
     let client = Client::new();
-    let request = client.post(&endpoint).bearer_auth(&api_key).json(&json!({
-        "model": model,
-        "input": "Hi",
-        "max_output_tokens": 16,
-    }));
+
+    // Claude 协议需要 x-api-key + anthropic-version 头；其余使用 Bearer
+    let request = if matches!(protocol, AccioModelProtocol::AnthropicMessages) {
+        client
+            .post(&endpoint)
+            .header("x-api-key", &api_key)
+            .header("anthropic-version", "2023-06-01")
+            .header(header::CONTENT_TYPE, "application/json")
+            .json(&request_body)
+    } else {
+        client
+            .post(&endpoint)
+            .bearer_auth(&api_key)
+            .json(&request_body)
+    };
 
     let start = Instant::now();
     let send_result = request.timeout(REQUEST_TIMEOUT).send().await;
@@ -733,7 +812,12 @@ pub async fn test_accio_stream(
                 });
 
                 let body_text = response.text().await.unwrap_or_default();
-                let reply_preview = extract_response_text(&body_text);
+                let reply_preview = match protocol {
+                    AccioModelProtocol::AnthropicMessages => {
+                        extract_claude_response_text(&body_text)
+                    }
+                    _ => extract_response_text(&body_text),
+                };
 
                 if let Some(ref reply) = reply_preview {
                     let _ = on_event.send(TestStreamEvent::Log {
@@ -777,6 +861,26 @@ pub async fn test_accio_stream(
                         level: "error".to_string(),
                     });
                 }
+
+                let hint = match status {
+                    StatusCode::UNAUTHORIZED => "建议: 身份认证失败，请检查 API Key 是否正确填写或是否已被吊销。",
+                    StatusCode::FORBIDDEN => "建议: 访问被拒绝，可能当前账号没有权限访问该模型，或 IP 属地受限。",
+                    StatusCode::NOT_FOUND => match protocol {
+                        AccioModelProtocol::AnthropicMessages =>
+                            "建议: 端点 404 未找到，请确认 Base URL 正确（Claude 模型使用 /v1/messages 端点）。",
+                        AccioModelProtocol::OpenAIResponses =>
+                            "建议: 端点 404 未找到，请确认 Base URL 正确（OpenAI 原生模型使用 /v1/responses 端点）。",
+                        AccioModelProtocol::OpenAIChatCompletions =>
+                            "建议: 端点 404 未找到，请确认 Base URL 正确（国产模型使用 /v1/chat/completions 端点）。",
+                    },
+                    StatusCode::TOO_MANY_REQUESTS => "建议: 上游返回 429 请求过多，可能是触发了频控限制或余额不足。",
+                    _ if status.is_server_error() => "建议: 上游服务器内部错误 (5xx)，请稍后重试或切换备用节点。",
+                    _ => "建议: 请检查填写的 Base URL、API Key 与 Model 名称是否匹配。",
+                };
+                let _ = on_event.send(TestStreamEvent::Log {
+                    text: hint.to_string(),
+                    level: "warn".to_string(),
+                });
 
                 let _ = on_event.send(TestStreamEvent::Finish {
                     success: false,

@@ -202,13 +202,21 @@ export function TerminalTestModal({
           : type === "acciowork"
             ? "Accio Work"
             : "Claude Code";
+    // Accio Work 根据模型名前缀自动检测使用的协议（与 Rust 端 detect_accio_model_protocol 保持一致）
+    const detectAccioProtocol = (m: string): string => {
+      const lower = m.trim().toLowerCase();
+      if (lower.startsWith("claude")) return "Anthropic Messages → Accio Gemini Bridge";
+      const oaiPrefixes = ["gpt-4o", "gpt-4", "gpt-3.5", "gpt-5", "o1-", "o3-", "o4-", "codex-", "chatgpt-"];
+      if (oaiPrefixes.some((p) => lower.startsWith(p))) return "OpenAI Responses → Accio Gemini Bridge";
+      return "OpenAI Chat Completions → Accio Gemini Bridge";
+    };
     const protocolName =
       type === "codex"
         ? "OpenAI Responses Protocol"
         : type === "workbuddy"
           ? "OpenAI Chat Completions Protocol"
           : type === "acciowork"
-            ? "OpenAI Chat Completions -> Accio Gemini Bridge"
+            ? detectAccioProtocol(model)
             : "Anthropic Messages Protocol";
 
     addLog(`🚀 启动 ${platformName} 连通性测试与配置流程...`, "info");
