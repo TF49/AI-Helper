@@ -1,7 +1,5 @@
 use crate::accio::config::{load_accio_config, save_accio_config, AccioConfig};
-use crate::accio::protocol::{
-    accio_to_openai, format_accio_sse, merge_openai_chunks, SSE_HEARTBEAT,
-};
+use crate::accio::protocol::{accio_to_openai, format_accio_sse, SSE_HEARTBEAT};
 use axum::{
     body::{Body, Bytes},
     extract::{Request, State},
@@ -829,6 +827,149 @@ fn decode_request_body(headers: &HeaderMap, body: Bytes) -> Result<Bytes, (Statu
 /// 上游响应体大小上限：128MB
 const MAX_RESPONSE_SIZE: usize = 128 * 1024 * 1024;
 
+/// 将 accio_to_openai 输出的 Chat Completions 格式体转换为 /v1/responses 请求格式：
+/// - system message → instructions 字段
+/// - messages → input 数组
+/// - max_tokens → max_output_tokens
+/// - 保留 tools / tool_choice / temperature / model
+fn chat_to_responses_body(chat_body: &Value) -> Value {
+    let empty = vec![];
+    let messages = chat_body["messages"].as_array().unwrap_or(&empty);
+
+    let mut instructions: Option<String> = None;
+    let mut input_msgs: Vec<Value> = Vec::new();
+
+    for msg in messages {
+        if msg.get("role").and_then(Value::as_str) == Some("system") {
+            // system 消息提取为 instructions
+            if let Some(c) = msg.get("content").and_then(Value::as_str) {
+                instructions = Some(c.to_string());
+            }
+        } else {
+            input_msgs.push(msg.clone());
+        }
+    }
+
+    let mut body = json!({
+        "model": chat_body.get("model").cloned().unwrap_or_else(|| json!("")),
+        "input": input_msgs,
+        "max_output_tokens": chat_body.get("max_tokens").cloned().unwrap_or(json!(16384)),
+    });
+
+    if let Some(inst) = instructions {
+        body["instructions"] = json!(inst);
+    }
+    if let Some(temp) = chat_body.get("temperature") {
+        body["temperature"] = temp.clone();
+    }
+    if let Some(tools) = chat_body.get("tools") {
+        body["tools"] = tools.clone();
+    }
+    if let Some(tc) = chat_body.get("tool_choice") {
+        body["tool_choice"] = tc.clone();
+    }
+
+    body
+}
+
+/// 将 /v1/responses 的 JSON 响应解析为 Accio Gemini 协议格式。
+/// 兼容：
+///   - output[].content[].type = "output_text" | "text"  → parts[].text
+///   - output[].content[].type = "tool_use" | "function_call" → parts[].functionCall
+///   - usage.input_tokens / output_tokens / total_tokens
+fn parse_responses_api_response(json_val: &Value, default_model: &str) -> Value {
+    let model_name = json_val
+        .get("model")
+        .and_then(Value::as_str)
+        .unwrap_or(default_model);
+    let mut parts: Vec<Value> = Vec::new();
+
+    // 解析 usage（/v1/responses 使用 input_tokens / output_tokens）
+    let usage = json_val.get("usage");
+    let prompt_tokens = usage
+        .and_then(|u| u.get("input_tokens").or_else(|| u.get("prompt_tokens")))
+        .and_then(Value::as_u64)
+        .unwrap_or(0);
+    let completion_tokens = usage
+        .and_then(|u| {
+            u.get("output_tokens")
+                .or_else(|| u.get("completion_tokens"))
+        })
+        .and_then(Value::as_u64)
+        .unwrap_or(0);
+    let total_tokens = usage
+        .and_then(|u| u.get("total_tokens"))
+        .and_then(Value::as_u64)
+        .unwrap_or(prompt_tokens + completion_tokens);
+
+    // 解析 output 数组
+    if let Some(output) = json_val.get("output").and_then(Value::as_array) {
+        for (item_idx, item) in output.iter().enumerate() {
+            if let Some(content_arr) = item.get("content").and_then(Value::as_array) {
+                for c in content_arr {
+                    let ctype = c.get("type").and_then(Value::as_str).unwrap_or("");
+                    match ctype {
+                        "output_text" | "text" => {
+                            if let Some(txt) = c.get("text").and_then(Value::as_str) {
+                                parts.push(json!({ "text": txt }));
+                            }
+                        }
+                        "tool_use" | "function_call" => {
+                            let call_id = c
+                                .get("id")
+                                .and_then(Value::as_str)
+                                .map(|s| s.to_string())
+                                .unwrap_or_else(|| format!("call_{}", item_idx + 1));
+                            let name = c.get("name").and_then(Value::as_str).unwrap_or("tool");
+                            let raw_args = c
+                                .get("arguments")
+                                .or_else(|| c.get("input"))
+                                .cloned()
+                                .unwrap_or(json!({}));
+                            let (parsed_args, args_str) = if let Some(s) = raw_args.as_str() {
+                                let parsed: Value =
+                                    serde_json::from_str(s).unwrap_or_else(|_| json!({}));
+                                (parsed, s.to_string())
+                            } else {
+                                let s = serde_json::to_string(&raw_args)
+                                    .unwrap_or_else(|_| "{}".to_string());
+                                (raw_args, s)
+                            };
+                            parts.push(json!({
+                                "functionCall": {
+                                    "id": call_id,
+                                    "name": name,
+                                    "args": parsed_args,
+                                    "argsJson": args_str
+                                }
+                            }));
+                        }
+                        _ => {
+                            // 兜底：尝试顶层 text 字段
+                            if let Some(txt) = c.get("text").and_then(Value::as_str) {
+                                parts.push(json!({ "text": txt }));
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    json!({
+        "content": { "role": "model", "parts": parts },
+        "finishReason": "STOP",
+        "usageMetadata": {
+            "promptTokenCount": prompt_tokens,
+            "candidatesTokenCount": completion_tokens,
+            "totalTokenCount": total_tokens
+        },
+        "customMetadata": { "model_name": model_name, "bridge": "ai-helper" },
+        "turnComplete": true,
+        "partial": false
+    })
+}
+
 /// 请求上游 OpenAI 兼容服务
 async fn call_upstream_llm(
     client: &Client,
@@ -839,8 +980,9 @@ async fn call_upstream_llm(
         return Err("API 密钥未配置，请先在 AI-Helper 中填写 API Key".to_string());
     }
     let root = clean_base_url(&config.base_url);
-    let endpoint = format!("{root}/v1/chat/completions");
-    let request_body = accio_to_openai(&input, &config.model);
+    let endpoint = format!("{root}/v1/responses");
+    let chat_body = accio_to_openai(&input, &config.model);
+    let request_body = chat_to_responses_body(&chat_body);
 
     let started = Instant::now();
     let response = client
@@ -881,8 +1023,10 @@ async fn call_upstream_llm(
     }
 
     let payload = if text.contains("data:") {
-        // SSE 流式响应
-        let mut chunks = Vec::new();
+        // SSE 兼容路径：/v1/responses 流式事件或旧版 chat completions SSE
+        let mut text_buf = String::new();
+        let mut full_response: Option<Value> = None;
+
         for line in text.lines() {
             let trimmed = line.trim();
             if let Some(stripped) = trimmed.strip_prefix("data:") {
@@ -890,109 +1034,54 @@ async fn call_upstream_llm(
                 if data == "[DONE]" || data.is_empty() {
                     continue;
                 }
-                if let Ok(chunk_json) = serde_json::from_str::<Value>(data) {
-                    chunks.push(chunk_json);
-                }
-            }
-        }
-        if chunks.is_empty() {
-            return Err("上游返回了空的流式数据".to_string());
-        }
-        merge_openai_chunks(&chunks)
-    } else {
-        // 非流式 JSON 响应
-        let json_val: Value =
-            serde_json::from_str(&text).map_err(|e| format!("解析上游 JSON 响应失败: {}", e))?;
-
-        let choice = json_val
-            .get("choices")
-            .and_then(Value::as_array)
-            .and_then(|cs| cs.first());
-
-        if let Some(c) = choice {
-            let model_name = json_val
-                .get("model")
-                .and_then(Value::as_str)
-                .unwrap_or(&config.model);
-
-            let mut parts = Vec::new();
-            if let Some(msg) = c.get("message") {
-                if let Some(content) = msg.get("content").and_then(Value::as_str) {
-                    parts.push(json!({ "text": content }));
-                } else if let Some(rc) = msg
-                    .get("reasoning_content")
-                    .or_else(|| msg.get("reasoning"))
-                    .and_then(Value::as_str)
-                {
-                    parts.push(json!({ "text": rc }));
-                }
-                if let Some(tcs) = msg.get("tool_calls").and_then(Value::as_array) {
-                    for (i, tc) in tcs.iter().enumerate() {
-                        let call_id = tc
-                            .get("id")
-                            .and_then(Value::as_str)
-                            .map(|s| s.to_string())
-                            .unwrap_or_else(|| format!("call_{}", i + 1));
-                        let func = tc.get("function");
-                        let name = func
-                            .and_then(|f| f.get("name"))
-                            .and_then(Value::as_str)
-                            .unwrap_or("tool");
-                        let (args, args_str) = match func.and_then(|f| {
-                            f.get("arguments")
-                                .or_else(|| f.get("args"))
-                                .or_else(|| f.get("input"))
-                        }) {
-                            Some(Value::String(s)) => {
-                                let parsed: Value =
-                                    serde_json::from_str(s).unwrap_or_else(|_| json!({}));
-                                (parsed, s.clone())
-                            }
-                            Some(val @ Value::Object(_)) => {
-                                let s =
-                                    serde_json::to_string(val).unwrap_or_else(|_| "{}".to_string());
-                                (val.clone(), s)
-                            }
-                            _ => (json!({}), "{}".to_string()),
-                        };
-                        parts.push(json!({
-                            "functionCall": {
-                                "id": call_id,
-                                "name": name,
-                                "args": args,
-                                "argsJson": args_str
-                            }
-                        }));
+                if let Ok(chunk) = serde_json::from_str::<Value>(data) {
+                    // /v1/responses 完整响应对象（含 output 字段）
+                    if chunk.get("output").is_some() {
+                        full_response = Some(chunk);
+                        break;
+                    }
+                    // /v1/responses 流式增量：response.output_text.delta
+                    if let Some(delta) = chunk
+                        .pointer("/delta/text")
+                        .or_else(|| chunk.pointer("/text"))
+                        .and_then(Value::as_str)
+                    {
+                        text_buf.push_str(delta);
+                    }
+                    // 兜底兼容旧 chat completions SSE
+                    if let Some(c) = chunk
+                        .pointer("/choices/0/delta/content")
+                        .and_then(Value::as_str)
+                    {
+                        text_buf.push_str(c);
                     }
                 }
             }
+        }
 
-            let usage = json_val.get("usage");
+        if let Some(resp_obj) = full_response {
+            parse_responses_api_response(&resp_obj, &config.model)
+        } else if !text_buf.is_empty() {
             json!({
-                "content": {
-                    "role": "model",
-                    "parts": parts
-                },
-                "finishReason": c.get("finish_reason").and_then(Value::as_str).unwrap_or("STOP"),
-                "usageMetadata": {
-                    "promptTokenCount": usage.and_then(|u| u.get("prompt_tokens")).unwrap_or(&json!(0)),
-                    "candidatesTokenCount": usage.and_then(|u| u.get("completion_tokens")).unwrap_or(&json!(0)),
-                    "totalTokenCount": usage.and_then(|u| u.get("total_tokens")).unwrap_or(&json!(0))
-                },
-                "customMetadata": {
-                    "model_name": model_name,
-                    "bridge": "ai-helper"
-                },
+                "content": { "role": "model", "parts": [{ "text": text_buf }] },
+                "finishReason": "STOP",
+                "usageMetadata": { "promptTokenCount": 0, "candidatesTokenCount": 0, "totalTokenCount": 0 },
+                "customMetadata": { "model_name": &config.model, "bridge": "ai-helper" },
                 "turnComplete": true,
                 "partial": false
             })
         } else {
-            json_val
+            return Err("上游返回了空的流式数据".to_string());
         }
+    } else {
+        // 非流式 JSON 响应：/v1/responses 标准格式
+        let json_val: Value =
+            serde_json::from_str(&text).map_err(|e| format!("解析上游 JSON 响应失败: {}", e))?;
+        parse_responses_api_response(&json_val, &config.model)
     };
 
     log::info!(
-        "Accio 请求在 {} ms 内转译并完成 (模型: {})",
+        "Accio 请求在 {} ms 内转译并完成 (模型: {}, 端点: /v1/responses)",
         started.elapsed().as_millis(),
         config.model
     );

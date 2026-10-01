@@ -265,12 +265,20 @@ pub fn accio_to_openai(input: &Value, default_model: &str) -> Value {
                         .get("description")
                         .cloned()
                         .unwrap_or_else(|| Value::String(String::new()));
-                    let parameters = declaration
+                    let parameters_raw = declaration
                         .get("parameters")
                         .or_else(|| declaration.get("parametersJson"))
                         .or_else(|| declaration.get("parameters_json"))
                         .cloned()
                         .unwrap_or_else(|| json!({"type":"object","properties":{}}));
+                    // 若 parameters 字段实际是 JSON 字符串（如 parametersJson），则解析为对象
+                    // 避免上游 API 报 "expected an object, but got a string"
+                    let parameters = if let Some(s) = parameters_raw.as_str() {
+                        serde_json::from_str(s)
+                            .unwrap_or_else(|_| json!({"type":"object","properties":{}}))
+                    } else {
+                        parameters_raw
+                    };
                     json!({
                         "type": "function",
                         "function": {
@@ -392,6 +400,7 @@ pub fn is_image_output_request(input: &Value) -> bool {
 }
 
 /// 合并 OpenAI 流式返回的所有 Chunk
+#[allow(dead_code)]
 pub fn merge_openai_chunks(chunks: &[Value]) -> Value {
     let mut merged_text = String::new();
     let mut reasoning_text = String::new();

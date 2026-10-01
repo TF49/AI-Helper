@@ -687,11 +687,11 @@ pub async fn test_accio_stream(
     on_event: Channel<TestStreamEvent>,
 ) -> ApiTestResult {
     let root = api_root(&url);
-    let endpoint = format!("{root}/v1/chat/completions");
+    let endpoint = format!("{root}/v1/responses");
     let masked_key = mask_api_key(&api_key);
 
     let _ = on_event.send(TestStreamEvent::Log {
-        text: "正在初始化测试连接 (Accio Work 上游 Chat Completions 协议)...".to_string(),
+        text: "正在初始化测试连接 (OpenAI Responses 协议 → Accio Gemini Bridge)...".to_string(),
         level: "info".to_string(),
     });
     let _ = on_event.send(TestStreamEvent::Log {
@@ -703,15 +703,15 @@ pub async fn test_accio_stream(
         level: "dim".to_string(),
     });
     let _ = on_event.send(TestStreamEvent::Log {
-        text: "发送握手测试消息: [POST /v1/chat/completions] payload: \"Hi\"...".to_string(),
+        text: "发送握手测试消息: [POST /v1/responses] input: \"Hi\"...".to_string(),
         level: "info".to_string(),
     });
 
     let client = Client::new();
     let request = client.post(&endpoint).bearer_auth(&api_key).json(&json!({
         "model": model,
-        "max_tokens": 16,
-        "messages": [{ "role": "user", "content": "Hi" }],
+        "input": "Hi",
+        "max_output_tokens": 16,
     }));
 
     let start = Instant::now();
