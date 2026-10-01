@@ -1,758 +1,903 @@
-/**
- * AI Helper - Cinematic Motion & Video-Like Product Showcase
- * Integrated: Anime.js (v3.2.2) + GSAP (v3.12.5) + React-Bits
- */
+"use strict";
 
-const CURRENT_VERSION = "v1.0.43";
+const CURRENT_VERSION = "v1.0.44";
 const GITHUB_REPO = "TF49/AI-Helper";
-const GITHUB_RELEASES_URL = `https://github.com/${GITHUB_REPO}/releases`;
+const GITHUB_RELEASES_URL = "https://github.com/" + GITHUB_REPO + "/releases";
 const GHFAST_PREFIX = "https://ghfast.top/";
 
-// Data models for the interactive app simulator
+const REDUCED_MOTION = window.matchMedia("(prefers-reduced-motion: reduce)");
+const MOBILE_VIEW = window.matchMedia("(max-width: 767px)");
+const FINE_POINTER = window.matchMedia("(hover: hover) and (pointer: fine)");
+
 const SIMULATOR_DATA = {
   chatgpt: {
-    title: "🟢 ChatGPT & Codex CLI 配置中心",
-    desc: "原子写入 ~/.codex/config.toml，全面接管微软商店 Store 隔离包与 Win32 原生版",
+    title: "OpenAI Codex 配置中心",
+    desc: "统一管理 ~/.codex/config.toml，并兼容 Store 隔离包与 Win32 原生版。",
     configPath: "~/.codex/config.toml",
     apiUrl: "https://api.openai.com/v1",
     model: "gpt-4o",
-    chips: ["gpt-4o", "gpt-4o-mini", "o1", "o3-mini", "chatgpt-4o-latest"],
+    chips: ["gpt-4o", "gpt-4o-mini", "o1", "o3-mini"],
+    status: "Codex 已就绪",
     sampleTokens: [
-      "OpenAI Codex CLI initialized successfully.",
-      " Model set to gpt-4o. Connection latency: 142ms.",
-      " 200 OK | Process ready for autonomous execution."
-    ],
-    status: "已注入 · 进程就绪"
+      "> [CONNECT] POST https://api.openai.com/v1",
+      "> [AUTH] Local token verified",
+      "> [STREAM] First token received · 78ms",
+      "✓ Codex gateway is ready"
+    ]
   },
   claude: {
-    title: "🟣 Claude Code CLI 配置托管",
-    desc: "统一纳管 ~/.claude.json 与 settings.json，内置 Claude 3.7 Sonnet 快捷芯片",
+    title: "Claude Code 配置托管",
+    desc: "集中维护 ~/.claude.json 与 settings.json，并快速切换常用模型。",
     configPath: "~/.claude.json",
     apiUrl: "https://api.anthropic.com/v1",
     model: "claude-3-7-sonnet",
-    chips: ["claude-3-7-sonnet", "claude-3-5-sonnet", "claude-3-5-haiku", "claude-3-opus"],
+    chips: ["claude-3-7-sonnet", "claude-3-5-sonnet", "claude-3-5-haiku"],
+    status: "Claude 已接管",
     sampleTokens: [
-      "Hello! Claude 3.7 Sonnet is ready.",
-      " Thinking process enabled: Verified API gateway connection.",
-      " 200 OK | Stream completed safely with 0 errors."
-    ],
-    status: "已接管 · 运行良好"
+      "> [CONNECT] POST https://api.anthropic.com/v1",
+      "> [AUTH] Local credentials accepted",
+      "> [STREAM] Thinking channel ready",
+      "✓ Claude Code is ready"
+    ]
   },
   workbuddy: {
-    title: "🟠 Workbuddy AI 工作流中枢",
-    desc: "一键调阅与原子写入 ~/.workbuddy-ai/models.json，提供进程内环境变量即时注入",
+    title: "Workbuddy AI 工作流中枢",
+    desc: "写入 ~/.workbuddy-ai/models.json，并同步进程内环境变量。",
     configPath: "~/.workbuddy-ai/models.json",
     apiUrl: "https://api.workbuddy.cn/v1",
     model: "deepseek-coder",
     chips: ["deepseek-coder", "claude-3.5-sonnet", "gpt-4o", "kimi-latest"],
+    status: "Workbuddy 已同步",
     sampleTokens: [
-      "Workbuddy AI configuration synced.",
-      " System environment std::env::set_var dispatched.",
-      " 200 OK | Workbuddy profile loaded."
-    ],
-    status: "已同步 · 状态正常"
+      "> [CONNECT] Workbuddy gateway",
+      "> [SYNC] models.json loaded",
+      "> [ENV] Runtime variables injected",
+      "✓ Workbuddy profile is ready"
+    ]
+  },
+  acciowork: {
+    title: "Accio Work Bridge 接入",
+    desc: "通过本地 RLab Bridge 转译网关，让 Accio Work 使用自定义第三方模型。",
+    configPath: "~/.ai-helper/accio_config.json",
+    apiUrl: "http://127.0.0.1:8787",
+    model: "gpt-4o",
+    chips: ["gpt-4o", "claude-3-7-sonnet", "deepseek-chat", "自定义模型"],
+    status: "Bridge 在线 :8787",
+    sampleTokens: [
+      "> [BRIDGE] Listening on 127.0.0.1:8787",
+      "> [RLAB] Accio Work protocol detected",
+      "> [ROUTE] Custom model translation ready",
+      "✓ Accio Work Bridge is online"
+    ]
   },
   paths: {
-    title: "🧭 深度路径感知 & 进程安全热重启",
-    desc: "智能多级回退探测引擎 + 有界句柄释放等待 + 进程树强力清理 (/F /T)",
+    title: "路径感知与进程安全热重启",
+    desc: "扫描进程树、释放文件句柄，并以最新配置重新拉起目标客户端。",
     configPath: "~/.ai-helper/app_paths.json",
-    apiUrl: "N/A (本地进程控制器)",
-    model: "taskkill /F /T /PID",
-    chips: ["自动探测", "Store解包", "NPM全局", "句柄释放轮询", "进程树自愈"],
+    apiUrl: "Local process controller",
+    model: "taskkill /F /T",
+    chips: ["自动探测", "Store 解包", "句柄轮询", "进程树自愈"],
+    status: "进程守护中",
     sampleTokens: [
-      "Scanning active process trees...",
-      " Found orphan node.exe on port 8080. Executing taskkill /F /T.",
-      " File handles released in 120ms. Target process cleanly rebooted!"
-    ],
-    status: "双核守护监控中"
+      "> [PROCESS] Scanning target process tree",
+      "> [CLEANUP] Child processes terminated",
+      "> [HANDLE] File locks released · 120ms",
+      "✓ Target client restarted safely"
+    ]
   }
 };
 
-let currentTab = "chatgpt";
-let isStreaming = false;
-
-// DOM Initialization
-document.addEventListener("DOMContentLoaded", () => {
-  // 核心版本与下载链接初始化优先执行，保证任何情况下下载按钮与版本展示立即可用
-  try {
-    initReleaseInfo();
-  } catch (e) {
-    console.error("[AI Helper] initReleaseInfo error:", e);
+const SCENES = [
+  {
+    id: "discovery",
+    tab: "chatgpt",
+    overline: "SCENE 01 · DISCOVERY",
+    workspaceTitle: "正在发现本机 AI 开发环境",
+    workspaceDesc: "自动扫描 PATH、NPM 全局脚本与 Store 隔离包，定位全部可用客户端。",
+    status: "扫描完成",
+    copyTitle: "自动发现，不再手动翻路径。",
+    copyBody: "启动即感知 Claude Code、Codex、Workbuddy 与 Accio Work 的安装位置和运行状态，并自动纠偏失效路径。",
+    bullets: ["PATH 与 NPM 全局脚本扫描", "Store 隔离包智能识别", "异常路径自动修复"],
+    terminal: [
+      "> scanning PATH and package locations...",
+      "✓ OpenAI Codex · Win32",
+      "✓ Claude Code · NPM global",
+      "✓ Workbuddy · Native client",
+      "✓ Accio Work · RLab Bridge"
+    ],
+    latency: "4 AGENTS FOUND",
+    action: "环境扫描完成",
+    writeMode: "complete",
+    showDiscovery: true,
+    mobileRows: [["Codex", "Win32 · 已发现"], ["Claude Code", "NPM · 已发现"], ["Workbuddy", "Native · 已发现"], ["Accio Work", "Bridge · 已发现"]]
+  },
+  {
+    id: "configure",
+    tab: "claude",
+    overline: "SCENE 02 · CONFIGURE",
+    workspaceTitle: "统一配置网关、模型与本地路径",
+    workspaceDesc: "切换 Agent 即加载对应配置结构，常用模型通过快捷芯片一键选择。",
+    status: "配置已载入",
+    copyTitle: "不同 Agent，同一套操作逻辑。",
+    copyBody: "AI Helper 理解每个客户端的配置差异，将网关、模型和文件路径收敛到一致的操作界面。",
+    bullets: ["按 Agent 加载专属配置格式", "模型芯片快速切换", "配置文件原生直达"],
+    terminal: [
+      "> profile: claude-code",
+      "> config: ~/.claude.json",
+      "> model: claude-3-7-sonnet",
+      "✓ Configuration loaded"
+    ],
+    latency: "PROFILE READY",
+    action: "保存当前配置",
+    writeMode: "idle",
+    showDiscovery: false,
+    mobileRows: [["配置文件", "~/.claude.json"], ["API 网关", "api.anthropic.com"], ["默认模型", "claude-3-7-sonnet"]]
+  },
+  {
+    id: "stream",
+    tab: "workbuddy",
+    overline: "SCENE 03 · STREAM VERIFY",
+    workspaceTitle: "真实流式握手，立即确认连通状态",
+    workspaceDesc: "向指定网关发起流式探针，观察鉴权、首字延迟与响应分块。",
+    status: "正在验证",
+    copyTitle: "不是“保存成功”，而是“连接已验证”。",
+    copyBody: "在写入配置前完成一次真实流式握手，让错误网关、失效密钥和模型名称问题立刻暴露。",
+    bullets: ["TLS 与鉴权状态可见", "首字延迟实时反馈", "Token 分块逐行输出"],
+    terminal: [
+      "> [CONNECT] POST https://api.workbuddy.cn/v1",
+      "> [AUTH] Local token accepted",
+      "> [STREAM] First response chunk · 78ms",
+      "✓ 200 OK · Stream completed"
+    ],
+    latency: "TTFT 78MS",
+    action: "重新测试连通性",
+    writeMode: "active",
+    showDiscovery: false,
+    mobileRows: [["TLS 握手", "通过"], ["Token 鉴权", "通过"], ["首字延迟", "78ms"]]
+  },
+  {
+    id: "write",
+    tab: "chatgpt",
+    overline: "SCENE 04 · ATOMIC WRITE",
+    workspaceTitle: "校验完成，执行原子写入",
+    workspaceDesc: "先生成临时配置并校验，再替换目标文件，同时同步进程内环境变量。",
+    status: "安全落盘",
+    copyTitle: "写入有边界，配置更可靠。",
+    copyBody: "原子落盘避免半写入状态，进程内变量同步让当前应用与后续派生进程立刻读取最新配置。",
+    bullets: ["写入前结构与字段校验", "临时文件原子替换", "运行时环境变量同步"],
+    terminal: [
+      "> [VALIDATE] config.toml schema passed",
+      "> [WRITE] temporary file created",
+      "> [COMMIT] atomic replace complete",
+      "✓ Runtime environment synchronized"
+    ],
+    latency: "WRITE COMPLETE",
+    action: "配置写入完成",
+    writeMode: "complete",
+    showDiscovery: false,
+    mobileRows: [["结构校验", "PASS"], ["原子替换", "COMPLETE"], ["环境同步", "ACTIVE"]]
+  },
+  {
+    id: "restart",
+    tab: "paths",
+    overline: "SCENE 05 · SAFE RESTART",
+    workspaceTitle: "清理进程树，等待句柄释放并热重启",
+    workspaceDesc: "终止旧进程树，轮询锁定状态，再携最新配置重新拉起客户端。",
+    status: "重启完成",
+    copyTitle: "安全重启，不留下僵尸进程。",
+    copyBody: "有界等待文件句柄释放，杜绝端口冲突和多实例竞争，目标客户端以最新配置平滑恢复。",
+    bullets: ["子进程树完整清理", "文件句柄有界轮询", "携最新配置重新拉起"],
+    terminal: [
+      "> [PROCESS] Target tree located",
+      "> [CLEANUP] taskkill /F /T complete",
+      "> [HANDLE] Released in 120ms",
+      "✓ Client restarted with latest profile"
+    ],
+    latency: "PROCESS READY",
+    action: "客户端已重新拉起",
+    writeMode: "complete",
+    showDiscovery: false,
+    mobileRows: [["进程树", "已清理"], ["文件句柄", "120ms 释放"], ["目标客户端", "已重新拉起"]]
   }
+];
 
-  // 视觉与动画交互模块安全初始化（互不干扰）
-  const visualModules = [
-    initKineticTypography,
-    initAnimeDotGrid,
-    initSvgLaserPipeline,
-    initReactBitsSpotlight,
-    initReactBitsDecryptedText,
-    initReactBits3DTilt,
-    initReactBitsMagneticButtons,
-    initSimulator,
-    initFaqAccordion,
-    initNavScrollEffect,
-    initGsapAnimations
-  ];
+let activeReleasePageUrl = GITHUB_RELEASES_URL + "/tag/" + CURRENT_VERSION;
+let currentTab = "chatgpt";
+let currentSceneIndex = -1;
+let terminalRunToken = 0;
+let toastTimer = 0;
+let storyScrollTrigger = null;
 
-  visualModules.forEach(fn => {
-    try {
-      fn();
-    } catch (err) {
-      console.warn(`[AI Helper] 模块 ${fn.name || 'anonymous'} 初始化警告:`, err);
-    }
-  });
+document.addEventListener("DOMContentLoaded", function () {
+  safeInit(initReleaseInfo);
+  safeInit(initNavigation);
+  safeInit(initMotionGrid);
+  safeInit(initHeroMotion);
+  safeInit(initCinematicStory);
+  safeInit(initSectionMotion);
+  safeInit(initWorkflowMotion);
+  safeInit(initSpotlightCards);
+  safeInit(initMagneticTargets);
+  safeInit(initFaq);
+  safeInit(initUtilityActions);
 });
 
-/**
- * ==========================================================================
- * Anime.js Feature 1: Kinetic Typography (Split Letter Elastic Entrance)
- * ==========================================================================
- */
-function initKineticTypography() {
-  const textElements = document.querySelectorAll(".anime-split-text");
-  textElements.forEach(el => {
-    const text = el.innerText;
-    el.innerHTML = text
-      .split("")
-      .map(char => `<span class="anime-letter">${char === " " ? "&nbsp;" : char}</span>`)
-      .join("");
-  });
-
-  if (typeof anime !== "undefined") {
-    anime({
-      targets: ".anime-headline .anime-letter",
-      translateY: [40, 0],
-      opacity: [0, 1],
-      rotateZ: () => anime.random(-8, 8),
-      duration: 1100,
-      delay: anime.stagger(30, { start: 100 }),
-      easing: "easeOutElastic(1, .6)"
-    });
+function safeInit(initializer) {
+  try {
+    initializer();
+  } catch (error) {
+    console.warn("[AI Helper] " + initializer.name + " 初始化失败", error);
   }
 }
 
-/**
- * ==========================================================================
- * Anime.js Feature 2: Interactive Ripple Dot Grid Canvas (Inspired by animejs.com)
- * ==========================================================================
- */
-function initAnimeDotGrid() {
-  const canvas = document.getElementById("anime-dot-canvas");
-  if (!canvas) return;
-  const ctx = canvas.getContext("2d");
+function initNavigation() {
+  const nav = document.getElementById("site-nav");
+  const toggle = document.getElementById("mobile-menu-toggle");
+  const menu = document.getElementById("mobile-menu");
+  const floating = document.getElementById("floating-download");
+  const story = document.getElementById("story");
+  const faq = document.getElementById("faq");
+  let ticking = false;
 
-  let width = (canvas.width = window.innerWidth);
-  let height = (canvas.height = window.innerHeight);
+  function updateScrollState() {
+    ticking = false;
+    nav.classList.toggle("scrolled", window.scrollY > 24);
+    if (story && faq && floating) {
+      const showAfter = story.offsetTop + Math.min(story.offsetHeight * 0.75, window.innerHeight * 3);
+      const hideAfter = faq.offsetTop - window.innerHeight * 0.35;
+      floating.classList.toggle("visible", window.scrollY > showAfter && window.scrollY < hideAfter);
+    }
+  }
 
-  window.addEventListener("resize", () => {
-    width = canvas.width = window.innerWidth;
-    height = canvas.height = window.innerHeight;
-    createDots();
-  });
+  window.addEventListener("scroll", function () {
+    if (!ticking) {
+      ticking = true;
+      window.requestAnimationFrame(updateScrollState);
+    }
+  }, { passive: true });
+  updateScrollState();
 
-  const spacing = 38;
-  let dots = [];
+  if (toggle && menu) {
+    toggle.addEventListener("click", function () {
+      const open = toggle.getAttribute("aria-expanded") === "true";
+      toggle.setAttribute("aria-expanded", String(!open));
+      toggle.setAttribute("aria-label", open ? "打开导航菜单" : "关闭导航菜单");
+      menu.classList.toggle("open", !open);
+    });
 
-  function createDots() {
-    dots = [];
+    menu.querySelectorAll("a").forEach(function (link) {
+      link.addEventListener("click", function () {
+        toggle.setAttribute("aria-expanded", "false");
+        toggle.setAttribute("aria-label", "打开导航菜单");
+        menu.classList.remove("open");
+      });
+    });
+
+    document.addEventListener("click", function (event) {
+      if (!menu.contains(event.target) && !toggle.contains(event.target)) {
+        toggle.setAttribute("aria-expanded", "false");
+        toggle.setAttribute("aria-label", "打开导航菜单");
+        menu.classList.remove("open");
+      }
+    });
+  }
+
+  const observedSections = Array.from(document.querySelectorAll("[data-nav-section]")).map(function (link) {
+    return document.getElementById(link.getAttribute("data-nav-section"));
+  }).filter(Boolean);
+
+  if ("IntersectionObserver" in window) {
+    const observer = new IntersectionObserver(function (entries) {
+      const visible = entries.filter(function (entry) { return entry.isIntersecting; })
+        .sort(function (a, b) { return b.intersectionRatio - a.intersectionRatio; })[0];
+      if (!visible) return;
+      document.querySelectorAll("[data-nav-section]").forEach(function (link) {
+        link.classList.toggle("active", link.getAttribute("data-nav-section") === visible.target.id);
+      });
+    }, { rootMargin: "-28% 0px -58% 0px", threshold: [0.01, 0.2, 0.5] });
+    observedSections.forEach(function (section) { observer.observe(section); });
+  }
+}
+
+function initMotionGrid() {
+  const canvas = document.getElementById("motion-grid");
+  if (!canvas || REDUCED_MOTION.matches || MOBILE_VIEW.matches || !FINE_POINTER.matches) return;
+
+  const context = canvas.getContext("2d");
+  if (!context) return;
+
+  let width = 0;
+  let height = 0;
+  let dpr = 1;
+  let frameId = 0;
+  let lastFrame = 0;
+  let running = true;
+  const pointer = { x: window.innerWidth * 0.5, y: window.innerHeight * 0.4, active: false };
+
+  function resize() {
+    dpr = Math.min(window.devicePixelRatio || 1, 1.5);
+    width = window.innerWidth;
+    height = window.innerHeight;
+    canvas.width = Math.round(width * dpr);
+    canvas.height = Math.round(height * dpr);
+    context.setTransform(dpr, 0, 0, dpr, 0, 0);
+  }
+
+  function render(time) {
+    if (!running) return;
+    frameId = window.requestAnimationFrame(render);
+    if (time - lastFrame < 32) return;
+    lastFrame = time;
+    context.clearRect(0, 0, width, height);
+
+    const spacing = 58;
     const cols = Math.ceil(width / spacing) + 1;
     const rows = Math.ceil(height / spacing) + 1;
 
-    for (let i = 0; i < cols; i++) {
-      for (let j = 0; j < rows; j++) {
-        dots.push({
-          x: i * spacing,
-          y: j * spacing,
-          baseRadius: 1.5,
-          radius: 1.5,
-          color: "rgba(0, 113, 227, 0.25)"
-        });
+    for (let xIndex = 0; xIndex < cols; xIndex += 1) {
+      for (let yIndex = 0; yIndex < rows; yIndex += 1) {
+        const x = xIndex * spacing;
+        const y = yIndex * spacing;
+        const dx = x - pointer.x;
+        const dy = y - pointer.y;
+        const distance = Math.sqrt(dx * dx + dy * dy);
+        const influence = pointer.active ? Math.max(0, 1 - distance / 260) : 0;
+        const radius = 1 + influence * 2.2;
+        context.beginPath();
+        context.arc(x, y, radius, 0, Math.PI * 2);
+        context.fillStyle = "rgba(30, 116, 218, " + (0.12 + influence * 0.28).toFixed(3) + ")";
+        context.fill();
       }
     }
   }
 
-  createDots();
-
-  function render() {
-    ctx.clearRect(0, 0, width, height);
-    for (let d of dots) {
-      ctx.beginPath();
-      ctx.arc(d.x, d.y, d.radius, 0, Math.PI * 2);
-      ctx.fillStyle = d.color;
-      ctx.fill();
-    }
-    requestAnimationFrame(render);
-  }
-  render();
-
-  // Wave ripple on click or hover using Anime.js
-  function triggerRipple(centerX, centerY) {
-    if (typeof anime === "undefined") return;
-
-    dots.forEach(dot => {
-      const dx = dot.x - centerX;
-      const dy = dot.y - centerY;
-      const dist = Math.sqrt(dx * dx + dy * dy);
-
-      if (dist < 400) {
-        anime({
-          targets: dot,
-          radius: [1.5, 4.5, 1.5],
-          duration: 900,
-          delay: dist * 1.8,
-          easing: "easeOutElastic(1, .5)"
-        });
-      }
-    });
+  function start() {
+    if (running) return;
+    running = true;
+    frameId = window.requestAnimationFrame(render);
   }
 
-  window.addEventListener("click", (e) => {
-    triggerRipple(e.clientX, e.clientY);
-  });
-
-  let lastMove = 0;
-  window.addEventListener("mousemove", (e) => {
-    const now = Date.now();
-    if (now - lastMove > 180) {
-      lastMove = now;
-      triggerRipple(e.clientX, e.clientY);
-    }
-  });
-}
-
-/**
- * ==========================================================================
- * Anime.js Feature 3: Cinematic Video Showcase Timeline Player
- * ==========================================================================
- */
-let cinemaTimeline = null;
-let isPlaying = false;
-
-function initCinematicVideoPlayer() {
-  const playBtn = document.getElementById("cinema-btn-play");
-  const timeDisplay = document.getElementById("cinema-timer");
-  const progressFill = document.getElementById("cinema-progress-fill");
-  const chapterTag = document.getElementById("cinema-chapter");
-  const scrubber = document.getElementById("cinema-scrubber");
-
-  if (!playBtn || typeof anime === "undefined") return;
-
-  const totalDuration = 15000; // 15 seconds product video simulation
-
-  cinemaTimeline = anime.timeline({
-    autoplay: false,
-    duration: totalDuration,
-    easing: "linear",
-    update: (anim) => {
-      const progress = anim.progress;
-      if (progressFill) progressFill.style.width = `${progress}%`;
-
-      const currentSec = Math.floor((anim.currentTime / 1000) % 60);
-      const formatted = `00:${currentSec < 10 ? "0" + currentSec : currentSec} / 00:15`;
-      if (timeDisplay) timeDisplay.innerText = formatted;
-
-      // Chapter tags update
-      if (chapterTag) {
-        if (progress < 33) {
-          chapterTag.innerHTML = `<span class="cinema-rec-dot"></span> 阶段 01: 智能路径探测与 Store 解包`;
-        } else if (progress < 66) {
-          chapterTag.innerHTML = `<span class="cinema-rec-dot"></span> 阶段 02: API 网关与流式 Token 握手`;
-        } else {
-          chapterTag.innerHTML = `<span class="cinema-rec-dot"></span> 阶段 03: 进程树安全查杀 (/F /T) 与热重启`;
-        }
-      }
-    },
-    complete: () => {
-      isPlaying = false;
-      playBtn.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>`;
-    }
-  });
-
-  // Choreographed scenes
-  cinemaTimeline
-    .add({
-      // Scene 1: Switch to ChatGPT and pulse node
-      targets: ".p-node-cloud",
-      scale: [1, 1.08, 1],
-      duration: 1200,
-      begin: () => {
-        switchSimulatorTab("chatgpt");
-        highlightPipelineNode(0);
-      }
-    })
-    .add({
-      // Scene 2: Stream Token typing
-      targets: ".p-node-hub",
-      scale: [1, 1.08, 1],
-      duration: 4800,
-      begin: () => {
-        highlightPipelineNode(1);
-        runSimulatorTerminalTest();
-      }
-    })
-    .add({
-      // Scene 3: Hot reboot client
-      targets: ".p-node-target",
-      scale: [1, 1.1, 1],
-      duration: 4500,
-      begin: () => {
-        switchSimulatorTab("paths");
-        highlightPipelineNode(2);
-        showToast("🎬 电影演示完成：目标客户端已携最新配置无缝拉起！");
-      }
-    });
-
-  // Toggle play/pause
-  playBtn.addEventListener("click", () => {
-    if (isPlaying) {
-      cinemaTimeline.pause();
-      isPlaying = false;
-      playBtn.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>`;
-    } else {
-      cinemaTimeline.play();
-      isPlaying = true;
-      playBtn.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16"></rect><rect x="14" y="4" width="4" height="16"></rect></svg>`;
-    }
-  });
-
-  // Scrubber click seek
-  if (scrubber) {
-    scrubber.addEventListener("click", (e) => {
-      const rect = scrubber.getBoundingClientRect();
-      const clickPercent = (e.clientX - rect.left) / rect.width;
-      cinemaTimeline.seek(cinemaTimeline.duration * clickPercent);
-    });
+  function stop() {
+    running = false;
+    window.cancelAnimationFrame(frameId);
   }
-}
 
-function highlightPipelineNode(index) {
-  const nodes = document.querySelectorAll(".p-node");
-  nodes.forEach((n, i) => {
-    n.classList.toggle("active-glow", i === index);
+  resize();
+  frameId = window.requestAnimationFrame(render);
+  window.addEventListener("resize", resize, { passive: true });
+  window.addEventListener("pointermove", function (event) {
+    pointer.x = event.clientX;
+    pointer.y = event.clientY;
+    pointer.active = true;
+  }, { passive: true });
+  document.addEventListener("pointerleave", function () { pointer.active = false; });
+  document.addEventListener("visibilitychange", function () {
+    if (document.hidden) stop();
+    else start();
   });
 }
 
-/**
- * ==========================================================================
- * Anime.js Feature 4: SVG Laser Data Flow Drawing
- * ==========================================================================
- */
-function initSvgLaserPipeline() {
-  if (typeof anime === "undefined") return;
+function initHeroMotion() {
+  if (!window.gsap || REDUCED_MOTION.matches) return;
+  const gsap = window.gsap;
+  const timeline = gsap.timeline({ defaults: { ease: "power4.out" } });
 
-  const path = document.querySelector(".laser-circuit-path");
-  if (!path) return;
-
-  anime({
-    targets: path,
-    strokeDashoffset: [anime.setDashoffset, 0],
-    easing: "easeInOutSine",
-    duration: 2500,
-    direction: "alternate",
-    loop: true
-  });
+  timeline
+    .from(".hero-brand-mark", { opacity: 0, y: 18, scale: 0.82, rotate: -6, duration: 0.72, delay: 0.08 })
+    .from(".hero-eyebrow", { opacity: 0, y: 16, duration: 0.58 }, "-=0.34")
+    .from(".hero-line > span", { yPercent: 115, rotateX: -12, filter: "blur(10px)", duration: 1.05, stagger: 0.12 }, "-=0.32")
+    .from(".hero-lead", { opacity: 0, y: 22, filter: "blur(5px)", duration: 0.78 }, "-=0.5")
+    .from(".hero-actions > *", { opacity: 0, y: 18, duration: 0.62, stagger: 0.08 }, "-=0.42")
+    .from(".hero-trust li", { opacity: 0, y: 12, duration: 0.45, stagger: 0.07 }, "-=0.36")
+    .from(".runway-node", { opacity: 0, y: 24, scale: 0.96, duration: 0.72, stagger: 0.12 }, "-=0.16")
+    .from(".scroll-cue", { opacity: 0, duration: 0.5 }, "-=0.2");
 }
 
-/**
- * ==========================================================================
- * React-Bits Component 1: SpotlightCard (Light Specular Glow)
- * ==========================================================================
- */
-function initReactBitsSpotlight() {
-  const cards = document.querySelectorAll(".spotlight-card, .tilted-window-card");
-  cards.forEach(card => {
-    card.addEventListener("mousemove", (e) => {
-      const rect = card.getBoundingClientRect();
-      const x = e.clientX - rect.left;
-      const y = e.clientY - rect.top;
-      card.style.setProperty("--mouse-x", `${x}px`);
-      card.style.setProperty("--mouse-y", `${y}px`);
+function initCinematicStory() {
+  renderMobileStory();
+  bindSimulatorControls();
+  goToScene(0, "initial");
+
+  document.querySelectorAll("[data-scene-target]").forEach(function (button) {
+    button.addEventListener("click", function () {
+      scrollToScene(Number(button.getAttribute("data-scene-target")));
     });
   });
-}
 
-/**
- * ==========================================================================
- * React-Bits Component 2: DecryptedText (Cyber Character Scramble)
- * ==========================================================================
- */
-function initReactBitsDecryptedText() {
-  const elements = document.querySelectorAll("[data-decrypted-text]");
-  const characters = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789$#%&*";
+  const replayButton = document.getElementById("replay-story");
+  if (replayButton) replayButton.addEventListener("click", function () { scrollToScene(0); });
 
-  elements.forEach(el => {
-    const originalText = el.getAttribute("data-decrypted-text") || el.innerText;
-    let iteration = 0;
-    let interval = null;
-
-    function runDecryption() {
-      clearInterval(interval);
-      iteration = 0;
-
-      interval = setInterval(() => {
-        el.innerText = originalText
-          .split("")
-          .map((char, index) => {
-            if (char === " ") return " ";
-            if (index < iteration) {
-              return originalText[index];
-            }
-            return characters[Math.floor(Math.random() * characters.length)];
-          })
-          .join("");
-
-        if (iteration >= originalText.length) {
-          clearInterval(interval);
-        }
-        iteration += 1 / 2;
-      }, 30);
+  if (!window.gsap || !window.ScrollTrigger || REDUCED_MOTION.matches || MOBILE_VIEW.matches) return;
+  window.gsap.registerPlugin(window.ScrollTrigger);
+  storyScrollTrigger = window.ScrollTrigger.create({
+    trigger: "#story",
+    start: "top top",
+    end: "bottom bottom",
+    scrub: 0.55,
+    invalidateOnRefresh: true,
+    onUpdate: function (self) {
+      const sceneIndex = Math.min(SCENES.length - 1, Math.floor(self.progress * SCENES.length));
+      updateStoryProgress(self.progress);
+      goToScene(sceneIndex, "scroll");
     }
-
-    runDecryption();
-    el.addEventListener("mouseenter", runDecryption);
   });
 }
 
-/**
- * ==========================================================================
- * React-Bits Component 3: 3D TiltedCard (Perspective Parallax Tilt)
- * ==========================================================================
- */
-function initReactBits3DTilt() {
-  const tiltCard = document.querySelector(".tilted-window-card");
-  if (!tiltCard) return;
+function scrollToScene(index) {
+  const sceneIndex = clamp(index, 0, SCENES.length - 1);
+  if (REDUCED_MOTION.matches) {
+    goToScene(sceneIndex, "manual");
+    return;
+  }
+  if (MOBILE_VIEW.matches) {
+    const card = document.querySelector('[data-mobile-scene="' + sceneIndex + '"]');
+    if (card) card.scrollIntoView({ behavior: "smooth", block: "center" });
+    return;
+  }
 
-  const stage = document.querySelector(".showcase-stage");
-  if (!stage) return;
-
-  stage.addEventListener("mousemove", (e) => {
-    const rect = stage.getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    const y = e.clientY - rect.top;
-    const centerX = rect.width / 2;
-    const centerY = rect.height / 2;
-
-    const rotateX = ((y - centerY) / centerY) * -5;
-    const rotateY = ((x - centerX) / centerX) * 5;
-
-    tiltCard.style.transform = `perspective(1000px) rotateX(${rotateX}deg) rotateY(${rotateY}deg) scale3d(1.01, 1.01, 1.01)`;
-  });
-
-  stage.addEventListener("mouseleave", () => {
-    tiltCard.style.transform = "perspective(1000px) rotateX(0deg) rotateY(0deg) scale3d(1, 1, 1)";
-  });
+  const story = document.getElementById("story");
+  if (!story) return;
+  const start = story.offsetTop;
+  const scrollDistance = Math.max(0, story.offsetHeight - window.innerHeight);
+  const target = start + scrollDistance * (sceneIndex / (SCENES.length - 1));
+  window.scrollTo({ top: target, behavior: "smooth" });
 }
 
-/**
- * ==========================================================================
- * React-Bits Component 4: MagneticButton (Apple Cursor Pull Physics)
- * ==========================================================================
- */
-function initReactBitsMagneticButtons() {
-  const magneticElements = document.querySelectorAll(".btn-hero-primary, .btn-dl-apple, .star-border-btn, .cinema-play-btn");
-  
-  magneticElements.forEach(btn => {
-    btn.addEventListener("mousemove", (e) => {
-      const rect = btn.getBoundingClientRect();
-      const x = e.clientX - rect.left - rect.width / 2;
-      const y = e.clientY - rect.top - rect.height / 2;
-      btn.style.transform = `translate(${x * 0.25}px, ${y * 0.25}px)`;
-    });
-
-    btn.addEventListener("mouseleave", () => {
-      btn.style.transform = "translate(0px, 0px)";
-    });
-  });
+function updateStoryProgress(progress) {
+  const fill = document.getElementById("scene-progress-fill");
+  if (fill) fill.style.height = Math.round(clamp(progress, 0, 1) * 100) + "%";
 }
 
-/**
- * ==========================================================================
- * GSAP Keynote Entrance & ScrollTrigger Animations
- * ==========================================================================
- */
-function initGsapAnimations() {
-  if (typeof window.gsap !== "undefined") {
-    const gsap = window.gsap;
-    if (typeof window.ScrollTrigger !== "undefined") {
-      gsap.registerPlugin(window.ScrollTrigger);
-    }
+function goToScene(index, source) {
+  const sceneIndex = clamp(index, 0, SCENES.length - 1);
+  if (sceneIndex === currentSceneIndex && source !== "initial") return;
+  currentSceneIndex = sceneIndex;
+  terminalRunToken += 1;
 
-    // Keynote Hero Timeline
-    const tl = gsap.timeline({ defaults: { ease: "power4.out" } });
-    tl.from(".keynote-eyebrow", { opacity: 0, y: -20, duration: 0.8, delay: 0.1 })
-      .from(".keynote-subhead", { opacity: 0, y: 25, duration: 0.9 }, "-=0.5")
-      .from(".hero-cta-group", { opacity: 0, y: 20, duration: 0.8 }, "-=0.6")
-      .from(".pipeline-showcase", { opacity: 0, y: 25, duration: 0.8 }, "-=0.5")
-      .from(".tilted-window-card", { opacity: 0, y: 50, scale: 0.97, duration: 1.1, ease: "power3.out" }, "-=0.6");
+  const scene = SCENES[sceneIndex];
+  const story = document.getElementById("story");
+  const productFrame = document.getElementById("product-frame");
+  if (story) story.setAttribute("data-active-scene", String(sceneIndex));
+  if (productFrame) {
+    productFrame.setAttribute("data-scene-state", scene.id);
+    productFrame.classList.toggle("show-discovery", scene.showDiscovery);
+  }
 
-    // Bento Grid ScrollTrigger
-    if (window.ScrollTrigger) {
-      gsap.from(".spotlight-card", {
-        scrollTrigger: {
-          trigger: ".bento-grid",
-          start: "top 80%"
-        },
-        opacity: 0,
-        y: 40,
-        duration: 0.9,
-        stagger: 0.12,
-        ease: "power3.out"
-      });
+  document.querySelectorAll(".scene-nav-item").forEach(function (button, buttonIndex) {
+    const active = buttonIndex === sceneIndex;
+    button.classList.toggle("active", active);
+    if (active) button.setAttribute("aria-current", "step");
+    else button.removeAttribute("aria-current");
+  });
 
-      gsap.from(".workflow-card-step", {
-        scrollTrigger: {
-          trigger: ".workflow-steps-deck",
-          start: "top 85%"
-        },
-        opacity: 0,
-        y: 35,
-        duration: 0.8,
-        stagger: 0.15,
-        ease: "power3.out"
-      });
+  const targets = [
+    document.getElementById("scene-copy-title"),
+    document.getElementById("scene-copy-body"),
+    document.getElementById("scene-bullets"),
+    document.getElementById("sim-title"),
+    document.getElementById("sim-desc")
+  ].filter(Boolean);
 
-      gsap.from(".dl-pro-card", {
-        scrollTrigger: {
-          trigger: ".download-cards-row",
-          start: "top 85%"
-        },
-        opacity: 0,
-        y: 40,
-        duration: 0.9,
-        stagger: 0.15,
-        ease: "power3.out"
+  function applyScene() {
+    switchSimulatorTab(scene.tab, false);
+    setText("scene-copy-index", pad(sceneIndex + 1) + " / " + pad(SCENES.length));
+    setText("scene-copy-title", scene.copyTitle);
+    setText("scene-copy-body", scene.copyBody);
+    setText("scene-overline", scene.overline);
+    setText("sim-title", scene.workspaceTitle);
+    setText("sim-desc", scene.workspaceDesc);
+    setStatus(scene.status);
+    setText("sim-latency-badge", scene.latency);
+    setText("scene-bullets", "");
+    const bullets = document.getElementById("scene-bullets");
+    if (bullets) {
+      scene.bullets.forEach(function (bullet) {
+        const item = document.createElement("li");
+        item.textContent = bullet;
+        bullets.appendChild(item);
       });
     }
+
+    const action = document.getElementById("btn-sim-test");
+    if (action) {
+      action.lastChild.textContent = scene.action;
+    }
+
+    updateWriteState(scene.writeMode, scene.action);
+    const animateTerminal = scene.id === "stream" && !REDUCED_MOTION.matches;
+    renderTerminal(scene.terminal, animateTerminal);
+  }
+
+  if (window.gsap && !REDUCED_MOTION.matches && source !== "initial") {
+    window.gsap.killTweensOf(targets);
+    window.gsap.to(targets, {
+      opacity: 0,
+      y: 10,
+      filter: "blur(5px)",
+      duration: 0.16,
+      ease: "power2.in",
+      onComplete: function () {
+        applyScene();
+        window.gsap.fromTo(targets,
+          { opacity: 0, y: 14, filter: "blur(7px)" },
+          { opacity: 1, y: 0, filter: "blur(0px)", duration: 0.48, stagger: 0.025, ease: "power3.out", clearProps: "filter" }
+        );
+      }
+    });
+    window.gsap.fromTo("#product-frame", { rotateY: sceneIndex % 2 ? -1.2 : 1.2, scale: 0.995 }, { rotateY: 0, scale: 1, duration: 0.7, ease: "power3.out" });
   } else {
-    document.querySelectorAll(".keynote-headline, .spotlight-card, .workflow-card-step, .dl-pro-card").forEach(el => {
-      el.style.opacity = "1";
-    });
+    applyScene();
   }
 }
 
-/**
- * ==========================================================================
- * Interactive Simulator Actions & Typewriter Terminal
- * ==========================================================================
- */
-function initSimulator() {
-  const tabBtns = document.querySelectorAll(".sim-tab-button");
-  tabBtns.forEach(btn => {
-    btn.addEventListener("click", () => {
-      const tab = btn.getAttribute("data-tab");
-      switchSimulatorTab(tab);
+function bindSimulatorControls() {
+  document.querySelectorAll(".agent-tab").forEach(function (button) {
+    button.addEventListener("click", function () {
+      switchSimulatorTab(button.getAttribute("data-tab"), true);
+    });
+    button.addEventListener("keydown", function (event) {
+      if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
+      const tabs = Array.from(document.querySelectorAll(".agent-tab"));
+      const currentIndex = tabs.indexOf(button);
+      const offset = event.key === "ArrowRight" ? 1 : -1;
+      const next = tabs[(currentIndex + offset + tabs.length) % tabs.length];
+      next.focus();
+      next.click();
     });
   });
 
-  const testBtn = document.getElementById("btn-sim-test");
-  if (testBtn) {
-    testBtn.addEventListener("click", runSimulatorTerminalTest);
-  }
-
-  document.addEventListener("click", (e) => {
-    if (e.target.classList.contains("chip-item")) {
-      const parent = e.target.closest(".chips-deck");
-      if (parent) {
-        parent.querySelectorAll(".chip-item").forEach(c => c.classList.remove("active"));
-        e.target.classList.add("active");
-        const modelInput = document.getElementById("sim-input-model");
-        if (modelInput) {
-          modelInput.value = e.target.innerText;
-        }
-        showToast(`已切换模型为: ${e.target.innerText}`);
-      }
-    }
-  });
-
-  switchSimulatorTab("chatgpt");
+  const testButton = document.getElementById("btn-sim-test");
+  if (testButton) testButton.addEventListener("click", runSimulatorTerminalTest);
 }
 
-function switchSimulatorTab(tabKey) {
-  if (!SIMULATOR_DATA[tabKey]) return;
-  currentTab = tabKey;
+function switchSimulatorTab(tabKey, manual) {
   const data = SIMULATOR_DATA[tabKey];
+  if (!data) return;
+  currentTab = tabKey;
 
-  document.querySelectorAll(".sim-tab-button").forEach(b => {
-    b.classList.toggle("active", b.getAttribute("data-tab") === tabKey);
+  document.querySelectorAll(".agent-tab").forEach(function (button) {
+    const active = button.getAttribute("data-tab") === tabKey;
+    button.classList.toggle("active", active);
+    button.setAttribute("aria-selected", String(active));
   });
 
-  const titleEl = document.getElementById("sim-title");
-  const descEl = document.getElementById("sim-desc");
-  const configEl = document.getElementById("sim-input-config");
-  const apiEl = document.getElementById("sim-input-api");
-  const modelEl = document.getElementById("sim-input-model");
-  const chipsContainer = document.getElementById("sim-chips");
-  const statusBadge = document.getElementById("sim-status-badge");
-  const terminalBody = document.getElementById("sim-terminal-text");
+  const configInput = document.getElementById("sim-input-config");
+  const apiInput = document.getElementById("sim-input-api");
+  const modelInput = document.getElementById("sim-input-model");
+  if (configInput) configInput.value = data.configPath;
+  if (apiInput) apiInput.value = data.apiUrl;
+  if (modelInput) modelInput.value = data.model;
+  renderModelChips(data.chips);
 
-  if (titleEl) titleEl.innerText = data.title;
-  if (descEl) descEl.innerText = data.desc;
-  if (configEl) configEl.value = data.configPath;
-  if (apiEl) apiEl.value = data.apiUrl;
-  if (modelEl) modelEl.value = data.model;
-  if (statusBadge) statusBadge.innerText = data.status;
-
-  if (chipsContainer) {
-    chipsContainer.innerHTML = data.chips.map((chip, idx) => `
-      <span class="chip-item ${idx === 0 ? 'active' : ''}">${chip}</span>
-    `).join("");
+  if (manual) {
+    setText("scene-overline", "MANUAL MODE · " + tabKey.toUpperCase());
+    setText("sim-title", data.title);
+    setText("sim-desc", data.desc);
+    setStatus(data.status);
+    setText("sim-latency-badge", "READY");
+    updateWriteState("idle", "等待任务");
+    renderTerminal(["// " + data.title, "// 点击“测试流式连通性”开始网络握手。"], false);
   }
+}
 
-  if (terminalBody) {
-    terminalBody.innerHTML = `<span style="color:#64748b;">// 准备就绪。点击下方「测试流式连通性」发起网络握手探针...</span>`;
-  }
+function renderModelChips(chips) {
+  const container = document.getElementById("sim-chips");
+  if (!container) return;
+  container.textContent = "";
+  chips.forEach(function (chip, index) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "model-chip" + (index === 0 ? " active" : "");
+    button.textContent = chip;
+    button.addEventListener("click", function () {
+      container.querySelectorAll(".model-chip").forEach(function (item) { item.classList.remove("active"); });
+      button.classList.add("active");
+      const modelInput = document.getElementById("sim-input-model");
+      if (modelInput) modelInput.value = chip;
+      showToast("模型已切换为 " + chip);
+    });
+    container.appendChild(button);
+  });
 }
 
 function runSimulatorTerminalTest() {
-  if (isStreaming) return;
-  const terminalBody = document.getElementById("sim-terminal-text");
-  const latencyBadge = document.getElementById("sim-latency-badge");
-  if (!terminalBody) return;
-
-  isStreaming = true;
-  terminalBody.innerHTML = "";
-  if (latencyBadge) latencyBadge.innerText = "测速中...";
-
   const data = SIMULATOR_DATA[currentTab];
-  const startTime = Date.now();
+  if (!data) return;
+  setStatus("正在验证");
+  setText("sim-latency-badge", "CONNECTING");
+  updateWriteState("active", "流式握手中");
+  renderTerminal(data.sampleTokens, true, function () {
+    setStatus("连接验证通过");
+    setText("sim-latency-badge", "TTFT 78MS");
+    updateWriteState("complete", "网络状态优良");
+    showToast("流式握手完成，首字延迟 78ms");
+  });
+}
 
-  const lines = [
-    `> [CONNECT] POST ${data.apiUrl} (TLS 1.3 / HTTP/2)`,
-    `> [AUTH] Token verified via atomic local credentials.`,
-    `> [STREAM] Received response chunk:`,
-    ...data.sampleTokens
-  ];
+function renderTerminal(lines, animate, onComplete) {
+  const terminal = document.getElementById("sim-terminal-text");
+  if (!terminal) return;
+  const runToken = ++terminalRunToken;
+  terminal.textContent = "";
 
-  let lineIdx = 0;
-  let charIdx = 0;
+  if (!animate) {
+    terminal.textContent = lines.join("\n");
+    if (onComplete) onComplete();
+    return;
+  }
 
-  function typeNextChar() {
-    if (lineIdx >= lines.length) {
-      isStreaming = false;
-      const elapsed = Date.now() - startTime;
-      if (latencyBadge) latencyBadge.innerText = `${elapsed}ms (TTFT: 78ms)`;
-      terminalBody.innerHTML += `\n<span style="color:#10b981;">✔ 流式握手圆满完成！首字时延极佳，网络状态优良。</span>`;
+  let lineIndex = 0;
+  function appendLine() {
+    if (runToken !== terminalRunToken) return;
+    if (lineIndex >= lines.length) {
+      if (onComplete) onComplete();
       return;
     }
-
-    const currentLine = lines[lineIdx];
-    if (charIdx === 0) {
-      if (lineIdx > 0) terminalBody.innerHTML += "\n";
-    }
-
-    terminalBody.innerHTML += currentLine[charIdx];
-    charIdx++;
-
-    if (charIdx >= currentLine.length) {
-      lineIdx++;
-      charIdx = 0;
-      setTimeout(typeNextChar, 100);
-    } else {
-      setTimeout(typeNextChar, 15);
-    }
+    terminal.textContent += (lineIndex ? "\n" : "") + lines[lineIndex];
+    lineIndex += 1;
+    window.setTimeout(appendLine, lineIndex === 1 ? 180 : 360);
   }
-
-  typeNextChar();
+  appendLine();
 }
 
-/**
- * ==========================================================================
- * Dynamic GitHub Release Fetcher & Multi-Source Auto-Sync
- * ==========================================================================
- */
-let activeReleaseTag = CURRENT_VERSION;
-let activeReleasePageUrl = `${GITHUB_RELEASES_URL}/tag/${CURRENT_VERSION}`;
-
-function copyReleaseChecksumUrl() {
-  copyToClipboard(activeReleasePageUrl, "已复制官方发布页链接以验证校验和！");
+function updateWriteState(mode, label) {
+  const state = document.getElementById("write-state");
+  if (!state) return;
+  state.classList.remove("active", "complete");
+  if (mode === "active") state.classList.add("active");
+  if (mode === "complete") state.classList.add("complete");
+  const labelElement = state.querySelector("strong");
+  if (labelElement) labelElement.textContent = label;
 }
-window.copyReleaseChecksumUrl = copyReleaseChecksumUrl;
 
-function applyReleaseData({
-  tag,
-  setupUrl,
-  zipUrl,
-  fastSetupUrl,
-  fastZipUrl,
-  releasePageUrl,
-  setupFileName
-}) {
-  if (!tag) return;
-  const normalizedTag = tag.startsWith("v") ? tag : `v${tag}`;
-  activeReleaseTag = normalizedTag;
-  activeReleasePageUrl = releasePageUrl || `${GITHUB_RELEASES_URL}/tag/${normalizedTag}`;
+function setStatus(text) {
+  const badge = document.getElementById("sim-status-badge");
+  if (!badge) return;
+  const textNode = Array.from(badge.childNodes).find(function (node) { return node.nodeType === Node.TEXT_NODE; });
+  if (textNode) textNode.nodeValue = text;
+  else badge.appendChild(document.createTextNode(text));
+}
 
-  const resolvedSetupFileName = setupFileName || `AI-Helper-${normalizedTag}-Windows-x64-Setup.exe`;
-  const resolvedZipFileName = `AI-Helper-${normalizedTag}-Windows-x64-Standalone.zip`;
+function renderMobileStory() {
+  const container = document.getElementById("mobile-story-list");
+  if (!container) return;
+  container.textContent = "";
 
-  const finalSetupUrl = setupUrl || `${GITHUB_RELEASES_URL}/download/${normalizedTag}/${resolvedSetupFileName}`;
-  const finalZipUrl = zipUrl || `${GITHUB_RELEASES_URL}/download/${normalizedTag}/${resolvedZipFileName}`;
-  const finalFastSetupUrl = fastSetupUrl || `${GHFAST_PREFIX}${finalSetupUrl}`;
-  const finalFastZipUrl = fastZipUrl || `${GHFAST_PREFIX}${finalZipUrl}`;
+  const intro = document.createElement("header");
+  intro.className = "mobile-story-intro";
+  intro.innerHTML = '<span class="section-kicker">PRODUCT FILM · 01—05</span><h2>一次滚动，看完整条配置链路。</h2><p>移动端使用轻量章节卡片，保持顺畅、清晰和可读。</p>';
+  container.appendChild(intro);
 
-  // 1. 更新所有版本徽标与标签文本
-  document.querySelectorAll(".current-version-tag").forEach(el => {
-    el.innerText = normalizedTag;
+  SCENES.forEach(function (scene, index) {
+    const card = document.createElement("article");
+    card.className = "mobile-scene-card";
+    card.setAttribute("data-mobile-scene", String(index));
+
+    const top = document.createElement("div");
+    top.className = "mobile-scene-top";
+    top.innerHTML = "<span>" + pad(index + 1) + " / " + pad(SCENES.length) + "</span><span>" + scene.overline.split("·")[1].trim() + "</span>";
+
+    const title = document.createElement("h3");
+    title.textContent = scene.copyTitle;
+    const body = document.createElement("p");
+    body.textContent = scene.copyBody;
+    const ui = document.createElement("div");
+    ui.className = "mobile-scene-ui";
+    scene.mobileRows.forEach(function (row) {
+      const item = document.createElement("div");
+      item.className = "mobile-ui-row";
+      const label = document.createElement("span");
+      const value = document.createElement("strong");
+      label.textContent = row[0];
+      value.textContent = row[1];
+      item.appendChild(label);
+      item.appendChild(value);
+      ui.appendChild(item);
+    });
+
+    card.appendChild(top);
+    card.appendChild(title);
+    card.appendChild(body);
+    card.appendChild(ui);
+    container.appendChild(card);
   });
 
-  // 2. 更新 Hero 区域主下载按钮
-  const heroDownloadBtn = document.getElementById("btn-hero-download");
-  if (heroDownloadBtn) {
-    heroDownloadBtn.href = finalSetupUrl;
-  }
-  const heroBtnText = document.getElementById("hero-btn-text");
-  if (heroBtnText) {
-    heroBtnText.innerText = `立即下载 Windows 安装版 (${normalizedTag})`;
-  }
-
-  // 3. 更新下载专区直链及国内镜像
-  const setupDownloadLink = document.getElementById("link-dl-setup");
-  if (setupDownloadLink) setupDownloadLink.href = finalSetupUrl;
-
-  const fastSetupLink = document.getElementById("link-dl-fast-setup");
-  if (fastSetupLink) fastSetupLink.href = finalFastSetupUrl;
-
-  const zipDownloadLink = document.getElementById("link-dl-zip");
-  if (zipDownloadLink) zipDownloadLink.href = finalZipUrl;
-
-  const fastZipLink = document.getElementById("link-dl-fast-zip");
-  if (fastZipLink) fastZipLink.href = finalFastZipUrl;
-
-  // 4. 更新系统校验与文件名展示
-  const checksumFilename = document.getElementById("checksum-setup-filename");
-  if (checksumFilename) {
-    checksumFilename.innerText = resolvedSetupFileName;
+  if ("IntersectionObserver" in window && !REDUCED_MOTION.matches) {
+    const observer = new IntersectionObserver(function (entries) {
+      entries.forEach(function (entry) {
+        if (entry.isIntersecting) {
+          entry.target.classList.add("revealed");
+          observer.unobserve(entry.target);
+        }
+      });
+    }, { threshold: 0.18 });
+    container.querySelectorAll(".mobile-scene-card").forEach(function (card) { observer.observe(card); });
   }
 }
 
-async function fetchWithTimeout(url, options = {}, timeoutMs = 4000) {
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
-  try {
-    const res = await fetch(url, { ...options, signal: controller.signal });
-    clearTimeout(timeoutId);
-    return res;
-  } catch (err) {
-    clearTimeout(timeoutId);
-    throw err;
+function initSectionMotion() {
+  if (!window.gsap || !window.ScrollTrigger || REDUCED_MOTION.matches) return;
+  window.gsap.registerPlugin(window.ScrollTrigger);
+  const gsap = window.gsap;
+
+  gsap.utils.toArray(".section-heading").forEach(function (heading) {
+    gsap.from(heading.children, {
+      scrollTrigger: { trigger: heading, start: "top 82%", once: true },
+      opacity: 0,
+      y: 26,
+      filter: "blur(6px)",
+      duration: 0.75,
+      stagger: 0.09,
+      ease: "power3.out",
+      clearProps: "filter"
+    });
+  });
+
+  gsap.from(".capability-card", {
+    scrollTrigger: { trigger: ".capability-grid", start: "top 78%", once: true },
+    opacity: 0,
+    y: 38,
+    scale: 0.985,
+    duration: 0.78,
+    stagger: 0.09,
+    ease: "power3.out"
+  });
+
+  gsap.from(".download-primary, .download-compact", {
+    scrollTrigger: { trigger: ".download-layout", start: "top 80%", once: true },
+    opacity: 0,
+    y: 34,
+    duration: 0.78,
+    stagger: 0.11,
+    ease: "power3.out"
+  });
+
+  const metric = document.querySelector(".metric-value[data-count]");
+  if (metric) {
+    const target = Number(metric.getAttribute("data-count")) || 35;
+    const suffix = metric.getAttribute("data-suffix") || "";
+    const counter = { value: 0 };
+    gsap.to(counter, {
+      value: target,
+      duration: 1.5,
+      ease: "power2.out",
+      scrollTrigger: { trigger: metric, start: "top 86%", once: true },
+      onUpdate: function () {
+        metric.textContent = "< " + Math.round(counter.value) + suffix;
+      }
+    });
   }
+}
+
+function initWorkflowMotion() {
+  const steps = Array.from(document.querySelectorAll(".workflow-step"));
+  const fill = document.getElementById("workflow-line-fill");
+  if (!steps.length || !fill) return;
+
+  if (!window.gsap || !window.ScrollTrigger || REDUCED_MOTION.matches) {
+    steps.forEach(function (step) { step.classList.add("active"); });
+    if (MOBILE_VIEW.matches) fill.style.height = "100%";
+    else fill.style.width = "100%";
+    return;
+  }
+
+  window.gsap.registerPlugin(window.ScrollTrigger);
+  window.ScrollTrigger.create({
+    trigger: ".workflow-path",
+    start: "top 72%",
+    end: "bottom 58%",
+    scrub: 0.45,
+    onUpdate: function (self) {
+      const percent = Math.round(self.progress * 100) + "%";
+      if (MOBILE_VIEW.matches) {
+        fill.style.height = percent;
+        fill.style.width = "100%";
+      } else {
+        fill.style.width = percent;
+        fill.style.height = "100%";
+      }
+      steps.forEach(function (step, index) {
+        step.classList.toggle("active", self.progress >= index / steps.length);
+      });
+    }
+  });
+}
+
+function initSpotlightCards() {
+  if (!FINE_POINTER.matches || REDUCED_MOTION.matches) return;
+  document.querySelectorAll(".spotlight-card").forEach(function (card) {
+    card.addEventListener("pointermove", function (event) {
+      const rect = card.getBoundingClientRect();
+      card.style.setProperty("--mouse-x", event.clientX - rect.left + "px");
+      card.style.setProperty("--mouse-y", event.clientY - rect.top + "px");
+    });
+  });
+}
+
+function initMagneticTargets() {
+  if (!FINE_POINTER.matches || REDUCED_MOTION.matches || !window.gsap) return;
+  document.querySelectorAll(".magnetic-target").forEach(function (target) {
+    target.addEventListener("pointermove", function (event) {
+      const rect = target.getBoundingClientRect();
+      const x = event.clientX - rect.left - rect.width / 2;
+      const y = event.clientY - rect.top - rect.height / 2;
+      window.gsap.to(target, { x: x * 0.12, y: y * 0.16, duration: 0.28, ease: "power2.out" });
+    });
+    target.addEventListener("pointerleave", function () {
+      window.gsap.to(target, { x: 0, y: 0, duration: 0.55, ease: "elastic.out(1, 0.45)" });
+    });
+  });
+}
+
+function initFaq() {
+  document.querySelectorAll(".faq-trigger").forEach(function (trigger) {
+    trigger.addEventListener("click", function () {
+      const item = trigger.closest(".faq-item");
+      const open = trigger.getAttribute("aria-expanded") === "true";
+      document.querySelectorAll(".faq-item").forEach(function (otherItem) {
+        const otherTrigger = otherItem.querySelector(".faq-trigger");
+        otherItem.classList.remove("open");
+        if (otherTrigger) otherTrigger.setAttribute("aria-expanded", "false");
+      });
+      if (!open) {
+        item.classList.add("open");
+        trigger.setAttribute("aria-expanded", "true");
+      }
+    });
+  });
+}
+
+function initUtilityActions() {
+  const cloneButton = document.getElementById("copy-clone-command");
+  if (cloneButton) cloneButton.addEventListener("click", function () {
+    copyToClipboard("git clone https://github.com/TF49/AI-Helper.git", "Git 克隆命令已复制");
+  });
+
+  const checksumButton = document.getElementById("btn-copy-checksum");
+  if (checksumButton) checksumButton.addEventListener("click", function () {
+    copyToClipboard(activeReleasePageUrl, "官方发布页链接已复制");
+  });
+
+  ["open-config-demo", "native-open-demo"].forEach(function (id) {
+    const button = document.getElementById(id);
+    if (button) button.addEventListener("click", function () {
+      showToast("演示：已通过默认编辑器打开配置文件");
+    });
+  });
+}
+
+function applyReleaseData(data) {
+  if (!data.tag) return;
+  const tag = data.tag.indexOf("v") === 0 ? data.tag : "v" + data.tag;
+  const setupFileName = data.setupFileName || "AI-Helper-" + tag + "-Windows-x64-Setup.exe";
+  const zipFileName = "AI-Helper-" + tag + "-Windows-x64-Standalone.zip";
+  const setupUrl = data.setupUrl || GITHUB_RELEASES_URL + "/download/" + tag + "/" + setupFileName;
+  const zipUrl = data.zipUrl || GITHUB_RELEASES_URL + "/download/" + tag + "/" + zipFileName;
+  const fastSetupUrl = data.fastSetupUrl || GHFAST_PREFIX + setupUrl;
+  const fastZipUrl = data.fastZipUrl || GHFAST_PREFIX + zipUrl;
+  activeReleasePageUrl = data.releasePageUrl || GITHUB_RELEASES_URL + "/tag/" + tag;
+
+  document.querySelectorAll(".current-version-tag").forEach(function (element) { element.textContent = tag; });
+  setLink("btn-hero-download", setupUrl);
+  setText("hero-btn-text", "立即下载 Windows 安装版 (" + tag + ")");
+  setLink("link-dl-setup", setupUrl);
+  setLink("link-dl-fast-setup", fastSetupUrl);
+  setLink("link-dl-zip", zipUrl);
+  setLink("link-dl-fast-zip", fastZipUrl);
+  setText("checksum-setup-filename", setupFileName);
 }
 
 async function initReleaseInfo() {
-  // 步骤 1: 使用内置常量瞬时初始化页面，确保首屏零等待
   applyReleaseData({ tag: CURRENT_VERSION });
 
-  // 步骤 2: 尝试读取同源 version.json (本地构建/离线部署零延迟同步)
-  // 如果是 file:// 协议打开则跳过 fetch 以免控制台产生 CORS 警报
   if (window.location.protocol !== "file:") {
     try {
-      const localRes = await fetch(`./version.json?t=${Date.now()}`, { cache: "no-store" });
-      if (localRes.ok) {
-        const localData = await localRes.json();
+      const localResponse = await fetch("./version.json?t=" + Date.now(), { cache: "no-store" });
+      if (localResponse.ok) {
+        const localData = await localResponse.json();
         if (localData && (localData.tag || localData.version)) {
           applyReleaseData({
-            tag: localData.tag || `v${localData.version}`,
+            tag: localData.tag || "v" + localData.version,
             setupUrl: localData.setupDownloadUrl,
             zipUrl: localData.zipDownloadUrl,
             fastSetupUrl: localData.fastSetupDownloadUrl,
@@ -763,129 +908,85 @@ async function initReleaseInfo() {
         }
       }
     } catch (_) {
-      // 容错处理
+      // Local fallback remains active.
     }
   }
 
-  // 步骤 3: 异步探测 GitHub 官方最新 Release (获取完整 assets 列表与最新标签)
-  let syncSuccess = false;
+  let synchronized = false;
   try {
-    const res = await fetchWithTimeout(
-      `https://api.github.com/repos/${GITHUB_REPO}/releases/latest`,
-      { headers: { "Accept": "application/vnd.github.v3+json" } },
-      4000
-    );
-
-    if (res.ok) {
-      const release = await res.json();
-      const latestTag = release.tag_name;
-      if (latestTag) {
-        const setupAsset = release.assets?.find(a => a.name.endsWith("-Setup.exe"));
-        const zipAsset = release.assets?.find(a => a.name.endsWith("-Standalone.zip"));
-
-        const finalSetupUrl = setupAsset ? setupAsset.browser_download_url : `${GITHUB_RELEASES_URL}/download/${latestTag}/AI-Helper-${latestTag}-Windows-x64-Setup.exe`;
-        const finalZipUrl = zipAsset ? zipAsset.browser_download_url : `${GITHUB_RELEASES_URL}/download/${latestTag}/AI-Helper-${latestTag}-Windows-x64-Standalone.zip`;
-
+    const response = await fetchWithTimeout("https://api.github.com/repos/" + GITHUB_REPO + "/releases/latest", {
+      headers: { Accept: "application/vnd.github.v3+json" }
+    }, 4000);
+    if (response.ok) {
+      const release = await response.json();
+      const tag = release.tag_name;
+      if (tag) {
+        const setupAsset = release.assets && release.assets.find(function (asset) { return asset.name.endsWith("-Setup.exe"); });
+        const zipAsset = release.assets && release.assets.find(function (asset) { return asset.name.endsWith("-Standalone.zip"); });
+        const setupUrl = setupAsset ? setupAsset.browser_download_url : GITHUB_RELEASES_URL + "/download/" + tag + "/AI-Helper-" + tag + "-Windows-x64-Setup.exe";
+        const zipUrl = zipAsset ? zipAsset.browser_download_url : GITHUB_RELEASES_URL + "/download/" + tag + "/AI-Helper-" + tag + "-Windows-x64-Standalone.zip";
         applyReleaseData({
-          tag: latestTag,
-          setupUrl: finalSetupUrl,
-          zipUrl: finalZipUrl,
-          fastSetupUrl: `${GHFAST_PREFIX}${finalSetupUrl}`,
-          fastZipUrl: `${GHFAST_PREFIX}${finalZipUrl}`,
-          releasePageUrl: release.html_url || `${GITHUB_RELEASES_URL}/tag/${latestTag}`,
-          setupFileName: setupAsset ? setupAsset.name : `AI-Helper-${latestTag}-Windows-x64-Setup.exe`
+          tag: tag,
+          setupUrl: setupUrl,
+          zipUrl: zipUrl,
+          fastSetupUrl: GHFAST_PREFIX + setupUrl,
+          fastZipUrl: GHFAST_PREFIX + zipUrl,
+          releasePageUrl: release.html_url,
+          setupFileName: setupAsset ? setupAsset.name : undefined
         });
-
-        syncSuccess = true;
-        console.info(`[AI Helper] 成功通过 GitHub API 同步最新版本: ${latestTag}`);
+        synchronized = true;
       }
     }
-  } catch (err) {
-    // 官方 API 超时或遭遇 Rate Limit (403)
+  } catch (_) {
+    // Continue with raw fallbacks.
   }
 
-  // 步骤 4: 若官方 API 失败，通过 Raw version.json 双通道探针兜底 (无限流限制，支持国内加速反代)
-  if (!syncSuccess) {
-    const rawSources = [
-      `${GHFAST_PREFIX}https://raw.githubusercontent.com/${GITHUB_REPO}/main/website/version.json`,
-      `https://raw.githubusercontent.com/${GITHUB_REPO}/main/website/version.json`
+  if (!synchronized) {
+    const sources = [
+      GHFAST_PREFIX + "https://raw.githubusercontent.com/" + GITHUB_REPO + "/main/website/version.json",
+      "https://raw.githubusercontent.com/" + GITHUB_REPO + "/main/website/version.json"
     ];
-
-    for (const rawUrl of rawSources) {
+    for (const source of sources) {
       try {
-        const res = await fetchWithTimeout(rawUrl, { cache: "no-store" }, 4000);
-        if (res.ok) {
-          const rawData = await res.json();
-          if (rawData && (rawData.tag || rawData.version)) {
-            applyReleaseData({
-              tag: rawData.tag || `v${rawData.version}`,
-              setupUrl: rawData.setupDownloadUrl,
-              zipUrl: rawData.zipDownloadUrl,
-              fastSetupUrl: rawData.fastSetupDownloadUrl,
-              fastZipUrl: rawData.fastZipDownloadUrl,
-              releasePageUrl: rawData.releasePageUrl,
-              setupFileName: rawData.setupFileName
-            });
-
-            syncSuccess = true;
-            console.info(`[AI Helper] 成功通过 Raw 镜像通道同步最新版本: ${rawData.tag || rawData.version}`);
-            break;
-          }
-        }
-      } catch (_) {}
+        const response = await fetchWithTimeout(source, { cache: "no-store" }, 4000);
+        if (!response.ok) continue;
+        const raw = await response.json();
+        if (!raw || !(raw.tag || raw.version)) continue;
+        applyReleaseData({
+          tag: raw.tag || "v" + raw.version,
+          setupUrl: raw.setupDownloadUrl,
+          zipUrl: raw.zipDownloadUrl,
+          fastSetupUrl: raw.fastSetupDownloadUrl,
+          fastZipUrl: raw.fastZipDownloadUrl,
+          releasePageUrl: raw.releasePageUrl,
+          setupFileName: raw.setupFileName
+        });
+        break;
+      } catch (_) {
+        // Try the next source.
+      }
     }
   }
 }
 
-/**
- * ==========================================================================
- * Navigation Blur on Scroll & Utilities
- * ==========================================================================
- */
-function initNavScrollEffect() {
-  const nav = document.querySelector(".apple-nav");
-  window.addEventListener("scroll", () => {
-    if (window.scrollY > 40) {
-      nav.classList.add("scrolled");
-    } else {
-      nav.classList.remove("scrolled");
-    }
-  });
-}
-
-function initFaqAccordion() {
-  const faqRows = document.querySelectorAll(".faq-accordion-row");
-  faqRows.forEach(row => {
-    const trigger = row.querySelector(".faq-trigger-btn");
-    const drawer = row.querySelector(".faq-content-drawer");
-
-    trigger.addEventListener("click", () => {
-      const isActive = row.classList.contains("active");
-
-      faqRows.forEach(other => {
-        if (other !== row) {
-          other.classList.remove("active");
-          const otherDrawer = other.querySelector(".faq-content-drawer");
-          if (otherDrawer) otherDrawer.style.maxHeight = null;
-        }
-      });
-
-      if (isActive) {
-        row.classList.remove("active");
-        drawer.style.maxHeight = null;
-      } else {
-        row.classList.add("active");
-        drawer.style.maxHeight = drawer.scrollHeight + 30 + "px";
-      }
-    });
-  });
+async function fetchWithTimeout(url, options, timeout) {
+  const controller = new AbortController();
+  const timeoutId = window.setTimeout(function () { controller.abort(); }, timeout);
+  try {
+    const response = await fetch(url, Object.assign({}, options, { signal: controller.signal }));
+    window.clearTimeout(timeoutId);
+    return response;
+  } catch (error) {
+    window.clearTimeout(timeoutId);
+    throw error;
+  }
 }
 
 function copyToClipboard(text, message) {
   if (navigator.clipboard && window.isSecureContext) {
-    navigator.clipboard.writeText(text).then(() => {
-      showToast(message || "已复制到剪贴板！");
-    }).catch(() => {
+    navigator.clipboard.writeText(text).then(function () {
+      showToast(message || "已复制");
+    }).catch(function () {
       fallbackCopy(text, message);
     });
   } else {
@@ -894,43 +995,45 @@ function copyToClipboard(text, message) {
 }
 
 function fallbackCopy(text, message) {
-  const textArea = document.createElement("textarea");
-  textArea.value = text;
-  textArea.style.position = "fixed";
-  textArea.style.left = "-999999px";
-  document.body.appendChild(textArea);
-  textArea.focus();
-  textArea.select();
+  const textarea = document.createElement("textarea");
+  textarea.value = text;
+  textarea.setAttribute("readonly", "");
+  textarea.style.position = "fixed";
+  textarea.style.left = "-9999px";
+  document.body.appendChild(textarea);
+  textarea.select();
   try {
     document.execCommand("copy");
-    showToast(message || "已复制到剪贴板！");
-  } catch (err) {
-    showToast("请手动选取复制");
+    showToast(message || "已复制");
+  } catch (_) {
+    showToast("复制失败，请手动复制");
   }
-  document.body.removeChild(textArea);
+  document.body.removeChild(textarea);
 }
 
-let toastTimeout;
-function showToast(msg) {
-  let toast = document.getElementById("toast-notification");
-  if (!toast) {
-    toast = document.createElement("div");
-    toast.id = "toast-notification";
-    toast.className = "toast-msg";
-    document.body.appendChild(toast);
-  }
-
-  toast.innerHTML = `
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#0071e3" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-      <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>
-      <polyline points="22 4 12 14.01 9 11.01"></polyline>
-    </svg>
-    <span>${msg}</span>
-  `;
-
+function showToast(message) {
+  const toast = document.getElementById("toast-notification");
+  if (!toast) return;
+  toast.textContent = message;
   toast.classList.add("show");
-  clearTimeout(toastTimeout);
-  toastTimeout = setTimeout(() => {
-    toast.classList.remove("show");
-  }, 2800);
+  window.clearTimeout(toastTimer);
+  toastTimer = window.setTimeout(function () { toast.classList.remove("show"); }, 2600);
+}
+
+function setText(id, value) {
+  const element = document.getElementById(id);
+  if (element) element.textContent = value;
+}
+
+function setLink(id, href) {
+  const element = document.getElementById(id);
+  if (element && href) element.href = href;
+}
+
+function clamp(value, min, max) {
+  return Math.min(max, Math.max(min, value));
+}
+
+function pad(value) {
+  return String(value).padStart(2, "0");
 }
