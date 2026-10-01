@@ -177,7 +177,6 @@ async fn test_workbuddy_stream(
 }
 
 #[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
-#[serde(rename_all = "camelCase")]
 pub struct AccioBridgeStatus {
     pub is_running: bool,
     pub port: Option<u16>,

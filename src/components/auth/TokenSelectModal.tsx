@@ -378,12 +378,21 @@ export function TokenSelectModal({
     });
   }, [tokens, searchQuery, filterMode, selectedTokenId]);
 
+  const activeCount = useMemo(
+    () => tokens.filter((token) => token.status === 1).length,
+    [tokens],
+  );
+  const selectedCount = useMemo(
+    () => tokens.filter((token) => selectedTokenId === token.id).length,
+    [tokens, selectedTokenId],
+  );
+
   if (!isRendered || typeof document === "undefined") return null;
 
   return createPortal(
     <div
       ref={overlayRef}
-      className="fixed inset-0 z-[100] flex items-center justify-center p-3 sm:p-4 bg-black/65 backdrop-blur-md select-none overflow-hidden"
+      className="fixed inset-0 z-[100] flex items-center justify-center p-3 sm:p-6 bg-slate-950/60 backdrop-blur-lg select-none overflow-hidden"
       onClick={(e) => {
         if (e.target === e.currentTarget) {
           handleSmoothClose();
@@ -393,8 +402,8 @@ export function TokenSelectModal({
       <div
         ref={dialogRef}
         className={cn(
-          "relative w-full max-w-[620px] max-h-[88vh] bg-white/95 dark:bg-[#111320]/95 backdrop-blur-2xl",
-          "border border-slate-200/90 dark:border-white/10 rounded-3xl shadow-2xl shadow-black/40",
+          "relative w-full max-w-[720px] max-h-[92vh] bg-white/96 dark:bg-[#111320]/96 backdrop-blur-2xl",
+          "border border-slate-200/90 dark:border-white/10 rounded-[26px] shadow-2xl shadow-black/40",
           "flex flex-col overflow-hidden text-slate-800 dark:text-gray-200 transition-all duration-300",
         )}
         style={{
@@ -412,11 +421,11 @@ export function TokenSelectModal({
         />
 
         {/* ── 顶部栏：标题与操作 ── */}
-        <div className="relative z-10 flex items-center justify-between px-6 py-4.5 border-b border-slate-100 dark:border-white/[0.07] flex-shrink-0 bg-white/50 dark:bg-white/[0.02]">
+        <div className="relative z-10 flex items-start justify-between gap-4 px-5 sm:px-6 py-4 border-b border-slate-100 dark:border-white/[0.07] flex-shrink-0 bg-white/60 dark:bg-white/[0.025]">
           <div className="flex items-center gap-3">
             <div
               className={cn(
-                "w-10 h-10 rounded-2xl flex items-center justify-center font-bold shadow-md shadow-black/5 transition-transform duration-300 hover:scale-105",
+                "w-11 h-11 rounded-2xl flex items-center justify-center font-bold shadow-md shadow-black/5 transition-transform duration-300 hover:scale-105",
                 theme.bgBadge,
               )}
             >
@@ -443,9 +452,14 @@ export function TokenSelectModal({
                   目标: {toolName}
                 </span>
               </div>
-              <p className="text-[11px] text-slate-400 dark:text-gray-500 mt-0.5">
-                点击卡片即可流畅绑定至 {toolName}，支持一键全套同步所有客户端 Agent
+              <p className="text-[11px] text-slate-500 dark:text-gray-400 mt-1 leading-relaxed">
+                从云端凭据中选择一个 Key，绑定到当前工具或同步给全部 Agent
               </p>
+              <div className="flex items-center gap-2 mt-2 text-[10px] text-slate-400 dark:text-gray-500">
+                <span className="inline-flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />{activeCount} 个可用</span>
+                <span className="w-px h-3 bg-slate-200 dark:bg-white/10" />
+                <span>{selectedCount ? "当前已配置" : "尚未配置当前工具"}</span>
+              </div>
             </div>
           </div>
 
@@ -475,7 +489,7 @@ export function TokenSelectModal({
         </div>
 
         {/* ── 搜索过滤与快捷新建工具条 ── */}
-        <div className="relative z-10 px-6 py-3 bg-slate-50/80 dark:bg-black/25 border-b border-slate-100 dark:border-white/[0.06] flex flex-wrap items-center justify-between gap-2.5 text-xs">
+        <div className="relative z-10 px-5 sm:px-6 py-3 bg-slate-50/85 dark:bg-black/25 border-b border-slate-100 dark:border-white/[0.06] flex flex-wrap items-center justify-between gap-2.5 text-xs">
           {/* 搜索框与标签选项卡 */}
           <div className="flex items-center gap-2 flex-1 min-w-[240px]">
             <div className="relative flex-1">
@@ -488,7 +502,7 @@ export function TokenSelectModal({
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 placeholder="搜索 Key 名称或特征码..."
-                className="h-8 pl-8 pr-7 text-xs bg-white dark:bg-black/40 border-slate-200/80 dark:border-white/10 rounded-xl"
+                className="h-9 pl-8 pr-7 text-xs bg-white dark:bg-black/40 border-slate-200/80 dark:border-white/10 rounded-xl shadow-sm focus-visible:ring-2"
               />
               {searchQuery && (
                 <button
@@ -560,7 +574,7 @@ export function TokenSelectModal({
         {/* ── 令牌展示区域（核心内容区，内置 SpotlightCard） ── */}
         <div
           ref={cardsContainerRef}
-          className="flex-1 overflow-y-auto p-5 space-y-3 min-h-[260px] max-h-[56vh] relative z-10"
+          className="flex-1 overflow-y-auto px-5 sm:px-6 py-4 space-y-3 min-h-[260px] max-h-[58vh] relative z-10"
         >
           {loading && tokens.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-16 text-slate-400 dark:text-gray-500 gap-3">
@@ -625,7 +639,7 @@ export function TokenSelectModal({
                   key={token.id}
                   spotlightColor={theme.spotlightColor}
                   className={cn(
-                    "token-card-item p-3.5 rounded-2xl border transition-all duration-200 flex flex-col gap-2.5 group relative",
+                    "token-card-item p-4 rounded-2xl border transition-all duration-200 flex flex-col gap-3 group relative",
                     isSelected
                       ? theme.cardSelected
                       : "border-slate-200/80 dark:border-white/[0.07] bg-white/70 dark:bg-white/[0.03] hover:border-slate-300 dark:hover:border-white/20 hover:shadow-md",
@@ -633,7 +647,7 @@ export function TokenSelectModal({
                   )}
                 >
                   {/* 卡片顶部：名称、状态、关联标识 */}
-                  <div className="flex items-start justify-between gap-3">
+                  <div className="flex items-start justify-between gap-3 flex-wrap sm:flex-nowrap">
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-2 flex-wrap">
                         <span className="font-bold text-xs text-slate-900 dark:text-white tracking-wide truncate max-w-[240px]">
@@ -712,14 +726,14 @@ export function TokenSelectModal({
                     </div>
 
                     {/* 卡片快捷操作按钮组 */}
-                    <div className="flex items-center gap-2 flex-shrink-0">
+                    <div className="flex items-center gap-2 flex-shrink-0 ml-auto">
                       {/* 主操作：关联到当前工具 */}
                       <button
                         type="button"
                         disabled={isFetchingThis || !isUsable}
                         onClick={() => void handleSelectToken(token)}
                         className={cn(
-                          "px-3 py-1.5 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-all duration-200 active:scale-95 cursor-pointer shadow-sm",
+                          "px-3.5 py-2 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-all duration-200 active:scale-95 cursor-pointer shadow-sm",
                           isSelected
                             ? "bg-slate-200/80 dark:bg-white/10 text-slate-700 dark:text-gray-200 hover:bg-slate-300 dark:hover:bg-white/20 border border-slate-300/60 dark:border-white/10"
                             : theme.btnPrimary,
@@ -742,7 +756,7 @@ export function TokenSelectModal({
                         disabled={isSyncingThis || !isUsable}
                         onClick={() => void handleApplyToAll(token)}
                         title="一键将该 API Key 同步配置给 ChatGPT、Claude、Workbuddy、Accio 全套 4 大本地 Agent"
-                        className="px-2.5 py-1.5 rounded-xl text-xs font-medium border border-slate-200 dark:border-white/10 bg-slate-50/60 dark:bg-white/[0.04] hover:bg-amber-50 hover:border-amber-300/80 dark:hover:bg-amber-500/10 dark:hover:border-amber-500/30 text-slate-600 hover:text-amber-700 dark:text-gray-300 dark:hover:text-amber-300 transition-all flex items-center gap-1 active:scale-95 cursor-pointer shadow-2xs"
+                        className="px-2.5 py-2 rounded-xl text-xs font-medium border border-slate-200 dark:border-white/10 bg-slate-50/60 dark:bg-white/[0.04] hover:bg-amber-50 hover:border-amber-300/80 dark:hover:bg-amber-500/10 dark:hover:border-amber-500/30 text-slate-600 hover:text-amber-700 dark:text-gray-300 dark:hover:text-amber-300 transition-all flex items-center gap-1 active:scale-95 cursor-pointer shadow-2xs"
                       >
                         {isSyncingThis ? (
                           <Loader2 size={12} className="animate-spin text-amber-500" />
@@ -807,10 +821,10 @@ export function TokenSelectModal({
         </div>
 
         {/* ── 底部控制栏与说明 ── */}
-        <div className="relative z-10 px-6 py-3.5 border-t border-slate-100 dark:border-white/[0.07] bg-slate-50/70 dark:bg-black/25 flex items-center justify-between text-xs text-slate-500 dark:text-gray-400">
+        <div className="relative z-10 px-5 sm:px-6 py-3.5 border-t border-slate-100 dark:border-white/[0.07] bg-slate-50/70 dark:bg-black/25 flex items-center justify-between gap-3 text-xs text-slate-500 dark:text-gray-400">
           <div className="flex items-center gap-1.5 text-[11px]">
             <ShieldCheck size={14} className={theme.accentText} />
-            <span>凭据直接与节点专线通信，绝不上报云端。支持一键快速同步给全部 4 款 Agent。</span>
+            <span className="leading-relaxed">凭据仅用于节点通信，支持同步给 4 款 Agent。</span>
           </div>
 
           <button
