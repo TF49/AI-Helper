@@ -1,6 +1,6 @@
 "use strict";
 
-const CURRENT_VERSION = "v1.0.44";
+const CURRENT_VERSION = "v1.0.45";
 const GITHUB_REPO = "TF49/AI-Helper";
 const GITHUB_RELEASES_URL = "https://github.com/" + GITHUB_REPO + "/releases";
 const GHFAST_PREFIX = "https://ghfast.top/";
