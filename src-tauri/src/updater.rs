@@ -1,7 +1,7 @@
 /// 更新检查与多源容灾下载模块
 /// 针对国内网络、VPN 代理环境、死代理残留、镜像源单点故障等复杂场景进行了全面加固：
 ///   1. 智能代理嗅探与死代理自愈（检测环境变量与 Windows 注册表 WinINet 代理，并进行 200ms TCP 握手探测，自动规避 10061 积极拒绝错误）
-///   2. 多通道 Manifest 检测（ghfast.top / gh-proxy.com / ghproxy.net / 官方 GitHub / jsDelivr / GitHub Raw / GitHub API）
+///   2. 多通道 Manifest 检测（自建更新服务器 / ghfast.top / ghproxy.net / 官方 GitHub / jsDelivr / GitHub Raw / GitHub API）
 ///   3. 多源容灾自动下载器（download_and_install_update）：
 ///      - 支持官方直链、ghfast、gh-proxy、ghproxy.net 自动竞速与故障自动秒切
 ///      - 支持流式分块写入、实时进度回显与源切换事件广播
@@ -10,10 +10,9 @@ use serde::{Deserialize, Serialize};
 use std::time::Duration;
 
 const CURRENT_VERSION: &str = env!("CARGO_PKG_VERSION");
-const UPDATER_JSON_MIRROR_URL: &str =
-    "https://ghfast.top/https://github.com/TF49/AI-Helper/releases/latest/download/latest.json";
+const UPDATER_JSON_MIRROR_URL: &str = "http://64.118.130.216/downloads/latest.json";
 const UPDATER_JSON_MIRROR_BACKUP_URL: &str =
-    "https://gh-proxy.com/https://github.com/TF49/AI-Helper/releases/latest/download/latest.json";
+    "https://ghfast.top/https://github.com/TF49/AI-Helper/releases/latest/download/latest.json";
 const UPDATER_JSON_MIRROR_BACKUP2_URL: &str =
     "https://ghproxy.net/https://github.com/TF49/AI-Helper/releases/latest/download/latest.json";
 const UPDATER_JSON_OFFICIAL_URL: &str =
@@ -328,23 +327,24 @@ async fn check_for_updates_internal() -> Result<UpdateInfo, String> {
         }
     }
 
-    // 1. 优先 ghfast.top 镜像 updater.json (国内高速通道)
-    match check_updater_json(UPDATER_JSON_MIRROR_URL, "updater.json (ghfast)").await {
+    // 1. 优先 自建更新服务器 updater.json (高速专用通道)
+    match check_updater_json(UPDATER_JSON_MIRROR_URL, "updater.json (自建更新服务器)").await
+    {
         Ok(info) => return Ok(info),
         Err(e) => {
             log::warn!(
-                "ghfast updater.json check failed: {}. Trying gh-proxy backup...",
+                "自建更新服务器 updater.json check failed: {}. Trying ghfast backup...",
                 e
             );
         }
     }
 
-    // 2. 备用 gh-proxy.com 镜像 updater.json
-    match check_updater_json(UPDATER_JSON_MIRROR_BACKUP_URL, "updater.json (gh-proxy)").await {
+    // 2. 备用 ghfast.top 镜像 updater.json
+    match check_updater_json(UPDATER_JSON_MIRROR_BACKUP_URL, "updater.json (ghfast)").await {
         Ok(info) => return Ok(info),
         Err(e) => {
             log::warn!(
-                "gh-proxy updater.json check failed: {}. Trying ghproxy.net backup...",
+                "ghfast updater.json check failed: {}. Trying ghproxy.net backup...",
                 e
             );
         }
