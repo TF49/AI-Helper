@@ -442,6 +442,13 @@ pub fn merge_openai_chunks(chunks: &[Value]) -> Value {
                 if let Some(d) = delta {
                     if let Some(c) = d.get("content").and_then(Value::as_str) {
                         merged_text.push_str(c);
+                    } else if let Some(arr) = d.get("content").and_then(Value::as_array) {
+                        // Claude API 代理可能返回 content: [{type: "text", text: "..."}] 数组格式
+                        for item in arr {
+                            if let Some(t) = item.get("text").and_then(Value::as_str) {
+                                merged_text.push_str(t);
+                            }
+                        }
                     }
                     if let Some(rc) = d
                         .get("reasoning_content")
@@ -515,6 +522,10 @@ pub fn merge_openai_chunks(chunks: &[Value]) -> Value {
         }));
     }
 
+    if parts.is_empty() {
+        parts.push(json!({ "text": "（模型未输出可展示的正文内容）" }));
+    }
+
     json!({
         "content": {
             "role": "model",
@@ -530,6 +541,502 @@ pub fn merge_openai_chunks(chunks: &[Value]) -> Value {
             "model_name": model_name,
             "bridge": "ai-helper"
         },
+        "turnComplete": true,
+        "partial": false
+    })
+}
+
+/// API 端点类型，根据模型名称自动路由
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum ApiEndpoint {
+    /// /v1/chat/completions - OpenAI 标准 Chat 端点 (国产模型、通用兼容模型)
+    ChatCompletions,
+    /// /v1/responses - OpenAI 新版 Responses 端点 (GPT 系列)
+    #[allow(dead_code)]
+    Responses,
+    /// /v1/messages - Anthropic Messages 端点 (Claude 系列)
+    Messages,
+}
+
+impl ApiEndpoint {
+    pub fn path(&self) -> &'static str {
+        match self {
+            Self::ChatCompletions => "/v1/chat/completions",
+            Self::Responses => "/v1/responses",
+            Self::Messages => "/v1/messages",
+        }
+    }
+
+    pub fn label(&self) -> &'static str {
+        match self {
+            Self::ChatCompletions => "chat/completions",
+            Self::Responses => "responses",
+            Self::Messages => "messages",
+        }
+    }
+}
+
+/// 根据模型名称自动检测应使用的 API 端点
+pub fn detect_api_endpoint(model: &str) -> ApiEndpoint {
+    let lower = model.to_lowercase();
+    if lower.contains("claude") {
+        ApiEndpoint::Messages
+    } else if lower.contains("gpt")
+        || lower.starts_with("o1")
+        || lower.starts_with("o3")
+        || lower.starts_with("o4")
+        || lower.starts_with("chatgpt")
+    {
+        ApiEndpoint::Responses
+    } else {
+        ApiEndpoint::ChatCompletions
+    }
+}
+
+/// 辅助函数：将 Value 内容标准化为 Anthropic content block 数组
+fn normalize_anthropic_blocks(val: &Value) -> Vec<Value> {
+    match val {
+        Value::String(s) => {
+            if s.is_empty() {
+                Vec::new()
+            } else {
+                vec![json!({"type": "text", "text": s})]
+            }
+        }
+        Value::Array(arr) => arr.clone(),
+        Value::Null => Vec::new(),
+        other => vec![json!({"type": "text", "text": other.to_string()})],
+    }
+}
+
+/// 递归将 JSON Schema 中的大写类型转换为 Anthropic 接受的标准小写类型 (如 OBJECT -> object)
+fn normalize_schema_types(schema: &mut Value) {
+    if let Some(obj) = schema.as_object_mut() {
+        if let Some(t) = obj.get_mut("type") {
+            if let Some(s) = t.as_str() {
+                *t = json!(s.to_lowercase());
+            }
+        }
+        if let Some(props) = obj.get_mut("properties").and_then(Value::as_object_mut) {
+            for (_, prop) in props.iter_mut() {
+                normalize_schema_types(prop);
+            }
+        }
+        if let Some(items) = obj.get_mut("items") {
+            normalize_schema_types(items);
+        }
+    }
+}
+
+/// 将 accio_to_openai 输出的 Chat Completions 请求体转换为 Anthropic /v1/messages 请求格式
+pub fn chat_to_anthropic_body(chat_body: &Value) -> Value {
+    let empty = vec![];
+    let messages = chat_body["messages"].as_array().unwrap_or(&empty);
+
+    let mut system_text: Option<String> = None;
+    let mut anthropic_messages: Vec<Value> = Vec::new();
+
+    let mut i = 0;
+    while i < messages.len() {
+        let msg = &messages[i];
+        let role = msg.get("role").and_then(Value::as_str).unwrap_or("user");
+
+        match role {
+            "system" => {
+                if let Some(c) = msg.get("content").and_then(Value::as_str) {
+                    system_text = Some(c.to_string());
+                }
+            }
+            "assistant" => {
+                if let Some(tool_calls) = msg.get("tool_calls").and_then(Value::as_array) {
+                    let mut content_blocks: Vec<Value> = Vec::new();
+                    if let Some(text) = msg.get("content").and_then(Value::as_str) {
+                        if !text.is_empty() {
+                            content_blocks.push(json!({"type": "text", "text": text}));
+                        }
+                    }
+                    for tc in tool_calls {
+                        let id = tc.get("id").and_then(Value::as_str).unwrap_or("call_1");
+                        if let Some(func) = tc.get("function") {
+                            let name = func.get("name").and_then(Value::as_str).unwrap_or("tool");
+                            let args_str = func
+                                .get("arguments")
+                                .and_then(Value::as_str)
+                                .unwrap_or("{}");
+                            let input: Value =
+                                serde_json::from_str(args_str).unwrap_or_else(|_| json!({}));
+                            content_blocks.push(json!({
+                                "type": "tool_use",
+                                "id": id,
+                                "name": name,
+                                "input": input
+                            }));
+                        }
+                    }
+                    if content_blocks.is_empty() {
+                        content_blocks.push(json!({"type": "text", "text": ""}));
+                    }
+                    anthropic_messages
+                        .push(json!({"role": "assistant", "content": content_blocks}));
+                } else {
+                    anthropic_messages.push(json!({
+                        "role": "assistant",
+                        "content": msg.get("content").cloned().unwrap_or(json!(""))
+                    }));
+                }
+            }
+            "tool" => {
+                // Anthropic 要求 tool_result 放在 role=user 消息中
+                let mut tool_results: Vec<Value> = Vec::new();
+                while i < messages.len() {
+                    let tmsg = &messages[i];
+                    if tmsg.get("role").and_then(Value::as_str) != Some("tool") {
+                        break;
+                    }
+                    let tool_call_id = tmsg
+                        .get("tool_call_id")
+                        .and_then(Value::as_str)
+                        .unwrap_or("call_1");
+                    let content = match tmsg.get("content") {
+                        Some(Value::String(s)) => s.clone(),
+                        Some(other) => other.to_string(),
+                        None => String::new(),
+                    };
+                    tool_results.push(json!({
+                        "type": "tool_result",
+                        "tool_use_id": tool_call_id,
+                        "content": content
+                    }));
+                    i += 1;
+                }
+                anthropic_messages.push(json!({"role": "user", "content": tool_results}));
+                continue;
+            }
+            _ => {
+                anthropic_messages.push(json!({
+                    "role": "user",
+                    "content": msg.get("content").cloned().unwrap_or(json!(""))
+                }));
+            }
+        }
+
+        i += 1;
+    }
+
+    // Anthropic 要求消息角色必须交替，合并连续同角色消息
+    // 注意：合并时必须按 Content Block 数组追加合并，切勿用 as_str() 导致 tool_use / tool_result 被清空为 "\n"
+    let mut merged: Vec<Value> = Vec::new();
+    for msg in anthropic_messages {
+        let role = msg
+            .get("role")
+            .and_then(Value::as_str)
+            .unwrap_or("user")
+            .to_string();
+        let last_role = merged
+            .last()
+            .and_then(|m: &Value| m.get("role").and_then(Value::as_str))
+            .map(|s| s.to_string());
+
+        if last_role.as_deref() == Some(&role) {
+            if let Some(last) = merged.last_mut() {
+                let mut blocks = normalize_anthropic_blocks(&last["content"]);
+                let new_blocks = normalize_anthropic_blocks(&msg["content"]);
+                blocks.extend(new_blocks);
+                last["content"] = Value::Array(blocks);
+            }
+        } else {
+            merged.push(msg);
+        }
+    }
+
+    // Anthropic 官方规范要求首条消息必须是 user，且 messages 不可为空
+    if merged.is_empty() {
+        merged.push(json!({"role": "user", "content": "Hello"}));
+    } else if merged
+        .first()
+        .and_then(|m| m.get("role"))
+        .and_then(Value::as_str)
+        == Some("assistant")
+    {
+        merged.insert(0, json!({"role": "user", "content": "Hello"}));
+    }
+
+    let mut body = json!({
+        "model": chat_body.get("model").cloned().unwrap_or_else(|| json!("")),
+        "messages": merged,
+        "max_tokens": chat_body.get("max_tokens").cloned().unwrap_or(json!(8192)),
+        "stream": false
+    });
+
+    if let Some(sys) = system_text {
+        body["system"] = json!(sys);
+    }
+    if let Some(temp) = chat_body.get("temperature") {
+        body["temperature"] = temp.clone();
+    }
+
+    // OpenAI tools 格式 → Anthropic tools 格式 (递归规范化小写 Schema 类型)
+    if let Some(tools) = chat_body.get("tools").and_then(Value::as_array) {
+        let anthropic_tools: Vec<Value> = tools
+            .iter()
+            .filter_map(|t| {
+                let func = t.get("function")?;
+                let mut schema = func
+                    .get("parameters")
+                    .cloned()
+                    .unwrap_or_else(|| json!({"type": "object", "properties": {}}));
+                if !schema.is_object() {
+                    schema = json!({"type": "object", "properties": {}});
+                }
+                normalize_schema_types(&mut schema);
+                Some(json!({
+                    "name": func.get("name").cloned().unwrap_or(json!("tool")),
+                    "description": func.get("description").cloned().unwrap_or(json!("")),
+                    "input_schema": schema
+                }))
+            })
+            .collect();
+        if !anthropic_tools.is_empty() {
+            body["tools"] = json!(anthropic_tools);
+        }
+    }
+
+    body
+}
+
+/// 解析 Anthropic /v1/messages 非流式 JSON 响应为 Accio Gemini 协议格式
+pub fn parse_anthropic_response(json_val: &Value, default_model: &str) -> Value {
+    let model_name = json_val
+        .get("model")
+        .and_then(Value::as_str)
+        .unwrap_or(default_model);
+    let mut parts: Vec<Value> = Vec::new();
+
+    if let Some(content) = json_val.get("content").and_then(Value::as_array) {
+        for block in content {
+            match block.get("type").and_then(Value::as_str).unwrap_or("") {
+                "text" => {
+                    if let Some(text) = block.get("text").and_then(Value::as_str) {
+                        if !text.is_empty() {
+                            parts.push(json!({"text": text}));
+                        }
+                    }
+                }
+                "tool_use" => {
+                    let id = block.get("id").and_then(Value::as_str).unwrap_or("call_1");
+                    let name = block.get("name").and_then(Value::as_str).unwrap_or("tool");
+                    let input = block.get("input").cloned().unwrap_or(json!({}));
+                    let args_str =
+                        serde_json::to_string(&input).unwrap_or_else(|_| "{}".to_string());
+                    parts.push(json!({
+                        "functionCall": {
+                            "id": id,
+                            "name": name,
+                            "args": input,
+                            "argsJson": args_str
+                        }
+                    }));
+                }
+                "thinking" => {
+                    if let Some(text) = block.get("thinking").and_then(Value::as_str) {
+                        if !text.is_empty() && !parts.iter().any(|p| p.get("text").is_some()) {
+                            parts.push(json!({"text": text}));
+                        }
+                    }
+                }
+                _ => {
+                    if let Some(text) = block.get("text").and_then(Value::as_str) {
+                        parts.push(json!({"text": text}));
+                    }
+                }
+            }
+        }
+    }
+
+    // 防止 parts 为空导致 Accio Work 报“模型未返回可展示的内容，请重试。”
+    if parts.is_empty() {
+        parts.push(json!({
+            "text": "（模型未输出可展示的正文内容）"
+        }));
+    }
+
+    let usage = json_val.get("usage");
+    let input_tokens = usage
+        .and_then(|u| u.get("input_tokens"))
+        .and_then(Value::as_u64)
+        .unwrap_or(0);
+    let output_tokens = usage
+        .and_then(|u| u.get("output_tokens"))
+        .and_then(Value::as_u64)
+        .unwrap_or(0);
+
+    let stop_reason = json_val
+        .get("stop_reason")
+        .and_then(Value::as_str)
+        .unwrap_or("end_turn");
+    let finish_reason = if stop_reason == "max_tokens" {
+        "MAX_TOKENS"
+    } else {
+        "STOP"
+    };
+
+    json!({
+        "content": {"role": "model", "parts": parts},
+        "finishReason": finish_reason,
+        "usageMetadata": {
+            "promptTokenCount": input_tokens,
+            "candidatesTokenCount": output_tokens,
+            "totalTokenCount": input_tokens + output_tokens
+        },
+        "customMetadata": {"model_name": model_name, "bridge": "ai-helper"},
+        "turnComplete": true,
+        "partial": false
+    })
+}
+
+/// 合并 Anthropic SSE 流式事件为 Accio Gemini 协议格式
+pub fn merge_anthropic_sse(text: &str, default_model: &str) -> Value {
+    let mut full_text = String::new();
+    let mut tool_uses: Vec<(String, String, String)> = Vec::new(); // (id, name, input_json)
+    let mut current_tool_input = String::new();
+    let mut current_tool_idx: Option<usize> = None;
+    let mut model_name = default_model.to_string();
+    let mut input_tokens = 0u64;
+    let mut output_tokens = 0u64;
+    let mut stop_reason = "end_turn".to_string();
+
+    for line in text.lines() {
+        let trimmed = line.trim();
+        let data = if let Some(d) = trimmed.strip_prefix("data:") {
+            d.trim()
+        } else {
+            continue;
+        };
+        if data.is_empty() || data == "[DONE]" {
+            continue;
+        }
+        let Ok(chunk) = serde_json::from_str::<Value>(data) else {
+            continue;
+        };
+
+        // 检查是否为完整的非流式消息对象 (某些中转站在 SSE 中包裹完整响应)
+        if chunk.get("type").and_then(Value::as_str) == Some("message")
+            && chunk.get("content").and_then(Value::as_array).is_some()
+        {
+            return parse_anthropic_response(&chunk, default_model);
+        }
+
+        match chunk.get("type").and_then(Value::as_str) {
+            Some("message_start") => {
+                if let Some(msg) = chunk.get("message") {
+                    if let Some(m) = msg.get("model").and_then(Value::as_str) {
+                        model_name = m.to_string();
+                    }
+                    if let Some(u) = msg.get("usage") {
+                        input_tokens = u.get("input_tokens").and_then(Value::as_u64).unwrap_or(0);
+                    }
+                }
+            }
+            Some("content_block_start") => {
+                if let Some(cb) = chunk.get("content_block") {
+                    if cb.get("type").and_then(Value::as_str) == Some("tool_use") {
+                        let id = cb
+                            .get("id")
+                            .and_then(Value::as_str)
+                            .unwrap_or("call_1")
+                            .to_string();
+                        let name = cb
+                            .get("name")
+                            .and_then(Value::as_str)
+                            .unwrap_or("tool")
+                            .to_string();
+                        tool_uses.push((id, name, String::new()));
+                        current_tool_idx = Some(tool_uses.len() - 1);
+                        current_tool_input.clear();
+                    } else {
+                        current_tool_idx = None;
+                    }
+                }
+            }
+            Some("content_block_delta") => {
+                if let Some(delta) = chunk.get("delta") {
+                    match delta.get("type").and_then(Value::as_str) {
+                        Some("text_delta") => {
+                            if let Some(t) = delta.get("text").and_then(Value::as_str) {
+                                full_text.push_str(t);
+                            }
+                        }
+                        Some("input_json_delta") => {
+                            if let Some(partial) = delta.get("partial_json").and_then(Value::as_str)
+                            {
+                                current_tool_input.push_str(partial);
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+            }
+            Some("content_block_stop") => {
+                if let Some(idx) = current_tool_idx {
+                    if idx < tool_uses.len() {
+                        tool_uses[idx].2 = std::mem::take(&mut current_tool_input);
+                    }
+                }
+                current_tool_idx = None;
+            }
+            Some("message_delta") => {
+                if let Some(delta) = chunk.get("delta") {
+                    if let Some(sr) = delta.get("stop_reason").and_then(Value::as_str) {
+                        stop_reason = sr.to_string();
+                    }
+                }
+                if let Some(usage) = chunk.get("usage") {
+                    if let Some(ot) = usage.get("output_tokens").and_then(Value::as_u64) {
+                        output_tokens = ot;
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+
+    let mut parts = Vec::new();
+    if !full_text.is_empty() {
+        parts.push(json!({"text": full_text}));
+    }
+    for (id, name, input_str) in tool_uses {
+        let input: Value = serde_json::from_str(&input_str).unwrap_or_else(|_| json!({}));
+        parts.push(json!({
+            "functionCall": {
+                "id": id,
+                "name": name,
+                "args": input,
+                "argsJson": input_str
+            }
+        }));
+    }
+
+    if parts.is_empty() {
+        parts.push(json!({
+            "text": "（模型未输出可展示的正文内容）"
+        }));
+    }
+
+    let finish_reason = if stop_reason == "max_tokens" {
+        "MAX_TOKENS"
+    } else {
+        "STOP"
+    };
+
+    json!({
+        "content": {"role": "model", "parts": parts},
+        "finishReason": finish_reason,
+        "usageMetadata": {
+            "promptTokenCount": input_tokens,
+            "candidatesTokenCount": output_tokens,
+            "totalTokenCount": input_tokens + output_tokens
+        },
+        "customMetadata": {"model_name": model_name, "bridge": "ai-helper"},
         "turnComplete": true,
         "partial": false
     })
@@ -717,5 +1224,134 @@ mod tests {
             }
         });
         assert!(is_image_output_request(&proto_input));
+    }
+
+    #[test]
+    fn test_detect_api_endpoint_routing() {
+        assert_eq!(
+            detect_api_endpoint("claude-sonnet-5"),
+            ApiEndpoint::Messages
+        );
+        assert_eq!(
+            detect_api_endpoint("claude-3-7-sonnet"),
+            ApiEndpoint::Messages
+        );
+        assert_eq!(
+            detect_api_endpoint("claude-3-5-haiku-20241022"),
+            ApiEndpoint::Messages
+        );
+        // GPT / o1 / o3 保持路由至 Responses 端点
+        assert_eq!(detect_api_endpoint("gpt-4o"), ApiEndpoint::Responses);
+        assert_eq!(detect_api_endpoint("o1-preview"), ApiEndpoint::Responses);
+        assert_eq!(detect_api_endpoint("o3-mini"), ApiEndpoint::Responses);
+        assert_eq!(
+            detect_api_endpoint("deepseek-chat"),
+            ApiEndpoint::ChatCompletions
+        );
+        assert_eq!(
+            detect_api_endpoint("qwen-max"),
+            ApiEndpoint::ChatCompletions
+        );
+    }
+
+    #[test]
+    fn test_chat_to_anthropic_body_merges_without_data_loss() {
+        let chat_body = json!({
+            "model": "claude-sonnet-5",
+            "messages": [
+                { "role": "user", "content": "Please check files." },
+                {
+                    "role": "assistant",
+                    "content": null,
+                    "tool_calls": [{
+                        "id": "call_123",
+                        "type": "function",
+                        "function": {
+                            "name": "list_files",
+                            "arguments": "{\"dir\":\"/\"}"
+                        }
+                    }]
+                },
+                {
+                    "role": "tool",
+                    "tool_call_id": "call_123",
+                    "content": "fileA.txt, fileB.txt"
+                },
+                {
+                    "role": "user",
+                    "content": "Also check /tmp."
+                }
+            ],
+            "tools": [{
+                "type": "function",
+                "function": {
+                    "name": "list_files",
+                    "description": "List files",
+                    "parameters": {
+                        "type": "OBJECT",
+                        "properties": {
+                            "dir": { "type": "STRING" }
+                        }
+                    }
+                }
+            }]
+        });
+
+        let anthropic_req = chat_to_anthropic_body(&chat_body);
+        assert_eq!(anthropic_req["model"], "claude-sonnet-5");
+        assert_eq!(anthropic_req["stream"], false);
+
+        let msgs = anthropic_req["messages"].as_array().expect("messages");
+        // user -> assistant -> user (merged: tool_result + text)
+        assert_eq!(msgs.len(), 3);
+        assert_eq!(msgs[0]["role"], "user");
+        assert_eq!(msgs[1]["role"], "assistant");
+        assert_eq!(msgs[2]["role"], "user");
+
+        // 验证 tool_result 和后续 user text 在合并后均完整保留，没有被替换为 "\n"
+        let user_blocks = msgs[2]["content"].as_array().expect("user content blocks");
+        assert_eq!(user_blocks.len(), 2);
+        assert_eq!(user_blocks[0]["type"], "tool_result");
+        assert_eq!(user_blocks[0]["tool_use_id"], "call_123");
+        assert_eq!(user_blocks[0]["content"], "fileA.txt, fileB.txt");
+        assert_eq!(user_blocks[1]["type"], "text");
+        assert_eq!(user_blocks[1]["text"], "Also check /tmp.");
+
+        // 验证 tools input_schema 中的大写 OBJECT/STRING 被递归转为了小写
+        let tools = anthropic_req["tools"].as_array().expect("tools array");
+        assert_eq!(tools.len(), 1);
+        let schema = &tools[0]["input_schema"];
+        assert_eq!(schema["type"], "object");
+        assert_eq!(schema["properties"]["dir"]["type"], "string");
+    }
+
+    #[test]
+    fn test_chat_to_anthropic_body_ensures_user_first() {
+        let chat_body = json!({
+            "model": "claude-sonnet-5",
+            "messages": [
+                { "role": "assistant", "content": "Welcome!" }
+            ]
+        });
+        let anthropic_req = chat_to_anthropic_body(&chat_body);
+        let msgs = anthropic_req["messages"].as_array().expect("messages");
+        assert_eq!(msgs.len(), 2);
+        assert_eq!(msgs[0]["role"], "user");
+        assert_eq!(msgs[1]["role"], "assistant");
+    }
+
+    #[test]
+    fn test_parse_anthropic_response_empty_parts_fallback() {
+        let empty_resp = json!({
+            "id": "msg_empty",
+            "type": "message",
+            "role": "assistant",
+            "content": [],
+            "stop_reason": "end_turn"
+        });
+        let parsed = parse_anthropic_response(&empty_resp, "claude-sonnet-5");
+        let parts = parsed["content"]["parts"].as_array().expect("parts");
+        assert_eq!(parts.len(), 1);
+        assert!(parts[0]["text"].as_str().unwrap().contains("未输出可展示"));
     }
 }

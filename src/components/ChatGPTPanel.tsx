@@ -5,10 +5,8 @@ import {
   Save,
   RefreshCw,
   Server,
-  KeyRound,
   FileCode,
   ShieldAlert,
-  ShieldCheck,
 } from "lucide-react";
 import { OpenAIIcon } from "./BrandIcons";
 import { fetchCodexModels, getCodexConfig } from "../lib/api";
@@ -201,36 +199,17 @@ export function ChatGPTPanel() {
             className="p-5 rounded-2xl border border-slate-200/90 dark:border-white/10 bg-white/80 dark:bg-[#121524]/60 shadow-sm dark:shadow-none flex flex-col justify-between"
             spotlightColor="rgba(59, 130, 246, 0.12)"
           >
-            <div>
-              <div className="flex items-center justify-between mb-3">
-                <Label className="text-xs font-semibold text-slate-800 dark:text-gray-200 flex items-center gap-2">
-                  <KeyRound size={14} className="text-blue-500" />
-                  OpenAI API Key
-                </Label>
-                <span className="text-[11px] text-slate-400 dark:text-gray-500">
-                  认证凭证
-                </span>
-              </div>
-              <ApiKeyInput
-                value={apiKey}
-                onChange={setApiKey}
-                placeholder="sk-... (填入 BobAPI 密钥)"
-                envVarName="CUSTOM_OPENAI_API_KEY"
-                accentColor="blue"
-                toolName="ChatGPT (Codex)"
-                toolId="chatgpt"
-              />
-            </div>
-
-            <div className="mt-3 flex items-center gap-2 p-2.5 rounded-xl bg-slate-50/70 border border-slate-200/80 dark:bg-white/[0.03] dark:border-white/5 text-xs text-slate-500 dark:text-gray-400">
-              <ShieldCheck
-                size={14}
-                className="text-blue-500 dark:text-blue-400 flex-shrink-0"
-              />
-              <span className="leading-relaxed">
-                凭据仅加密储存于本地配置与当前环境，直接与所选专线通信，绝不中转第三方。
-              </span>
-            </div>
+            <ApiKeyInput
+              title="OpenAI API Key"
+              badgeText="环境变量"
+              value={apiKey}
+              onChange={setApiKey}
+              placeholder="sk-... (填入 BobAPI 密钥)"
+              envVarName="CUSTOM_OPENAI_API_KEY"
+              accentColor="blue"
+              toolName="ChatGPT (Codex)"
+              toolId="chatgpt"
+            />
           </SpotlightCard>
 
           {/* 卡片 4: 测试模型与快捷选项 */}

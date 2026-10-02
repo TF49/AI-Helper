@@ -5,7 +5,6 @@ import {
   Save,
   RefreshCw,
   Server,
-  KeyRound,
   ShieldCheck,
   Sliders,
   Power,
@@ -528,36 +527,18 @@ export function AccioWorkPanel() {
             className="p-5 rounded-2xl border border-slate-200/90 dark:border-white/10 bg-white/80 dark:bg-[#121524]/60 shadow-sm dark:shadow-none flex flex-col justify-between"
             spotlightColor="rgba(255, 106, 0, 0.12)"
           >
-            <div>
-              <div className="flex items-center justify-between mb-3">
-                <Label className="text-xs font-semibold text-slate-800 dark:text-gray-200 flex items-center gap-2">
-                  <KeyRound size={14} className="text-orange-500" />
-                  API Key 凭据
-                </Label>
-                <span className="text-[11px] text-slate-400 dark:text-gray-500">
-                  第三方认证
-                </span>
-              </div>
-              <ApiKeyInput
-                value={apiKey}
-                onChange={setApiKey}
-                placeholder="sk-... (填入所选服务商的 API 密钥)"
-                hintText="用于向中转节点发起大模型请求认证"
-                accentColor="orange"
-                toolName="Accio Work"
-                toolId="acciowork"
-              />
-            </div>
-
-            <div className="mt-3 flex items-center gap-2 p-2.5 rounded-xl bg-slate-50/70 border border-slate-200/80 dark:bg-white/[0.03] dark:border-white/5 text-xs text-slate-500 dark:text-gray-400">
-              <ShieldCheck
-                size={14}
-                className="text-orange-500 dark:text-orange-400 flex-shrink-0"
-              />
-              <span className="leading-relaxed">
-                密钥仅保存在本地 ~/.ai-helper/accio_config.json 中，绝不上报云端。
-              </span>
-            </div>
+            <ApiKeyInput
+              title="API Key 凭据"
+              badgeText="accio_config.json"
+              value={apiKey}
+              onChange={setApiKey}
+              placeholder="sk-... (填入所选服务商的 API 密钥)"
+              storageLocation="~/.ai-helper/accio_config.json"
+              hintText="用于向中转节点发起大模型请求认证"
+              accentColor="orange"
+              toolName="Accio Work"
+              toolId="acciowork"
+            />
           </SpotlightCard>
 
           {/* 卡片 5: 模型路由映射与测试 */}

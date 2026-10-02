@@ -1,5 +1,5 @@
 use crate::accio::config::{load_accio_config, save_accio_config, AccioConfig};
-use crate::accio::protocol::{accio_to_openai, format_accio_sse, SSE_HEARTBEAT};
+use crate::accio::protocol::{self, accio_to_openai, format_accio_sse, ApiEndpoint, SSE_HEARTBEAT};
 use axum::{
     body::{Body, Bytes},
     extract::{Request, State},
@@ -631,9 +631,18 @@ async fn handle_llm(State(client): State<Client>, request: Request) -> Response 
                 )
                 .await;
                 if let Err(proxy_err) = fallback_res {
+                    let err_msg = format!(
+                        "上游自定义模型报错: {}; 官方网关回退失败: {}",
+                        err, proxy_err
+                    );
                     let err_frame = json!({
                         "errorCode": "502",
-                        "errorMessage": format!("上游自定义模型报错: {}; 官方网关回退失败: {}", err, proxy_err),
+                        "errorMessage": &err_msg,
+                        "content": {
+                            "role": "model",
+                            "parts": [{ "text": format!("⚠️ 请求失败: {}", err_msg) }]
+                        },
+                        "finishReason": "ERROR",
                         "turnComplete": true,
                         "partial": false
                     });
@@ -642,7 +651,12 @@ async fn handle_llm(State(client): State<Client>, request: Request) -> Response 
             } else {
                 let err_frame = json!({
                     "errorCode": "502",
-                    "errorMessage": err,
+                    "errorMessage": &err,
+                    "content": {
+                        "role": "model",
+                        "parts": [{ "text": format!("⚠️ 调用上游模型失败: {}", err) }]
+                    },
+                    "finishReason": "ERROR",
                     "turnComplete": true,
                     "partial": false
                 });
@@ -956,6 +970,10 @@ fn parse_responses_api_response(json_val: &Value, default_model: &str) -> Value 
         }
     }
 
+    if parts.is_empty() {
+        parts.push(json!({ "text": "（模型未输出可展示的正文内容）" }));
+    }
+
     json!({
         "content": { "role": "model", "parts": parts },
         "finishReason": "STOP",
@@ -970,7 +988,206 @@ fn parse_responses_api_response(json_val: &Value, default_model: &str) -> Value 
     })
 }
 
-/// 请求上游 OpenAI 兼容服务
+/// 底层执行单次 LLM 上游请求
+///
+/// - Claude → /v1/messages (Anthropic Messages 协议)
+/// - GPT/o1/o3/o4 → /v1/responses (OpenAI Responses 协议)
+/// - 其他 (DeepSeek/Qwen/通义等) → /v1/chat/completions (标准 Chat 协议)
+async fn execute_single_llm_call(
+    client: &Client,
+    config: &AccioConfig,
+    root: &str,
+    actual_model: &str,
+    endpoint_type: protocol::ApiEndpoint,
+    chat_body: &Value,
+) -> Result<Value, (Option<StatusCode>, String)> {
+    let endpoint = format!("{root}{}", endpoint_type.path());
+    let request_body = match endpoint_type {
+        protocol::ApiEndpoint::Messages => protocol::chat_to_anthropic_body(chat_body),
+        protocol::ApiEndpoint::Responses => chat_to_responses_body(chat_body),
+        protocol::ApiEndpoint::ChatCompletions => {
+            let mut body = chat_body.clone();
+            body["stream"] = json!(false);
+            body
+        }
+    };
+
+    let mut req = client
+        .post(&endpoint)
+        .json(&request_body)
+        .header(
+            reqwest::header::USER_AGENT,
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AI-Helper/1.0",
+        )
+        .timeout(Duration::from_secs(180));
+
+    match endpoint_type {
+        protocol::ApiEndpoint::Messages => {
+            // Anthropic 原生使用 x-api-key，中转站通常也接受 Bearer
+            req = req
+                .bearer_auth(&config.api_key)
+                .header("x-api-key", &config.api_key)
+                .header("anthropic-version", "2023-06-01");
+        }
+        _ => {
+            req = req.bearer_auth(&config.api_key);
+        }
+    }
+
+    let response = req
+        .send()
+        .await
+        .map_err(|e| (None, format!("请求上游服务失败: {}", e)))?;
+
+    let status = response.status();
+    let content_type = response
+        .headers()
+        .get(reqwest::header::CONTENT_TYPE)
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("")
+        .to_string();
+
+    let body_bytes = response
+        .bytes()
+        .await
+        .map_err(|e| (Some(status), format!("读取上游响应内容失败: {}", e)))?;
+
+    if body_bytes.len() > MAX_RESPONSE_SIZE {
+        return Err((
+            Some(status),
+            format!(
+                "上游响应体过大 ({} MB)，超过 {} MB 上限",
+                body_bytes.len() / 1024 / 1024,
+                MAX_RESPONSE_SIZE / 1024 / 1024
+            ),
+        ));
+    }
+
+    let text = String::from_utf8_lossy(&body_bytes).to_string();
+
+    if !status.is_success() {
+        let err_preview = if text.chars().count() > 300 {
+            format!("{}...", protocol::safe_truncate_head(&text, 300))
+        } else {
+            text
+        };
+        return Err((
+            Some(status),
+            format!("上游服务返回 HTTP {}: {}", status, err_preview),
+        ));
+    }
+
+    // 精确判定 SSE：优先 Content-Type，次选文本首行判定，避免大模型文本内容含 "data:" 误触发
+    let trimmed = text.trim_start();
+    let is_sse = content_type.contains("text/event-stream")
+        || trimmed.starts_with("data:")
+        || trimmed.starts_with("event:");
+
+    let payload = match endpoint_type {
+        // ── Anthropic /v1/messages ──
+        protocol::ApiEndpoint::Messages => {
+            if is_sse {
+                protocol::merge_anthropic_sse(&text, actual_model)
+            } else {
+                let json_val: Value = serde_json::from_str(&text).map_err(|e| {
+                    (
+                        Some(status),
+                        format!("解析 Anthropic 响应 JSON 失败: {}", e),
+                    )
+                })?;
+                protocol::parse_anthropic_response(&json_val, actual_model)
+            }
+        }
+        // ── OpenAI /v1/responses ──
+        protocol::ApiEndpoint::Responses => {
+            if is_sse {
+                let mut text_buf = String::new();
+                let mut full_response: Option<Value> = None;
+
+                for line in text.lines() {
+                    let trimmed = line.trim();
+                    if let Some(stripped) = trimmed.strip_prefix("data:") {
+                        let data = stripped.trim();
+                        if data == "[DONE]" || data.is_empty() {
+                            continue;
+                        }
+                        if let Ok(chunk) = serde_json::from_str::<Value>(data) {
+                            if chunk.get("output").is_some() {
+                                full_response = Some(chunk);
+                                break;
+                            }
+                            if let Some(delta) = chunk
+                                .pointer("/delta/text")
+                                .or_else(|| chunk.pointer("/text"))
+                                .and_then(Value::as_str)
+                            {
+                                text_buf.push_str(delta);
+                            }
+                        }
+                    }
+                }
+
+                if let Some(resp) = full_response {
+                    parse_responses_api_response(&resp, actual_model)
+                } else if !text_buf.is_empty() {
+                    json!({
+                        "content": {"role": "model", "parts": [{"text": text_buf}]},
+                        "finishReason": "STOP",
+                        "usageMetadata": {"promptTokenCount": 0, "candidatesTokenCount": 0, "totalTokenCount": 0},
+                        "customMetadata": {"model_name": actual_model, "bridge": "ai-helper"},
+                        "turnComplete": true,
+                        "partial": false
+                    })
+                } else {
+                    return Err((
+                        Some(status),
+                        "上游 Responses API 返回了空的流式数据".to_string(),
+                    ));
+                }
+            } else {
+                let json_val: Value = serde_json::from_str(&text).map_err(|e| {
+                    (
+                        Some(status),
+                        format!("解析 Responses API 响应 JSON 失败: {}", e),
+                    )
+                })?;
+                parse_responses_api_response(&json_val, actual_model)
+            }
+        }
+        // ── OpenAI /v1/chat/completions ──
+        protocol::ApiEndpoint::ChatCompletions => {
+            if is_sse {
+                let mut chunks: Vec<Value> = Vec::new();
+                for line in text.lines() {
+                    let trimmed = line.trim();
+                    if let Some(stripped) = trimmed.strip_prefix("data:") {
+                        let data = stripped.trim();
+                        if data == "[DONE]" || data.is_empty() {
+                            continue;
+                        }
+                        if let Ok(chunk) = serde_json::from_str::<Value>(data) {
+                            chunks.push(chunk);
+                        }
+                    }
+                }
+                if chunks.is_empty() {
+                    return Err((Some(status), "上游返回了空的流式数据".to_string()));
+                }
+                protocol::merge_openai_chunks(&chunks)
+            } else {
+                let json_val: Value = serde_json::from_str(&text)
+                    .map_err(|e| (Some(status), format!("解析上游 JSON 响应失败: {}", e)))?;
+                protocol::merge_openai_chunks(&[json_val])
+            }
+        }
+    };
+
+    Ok(payload)
+}
+
+/// 请求上游服务 (根据模型名自动路由至对应 API 端点，支持端点智能降级)
+/// - Claude 优先 → /v1/messages；若中转站未实现则自动降级 → /v1/chat/completions
+/// - GPT/o1/o3/DeepSeek/通义等 → /v1/chat/completions (兼容所有第三方中转站)
 async fn call_upstream_llm(
     client: &Client,
     config: &AccioConfig,
@@ -979,111 +1196,94 @@ async fn call_upstream_llm(
     if config.api_key.trim().is_empty() {
         return Err("API 密钥未配置，请先在 AI-Helper 中填写 API Key".to_string());
     }
+
     let root = clean_base_url(&config.base_url);
-    let endpoint = format!("{root}/v1/responses");
-    let chat_body = accio_to_openai(&input, &config.model);
-    let request_body = chat_to_responses_body(&chat_body);
+
+    // 提取实际使用的模型 (支持 AccioWork 下拉框选择不同模型)
+    let requested = protocol::extract_requested_model(&input, &config.model);
+    let actual_model = if requested.is_empty() || requested.eq_ignore_ascii_case("auto") {
+        config.model.as_str()
+    } else {
+        requested
+    };
+
+    // 根据模型名称自动检测主要端点
+    let primary_endpoint = protocol::detect_api_endpoint(actual_model);
+
+    log::info!(
+        "Accio LLM 路由: 模型 '{}' → {} (主端点: {}{})",
+        actual_model,
+        primary_endpoint.label(),
+        root,
+        primary_endpoint.path()
+    );
+
+    // 1. 先统一转译为 OpenAI Chat Completions 中间格式
+    let chat_body = accio_to_openai(&input, actual_model);
 
     let started = Instant::now();
-    let response = client
-        .post(&endpoint)
-        .bearer_auth(&config.api_key)
-        .json(&request_body)
-        .timeout(Duration::from_secs(180))
-        .send()
-        .await
-        .map_err(|e| format!("请求上游服务失败: {}", e))?;
 
-    let status = response.status();
+    // 2. 发起请求并支持智能降级
+    let (payload, final_endpoint) = match execute_single_llm_call(
+        client,
+        config,
+        root,
+        actual_model,
+        primary_endpoint,
+        &chat_body,
+    )
+    .await
+    {
+        Ok(p) => (p, primary_endpoint),
+        Err((status_opt, err_msg)) => {
+            // 如果主要端点是 Messages 且收到 404, 501 或 500 (not implemented / convert_request_failed)，
+            // 说明中转站是按 OpenAI 规范提供 Claude 服务的，自动降级至 /v1/chat/completions 重试
+            let is_not_implemented = status_opt == Some(StatusCode::NOT_FOUND)
+                || status_opt == Some(StatusCode::NOT_IMPLEMENTED)
+                || (status_opt == Some(StatusCode::INTERNAL_SERVER_ERROR)
+                    && (err_msg.contains("not implemented")
+                        || err_msg.contains("convert_request_failed")
+                        || err_msg.contains("endpoint not found")));
 
-    // 限制响应体大小
-    let body_bytes = response
-        .bytes()
-        .await
-        .map_err(|e| format!("读取上游响应内容失败: {}", e))?;
-
-    if body_bytes.len() > MAX_RESPONSE_SIZE {
-        return Err(format!(
-            "上游响应体过大 ({} MB)，超过 {} MB 上限",
-            body_bytes.len() / 1024 / 1024,
-            MAX_RESPONSE_SIZE / 1024 / 1024
-        ));
-    }
-
-    let text = String::from_utf8_lossy(&body_bytes).to_string();
-
-    if !status.is_success() {
-        let err_preview = if text.chars().count() > 300 {
-            let truncated = crate::accio::protocol::safe_truncate_head(&text, 300);
-            format!("{}...", truncated)
-        } else {
-            text
-        };
-        return Err(format!("上游服务返回 HTTP {}: {}", status, err_preview));
-    }
-
-    let payload = if text.contains("data:") {
-        // SSE 兼容路径：/v1/responses 流式事件或旧版 chat completions SSE
-        let mut text_buf = String::new();
-        let mut full_response: Option<Value> = None;
-
-        for line in text.lines() {
-            let trimmed = line.trim();
-            if let Some(stripped) = trimmed.strip_prefix("data:") {
-                let data = stripped.trim();
-                if data == "[DONE]" || data.is_empty() {
-                    continue;
-                }
-                if let Ok(chunk) = serde_json::from_str::<Value>(data) {
-                    // /v1/responses 完整响应对象（含 output 字段）
-                    if chunk.get("output").is_some() {
-                        full_response = Some(chunk);
-                        break;
+            if primary_endpoint == ApiEndpoint::Messages && is_not_implemented {
+                log::warn!(
+                    "上游 /v1/messages 端点响应 HTTP {:?} ({})，中转站可能仅支持 OpenAI 协议，正在自动降级尝试 /v1/chat/completions...",
+                    status_opt,
+                    err_msg
+                );
+                let fallback_endpoint = ApiEndpoint::ChatCompletions;
+                match execute_single_llm_call(
+                    client,
+                    config,
+                    root,
+                    actual_model,
+                    fallback_endpoint,
+                    &chat_body,
+                )
+                .await
+                {
+                    Ok(p) => {
+                        log::info!("自动降级至 /v1/chat/completions 成功！");
+                        (p, fallback_endpoint)
                     }
-                    // /v1/responses 流式增量：response.output_text.delta
-                    if let Some(delta) = chunk
-                        .pointer("/delta/text")
-                        .or_else(|| chunk.pointer("/text"))
-                        .and_then(Value::as_str)
-                    {
-                        text_buf.push_str(delta);
-                    }
-                    // 兜底兼容旧 chat completions SSE
-                    if let Some(c) = chunk
-                        .pointer("/choices/0/delta/content")
-                        .and_then(Value::as_str)
-                    {
-                        text_buf.push_str(c);
+                    Err((_, fb_err)) => {
+                        return Err(format!(
+                            "上游 Messages 失败 ({})，降级 chat/completions 亦失败: {}",
+                            err_msg, fb_err
+                        ));
                     }
                 }
+            } else {
+                return Err(err_msg);
             }
         }
-
-        if let Some(resp_obj) = full_response {
-            parse_responses_api_response(&resp_obj, &config.model)
-        } else if !text_buf.is_empty() {
-            json!({
-                "content": { "role": "model", "parts": [{ "text": text_buf }] },
-                "finishReason": "STOP",
-                "usageMetadata": { "promptTokenCount": 0, "candidatesTokenCount": 0, "totalTokenCount": 0 },
-                "customMetadata": { "model_name": &config.model, "bridge": "ai-helper" },
-                "turnComplete": true,
-                "partial": false
-            })
-        } else {
-            return Err("上游返回了空的流式数据".to_string());
-        }
-    } else {
-        // 非流式 JSON 响应：/v1/responses 标准格式
-        let json_val: Value =
-            serde_json::from_str(&text).map_err(|e| format!("解析上游 JSON 响应失败: {}", e))?;
-        parse_responses_api_response(&json_val, &config.model)
     };
 
     log::info!(
-        "Accio 请求在 {} ms 内转译并完成 (模型: {}, 端点: /v1/responses)",
+        "Accio 请求在 {} ms 内转译并完成 (模型: {}, 端点: {})",
         started.elapsed().as_millis(),
-        config.model
+        actual_model,
+        final_endpoint.label()
     );
     Ok(payload)
 }

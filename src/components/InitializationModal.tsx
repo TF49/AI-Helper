@@ -2447,13 +2447,39 @@ export function InitializationModal({
 
                           {/* API Key 输入 */}
                           <div className="space-y-1">
-                            <label className="text-[11px] text-slate-500 dark:text-gray-400 font-medium">
-                              认证密钥 (API Key)
-                            </label>
                             <ApiKeyInput
+                              title="认证密钥 (API Key)"
+                              badgeText={
+                                editTab === "claude"
+                                  ? "settings.json"
+                                  : editTab === "workbuddy"
+                                    ? "models.json"
+                                    : editTab === "acciowork"
+                                      ? "accio_config.json"
+                                      : "环境变量"
+                              }
                               value={editApiKey}
                               onChange={setEditApiKey}
                               placeholder="sk-..."
+                              storageLocation={
+                                editTab === "claude"
+                                  ? "~/.claude/settings.json"
+                                  : editTab === "workbuddy"
+                                    ? "~/.workbuddy-ai/models.json"
+                                    : editTab === "acciowork"
+                                      ? "~/.ai-helper/accio_config.json"
+                                      : undefined
+                              }
+                              configKey={
+                                editTab === "claude"
+                                  ? "env.ANTHROPIC_AUTH_TOKEN"
+                                  : undefined
+                              }
+                              envVarName={
+                                editTab === "chatgpt"
+                                  ? "CUSTOM_OPENAI_API_KEY"
+                                  : undefined
+                              }
                               accentColor={
                                 editTab === "claude"
                                   ? "purple"
@@ -2472,6 +2498,7 @@ export function InitializationModal({
                                       ? "Accio Work"
                                       : "ChatGPT / Codex"
                               }
+                              compact
                             />
                           </div>
 

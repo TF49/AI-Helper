@@ -5,10 +5,8 @@ import {
   Save,
   RefreshCw,
   Server,
-  KeyRound,
   FileCode,
   ShieldAlert,
-  ShieldCheck,
 } from "lucide-react";
 import { ClaudeIcon } from "./BrandIcons";
 import { fetchClaudeModels, getClaudeConfig } from "../lib/api";
@@ -186,8 +184,8 @@ export function ClaudePanel() {
                 <div className="flex items-center gap-2 p-2.5 rounded-xl bg-slate-50/70 border border-slate-200/80 dark:bg-white/[0.03] dark:border-white/5 text-xs text-slate-500 dark:text-gray-400">
                   <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 flex-shrink-0" />
                   <span className="leading-relaxed">
-                    Claude Code 启动时将读取此文件设置 ANTHROPIC_AUTH_TOKEN 与
-                    API URL。更新配置后重启相应终端即可生效。
+                    Claude Code 启动时将自动读取此 settings.json 载入认证密钥与
+                    API 路由。更新配置后重启相应终端即可生效。
                   </span>
                 </div>
               )}
@@ -202,36 +200,18 @@ export function ClaudePanel() {
             className="p-5 rounded-2xl border border-slate-200/90 dark:border-white/10 bg-white/80 dark:bg-[#161324]/60 shadow-sm dark:shadow-none flex flex-col justify-between"
             spotlightColor="rgba(168, 85, 247, 0.12)"
           >
-            <div>
-              <div className="flex items-center justify-between mb-3">
-                <Label className="text-xs font-semibold text-slate-800 dark:text-gray-200 flex items-center gap-2">
-                  <KeyRound size={14} className="text-purple-500" />
-                  Anthropic Auth Token / API Key
-                </Label>
-                <span className="text-[11px] text-slate-400 dark:text-gray-500">
-                  认证凭证
-                </span>
-              </div>
-              <ApiKeyInput
-                value={apiKey}
-                onChange={setApiKey}
-                placeholder="sk-ant-... (填入 BobAPI 密钥)"
-                envVarName="ANTHROPIC_AUTH_TOKEN"
-                accentColor="purple"
-                toolName="Claude Code"
-                toolId="claude"
-              />
-            </div>
-
-            <div className="mt-3 flex items-center gap-2 p-2.5 rounded-xl bg-slate-50/70 border border-slate-200/80 dark:bg-white/[0.03] dark:border-white/5 text-xs text-slate-500 dark:text-gray-400">
-              <ShieldCheck
-                size={14}
-                className="text-purple-500 dark:text-purple-400 flex-shrink-0"
-              />
-              <span className="leading-relaxed">
-                凭据仅加密储存于本地配置与当前环境，直接与所选专线通信，绝不中转第三方。
-              </span>
-            </div>
+            <ApiKeyInput
+              title="Anthropic Auth Token / API Key"
+              badgeText="settings.json"
+              value={apiKey}
+              onChange={setApiKey}
+              placeholder="sk-ant-... (填入 BobAPI 密钥)"
+              storageLocation="~/.claude/settings.json"
+              configKey="env.ANTHROPIC_AUTH_TOKEN"
+              accentColor="purple"
+              toolName="Claude Code"
+              toolId="claude"
+            />
           </SpotlightCard>
 
           {/* 卡片 4: 测试模型与快捷选项 */}

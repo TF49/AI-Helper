@@ -5,10 +5,8 @@ import {
   Save,
   RefreshCw,
   Server,
-  KeyRound,
   FileCode,
   ShieldAlert,
-  ShieldCheck,
   Cpu,
   Sliders,
   HelpCircle,
@@ -492,36 +490,18 @@ export function WorkbuddyPanel() {
             className="p-5 rounded-2xl border border-slate-200/90 dark:border-white/10 bg-white/80 dark:bg-[#121524]/60 shadow-sm dark:shadow-none flex flex-col justify-between"
             spotlightColor="rgba(16, 185, 129, 0.12)"
           >
-            <div>
-              <div className="flex items-center justify-between mb-3">
-                <Label className="text-xs font-semibold text-slate-800 dark:text-gray-200 flex items-center gap-2">
-                  <KeyRound size={14} className="text-emerald-500" />
-                  OpenAI API Key
-                </Label>
-                <span className="text-[11px] text-slate-400 dark:text-gray-500">
-                  认证凭据
-                </span>
-              </div>
-              <ApiKeyInput
-                value={apiKey}
-                onChange={setApiKey}
-                placeholder="sk-... (填入 API Key)"
-                hintText="明文储存至 ~/.workbuddy-ai/models.json (无需环境变量)"
-                accentColor="emerald"
-                toolName="WorkBuddy"
-                toolId="workbuddy"
-              />
-            </div>
-
-            <div className="mt-3 flex items-center gap-2 p-2.5 rounded-xl bg-slate-50/70 border border-slate-200/80 dark:bg-white/[0.03] dark:border-white/5 text-xs text-slate-500 dark:text-gray-400">
-              <ShieldCheck
-                size={14}
-                className="text-emerald-500 dark:text-emerald-400 flex-shrink-0"
-              />
-              <span className="leading-relaxed">
-                凭据将以明文形式直接保存在本地 models.json，直连服务商网关。
-              </span>
-            </div>
+            <ApiKeyInput
+              title="OpenAI API Key"
+              badgeText="models.json"
+              value={apiKey}
+              onChange={setApiKey}
+              placeholder="sk-... (填入 API Key)"
+              storageLocation="~/.workbuddy-ai/models.json"
+              hintText="无需环境变量"
+              accentColor="emerald"
+              toolName="WorkBuddy"
+              toolId="workbuddy"
+            />
           </SpotlightCard>
 
           {/* 卡片 5: 模型管理与多模型列表 */}
