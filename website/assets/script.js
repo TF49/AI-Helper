@@ -743,13 +743,14 @@ function initSectionMotion() {
     ease: "power3.out"
   });
 
-  gsap.from(".download-primary, .download-compact", {
+  gsap.from(".download-primary, .download-compact, .security-strip", {
     scrollTrigger: { trigger: ".download-layout", start: "top 80%", once: true },
     opacity: 0,
-    y: 34,
+    y: 28,
     duration: 0.78,
-    stagger: 0.11,
-    ease: "power3.out"
+    stagger: 0.08,
+    ease: "power3.out",
+    clearProps: "all"
   });
 
   const metric = document.querySelector(".metric-value[data-count]");
