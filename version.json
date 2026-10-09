@@ -1,12 +1,14 @@
 {
-    "version":  "1.0.49",
-    "tag":  "v1.0.49",
+    "version":  "1.0.50",
+    "tag":  "v1.0.50",
     "releaseDate":  "2026-10-09",
-    "setupFileName":  "AI-Helper-v1.0.49-Windows-x64-Setup.exe",
-    "zipFileName":  "AI-Helper-v1.0.49-Windows-x64-Standalone.zip",
-    "setupDownloadUrl":  "https://github.com/TF49/AI-Helper/releases/download/v1.0.49/AI-Helper-v1.0.49-Windows-x64-Setup.exe",
-    "fastSetupDownloadUrl":  "https://ghfast.top/https://github.com/TF49/AI-Helper/releases/download/v1.0.49/AI-Helper-v1.0.49-Windows-x64-Setup.exe",
-    "zipDownloadUrl":  "https://github.com/TF49/AI-Helper/releases/download/v1.0.49/AI-Helper-v1.0.49-Windows-x64-Standalone.zip",
-    "fastZipDownloadUrl":  "https://ghfast.top/https://github.com/TF49/AI-Helper/releases/download/v1.0.49/AI-Helper-v1.0.49-Windows-x64-Standalone.zip",
-    "releasePageUrl":  "https://github.com/TF49/AI-Helper/releases/tag/v1.0.49"
+    "setupFileName":  "AI-Helper-v1.0.50-Windows-x64-Setup.exe",
+    "zipFileName":  "AI-Helper-v1.0.50-Windows-x64-Standalone.zip",
+    "setupDownloadUrl":  "https://helper.bob-api.com/downloads/AI-Helper-v1.0.50-Windows-x64-Setup.exe",
+    "zipDownloadUrl":  "https://helper.bob-api.com/downloads/AI-Helper-v1.0.50-Windows-x64-Standalone.zip",
+    "fastSetupDownloadUrl":  "https://ghfast.top/https://github.com/TF49/AI-Helper/releases/download/v1.0.50/AI-Helper-v1.0.50-Windows-x64-Setup.exe",
+    "fastZipDownloadUrl":  "https://ghfast.top/https://github.com/TF49/AI-Helper/releases/download/v1.0.50/AI-Helper-v1.0.50-Windows-x64-Standalone.zip",
+    "githubSetupDownloadUrl":  "https://github.com/TF49/AI-Helper/releases/download/v1.0.50/AI-Helper-v1.0.50-Windows-x64-Setup.exe",
+    "githubZipDownloadUrl":  "https://github.com/TF49/AI-Helper/releases/download/v1.0.50/AI-Helper-v1.0.50-Windows-x64-Standalone.zip",
+    "releasePageUrl":  "https://github.com/TF49/AI-Helper/releases/tag/v1.0.50"
 }
