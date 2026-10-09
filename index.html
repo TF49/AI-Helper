@@ -8,7 +8,7 @@
   <meta name="description" content="AI Helper 基于 Rust 2024 与 Tauri v2 打造，统一管理 Claude Code、OpenAI Codex、Workbuddy 与 Accio Work 的配置、流式验证和进程安全热重启。">
   <meta name="keywords" content="AI Helper, Claude Code, OpenAI Codex, Workbuddy, Accio Work, Tauri, Rust, AI Agent, 进程管理, 配置中心">
   <link rel="icon" type="image/x-icon" href="assets/favicon.ico">
-  <link rel="stylesheet" href="assets/style.css?v=cinematic-1.0.47">
+  <link rel="stylesheet" href="assets/style.css?v=cinematic-1.0.49">
 </head>
 <body>
   <a class="skip-link" href="#main-content">跳到主要内容</a>
@@ -23,7 +23,7 @@
     <div class="container nav-shell">
       <a href="#home" class="brand-unit" aria-label="返回 AI Helper 首页">
         <img src="assets/logo.png" alt="" class="brand-symbol" width="36" height="36">
-        <span class="brand-copy"><strong>AI Helper</strong><span class="version-pill current-version-tag">v1.0.43</span></span>
+        <span class="brand-copy"><strong>AI Helper</strong><span class="version-pill current-version-tag">v1.0.49</span></span>
       </a>
       <nav class="desktop-nav" aria-label="主导航">
         <a href="#story" data-nav-section="story">产品演示</a>
@@ -59,11 +59,11 @@
           <span class="hero-line hero-line-gradient"><span>配置、验证、重启，</span></span>
           <span class="hero-line hero-line-gradient"><span>在一个中枢完成。</span></span>
         </h1>
-        <p class="hero-lead">统一管理 Claude Code、OpenAI Codex、Workbuddy 与 Accio Work。从网关配置到流式验证，再到进程树安全热重启，全程不打断开发节奏。</p>
+        <p class="hero-lead">统一管理 Claude Code、OpenAI Codex、Workbuddy 与 Accio Work。从通道分组检测到流式验证，再到进程树安全热重启，全程不打断开发节奏。</p>
         <div class="hero-actions">
-          <a id="btn-hero-download" class="button button-primary magnetic-target" href="https://github.com/TF49/AI-Helper/releases/download/v1.0.48/AI-Helper-v1.0.48-Windows-x64-Setup.exe">
+          <a id="btn-hero-download" class="button button-primary magnetic-target" href="https://github.com/TF49/AI-Helper/releases/download/v1.0.49/AI-Helper-v1.0.49-Windows-x64-Setup.exe">
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12m0 0 5-5m-5 5-5-5M5 20h14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
-            <span id="hero-btn-text">绔嬪嵆涓嬭浇 Windows 瀹夎鐗?(v1.0.48)</span>
+            <span id="hero-btn-text">绔嬪嵆涓嬭浇 Windows 瀹夎鐗?(v1.0.49)</span>
           </a>
           <a class="button button-secondary" href="#story"><span>观看动态演示</span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 18 6-6-6-6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></a>
         </div>
@@ -130,6 +130,10 @@
                       <label><span>API 服务网关</span><input id="sim-input-api" type="text" value="https://api.openai.com/v1"></label>
                       <label><span>默认模型</span><input id="sim-input-model" type="text" value="gpt-4o"></label>
                       <div class="model-chips field-wide" id="sim-chips" aria-label="快速选择模型"></div>
+                      <div class="sim-group-preview field-wide" id="sim-group-row">
+                        <span class="sim-group-label"><i class="sim-group-dot"></i>通道分组检测</span>
+                        <span class="sim-group-val" id="sim-group-info">SVIP-Codex-HighSpeed · 99.9% 可用 (78ms)</span>
+                      </div>
                     </div>
                     <div class="terminal-panel">
                       <div class="terminal-head"><span><i></i> STREAM DIAGNOSTIC</span><span id="sim-latency-badge">READY</span></div>
@@ -172,8 +176,133 @@
           </article>
           <article class="capability-card metric-card spotlight-card"><span class="card-glare" aria-hidden="true"></span><div class="card-icon">↯</div><span class="metric-value" data-count="35" data-suffix=" MB">&lt; 35 MB</span><h3>轻量常驻</h3><p>Rust 2024 原生编译与 Tauri v2 渲染，不让工具本身成为负担。</p></article>
           <article class="capability-card spotlight-card"><span class="card-glare" aria-hidden="true"></span><div class="card-icon">◇</div><h3>原子配置写入</h3><p>先校验、再落盘，同时注入进程内环境变量，减少配置损坏与重复重启。</p><div class="mini-flow"><span>VALIDATE</span><i></i><span>WRITE</span><i></i><span>SYNC</span></div></article>
-          <article class="capability-card spotlight-card"><span class="card-glare" aria-hidden="true"></span><div class="card-icon">⌁</div><h3>进程树安全热重启</h3><p>清理子进程树并轮询文件句柄释放，杜绝僵尸进程、端口冲突和多实例竞争。</p><div class="process-status"><span><i></i>Process tree</span><span><i></i>Handles released</span></div></article>
-          <article class="capability-card spotlight-card"><span class="card-glare" aria-hidden="true"></span><div class="card-icon">↗</div><h3>配置文件原生直达</h3><p>默认编辑器、系统记事本、资源管理器三级降级，让每一份配置都能快速打开。</p><button class="inline-demo-button" id="native-open-demo" type="button">演示原生调阅 <span>↗</span></button></article>
+          <!-- 全新特性：通道分组智能检测与健康稳定性雷达 (结合 react-bits 与 GSAP) -->
+          <article class="capability-card capability-card-group spotlight-card" id="card-group-monitor">
+            <span class="card-glare" aria-hidden="true"></span>
+            <div class="group-monitor-head">
+              <div class="group-head-copy">
+                <div class="card-label shiny-text"><span class="label-dot"></span>全新特性 · 通道分组检测</div>
+                <h3>通道分组健康稳定性雷达</h3>
+                <p>实时监控上游通道近 1h / 3h / 6h 可用率与 TTFT 首字时延。针对 Codex 流式补全与 Claude 深度推理等差异化场景，智能匹配专属高稳定性通道，彻底告别 404/400 协议错误与超时中断。</p>
+              </div>
+              <div class="group-tabs-list" role="tablist" aria-label="选择 Agent 通道分组">
+                <button class="group-tab-btn active" type="button" role="tab" aria-selected="true" data-group-key="chatgpt">
+                  <i class="dot-green"></i><span>Codex 流式专用</span><small>SVIP-Codex</small>
+                </button>
+                <button class="group-tab-btn" type="button" role="tab" aria-selected="false" data-group-key="claude">
+                  <i class="dot-purple"></i><span>Claude 深度推理</span><small>Claude-Kiro</small>
+                </button>
+                <button class="group-tab-btn" type="button" role="tab" aria-selected="false" data-group-key="workbuddy">
+                  <i class="dot-orange"></i><span>多模型异构聚合</span><small>WorkBuddy-All</small>
+                </button>
+                <button class="group-tab-btn" type="button" role="tab" aria-selected="false" data-group-key="acciowork">
+                  <i class="dot-gold"></i><span>企业级长链路</span><small>Accio-Bridge</small>
+                </button>
+              </div>
+            </div>
+
+            <div class="group-monitor-widget">
+              <!-- 控制条与当前状态 -->
+              <div class="widget-toolbar">
+                <div class="widget-active-meta">
+                  <strong id="widget-group-name">SVIP-Codex-HighSpeed</strong>
+                  <span class="widget-group-tag" id="widget-group-tag">Codex 流式专用</span>
+                  <div class="group-live-pill">
+                    <i class="live-dot-pulse"></i>
+                    <span class="decrypted-text" id="widget-live-status" data-text="99.9% 运行极佳">99.9% 运行极佳</span>
+                  </div>
+                </div>
+                <div class="widget-actions">
+                  <div class="view-mode-toggle" role="radiogroup" aria-label="可视化形态切换">
+                    <button class="mode-btn active" type="button" data-mode="ribbon">分段条</button>
+                    <button class="mode-btn" type="button" data-mode="area">平滑波形</button>
+                    <button class="mode-btn" type="button" data-mode="bar">遥测柱</button>
+                  </div>
+                  <button class="widget-refresh-btn" id="btn-group-refresh" type="button" title="刷新通道遥测数据" aria-label="刷新数据">
+                    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8m0 0V3m0 5h5M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16m0 0v5m0-5h-5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                  </button>
+                </div>
+              </div>
+
+              <!-- 四合一指标 HUD -->
+              <div class="widget-hud-grid">
+                <div class="hud-item">
+                  <span class="hud-value text-emerald" id="hud-metric-rate">99.9%</span>
+                  <small>近 1 小时成功率</small>
+                </div>
+                <div class="hud-item">
+                  <span class="hud-value text-blue" id="hud-metric-latency">78ms</span>
+                  <small>平均 TTFT 延迟</small>
+                </div>
+                <div class="hud-item">
+                  <span class="hud-value" id="hud-metric-requests">18,420</span>
+                  <small>累计有效请求</small>
+                </div>
+                <div class="hud-item">
+                  <span class="hud-value text-emerald" id="hud-metric-failed">0 熔断</span>
+                  <small>通道健康指数 100</small>
+                </div>
+              </div>
+
+              <!-- 视觉图表区域 (Ribbon / Area / Bar) -->
+              <div class="widget-charts-container">
+                <!-- 1. 分段条 (Ribbon: GitHub Status 风格 24 个 5 分钟时间桶) -->
+                <div class="chart-view chart-view-ribbon active" id="chart-view-ribbon" aria-label="分段连续健康条">
+                  <div class="ribbon-track" id="ribbon-track"></div>
+                  <div class="ribbon-legend">
+                    <span><i class="legend-dot dot-green"></i> 100% 满额可用</span>
+                    <span><i class="legend-dot dot-blue"></i> 99%+ 轻微波动</span>
+                    <span><i class="legend-dot dot-orange"></i> &lt;95% 异常降级</span>
+                    <span class="ribbon-time-span">近 2 小时 (5min/格)</span>
+                  </div>
+                </div>
+
+                <!-- 2. 平滑波形图 (Area: SVG 贝塞尔曲线) -->
+                <div class="chart-view chart-view-area" id="chart-view-area" aria-label="平滑波形曲线">
+                  <svg class="area-svg" viewBox="0 0 600 70" preserveAspectRatio="none">
+                    <defs>
+                      <linearGradient id="area-gradient" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="0%" stop-color="#0877f9" stop-opacity="0.32"/>
+                        <stop offset="100%" stop-color="#0877f9" stop-opacity="0.0"/>
+                      </linearGradient>
+                    </defs>
+                    <path class="area-fill-path" id="area-fill-path" d="" fill="url(#area-gradient)"/>
+                    <path class="area-stroke-path" id="area-stroke-path" d="" fill="none" stroke="#0877f9" stroke-width="2.5" stroke-linecap="round"/>
+                  </svg>
+                  <div class="area-stats-overlay">
+                    <span>时延波动区间: <strong>72ms ~ 82ms</strong></span>
+                    <span>抖动率: <strong>&lt; 3.2%</strong></span>
+                  </div>
+                </div>
+
+                <!-- 3. 遥测柱图 (Bar: 24 根高密度柱状图) -->
+                <div class="chart-view chart-view-bar" id="chart-view-bar" aria-label="高密度遥测柱">
+                  <div class="bar-track" id="bar-track"></div>
+                  <div class="bar-legend">
+                    <span>柱高代表相对请求吞吐量</span>
+                    <span>颜色深度代表网络时延</span>
+                  </div>
+                </div>
+              </div>
+
+              <!-- 专属指南说明与避坑建议 (带 DecryptedText 解密效果) -->
+              <div class="widget-guide-box">
+                <div class="guide-lead-tag">💡 专属匹配规则</div>
+                <p class="decrypted-text" id="widget-guide-desc" data-text="Codex 命令行深度依赖高并发流式代码补全与特定上游模型，自动绑定拥有专属流式权限的分组，拒绝补全超时。">Codex 命令行深度依赖高并发流式代码补全与特定上游模型，自动绑定拥有专属流式权限的分组，拒绝补全超时。</p>
+              </div>
+
+              <!-- 底部特性芯片条 -->
+              <div class="widget-chips-row">
+                <span><i>✓</i> 1h / 3h / 6h 历史遥测</span>
+                <span><i>✓</i> 四大 Agent 规则自动匹配</span>
+                <span><i>✓</i> 毫秒级多维排序与对比抽屉</span>
+                <span><i>✓</i> 90 秒后台静默自愈轮询</span>
+              </div>
+            </div>
+          </article>
+
+          <article class="capability-card capability-card-half spotlight-card"><span class="card-glare" aria-hidden="true"></span><div class="card-icon">⌁</div><h3>进程树安全热重启</h3><p>清理子进程树并轮询文件句柄释放，杜绝僵尸进程、端口冲突和多实例竞争。</p><div class="process-status"><span><i></i>Process tree</span><span><i></i>Handles released</span></div></article>
+          <article class="capability-card capability-card-half spotlight-card"><span class="card-glare" aria-hidden="true"></span><div class="card-icon">↗</div><h3>配置文件原生直达</h3><p>默认编辑器、系统记事本、资源管理器三级降级，让每一份配置都能快速打开。</p><button class="inline-demo-button" id="native-open-demo" type="button">演示原生调阅 <span>↗</span></button></article>
         </div>
       </div>
     </section>
@@ -195,7 +324,7 @@
         <header class="section-heading">
           <span class="section-kicker">OFFICIAL DOWNLOADS</span>
           <h2 id="downloads-title">现在开始，把配置工作交出去。</h2>
-          <p>当前官方版本 <strong class="current-version-tag" style="color: var(--accent-blue);">v1.0.48</strong> · 纯净无广告 · 永久开源免费</p>
+          <p>当前官方版本 <strong class="current-version-tag" style="color: var(--accent-blue);">v1.0.49</strong> · 纯净无广告 · 永久开源免费</p>
         </header>
         <div class="download-layout">
           <article class="download-primary spotlight-card">
@@ -213,11 +342,11 @@
               <li><span>✓</span> GitHub Actions 官方自动化构建</li>
             </ul>
             <div class="download-buttons">
-              <a id="link-dl-setup" class="button button-primary magnetic-target" href="https://github.com/TF49/AI-Helper/releases/download/v1.0.48/AI-Helper-v1.0.48-Windows-x64-Setup.exe">
+              <a id="link-dl-setup" class="button button-primary magnetic-target" href="https://github.com/TF49/AI-Helper/releases/download/v1.0.49/AI-Helper-v1.0.49-Windows-x64-Setup.exe">
                 <span>GitHub 直链下载</span>
                 <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 18 6-6-6-6" fill="none" stroke="currentColor" stroke-width="2"/></svg>
               </a>
-              <a id="link-dl-fast-setup" class="button button-secondary" href="https://ghfast.top/https://github.com/TF49/AI-Helper/releases/download/v1.0.48/AI-Helper-v1.0.48-Windows-x64-Setup.exe">国内高速镜像</a>
+              <a id="link-dl-fast-setup" class="button button-secondary" href="https://ghfast.top/https://github.com/TF49/AI-Helper/releases/download/v1.0.49/AI-Helper-v1.0.49-Windows-x64-Setup.exe">国内高速镜像</a>
             </div>
           </article>
           <div class="download-secondary-column">
@@ -232,8 +361,8 @@
                 <p>解压即用，不写入系统注册表，即插即走，适合 U 盘或企业受限办公环境。</p>
               </div>
               <div class="compact-actions">
-                <a id="link-dl-zip" class="compact-btn" href="https://github.com/TF49/AI-Helper/releases/download/v1.0.48/AI-Helper-v1.0.48-Windows-x64-Standalone.zip">GitHub 下载 ↗</a>
-                <a id="link-dl-fast-zip" class="compact-btn compact-btn-subtle" href="https://ghfast.top/https://github.com/TF49/AI-Helper/releases/download/v1.0.48/AI-Helper-v1.0.48-Windows-x64-Standalone.zip">国内镜像 ↗</a>
+                <a id="link-dl-zip" class="compact-btn" href="https://github.com/TF49/AI-Helper/releases/download/v1.0.49/AI-Helper-v1.0.49-Windows-x64-Standalone.zip">GitHub 下载 ↗</a>
+                <a id="link-dl-fast-zip" class="compact-btn compact-btn-subtle" href="https://ghfast.top/https://github.com/TF49/AI-Helper/releases/download/v1.0.49/AI-Helper-v1.0.49-Windows-x64-Standalone.zip">国内镜像 ↗</a>
               </div>
             </article>
             <article class="download-compact spotlight-card">
@@ -258,7 +387,7 @@
               <div class="security-mark" aria-hidden="true">✓</div>
               <div class="security-info">
                 <strong>官方构建与安全校验</strong>
-                <p><code id="checksum-setup-filename">AI-Helper-v1.0.48-Windows-x64-Setup.exe</code> · 可在 GitHub 发布页比对 SHA-256 校验和。</p>
+                <p><code id="checksum-setup-filename">AI-Helper-v1.0.49-Windows-x64-Setup.exe</code> · 可在 GitHub 发布页比对 SHA-256 校验和。</p>
               </div>
             </div>
             <button id="btn-copy-checksum" type="button">复制发布页链接</button>
@@ -275,13 +404,14 @@
           <article class="faq-item"><h3><button class="faq-trigger" type="button" aria-expanded="false"><span>API Key 和本地配置会上传吗？</span><i aria-hidden="true"></i></button></h3><div class="faq-panel"><div><p>不会。配置写入在本机完成；只有在你主动执行流式连通性测试时，才会向你指定的 API 网关发起请求。</p></div></div></article>
           <article class="faq-item"><h3><button class="faq-trigger" type="button" aria-expanded="false"><span>Windows SmartScreen 提示如何处理？</span><i aria-hidden="true"></i></button></h3><div class="faq-panel"><div><p>开源构建未购买商业 EV 代码签名证书时，SmartScreen 可能提示未知发布者。你可以核验 GitHub 发布页和 SHA-256，或选择便携 ZIP 版本。</p></div></div></article>
           <article class="faq-item"><h3><button class="faq-trigger" type="button" aria-expanded="false"><span>国内网络下载 GitHub 很慢怎么办？</span><i aria-hidden="true"></i></button></h3><div class="faq-panel"><div><p>下载区为安装包和便携版都提供了国内高速镜像入口，也保留 GitHub 官方直链供核验。</p></div></div></article>
+          <article class="faq-item"><h3><button class="faq-trigger" type="button" aria-expanded="false"><span>什么是通道分组检测？如何帮助提升稳定性？</span><i aria-hidden="true"></i></button></h3><div class="faq-panel"><div><p>不同的 AI 客户端对上游通道有严格的协议和模型要求。例如 Codex 依赖高并发流式代码补全，Claude Code 需要 Anthropic 思考链（Extended Thinking）与 Prompt Caching 特性。若误绑定普通低频通道，常出现 400/404 错误或补全超时。AI Helper 创新加入「通道分组检测」功能，实时采集近 1h/3h/6h 的可用率与响应时延，并针对各工具智能推荐专属高稳定性通道，彻底规避断连与报错。</p></div></div></article>
           <article class="faq-item"><h3><button class="faq-trigger" type="button" aria-expanded="false"><span>支持 Workbuddy、Accio Work 与自定义模型吗？</span><i aria-hidden="true"></i></button></h3><div class="faq-panel"><div><p>支持。Workbuddy 可直接维护自定义模型配置；Accio Work 通过本地 RLab Bridge 转译网关接入第三方模型，并由 AI Helper 负责配置和进程守护。</p></div></div></article>
         </div>
       </div>
     </section>
   </main>
 
-  <aside class="floating-download" id="floating-download" aria-label="快速下载"><span><strong>AI Helper</strong><small class="current-version-tag">v1.0.43</small></span><a href="#downloads">下载 Windows 版</a></aside>
+  <aside class="floating-download" id="floating-download" aria-label="快速下载"><span><strong>AI Helper</strong><small class="current-version-tag">v1.0.49</small></span><a href="#downloads">下载 Windows 版</a></aside>
 
   <footer class="site-footer">
     <div class="container footer-grid">
@@ -294,6 +424,6 @@
   <div class="toast" id="toast-notification" role="status" aria-live="polite"></div>
   <script src="assets/gsap.min.js?v=3.12.5"></script>
   <script src="assets/ScrollTrigger.min.js?v=3.12.5"></script>
-  <script src="assets/script.js?v=cinematic-1.0.43"></script>
+  <script src="assets/script.js?v=cinematic-1.0.49"></script>
 </body>
 </html>
