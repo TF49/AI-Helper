@@ -325,110 +325,83 @@ pub async fn check_for_updates() -> Result<UpdateInfo, String> {
 
 async fn check_for_updates_internal() -> Result<UpdateInfo, String> {
     let has_proxy = get_upstream_proxy_url().is_some();
+    let mut fallback_no_update: Option<UpdateInfo> = None;
+
+    macro_rules! try_check {
+        ($expr:expr) => {
+            match $expr.await {
+                Ok(info) => {
+                    if info.has_update {
+                        return Ok(info);
+                    }
+                    if fallback_no_update.is_none() {
+                        fallback_no_update = Some(info);
+                    }
+                }
+                Err(e) => {
+                    log::warn!("Update check attempt failed: {}", e);
+                }
+            }
+        };
+    }
 
     // 0. 优先尝试本站自托管 latest.json（国内直连稳定，无需代理）
-    match check_updater_json(
+    try_check!(check_updater_json(
         UPDATER_JSON_LOCAL_URL,
         "updater.json (本站 helper.bob-api.com)",
-    )
-    .await
-    {
-        Ok(info) => return Ok(info),
-        Err(e) => {
-            log::warn!(
-                "Local mirror updater.json check failed: {}. Trying official GitHub...",
-                e
-            );
-        }
-    }
+    ));
 
     // 如果开启了 VPN 代理，优先尝试 GitHub 官方更新源，避免被国内镜像防火墙拦截
     if has_proxy {
-        if let Ok(info) =
-            check_updater_json(UPDATER_JSON_OFFICIAL_URL, "updater.json (GitHub 官方直连)").await
-        {
-            return Ok(info);
-        }
+        try_check!(check_updater_json(
+            UPDATER_JSON_OFFICIAL_URL,
+            "updater.json (GitHub 官方直连)",
+        ));
     }
 
     // 1. ghfast.top 镜像 updater.json (国内高速通道)
-    match check_updater_json(UPDATER_JSON_MIRROR_URL, "updater.json (ghfast)").await {
-        Ok(info) => return Ok(info),
-        Err(e) => {
-            log::warn!(
-                "ghfast updater.json check failed: {}. Trying gh-proxy backup...",
-                e
-            );
-        }
-    }
+    try_check!(check_updater_json(
+        UPDATER_JSON_MIRROR_URL,
+        "updater.json (ghfast)",
+    ));
 
     // 2. 备用 gh-proxy.com 镜像 updater.json
-    match check_updater_json(UPDATER_JSON_MIRROR_BACKUP_URL, "updater.json (gh-proxy)").await {
-        Ok(info) => return Ok(info),
-        Err(e) => {
-            log::warn!(
-                "gh-proxy updater.json check failed: {}. Trying ghproxy.net backup...",
-                e
-            );
-        }
-    }
+    try_check!(check_updater_json(
+        UPDATER_JSON_MIRROR_BACKUP_URL,
+        "updater.json (gh-proxy)",
+    ));
 
     // 3. 备用 ghproxy.net 镜像 updater.json
-    match check_updater_json(
+    try_check!(check_updater_json(
         UPDATER_JSON_MIRROR_BACKUP2_URL,
         "updater.json (ghproxy.net)",
-    )
-    .await
-    {
-        Ok(info) => return Ok(info),
-        Err(e) => {
-            log::warn!(
-                "ghproxy.net updater.json check failed: {}. Trying official GitHub...",
-                e
-            );
-        }
-    }
+    ));
 
     // 4. 官方 GitHub updater.json (适合海外用户或已配置系统代理/VPN环境)
     if !has_proxy {
-        match check_updater_json(UPDATER_JSON_OFFICIAL_URL, "updater.json (GitHub)").await {
-            Ok(info) => return Ok(info),
-            Err(e) => {
-                log::warn!(
-                    "Official GitHub updater.json check failed: {}. Trying jsDelivr CDN...",
-                    e
-                );
-            }
-        }
+        try_check!(check_updater_json(
+            UPDATER_JSON_OFFICIAL_URL,
+            "updater.json (GitHub)",
+        ));
     }
 
     // 5. 回退 jsDelivr CDN (package.json)
-    match check_static_url(JSDELIVR_URL, "jsDelivr").await {
-        Ok(info) => return Ok(info),
-        Err(e) => {
-            log::warn!("jsDelivr check failed: {}. Trying GitHub Raw Mirror...", e);
-        }
-    }
+    try_check!(check_static_url(JSDELIVR_URL, "jsDelivr"));
 
     // 6. 回退 GitHub Raw 镜像 (package.json)
-    match check_static_url(GITHUB_RAW_MIRROR_URL, "GitHub Raw (ghfast)").await {
-        Ok(info) => return Ok(info),
-        Err(e) => {
-            log::warn!(
-                "GitHub Raw Mirror check failed: {}. Trying GitHub API...",
-                e
-            );
-        }
-    }
+    try_check!(check_static_url(
+        GITHUB_RAW_MIRROR_URL,
+        "GitHub Raw (ghfast)"
+    ));
 
     // 7. 回退 GitHub Releases API
-    match check_github_api().await {
-        Ok(info) => Ok(info),
-        Err(e) => {
-            log::error!("All update checks failed. Last error: {}", e);
-            Err(e)
-        }
+    try_check!(check_github_api());
+
+    if let Some(info) = fallback_no_update {
+        return Ok(info);
     }
+
+    Err("所有更新检查源均尝试失败，请检查网络或配置代理".to_string())
 }
 
 async fn check_updater_json(url: &str, source_name: &str) -> Result<UpdateInfo, String> {
