@@ -5,8 +5,6 @@ import {
   Save,
   RefreshCw,
   Server,
-  FileCode,
-  ShieldAlert,
   ChevronLeft,
   ChevronRight,
   CheckCircle2,
@@ -17,9 +15,10 @@ import {
 import { motion, AnimatePresence } from "motion/react";
 import { ClaudeIcon } from "./BrandIcons";
 import { fetchClaudeModels, getClaudeConfig } from "../lib/api";
-import { StatusBadge } from "./StatusBadge";
+import { ConfigPathBar } from "./ConfigPathBar";
 import { NodeCardSelector } from "./NodeCardSelector";
 import { ApiKeyInput } from "./ApiKeyInput";
+import { ChannelGroupMonitor } from "./ChannelGroupMonitor";
 import { ModelInput } from "./ModelInput";
 import { Label } from "./ui/label";
 import { PRESET_URLS } from "../types";
@@ -139,7 +138,10 @@ export function ClaudePanel() {
   };
 
   const urlSummary = url
-    ? url.replace(/https?:\/\//, "").replace(/\/$/, "").split("/")[0]
+    ? url
+        .replace(/https?:\/\//, "")
+        .replace(/\/$/, "")
+        .split("/")[0]
     : undefined;
   const keySummary =
     apiKey.length > 8
@@ -150,7 +152,7 @@ export function ClaudePanel() {
 
   const STEPS: StepDef[] = [
     { label: "接入节点", summary: urlSummary },
-    { label: "认证凭据", summary: keySummary },
+    { label: "API Key", summary: keySummary },
     { label: "选择模型", summary: model || undefined },
   ];
 
@@ -166,7 +168,7 @@ export function ClaudePanel() {
   }
 
   return (
-    <div className="w-full flex-1 flex flex-col justify-between min-h-0 gap-4 pb-2">
+    <div className="w-full min-h-full flex flex-col justify-between gap-5 pb-2">
       {/* ── 顶部面板标题栏 ── */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 pb-3 border-b border-slate-200/80 dark:border-white/10 flex-shrink-0">
         <div className="flex items-center gap-3">
@@ -183,20 +185,29 @@ export function ClaudePanel() {
               </span>
             </div>
             <p className="text-xs text-slate-500 dark:text-gray-400 mt-0.5">
-              为 Claude Code 终端命令行工具配置反向代理网关、Auth Token 与默认模型
+              为 Claude Code 终端命令行工具配置反向代理网关、Auth Token
+              与默认模型
             </p>
           </div>
         </div>
 
-        <button
-          type="button"
-          onClick={() => void load()}
-          className="self-start md:self-auto flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-medium transition-colors bg-white hover:bg-slate-50 border-slate-200 text-slate-700 dark:bg-white/5 dark:hover:bg-white/10 dark:border-white/10 dark:text-gray-300 shadow-2xs cursor-pointer"
-          title="重新载入本地配置"
-        >
-          <RefreshCw size={12} />
-          <span>重新载入</span>
-        </button>
+        <div className="self-start md:self-auto flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={() => void load()}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-medium transition-colors bg-white hover:bg-slate-50 border-slate-200 text-slate-700 dark:bg-white/5 dark:hover:bg-white/10 dark:border-white/10 dark:text-gray-300 shadow-2xs cursor-pointer"
+            title="重新载入本地配置"
+          >
+            <RefreshCw size={12} />
+            <span>重新载入</span>
+          </button>
+          <ConfigPathBar
+            path={configPath}
+            shortPath="~/.claude/settings.json"
+            exists={configExists}
+            accentColor="purple"
+          />
+        </div>
       </div>
 
       {/* ── 步骤指示条（非摘要模式下显示） ── */}
@@ -213,10 +224,10 @@ export function ClaudePanel() {
       )}
 
       {/* ── 主内容工作区 ── */}
-      <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
+      <div className="w-full flex-1 flex flex-col gap-4">
         {showSummary ? (
           /* ── 摘要视图（已有配置时默认呈现） ── */
-          <div className="flex-1 overflow-y-auto px-1 py-1 flex flex-col gap-4">
+          <div className="w-full flex flex-col gap-4">
             <SpotlightCard
               className="p-5 rounded-2xl border border-slate-200/90 dark:border-white/10 bg-white/80 dark:bg-[#161324]/60 shadow-sm"
               spotlightColor="rgba(168, 85, 247, 0.12)"
@@ -239,7 +250,10 @@ export function ClaudePanel() {
                     <Server size={13} className="text-purple-500" />
                     <span>服务网关节点</span>
                   </div>
-                  <div className="text-xs font-mono font-medium text-slate-800 dark:text-gray-200 truncate" title={url}>
+                  <div
+                    className="text-xs font-mono font-medium text-slate-800 dark:text-gray-200 truncate"
+                    title={url}
+                  >
                     {urlSummary || url}
                   </div>
                 </div>
@@ -264,38 +278,24 @@ export function ClaudePanel() {
                   </div>
                 </div>
               </div>
-            </SpotlightCard>
 
-            <SpotlightCard
-              className="p-5 rounded-2xl border border-slate-200/90 dark:border-white/10 bg-white/80 dark:bg-[#161324]/60 shadow-sm"
-              spotlightColor="rgba(168, 85, 247, 0.12)"
-            >
-              <div className="flex items-center justify-between mb-3">
-                <Label className="text-xs font-semibold text-slate-800 dark:text-gray-200 flex items-center gap-2">
-                  <FileCode size={14} className="text-purple-500" />
-                  本地配置文件路径
-                </Label>
-                <span className="text-[11px] font-mono text-slate-400 dark:text-gray-500">
-                  ~/.claude/settings.json
-                </span>
-              </div>
-
-              <StatusBadge
-                exists={configExists}
-                path={configPath}
-                onReload={() => void load()}
-                accentColor="purple"
-              />
-
-              <div className="mt-3">
+              <div className="mt-4 pt-3.5 border-t border-slate-100 dark:border-white/5">
                 <div className="flex items-center gap-2 p-2.5 rounded-xl bg-slate-50/70 border border-slate-200/80 dark:bg-white/[0.03] dark:border-white/5 text-xs text-slate-500 dark:text-gray-400">
                   <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 flex-shrink-0" />
                   <span className="leading-relaxed">
-                    Claude Code 启动时将自动读取此 settings.json 载入认证密钥与 API 路由。如需调整参数可点击下方「重新配置」。
+                    Claude Code 启动时将自动读取此 settings.json 载入认证密钥与
+                    API 路由。如需调整参数可点击下方「重新配置」。
                   </span>
                 </div>
               </div>
             </SpotlightCard>
+
+            {/* 实时通道分组健康监控面板（概览模式直接呈现） */}
+            <ChannelGroupMonitor
+              toolName="Claude Code"
+              toolId="claude"
+              accentColor="purple"
+            />
           </div>
         ) : (
           /* ── 步骤化引导视图 ── */
@@ -307,7 +307,7 @@ export function ClaudePanel() {
               initial="enter"
               animate="center"
               exit="exit"
-              className="flex-1 min-h-0 flex flex-col overflow-y-auto px-1 py-1 gap-4"
+              className="w-full flex flex-col gap-4"
             >
               {currentStep === 0 && (
                 <SpotlightCard
@@ -327,74 +327,32 @@ export function ClaudePanel() {
                     value={url}
                     onChange={setUrl}
                     accentColor="purple"
-                    className="h-full"
                   />
                   <p className="mt-3 text-[11px] text-slate-500 dark:text-gray-400">
-                    请选择目标 API 反代路由节点，将自动适配 Claude Code 命令行工具端点。
+                    请选择目标 API 反代路由节点，将自动适配 Claude Code
+                    命令行工具端点。
                   </p>
                 </SpotlightCard>
               )}
 
               {currentStep === 1 && (
-                <div className="space-y-4">
-                  <SpotlightCard
-                    className="p-5 rounded-2xl border border-slate-200/90 dark:border-white/10 bg-white/80 dark:bg-[#161324]/60 shadow-sm"
-                    spotlightColor="rgba(168, 85, 247, 0.12)"
-                  >
-                    <ApiKeyInput
-                      title="Anthropic Auth Token / API Key"
-                      badgeText="settings.json"
-                      value={apiKey}
-                      onChange={setApiKey}
-                      placeholder="sk-ant-... (填入 BobAPI 密钥)"
-                      storageLocation="~/.claude/settings.json"
-                      configKey="env.ANTHROPIC_AUTH_TOKEN"
-                      accentColor="purple"
-                      toolName="Claude Code"
-                      toolId="claude"
-                    />
-                  </SpotlightCard>
-
-                  <SpotlightCard
-                    className="p-5 rounded-2xl border border-slate-200/90 dark:border-white/10 bg-white/80 dark:bg-[#161324]/60 shadow-sm"
-                    spotlightColor="rgba(168, 85, 247, 0.12)"
-                  >
-                    <div className="flex items-center justify-between mb-3">
-                      <Label className="text-xs font-semibold text-slate-800 dark:text-gray-200 flex items-center gap-2">
-                        <FileCode size={14} className="text-purple-500" />
-                        本地配置文件路径
-                      </Label>
-                      <span className="text-[11px] font-mono text-slate-400 dark:text-gray-500">
-                        ~/.claude/settings.json
-                      </span>
-                    </div>
-
-                    <StatusBadge
-                      exists={configExists}
-                      path={configPath}
-                      onReload={() => void load()}
-                      accentColor="purple"
-                    />
-
-                    <div className="mt-3">
-                      {!configExists ? (
-                        <div className="flex items-start gap-1.5 p-2.5 rounded-lg bg-amber-500/10 border border-amber-500/20 text-amber-700 dark:text-amber-300 text-xs">
-                          <ShieldAlert size={14} className="flex-shrink-0 mt-0.5" />
-                          <span>
-                            未检测到 Claude 配置文件，完成向导后将自动在用户主目录中创建。
-                          </span>
-                        </div>
-                      ) : (
-                        <div className="flex items-center gap-2 p-2.5 rounded-xl bg-slate-50/70 border border-slate-200/80 dark:bg-white/[0.03] dark:border-white/5 text-xs text-slate-500 dark:text-gray-400">
-                          <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 flex-shrink-0" />
-                          <span className="leading-relaxed">
-                            已检测到 settings.json，保存后将自动把 Token 写入环境变量块中。
-                          </span>
-                        </div>
-                      )}
-                    </div>
-                  </SpotlightCard>
-                </div>
+                <SpotlightCard
+                  className="p-5 rounded-2xl border border-slate-200/90 dark:border-white/10 bg-white/80 dark:bg-[#161324]/60 shadow-sm"
+                  spotlightColor="rgba(168, 85, 247, 0.12)"
+                >
+                  <ApiKeyInput
+                    title="Anthropic Auth Token / API Key"
+                    badgeText="settings.json"
+                    value={apiKey}
+                    onChange={setApiKey}
+                    placeholder="sk-ant-... (填入 BobAPI 密钥)"
+                    storageLocation="~/.claude/settings.json"
+                    configKey="env.ANTHROPIC_AUTH_TOKEN"
+                    accentColor="purple"
+                    toolName="Claude Code"
+                    toolId="claude"
+                  />
+                </SpotlightCard>
               )}
 
               {currentStep === 2 && (
@@ -416,7 +374,8 @@ export function ClaudePanel() {
                   <div className="mt-4 p-3 rounded-xl bg-purple-50/60 dark:bg-purple-500/10 border border-purple-200/60 dark:border-purple-500/20 text-xs text-purple-700 dark:text-purple-300 flex items-start gap-2">
                     <Sparkles size={14} className="flex-shrink-0 mt-0.5" />
                     <span>
-                      选定的模型将配置为 Claude Code CLI 默认调用的 Anthropic 协议模型，即刻生效。
+                      选定的模型将配置为 Claude Code CLI 默认调用的 Anthropic
+                      协议模型，即刻生效。
                     </span>
                   </div>
                 </SpotlightCard>
@@ -426,8 +385,8 @@ export function ClaudePanel() {
         )}
       </div>
 
-      {/* ── 底部操作栏 ── */}
-      <div className="pt-2 flex-shrink-0 border-t border-slate-100 dark:border-white/5">
+      {/* ── 底部操作栏 (吸附于视口底部，确保随时可保存) ── */}
+      <div className="sticky bottom-0 z-20 pt-3 pb-1 flex-shrink-0 bg-white/95 dark:bg-[#0c0e18]/95 backdrop-blur-md border-t border-slate-200/80 dark:border-white/10 mt-auto">
         {showSummary ? (
           <div className="flex items-center gap-3">
             <button

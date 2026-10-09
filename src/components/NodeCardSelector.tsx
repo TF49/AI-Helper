@@ -63,7 +63,7 @@ export function NodeCardSelector({
             type="button"
             onClick={() => onChange(url)}
             className={cn(
-              "group relative w-full h-full flex flex-col justify-between p-3.5 rounded-xl border text-left transition-all duration-200 cursor-pointer",
+              "group relative w-full flex flex-col p-3.5 rounded-xl border text-left transition-all duration-200 cursor-pointer",
               selected
                 ? isBlue
                   ? "border-blue-500 bg-blue-50/90 dark:bg-blue-500/10 dark:border-blue-500/80 shadow-xs dark:shadow-[0_0_20px_rgba(59,130,246,0.15)] ring-1 ring-blue-500/30"
@@ -76,7 +76,7 @@ export function NodeCardSelector({
             )}
           >
             {/* 顶栏：图标、名称、标签与选中勾选 */}
-            <div className="flex items-start justify-between w-full gap-2">
+            <div className="flex items-center justify-between w-full gap-2">
               <div className="flex items-center gap-2.5 min-w-0">
                 <div
                   className={cn(
@@ -108,7 +108,7 @@ export function NodeCardSelector({
                     </span>
                     <span
                       className={cn(
-                        "text-[10px] px-1.5 py-0.2 rounded font-mono font-medium",
+                        "text-[10px] px-1.5 py-0.5 rounded font-mono font-medium",
                         selected
                           ? isBlue
                             ? "bg-blue-100 dark:bg-blue-500/20 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-500/30"
@@ -129,7 +129,7 @@ export function NodeCardSelector({
               {/* 选中指示圆圈 */}
               <div
                 className={cn(
-                  "w-4 h-4 rounded-full flex items-center justify-center border transition-all flex-shrink-0 mt-0.5",
+                  "w-4 h-4 rounded-full flex items-center justify-center border transition-all flex-shrink-0",
                   selected
                     ? isBlue
                       ? "border-blue-600 dark:border-blue-500 bg-blue-600 dark:bg-blue-500 text-white"
@@ -146,7 +146,7 @@ export function NodeCardSelector({
             </div>
 
             {/* 描述与 URL */}
-            <div className="mt-2 text-left w-full">
+            <div className="mt-2.5 text-left w-full">
               <p className="text-[11px] text-slate-500 dark:text-gray-400 leading-relaxed line-clamp-1">
                 {meta.description}
               </p>
@@ -178,7 +178,7 @@ export function NodeCardSelector({
           type="button"
           onClick={() => onChange(activeCustomUrl)}
           className={cn(
-            "group relative w-full h-full flex flex-col justify-between p-3.5 rounded-xl border text-left transition-all duration-200 cursor-pointer sm:col-span-2",
+            "group relative w-full flex flex-col p-3.5 rounded-xl border text-left transition-all duration-200 cursor-pointer sm:col-span-2",
             value === activeCustomUrl
               ? isBlue
                 ? "border-blue-500 bg-blue-50/90 dark:bg-blue-500/10 dark:border-blue-500/80 shadow-xs ring-1 ring-blue-500/30"
@@ -190,7 +190,7 @@ export function NodeCardSelector({
               : "border-slate-200/90 dark:border-white/10 bg-white/70 dark:bg-[#141724]/60 hover:border-slate-300 dark:hover:border-white/20 hover:bg-slate-50/80 dark:hover:bg-[#191c2b]/80",
           )}
         >
-          <div className="flex items-start justify-between w-full gap-2">
+          <div className="flex items-center justify-between w-full gap-2">
             <div className="flex items-center gap-2.5 min-w-0">
               <div
                 className={cn(
@@ -220,7 +220,7 @@ export function NodeCardSelector({
                   </span>
                   <span
                     className={cn(
-                      "text-[10px] px-1.5 py-0.2 rounded font-mono font-medium",
+                      "text-[10px] px-1.5 py-0.5 rounded font-mono font-medium",
                       value === activeCustomUrl
                         ? isBlue
                           ? "bg-blue-100 dark:bg-blue-500/20 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-500/30"
@@ -238,7 +238,7 @@ export function NodeCardSelector({
 
             <div
               className={cn(
-                "w-4 h-4 rounded-full flex items-center justify-center border transition-all flex-shrink-0 mt-0.5",
+                "w-4 h-4 rounded-full flex items-center justify-center border transition-all flex-shrink-0",
                 value === activeCustomUrl
                   ? isBlue
                     ? "border-blue-600 dark:border-blue-500 bg-blue-600 dark:bg-blue-500 text-white"
@@ -252,7 +252,7 @@ export function NodeCardSelector({
             </div>
           </div>
 
-          <div className="mt-2 text-left w-full">
+          <div className="mt-2.5 text-left w-full">
             <p className="text-[11px] text-slate-500 dark:text-gray-400 leading-relaxed line-clamp-1">
               本地配置文件中保存的自定义 API 网关地址
             </p>

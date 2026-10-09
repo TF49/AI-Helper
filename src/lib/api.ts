@@ -21,6 +21,7 @@ import type {
   LoginResult,
   TokenItem,
   CurrentAuthState,
+  ChannelGroupOverview,
 } from "../types";
 
 export const isTauri =
@@ -121,6 +122,41 @@ function getMockResponse<T>(cmd: string, _args?: Record<string, unknown>): T {
       ] as unknown as T;
     case "get_token_key":
       return "sk-mock-plain-key-for-preview" as unknown as T;
+    case "get_channel_group_overview":
+      return [
+        {
+          group_name: "SVIP-codex",
+          success_rate: 100,
+          avg_response_time: 1.25,
+          has_successful_requests: true,
+          total_requests: 120,
+          failed_requests: 0,
+          trend_points: Array.from({ length: 12 }, (_, i) => ({
+            timestamp: Math.floor(Date.now() / 1000) - (11 - i) * 300,
+            success_rate: 100,
+            avg_response_time: 1.2,
+            has_data: true,
+            total_requests: 10,
+            failed_requests: 0,
+          })),
+        },
+        {
+          group_name: "ClaudeCode Kiro-1",
+          success_rate: 98.5,
+          avg_response_time: 2.1,
+          has_successful_requests: true,
+          total_requests: 85,
+          failed_requests: 1,
+          trend_points: Array.from({ length: 12 }, (_, i) => ({
+            timestamp: Math.floor(Date.now() / 1000) - (11 - i) * 300,
+            success_rate: 98.5,
+            avg_response_time: 2.1,
+            has_data: true,
+            total_requests: 7,
+            failed_requests: 0,
+          })),
+        },
+      ] as unknown as T;
     case "open_url":
       if (_args && typeof _args.url === "string") {
         window.open(_args.url, "_blank");
@@ -583,5 +619,12 @@ export async function applyApiKeyToAgents(
     targets,
   });
 }
+
+export async function getChannelGroupOverview(
+  hours: number = 1,
+): Promise<ChannelGroupOverview[]> {
+  return invoke<ChannelGroupOverview[]>("get_channel_group_overview", { hours });
+}
+
 
 

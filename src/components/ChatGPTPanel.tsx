@@ -5,8 +5,6 @@ import {
   Save,
   RefreshCw,
   Server,
-  FileCode,
-  ShieldAlert,
   ChevronLeft,
   ChevronRight,
   CheckCircle2,
@@ -17,9 +15,10 @@ import {
 import { motion, AnimatePresence } from "motion/react";
 import { OpenAIIcon } from "./BrandIcons";
 import { fetchCodexModels, getCodexConfig } from "../lib/api";
-import { StatusBadge } from "./StatusBadge";
+import { ConfigPathBar } from "./ConfigPathBar";
 import { NodeCardSelector } from "./NodeCardSelector";
 import { ApiKeyInput } from "./ApiKeyInput";
+import { ChannelGroupMonitor } from "./ChannelGroupMonitor";
 import { ModelInput } from "./ModelInput";
 import { Label } from "./ui/label";
 import { PRESET_URLS } from "../types";
@@ -139,7 +138,10 @@ export function ChatGPTPanel() {
   };
 
   const urlSummary = url
-    ? url.replace(/https?:\/\//, "").replace(/\/$/, "").split("/")[0]
+    ? url
+        .replace(/https?:\/\//, "")
+        .replace(/\/$/, "")
+        .split("/")[0]
     : undefined;
   const keySummary =
     apiKey.length > 8
@@ -166,7 +168,7 @@ export function ChatGPTPanel() {
   }
 
   return (
-    <div className="w-full flex-1 flex flex-col justify-between min-h-0 gap-4 pb-2">
+    <div className="w-full min-h-full flex flex-col justify-between gap-5 pb-2">
       {/* ── 顶部面板标题栏 ── */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 pb-3 border-b border-slate-200/80 dark:border-white/10 flex-shrink-0">
         <div className="flex items-center gap-3">
@@ -188,15 +190,23 @@ export function ChatGPTPanel() {
           </div>
         </div>
 
-        <button
-          type="button"
-          onClick={() => void load()}
-          className="self-start md:self-auto flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-medium transition-colors bg-white hover:bg-slate-50 border-slate-200 text-slate-700 dark:bg-white/5 dark:hover:bg-white/10 dark:border-white/10 dark:text-gray-300 shadow-2xs cursor-pointer"
-          title="重新载入本地配置"
-        >
-          <RefreshCw size={12} />
-          <span>重新载入</span>
-        </button>
+        <div className="self-start md:self-auto flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={() => void load()}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-medium transition-colors bg-white hover:bg-slate-50 border-slate-200 text-slate-700 dark:bg-white/5 dark:hover:bg-white/10 dark:border-white/10 dark:text-gray-300 shadow-2xs cursor-pointer"
+            title="重新载入本地配置"
+          >
+            <RefreshCw size={12} />
+            <span>重新载入</span>
+          </button>
+          <ConfigPathBar
+            path={configPath}
+            shortPath="~/.codex/config.toml"
+            exists={configExists}
+            accentColor="blue"
+          />
+        </div>
       </div>
 
       {/* ── 步骤指示条（非摘要模式下显示） ── */}
@@ -213,10 +223,10 @@ export function ChatGPTPanel() {
       )}
 
       {/* ── 主内容工作区 ── */}
-      <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
+      <div className="w-full flex-1 flex flex-col gap-4">
         {showSummary ? (
           /* ── 摘要视图（已有配置时默认呈现） ── */
-          <div className="flex-1 overflow-y-auto px-1 py-1 flex flex-col gap-4">
+          <div className="w-full flex flex-col gap-4">
             <SpotlightCard
               className="p-5 rounded-2xl border border-slate-200/90 dark:border-white/10 bg-white/80 dark:bg-[#121524]/60 shadow-sm"
               spotlightColor="rgba(59, 130, 246, 0.12)"
@@ -239,7 +249,10 @@ export function ChatGPTPanel() {
                     <Server size={13} className="text-blue-500" />
                     <span>服务网关节点</span>
                   </div>
-                  <div className="text-xs font-mono font-medium text-slate-800 dark:text-gray-200 truncate" title={url}>
+                  <div
+                    className="text-xs font-mono font-medium text-slate-800 dark:text-gray-200 truncate"
+                    title={url}
+                  >
                     {urlSummary || url}
                   </div>
                 </div>
@@ -264,38 +277,23 @@ export function ChatGPTPanel() {
                   </div>
                 </div>
               </div>
-            </SpotlightCard>
 
-            <SpotlightCard
-              className="p-5 rounded-2xl border border-slate-200/90 dark:border-white/10 bg-white/80 dark:bg-[#121524]/60 shadow-sm"
-              spotlightColor="rgba(59, 130, 246, 0.12)"
-            >
-              <div className="flex items-center justify-between mb-3">
-                <Label className="text-xs font-semibold text-slate-800 dark:text-gray-200 flex items-center gap-2">
-                  <FileCode size={14} className="text-blue-500" />
-                  本地配置文件路径
-                </Label>
-                <span className="text-[11px] font-mono text-slate-400 dark:text-gray-500">
-                  ~/.codex/config.toml
-                </span>
-              </div>
-
-              <StatusBadge
-                exists={configExists}
-                path={configPath}
-                onReload={() => void load()}
-                accentColor="blue"
-              />
-
-              <div className="mt-3">
+              <div className="mt-4 pt-3.5 border-t border-slate-100 dark:border-white/5">
                 <div className="flex items-center gap-2 p-2.5 rounded-xl bg-slate-50/70 border border-slate-200/80 dark:bg-white/[0.03] dark:border-white/5 text-xs text-slate-500 dark:text-gray-400">
                   <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 flex-shrink-0" />
                   <span className="leading-relaxed">
-                    Codex 会在每次启动时自动加载此文件。如需调整参数可点击下方「重新配置」。
+                    Codex 会在每次启动时自动加载此配置文件。如需调整参数可点击下方「重新配置」。
                   </span>
                 </div>
               </div>
             </SpotlightCard>
+
+            {/* 实时通道分组健康监控面板（概览模式直接呈现） */}
+            <ChannelGroupMonitor
+              toolName="ChatGPT (Codex)"
+              toolId="chatgpt"
+              accentColor="blue"
+            />
           </div>
         ) : (
           /* ── 步骤化引导视图 ── */
@@ -307,7 +305,7 @@ export function ChatGPTPanel() {
               initial="enter"
               animate="center"
               exit="exit"
-              className="flex-1 min-h-0 flex flex-col overflow-y-auto px-1 py-1 gap-4"
+              className="w-full flex flex-col gap-4"
             >
               {currentStep === 0 && (
                 <SpotlightCard
@@ -327,73 +325,31 @@ export function ChatGPTPanel() {
                     value={url}
                     onChange={setUrl}
                     accentColor="blue"
-                    className="h-full"
                   />
                   <p className="mt-3 text-[11px] text-slate-500 dark:text-gray-400">
-                    请选择目标 API 路由节点，支持 BobAPI 官方高速线路与备用加速节点。
+                    请选择目标 API 路由节点，支持 BobAPI
+                    官方高速线路与备用加速节点。
                   </p>
                 </SpotlightCard>
               )}
 
               {currentStep === 1 && (
-                <div className="space-y-4">
-                  <SpotlightCard
-                    className="p-5 rounded-2xl border border-slate-200/90 dark:border-white/10 bg-white/80 dark:bg-[#121524]/60 shadow-sm"
-                    spotlightColor="rgba(59, 130, 246, 0.12)"
-                  >
-                    <ApiKeyInput
-                      title="OpenAI API Key"
-                      badgeText="环境变量"
-                      value={apiKey}
-                      onChange={setApiKey}
-                      placeholder="sk-... (填入 BobAPI 密钥)"
-                      envVarName="CUSTOM_OPENAI_API_KEY"
-                      accentColor="blue"
-                      toolName="ChatGPT (Codex)"
-                      toolId="chatgpt"
-                    />
-                  </SpotlightCard>
-
-                  <SpotlightCard
-                    className="p-5 rounded-2xl border border-slate-200/90 dark:border-white/10 bg-white/80 dark:bg-[#121524]/60 shadow-sm"
-                    spotlightColor="rgba(59, 130, 246, 0.12)"
-                  >
-                    <div className="flex items-center justify-between mb-3">
-                      <Label className="text-xs font-semibold text-slate-800 dark:text-gray-200 flex items-center gap-2">
-                        <FileCode size={14} className="text-blue-500" />
-                        本地配置文件路径
-                      </Label>
-                      <span className="text-[11px] font-mono text-slate-400 dark:text-gray-500">
-                        ~/.codex/config.toml
-                      </span>
-                    </div>
-
-                    <StatusBadge
-                      exists={configExists}
-                      path={configPath}
-                      onReload={() => void load()}
-                      accentColor="blue"
-                    />
-
-                    <div className="mt-3">
-                      {!configExists ? (
-                        <div className="flex items-start gap-1.5 p-2.5 rounded-lg bg-amber-500/10 border border-amber-500/20 text-amber-700 dark:text-amber-300 text-xs">
-                          <ShieldAlert size={14} className="flex-shrink-0 mt-0.5" />
-                          <span>
-                            未检测到 Codex 配置文件，完成向导后将自动在用户主目录中创建。
-                          </span>
-                        </div>
-                      ) : (
-                        <div className="flex items-center gap-2 p-2.5 rounded-xl bg-slate-50/70 border border-slate-200/80 dark:bg-white/[0.03] dark:border-white/5 text-xs text-slate-500 dark:text-gray-400">
-                          <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 flex-shrink-0" />
-                          <span className="leading-relaxed">
-                            已检测到配置文件，填入新的 API Key 将在保存时完成更新。
-                          </span>
-                        </div>
-                      )}
-                    </div>
-                  </SpotlightCard>
-                </div>
+                <SpotlightCard
+                  className="p-5 rounded-2xl border border-slate-200/90 dark:border-white/10 bg-white/80 dark:bg-[#121524]/60 shadow-sm"
+                  spotlightColor="rgba(59, 130, 246, 0.12)"
+                >
+                  <ApiKeyInput
+                    title="OpenAI API Key"
+                    badgeText="环境变量"
+                    value={apiKey}
+                    onChange={setApiKey}
+                    placeholder="sk-... (填入 BobAPI 密钥)"
+                    envVarName="CUSTOM_OPENAI_API_KEY"
+                    accentColor="blue"
+                    toolName="ChatGPT (Codex)"
+                    toolId="chatgpt"
+                  />
+                </SpotlightCard>
               )}
 
               {currentStep === 2 && (
@@ -415,7 +371,8 @@ export function ChatGPTPanel() {
                   <div className="mt-4 p-3 rounded-xl bg-blue-50/60 dark:bg-blue-500/10 border border-blue-200/60 dark:border-blue-500/20 text-xs text-blue-700 dark:text-blue-300 flex items-start gap-2">
                     <Sparkles size={14} className="flex-shrink-0 mt-0.5" />
                     <span>
-                      在此选定或输入的模型将作为 Codex 终端工具的默认会话模型，保存后将即时生效。
+                      在此选定或输入的模型将作为 Codex
+                      终端工具的默认会话模型，保存后将即时生效。
                     </span>
                   </div>
                 </SpotlightCard>
@@ -425,8 +382,8 @@ export function ChatGPTPanel() {
         )}
       </div>
 
-      {/* ── 底部操作栏 ── */}
-      <div className="pt-2 flex-shrink-0 border-t border-slate-100 dark:border-white/5">
+      {/* ── 底部操作栏 (吸附于视口底部，确保随时可保存) ── */}
+      <div className="sticky bottom-0 z-20 pt-3 pb-1 flex-shrink-0 bg-white/95 dark:bg-[#0c0e18]/95 backdrop-blur-md border-t border-slate-200/80 dark:border-white/10 mt-auto">
         {showSummary ? (
           <div className="flex items-center gap-3">
             <button

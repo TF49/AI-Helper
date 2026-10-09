@@ -402,6 +402,13 @@ async fn apply_api_key_to_agents(
     auth::apply_api_key_to_agents(api_key, targets).await
 }
 
+#[tauri::command]
+async fn get_channel_group_overview(
+    hours: Option<u32>,
+) -> Result<Vec<auth::ChannelGroupOverview>, String> {
+    auth::get_channel_group_overview(hours).await
+}
+
 fn setup_tray(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     use tauri::menu::{MenuBuilder, MenuItemBuilder, PredefinedMenuItem};
     use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
@@ -550,6 +557,7 @@ pub fn run() {
             create_user_token,
             set_selected_token,
             apply_api_key_to_agents,
+            get_channel_group_overview,
         ])
         .run(tauri::generate_context!())
         .expect("error while running ai-helper");

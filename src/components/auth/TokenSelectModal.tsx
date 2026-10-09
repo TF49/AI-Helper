@@ -300,7 +300,7 @@ export function TokenSelectModal({
         try {
           localStorage.setItem(
             `bound_token_${tid}`,
-            JSON.stringify({ id: token.id, name: token.name }),
+            JSON.stringify({ id: token.id, name: token.name, group: token.group ?? undefined }),
           );
         } catch {}
       });
@@ -308,7 +308,7 @@ export function TokenSelectModal({
       // 广播全局全套同步事件
       window.dispatchEvent(
         new CustomEvent("ai_helper_sync_all_tokens", {
-          detail: { id: token.id, name: token.name, key: plainKey },
+          detail: { id: token.id, name: token.name, key: plainKey, group: token.group ?? undefined },
         }),
       );
 
@@ -369,7 +369,8 @@ export function TokenSelectModal({
         const q = searchQuery.toLowerCase().trim();
         const matchesName = t.name.toLowerCase().includes(q);
         const matchesKey = t.key && t.key.toLowerCase().includes(q);
-        if (!matchesName && !matchesKey) return false;
+        const matchesGroup = t.group && t.group.toLowerCase().includes(q);
+        if (!matchesName && !matchesKey && !matchesGroup) return false;
       }
       // 状态选项卡过滤
       if (filterMode === "active") return t.status === 1;

@@ -1,6 +1,6 @@
 "use strict";
 
-const CURRENT_VERSION = "v1.0.48";
+const CURRENT_VERSION = "v1.0.49";
 const GITHUB_REPO = "TF49/AI-Helper";
 const GITHUB_RELEASES_URL = "https://github.com/" + GITHUB_REPO + "/releases";
 const GHFAST_PREFIX = "https://ghfast.top/";
@@ -17,10 +17,13 @@ const SIMULATOR_DATA = {
     apiUrl: "https://api.openai.com/v1",
     model: "gpt-4o",
     chips: ["gpt-4o", "gpt-4o-mini", "o1", "o3-mini"],
+    groupName: "SVIP-Codex-HighSpeed",
+    groupRate: "99.9%",
+    groupLatency: "78ms",
     status: "Codex 已就绪",
     sampleTokens: [
       "> [CONNECT] POST https://api.openai.com/v1",
-      "> [AUTH] Local token verified",
+      "> [GROUP] Channel SVIP-Codex: 99.9% success · 78ms avg",
       "> [STREAM] First token received · 78ms",
       "✓ Codex gateway is ready"
     ]
@@ -32,10 +35,13 @@ const SIMULATOR_DATA = {
     apiUrl: "https://api.anthropic.com/v1",
     model: "claude-3-7-sonnet",
     chips: ["claude-3-7-sonnet", "claude-3-5-sonnet", "claude-3-5-haiku"],
+    groupName: "ClaudeCode-Kiro-SVIP",
+    groupRate: "100%",
+    groupLatency: "142ms",
     status: "Claude 已接管",
     sampleTokens: [
       "> [CONNECT] POST https://api.anthropic.com/v1",
-      "> [AUTH] Local credentials accepted",
+      "> [GROUP] Channel ClaudeCode-Kiro: 100% success · 142ms avg",
       "> [STREAM] Thinking channel ready",
       "✓ Claude Code is ready"
     ]
@@ -47,10 +53,13 @@ const SIMULATOR_DATA = {
     apiUrl: "https://api.workbuddy.cn/v1",
     model: "deepseek-coder",
     chips: ["deepseek-coder", "claude-3.5-sonnet", "gpt-4o", "kimi-latest"],
+    groupName: "WorkBuddy-AllModels",
+    groupRate: "99.4%",
+    groupLatency: "65ms",
     status: "Workbuddy 已同步",
     sampleTokens: [
       "> [CONNECT] Workbuddy gateway",
-      "> [SYNC] models.json loaded",
+      "> [GROUP] Multi-model route synced · 65ms avg",
       "> [ENV] Runtime variables injected",
       "✓ Workbuddy profile is ready"
     ]
@@ -62,10 +71,13 @@ const SIMULATOR_DATA = {
     apiUrl: "http://127.0.0.1:8787",
     model: "gpt-4o",
     chips: ["gpt-4o", "claude-3-7-sonnet", "deepseek-chat", "自定义模型"],
+    groupName: "Accio-Enterprise-Bridge",
+    groupRate: "99.8%",
+    groupLatency: "120ms",
     status: "Bridge 在线 :8787",
     sampleTokens: [
       "> [BRIDGE] Listening on 127.0.0.1:8787",
-      "> [RLAB] Accio Work protocol detected",
+      "> [GROUP] Bridge upstream verified · 99.8% SLA",
       "> [ROUTE] Custom model translation ready",
       "✓ Accio Work Bridge is online"
     ]
@@ -77,12 +89,94 @@ const SIMULATOR_DATA = {
     apiUrl: "Local process controller",
     model: "taskkill /F /T",
     chips: ["自动探测", "Store 解包", "句柄轮询", "进程树自愈"],
+    groupName: "Local-Core-Controller",
+    groupRate: "100%",
+    groupLatency: "12ms",
     status: "进程守护中",
     sampleTokens: [
       "> [PROCESS] Scanning target process tree",
       "> [CLEANUP] Child processes terminated",
       "> [HANDLE] File locks released · 120ms",
       "✓ Target client restarted safely"
+    ]
+  }
+};
+
+const GROUP_MONITOR_DATA = {
+  chatgpt: {
+    groupName: "SVIP-Codex-HighSpeed",
+    tag: "Codex 流式专用",
+    successRate: 99.9,
+    latency: "78ms",
+    latencyVal: 78,
+    totalRequests: "18,420",
+    failed: "0 熔断",
+    statusText: "99.9% 运行极佳",
+    guide: "Codex 命令行深度依赖高并发流式代码补全与特定上游模型，自动绑定拥有专属流式权限的分组，拒绝补全超时。",
+    ribbonPoints: [
+      { rate: 100, lat: 76 }, { rate: 100, lat: 75 }, { rate: 100, lat: 78 }, { rate: 99.8, lat: 82 },
+      { rate: 100, lat: 74 }, { rate: 100, lat: 77 }, { rate: 100, lat: 79 }, { rate: 100, lat: 75 },
+      { rate: 100, lat: 76 }, { rate: 100, lat: 74 }, { rate: 100, lat: 80 }, { rate: 100, lat: 76 },
+      { rate: 100, lat: 75 }, { rate: 99.9, lat: 81 }, { rate: 100, lat: 77 }, { rate: 100, lat: 76 },
+      { rate: 100, lat: 74 }, { rate: 100, lat: 78 }, { rate: 100, lat: 75 }, { rate: 100, lat: 77 },
+      { rate: 100, lat: 76 }, { rate: 100, lat: 75 }, { rate: 100, lat: 79 }, { rate: 100, lat: 78 }
+    ]
+  },
+  claude: {
+    groupName: "ClaudeCode-Kiro-SVIP",
+    tag: "Anthropic 深度推理",
+    successRate: 100.0,
+    latency: "142ms",
+    latencyVal: 142,
+    totalRequests: "12,850",
+    failed: "0 熔断",
+    statusText: "100% 满额可用",
+    guide: "Claude Code CLI 深度依赖原生流式协议、Extended Thinking 思考链推理与 Prompt Caching，专属通道彻底规避 400/404 错误。",
+    ribbonPoints: [
+      { rate: 100, lat: 140 }, { rate: 100, lat: 142 }, { rate: 100, lat: 139 }, { rate: 100, lat: 145 },
+      { rate: 100, lat: 141 }, { rate: 100, lat: 144 }, { rate: 100, lat: 140 }, { rate: 100, lat: 142 },
+      { rate: 100, lat: 143 }, { rate: 100, lat: 139 }, { rate: 100, lat: 141 }, { rate: 100, lat: 144 },
+      { rate: 100, lat: 142 }, { rate: 100, lat: 140 }, { rate: 100, lat: 145 }, { rate: 100, lat: 143 },
+      { rate: 100, lat: 141 }, { rate: 100, lat: 142 }, { rate: 100, lat: 139 }, { rate: 100, lat: 146 },
+      { rate: 100, lat: 140 }, { rate: 100, lat: 142 }, { rate: 100, lat: 144 }, { rate: 100, lat: 142 }
+    ]
+  },
+  workbuddy: {
+    groupName: "WorkBuddy-AllModels",
+    tag: "多模型异构聚合",
+    successRate: 99.5,
+    latency: "62ms",
+    latencyVal: 62,
+    totalRequests: "24,190",
+    failed: "2 告警",
+    statusText: "99.5% 优质可用",
+    guide: "聚合管理异构模型（DeepSeek、Claude、GPT-4o），自动路由至 models.json 中目标模型权限与配额全覆盖分组。",
+    ribbonPoints: [
+      { rate: 100, lat: 58 }, { rate: 100, lat: 60 }, { rate: 99.2, lat: 68 }, { rate: 100, lat: 61 },
+      { rate: 100, lat: 59 }, { rate: 100, lat: 62 }, { rate: 100, lat: 63 }, { rate: 100, lat: 60 },
+      { rate: 100, lat: 64 }, { rate: 99.6, lat: 67 }, { rate: 100, lat: 61 }, { rate: 100, lat: 59 },
+      { rate: 100, lat: 62 }, { rate: 100, lat: 60 }, { rate: 100, lat: 65 }, { rate: 100, lat: 63 },
+      { rate: 100, lat: 59 }, { rate: 100, lat: 61 }, { rate: 100, lat: 60 }, { rate: 100, lat: 64 },
+      { rate: 100, lat: 62 }, { rate: 100, lat: 60 }, { rate: 100, lat: 63 }, { rate: 100, lat: 62 }
+    ]
+  },
+  acciowork: {
+    groupName: "Accio-Enterprise-Bridge",
+    tag: "企业级长链路网关",
+    successRate: 99.8,
+    latency: "115ms",
+    latencyVal: 115,
+    totalRequests: "9,640",
+    failed: "0 熔断",
+    statusText: "99.8% 高度稳定",
+    guide: "专为 Accio Work 多 Agent 长链路复杂工作流设计，Rust 本地 Bridge 专属稳定中转，保障长时间无断连。",
+    ribbonPoints: [
+      { rate: 100, lat: 112 }, { rate: 100, lat: 114 }, { rate: 100, lat: 118 }, { rate: 100, lat: 115 },
+      { rate: 100, lat: 113 }, { rate: 100, lat: 116 }, { rate: 99.8, lat: 122 }, { rate: 100, lat: 115 },
+      { rate: 100, lat: 114 }, { rate: 100, lat: 113 }, { rate: 100, lat: 117 }, { rate: 100, lat: 115 },
+      { rate: 100, lat: 116 }, { rate: 100, lat: 112 }, { rate: 100, lat: 114 }, { rate: 100, lat: 118 },
+      { rate: 100, lat: 115 }, { rate: 100, lat: 113 }, { rate: 100, lat: 116 }, { rate: 100, lat: 114 },
+      { rate: 100, lat: 115 }, { rate: 100, lat: 117 }, { rate: 100, lat: 113 }, { rate: 100, lat: 115 }
     ]
   }
 };
@@ -220,6 +314,7 @@ document.addEventListener("DOMContentLoaded", function () {
   safeInit(initMagneticTargets);
   safeInit(initFaq);
   safeInit(initUtilityActions);
+  safeInit(initGroupMonitorSection);
 });
 
 function safeInit(initializer) {
@@ -568,6 +663,11 @@ function switchSimulatorTab(tabKey, manual) {
   if (apiInput) apiInput.value = data.apiUrl;
   if (modelInput) modelInput.value = data.model;
   renderModelChips(data.chips);
+
+  const groupInfo = document.getElementById("sim-group-info");
+  if (groupInfo && data.groupName) {
+    groupInfo.textContent = data.groupName + " · " + data.groupRate + " (" + data.groupLatency + ")";
+  }
 
   if (manual) {
     setText("scene-overline", "MANUAL MODE · " + tabKey.toUpperCase());
@@ -1037,4 +1137,282 @@ function clamp(value, min, max) {
 
 function pad(value) {
   return String(value).padStart(2, "0");
+}
+
+/* React-Bits: DecryptedText 字符解密引擎 */
+function runDecryptedText(element, targetText) {
+  if (!element) return;
+  const finalText = targetText || element.getAttribute("data-text") || element.textContent;
+  if (!finalText) return;
+  
+  if (element._decryptTimer) {
+    clearInterval(element._decryptTimer);
+    element._decryptTimer = null;
+  }
+
+  const chars = "!@#$%^&*()_+-=<>?/~[]{}ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+  const length = finalText.length;
+  let currentStep = 0;
+  const totalSteps = Math.max(10, Math.min(22, Math.floor(length * 0.8)));
+
+  element._decryptTimer = setInterval(function () {
+    currentStep++;
+    const progress = currentStep / totalSteps;
+    const revealedLength = Math.floor(progress * length);
+    let scrambled = "";
+
+    for (let i = 0; i < length; i++) {
+      if (i < revealedLength) {
+        scrambled += finalText[i];
+      } else {
+        scrambled += chars[Math.floor(Math.random() * chars.length)];
+      }
+    }
+
+    element.textContent = scrambled;
+
+    if (currentStep >= totalSteps) {
+      clearInterval(element._decryptTimer);
+      element._decryptTimer = null;
+      element.textContent = finalText;
+    }
+  }, 32);
+}
+
+/* 通道分组智能遥测监控引擎 (React-Bits + GSAP) */
+function initGroupMonitorSection() {
+  const card = document.getElementById("card-group-monitor");
+  if (!card) return;
+
+  const tabs = Array.from(document.querySelectorAll(".group-tab-btn"));
+  const modeButtons = Array.from(document.querySelectorAll(".view-mode-toggle .mode-btn"));
+  const refreshButton = document.getElementById("btn-group-refresh");
+
+  let activeKey = "chatgpt";
+  let activeMode = "ribbon";
+
+  function renderGroupData(key, animateBars) {
+    const data = GROUP_MONITOR_DATA[key];
+    if (!data) return;
+
+    activeKey = key;
+
+    // 1. 基础元数据
+    setText("widget-group-name", data.groupName);
+    setText("widget-group-tag", data.tag);
+
+    // 2. 字符解密 (React-Bits DecryptedText)
+    const statusPill = document.getElementById("widget-live-status");
+    if (statusPill) runDecryptedText(statusPill, data.statusText);
+
+    const guideDesc = document.getElementById("widget-guide-desc");
+    if (guideDesc) runDecryptedText(guideDesc, data.guide);
+
+    // 3. GSAP 数值平滑滚轮动画
+    if (window.gsap && !REDUCED_MOTION.matches) {
+      const gsap = window.gsap;
+
+      // 成功率数值
+      const rateEl = document.getElementById("hud-metric-rate");
+      if (rateEl) {
+        const curRate = parseFloat(rateEl.textContent) || 90;
+        const targetRate = data.successRate;
+        const rateObj = { val: curRate };
+        gsap.to(rateObj, {
+          val: targetRate,
+          duration: 0.75,
+          ease: "power2.out",
+          onUpdate: function () {
+            rateEl.textContent = rateObj.val.toFixed(1) + "%";
+          }
+        });
+      }
+
+      // TTFT 延迟数值
+      const latEl = document.getElementById("hud-metric-latency");
+      if (latEl) {
+        const curLat = parseInt(latEl.textContent, 10) || 50;
+        const targetLat = data.latencyVal;
+        const latObj = { val: curLat };
+        gsap.to(latObj, {
+          val: targetLat,
+          duration: 0.75,
+          ease: "power2.out",
+          onUpdate: function () {
+            latEl.textContent = Math.round(latObj.val) + "ms";
+          }
+        });
+      }
+    } else {
+      setText("hud-metric-rate", data.successRate.toFixed(1) + "%");
+      setText("hud-metric-latency", data.latency);
+    }
+
+    setText("hud-metric-requests", data.totalRequests);
+    setText("hud-metric-failed", data.failed);
+
+    // 4. 渲染三大图表视图
+    renderRibbonView(data.ribbonPoints, animateBars);
+    renderAreaView(data.ribbonPoints);
+    renderBarView(data.ribbonPoints, animateBars);
+  }
+
+  function renderRibbonView(points, animate) {
+    const track = document.getElementById("ribbon-track");
+    if (!track) return;
+    track.textContent = "";
+
+    points.forEach(function (pt, idx) {
+      const seg = document.createElement("div");
+      seg.className = "ribbon-segment" + (pt.rate < 99.5 ? " rate-jitter" : pt.rate < 100 ? " rate-99" : "");
+      seg.title = "时间桶 #" + (idx + 1) + " (5分钟) · 可用率: " + pt.rate + "% · 平均时延: " + pt.lat + "ms";
+      track.appendChild(seg);
+    });
+
+    if (animate && window.gsap && !REDUCED_MOTION.matches) {
+      window.gsap.fromTo(
+        track.children,
+        { scaleY: 0, opacity: 0.2 },
+        { scaleY: 1, opacity: 1, duration: 0.4, stagger: 0.012, ease: "power2.out" }
+      );
+    }
+  }
+
+  function renderAreaView(points) {
+    const fillPath = document.getElementById("area-fill-path");
+    const strokePath = document.getElementById("area-stroke-path");
+    if (!fillPath || !strokePath) return;
+
+    const width = 600;
+    const height = 70;
+    const step = width / (points.length - 1);
+
+    const minLat = 50;
+    const maxLat = 160;
+    const coords = points.map(function (pt, i) {
+      const norm = (pt.lat - minLat) / (maxLat - minLat);
+      const y = Math.max(12, Math.min(58, height - (norm * (height - 24) + 12)));
+      return { x: i * step, y: y };
+    });
+
+    let d = "M " + coords[0].x.toFixed(1) + " " + coords[0].y.toFixed(1);
+    for (let i = 1; i < coords.length; i++) {
+      const prev = coords[i - 1];
+      const curr = coords[i];
+      const cx = ((prev.x + curr.x) / 2).toFixed(1);
+      d += " C " + cx + " " + prev.y.toFixed(1) + ", " + cx + " " + curr.y.toFixed(1) + ", " + curr.x.toFixed(1) + " " + curr.y.toFixed(1);
+    }
+
+    strokePath.setAttribute("d", d);
+    const fillD = d + " L " + width + " " + height + " L 0 " + height + " Z";
+    fillPath.setAttribute("d", fillD);
+
+    if (window.gsap && !REDUCED_MOTION.matches) {
+      window.gsap.fromTo(
+        strokePath,
+        { strokeDasharray: 700, strokeDashoffset: 700 },
+        { strokeDashoffset: 0, duration: 0.85, ease: "power2.out" }
+      );
+    }
+  }
+
+  function renderBarView(points, animate) {
+    const track = document.getElementById("bar-track");
+    if (!track) return;
+    track.textContent = "";
+
+    points.forEach(function (pt, idx) {
+      const bar = document.createElement("div");
+      bar.className = "bar-column";
+      const hPercent = Math.min(95, Math.max(28, Math.round((pt.lat / 150) * 85 + 10)));
+      bar.style.height = hPercent + "%";
+      bar.title = "时间桶 #" + (idx + 1) + " · 时延: " + pt.lat + "ms";
+      track.appendChild(bar);
+    });
+
+    if (animate && window.gsap && !REDUCED_MOTION.matches) {
+      window.gsap.fromTo(
+        track.children,
+        { scaleY: 0 },
+        { scaleY: 1, duration: 0.45, stagger: 0.012, ease: "power2.out", transformOrigin: "bottom" }
+      );
+    }
+  }
+
+  // 1. Tab 切换
+  tabs.forEach(function (button) {
+    button.addEventListener("click", function () {
+      const key = button.getAttribute("data-group-key");
+      if (!key || key === activeKey) return;
+
+      tabs.forEach(function (t) {
+        t.classList.remove("active");
+        t.setAttribute("aria-selected", "false");
+      });
+      button.classList.add("active");
+      button.setAttribute("aria-selected", "true");
+
+      renderGroupData(key, true);
+    });
+  });
+
+  // 2. 视图模式切换 (Ribbon / Area / Bar)
+  modeButtons.forEach(function (btn) {
+    btn.addEventListener("click", function () {
+      const mode = btn.getAttribute("data-mode");
+      if (!mode || mode === activeMode) return;
+
+      modeButtons.forEach(function (b) { b.classList.remove("active"); });
+      btn.classList.add("active");
+      activeMode = mode;
+
+      const views = [
+        { name: "ribbon", el: document.getElementById("chart-view-ribbon") },
+        { name: "area", el: document.getElementById("chart-view-area") },
+        { name: "bar", el: document.getElementById("chart-view-bar") }
+      ];
+
+      views.forEach(function (v) {
+        if (!v.el) return;
+        if (v.name === mode) {
+          v.el.classList.add("active");
+          if (window.gsap && !REDUCED_MOTION.matches) {
+            window.gsap.fromTo(v.el, { opacity: 0, y: 4 }, { opacity: 1, y: 0, duration: 0.32, ease: "power2.out" });
+          }
+        } else {
+          v.el.classList.remove("active");
+        }
+      });
+    });
+  });
+
+  // 3. 刷新按钮 GSAP 旋转与动效
+  if (refreshButton) {
+    refreshButton.addEventListener("click", function () {
+      if (window.gsap && !REDUCED_MOTION.matches) {
+        window.gsap.to(refreshButton, {
+          rotation: "+=360",
+          duration: 0.6,
+          ease: "power2.inOut"
+        });
+      }
+      renderGroupData(activeKey, true);
+      showToast("已刷新通道分组稳定性遥测数据");
+    });
+  }
+
+  // 初次渲染
+  renderGroupData("chatgpt", false);
+
+  // GSAP ScrollTrigger 滚动进入视野动效
+  if (window.gsap && window.ScrollTrigger && !REDUCED_MOTION.matches) {
+    window.ScrollTrigger.create({
+      trigger: card,
+      start: "top 78%",
+      once: true,
+      onEnter: function () {
+        renderGroupData(activeKey, true);
+      }
+    });
+  }
 }

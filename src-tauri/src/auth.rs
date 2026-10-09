@@ -110,6 +110,39 @@ pub struct TokenItem {
     pub group: Option<String>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct ChannelTrendPoint {
+    #[serde(default)]
+    pub timestamp: i64,
+    #[serde(default)]
+    pub success_rate: f64,
+    #[serde(default)]
+    pub avg_response_time: f64,
+    #[serde(default)]
+    pub has_data: bool,
+    #[serde(default)]
+    pub total_requests: i64,
+    #[serde(default)]
+    pub failed_requests: i64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct ChannelGroupOverview {
+    pub group_name: String,
+    #[serde(default)]
+    pub success_rate: f64,
+    #[serde(default)]
+    pub avg_response_time: f64,
+    #[serde(default)]
+    pub has_successful_requests: bool,
+    #[serde(default)]
+    pub total_requests: i64,
+    #[serde(default)]
+    pub failed_requests: i64,
+    #[serde(default)]
+    pub trend_points: Vec<ChannelTrendPoint>,
+}
+
 fn default_status() -> i32 {
     1
 }
@@ -1011,4 +1044,52 @@ pub async fn apply_api_key_to_agents(
     }
 
     Ok(results)
+}
+
+/// 获取 Bob API 分组实时健康与稳定性监控概览 (GET /api/channel/monitor/group-overview?hours=N)
+pub async fn get_channel_group_overview(
+    hours: Option<u32>,
+) -> Result<Vec<ChannelGroupOverview>, String> {
+    let token = ensure_access_token().await?;
+    let mgr = AUTH_MGR.lock().await;
+
+    let h = hours.unwrap_or(1);
+    let url = format!(
+        "{}/api/channel/monitor/group-overview?hours={}",
+        BASE_URL, h
+    );
+    let resp = mgr
+        .client
+        .get(&url)
+        .header(AUTHORIZATION, format!("Bearer {}", token))
+        .send()
+        .await
+        .map_err(|e| format!("请求分组监控数据网络异常: {e}"))?;
+
+    let parsed: serde_json::Value = resp
+        .json()
+        .await
+        .map_err(|e| format!("解析分组监控数据失败: {e}"))?;
+
+    let success = parsed
+        .get("success")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
+
+    if !success {
+        let msg = parsed
+            .get("message")
+            .and_then(|v| v.as_str())
+            .unwrap_or("获取分组监控数据失败");
+        return Err(msg.to_string());
+    }
+
+    let data_val = parsed
+        .get("data")
+        .ok_or_else(|| "分组监控数据中无 data 字段".to_string())?;
+
+    let items: Vec<ChannelGroupOverview> = serde_json::from_value(data_val.clone())
+        .map_err(|e| format!("反序列化分组监控列表失败: {e}"))?;
+
+    Ok(items)
 }

@@ -15,6 +15,8 @@ import { Input } from "./ui/input";
 import { cn } from "../lib/utils";
 import { useAuth } from "../lib/useAuth";
 import { TokenSelectModal } from "./auth/TokenSelectModal";
+import { ChannelGroupMonitor } from "./ChannelGroupMonitor";
+import { getUserTokens } from "../lib/api";
 import type { TokenItem } from "../types";
 
 export interface ApiKeyInputProps {
@@ -33,6 +35,7 @@ export interface ApiKeyInputProps {
   securityNote?: React.ReactNode;
   hideHeader?: boolean;
   hideFooter?: boolean;
+  hideGroupMonitor?: boolean;
   compact?: boolean;
   className?: string;
 }
@@ -53,6 +56,7 @@ export function ApiKeyInput({
   securityNote,
   hideHeader = false,
   hideFooter = false,
+  hideGroupMonitor = false,
   compact = false,
   className,
 }: ApiKeyInputProps) {
@@ -65,7 +69,11 @@ export function ApiKeyInput({
     toolId || toolName.toLowerCase().replace(/[^a-z0-9]/g, "") || "default";
   const storageKey = `bound_token_${effectiveToolId}`;
 
-  const [boundToken, setBoundToken] = useState<{ id: number; name: string } | null>(() => {
+  const [boundToken, setBoundToken] = useState<{
+    id: number;
+    name: string;
+    group?: string | null;
+  } | null>(() => {
     try {
       const saved = localStorage.getItem(storageKey);
       return saved ? JSON.parse(saved) : null;
@@ -84,17 +92,95 @@ export function ApiKeyInput({
     }
   }, [value, boundToken, storageKey]);
 
+  // 当处于已登录状态且 boundToken 缺少 group 或尚未绑定时，尝试通过 API 补充匹配关联
+  useEffect(() => {
+    if (!authState.is_logged_in || !value.trim()) return;
+
+    // 如果 boundToken 已经完整（有 id 也有 group），无需重复匹配
+    if (boundToken && boundToken.group) return;
+
+    let isMounted = true;
+    getUserTokens()
+      .then((tokens) => {
+        if (!isMounted || !tokens || tokens.length === 0) return;
+
+        // 1. 如果已有 boundToken 但缺少 group 字段，通过 id 查找
+        if (boundToken && !boundToken.group) {
+          const match = tokens.find((t) => t.id === boundToken.id);
+          if (match && match.group) {
+            const updated = { ...boundToken, group: match.group };
+            setBoundToken(updated);
+            try {
+              localStorage.setItem(storageKey, JSON.stringify(updated));
+            } catch {}
+          }
+          return;
+        }
+
+        // 2. 如果 boundToken 为 null，通过当前输入框中的 Key 明文比对匹配
+        const val = value.trim();
+        const exactMatch = tokens.find((t) => t.key && t.key === val);
+        if (exactMatch) {
+          const info = {
+            id: exactMatch.id,
+            name: exactMatch.name,
+            group: exactMatch.group ?? undefined,
+          };
+          setBoundToken(info);
+          try {
+            localStorage.setItem(storageKey, JSON.stringify(info));
+          } catch {}
+          return;
+        }
+
+        // 若为脱敏 key，尝试基于前缀+后缀匹配
+        if (val.length >= 12) {
+          const prefix = val.slice(0, 7);
+          const suffix = val.slice(-4);
+          const partialMatch = tokens.find(
+            (t) =>
+              t.key &&
+              t.key.startsWith(prefix) &&
+              t.key.endsWith(suffix),
+          );
+          if (partialMatch) {
+            const info = {
+              id: partialMatch.id,
+              name: partialMatch.name,
+              group: partialMatch.group ?? undefined,
+            };
+            setBoundToken(info);
+            try {
+              localStorage.setItem(storageKey, JSON.stringify(info));
+            } catch {}
+          }
+        }
+      })
+      .catch(() => {});
+
+    return () => {
+      isMounted = false;
+    };
+  }, [authState.is_logged_in, value, boundToken, storageKey]);
+
   // 监听全套同步事件 (仅在明确点击全套同步时联动)
   useEffect(() => {
     const handleSyncEvent = (e: Event) => {
-      const customEvent = e as CustomEvent<{ id: number; name: string; key: string }>;
+      const customEvent = e as CustomEvent<{
+        id: number;
+        name: string;
+        key: string;
+        group?: string | null;
+      }>;
       if (customEvent.detail) {
-        setBoundToken({ id: customEvent.detail.id, name: customEvent.detail.name });
+        const info = {
+          id: customEvent.detail.id,
+          name: customEvent.detail.name,
+          group: customEvent.detail.group,
+        };
+        setBoundToken(info);
         try {
-          localStorage.setItem(
-            storageKey,
-            JSON.stringify({ id: customEvent.detail.id, name: customEvent.detail.name }),
-          );
+          localStorage.setItem(storageKey, JSON.stringify(info));
         } catch {}
       }
     };
@@ -140,7 +226,7 @@ export function ApiKeyInput({
 
   const handleKeySelected = (plainKey: string, token: TokenItem) => {
     onChange(plainKey);
-    const info = { id: token.id, name: token.name };
+    const info = { id: token.id, name: token.name, group: token.group ?? undefined };
     setBoundToken(info);
     try {
       localStorage.setItem(storageKey, JSON.stringify(info));
@@ -562,6 +648,19 @@ export function ApiKeyInput({
               </span>
             )}
           </div>
+        </div>
+      )}
+
+      {/* 底部通道分组健康稳定性监控面板 (在四个工具中均在此配置 Key 下方复用呈现) */}
+      {!hideGroupMonitor && !compact && (
+        <div className="mt-3.5">
+          <ChannelGroupMonitor
+            currentGroupName={boundToken?.group}
+            toolName={toolName}
+            toolId={effectiveToolId}
+            accentColor={accentColor}
+            onOpenTokenSelect={() => setLocalTokenModalOpen(true)}
+          />
         </div>
       )}
 

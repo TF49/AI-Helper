@@ -39,18 +39,18 @@
 
 ```
 ┌────────────────────────────────────────────────────────────────────────────────────────┐
-│                         AI Helper v1.0.43 现代化架构与能力全景                          │
+│                         AI Helper v1.0.49 现代化架构与能力全景                          │
 ├──────────────────────┬──────────────────────┬──────────────────────┬───────────────────┤
-│  🤖 五核 Agent 矩阵  │  🔐 bob-api 账号生态 │  🌉 本地 Bridge 网关 │  🔄 智能热重启    │
-│  • OpenAI / Codex    │  • 账号原生直连登录  │  • Axum + Tokio 驱动 │  • 进程树安全清理 │
-│  • Claude Code CLI   │  • 云端 Key 全景管理 │  • LLM 协议透明转译  │  • 句柄轮询等待   │
-│  • WorkBuddy AI      │  • 一键批量四端分发  │  • MCP 代理路由      │  • 一键拉起新实例 │
-│  • Accio Work        │  • 2FA + RSA-OAEP   │  • DALL-E 3 生图转译 │                   │
+│  🤖 五核 Agent 矩阵  │  🔐 bob-api 账号生态 │  📊 通道分组智能遥测 │  🌉 本地 Bridge 网关 │
+│  • OpenAI / Codex    │  • 账号原生直连登录  │  • 近 1h/3h/6h 成功率 │  • Axum + Tokio 驱动 │
+│  • Claude Code CLI   │  • 云端 Key 全景管理 │  • 毫秒平均 TTFT 延迟│  • LLM 协议透明转译  │
+│  • WorkBuddy AI      │  • 一键批量四端分发  │  • Ribbon/Area/Bar   │  • MCP 代理路由      │
+│  • Accio Work        │  • 2FA + RSA-OAEP   │  • 专属路由规则匹配  │  • DALL-E 3 生图转译 │
 ├──────────────────────┼──────────────────────┼──────────────────────┼───────────────────┤
-│  ⚡ 流式终端诊断     │  🧰 快速诊断工具箱   │  🔍 深度路径探测     │  🎨 极光玻璃美学  │
-│  • Token 逐字流回显  │  • 双协议 cURL 药丸  │  • 多级回退探测算法  │  • GSAP 物理动效  │
-│  • 毫秒级 TTFT 时延  │  • 实时网络心跳探针  │  • Store 应用包解包  │  • 深浅双主题切换 │
-│  • 状态码/错误解析   │  • 一键剪贴板导出    │  • 路径持久化与自愈  │  • 超低内存常驻   │
+│  🔄 智能热重启熔断   │  ⚡ 流式终端诊断     │  🧰 快速诊断工具箱   │  🎨 极光玻璃美学  │
+│  • 进程树安全清理    │  • Token 逐字流回显  │  • 双协议 cURL 药丸  │  • GSAP 物理动效  │
+│  • 句柄轮询等待      │  • 毫秒级 TTFT 时延  │  • 实时网络心跳探针  │  • React-Bits 流光 │
+│  • 一键拉起新实例    │  • 状态码/错误解析   │  • 配置原生调阅直达  │  • 深浅双主题切换 │
 └──────────────────────┴──────────────────────┴──────────────────────┴───────────────────┘
 ```
 
@@ -68,7 +68,21 @@
 - 🔑 **全局令牌资产管理**：云端 API Key 全景列表呈现，含额度/有效期/状态透视；支持明暗文查看、一键复制。
 - 🚀 **一键批量四端分发**：「全套同步」一键将所选 Key 并行配置至全部四大 Agent，0.1 秒完成全矩阵就绪，彻底告别重复粘贴！
 
-### 3. 🌉 Accio Local Bridge 协议网关 (Local Protocol Bridge)
+### 3. 📊 通道分组智能检测与健康稳定性监控 (Channel Group Monitoring & Telemetry)
+- ⏱️ **实时可用率与耗时雷达**：集成 `get_channel_group_overview` 遥测接口，自动汇总各分组在近 **1 小时 / 3 小时 / 6 小时** 维度内的调用成功率（Success Rate）、平均响应时延（TTFT Latency）、累计请求数与失败异常数，90 秒后台自动静默自愈轮询。
+- 📈 **三大维度专业遥测图表 (HealthTrendVisualizer)**：
+  - 🟩 **连续分段健康条 (Ribbon)**：采用 GitHub Status / Cloudflare 风格无缝连续展示 5 分钟时间桶状态，鼠标悬浮毫秒级呈现桶内成功率、时延与请求明细。
+  - 🌊 **平滑贝塞尔波形曲线 (Area)**：超轻通透渐变波形动画，直观反映网络抖动与波峰波谷，动态渲染呼吸光晕。
+  - 📊 **宽幅时间遥测柱 (Bar)**：高密度时间分布柱状图，直观感知高并发时段流量冲击与熔断状态。
+- 🎯 **四大 Agent 专属通道路由规则与避坑指南**：
+  - **OpenAI / Codex CLI**：深度依赖高并发流式代码补全与特定上游模型（`gpt-5-codex`、`gpt-4o`、`o3-mini`），智能识别并推荐 `codex`、`svip-codex` 专属通道分组，规避低频或非代码分组限频超时。
+  - **Claude Code CLI**：深度依赖 Anthropic 原生流式、Extended Thinking 思考链推理与 Prompt Caching 特性，自动推荐匹配 `claude`、`kiro` 专属分组，规避普通分组启动报 400/404 错误。
+  - **WorkBuddy AI**：提供多模型聚合通道推荐，确保 models.json 中异构模型（DeepSeek、Claude、GPT-4o）全量覆盖与配额充足。
+  - **Accio Work**：企业级长链路 Bridge 桥接推荐稳定低延迟分组，保障长时间长文本工作流稳定不中断。
+- 🔍 **多维智能排序与横向横评对比抽屉**：支持按成功率最高、延迟最低、请求量最多快速筛选分组；内置对比抽屉支持多分组多维性能横向 PK 与一键绑定切换。
+- 📁 **配置文件路径原生直达 (ConfigPathBar)**：统一在各面板中嵌入路径栏，支持一键复制配置路径，提供默认编辑器、记事本或资源管理器秒级打开落盘配置。
+
+### 4. 🌉 Accio Local Bridge 协议网关 (Local Protocol Bridge)
 - 🦀 **原生 Axum + Tokio 高性能网关**：基于 Rust 生态顶级异步框架，低内存常驻，轻量极速。
 - 🎯 **模型路由动态拦截**：精准拦截 Accio 内部模型决策请求，强制锁定至用户自定义的顶级模型（Claude 3.7、GPT-4o、DeepSeek R1 等）。
 - 📋 **原生模型列表伪造注入**：向 Accio 客户端注入自定义模型完整元数据，使原生下拉框能完美识别与切换。
@@ -81,25 +95,25 @@
 - 💓 **SSE 心跳与错误归一化**：长耗时 LLM 调用保持 SSE 心跳防断连；官方网关非 SSE 错误统一转换为 Accio SSE 错误帧，客户端始终获得可消费的事件流。
 - 🔌 **端口自适应探针**：默认监听 `127.0.0.1:8787`，遇占用自动平移至 `8787..=8807` 范围并持久化记录。
 
-### 4. 🔍 应用与 CLI 路径深度探测引擎 (Path & Process Discovery)
+### 5. 🔍 应用与 CLI 路径深度探测引擎 (Path & Process Discovery)
 - 🧭 **五大 Agent 运行环境全量覆盖**：Claude Code CLI（npm 全局）、Codex CLI（npm / 原生二进制）、ChatGPT（Microsoft Store 应用包 + Win32 独立安装版）、WorkBuddy AI、Accio Work 全部支持。
 - ⚡ **智能多级优先级回退算法**：`实时活跃进程探测` ➔ `NPM 全局路径` ➔ `PATH 环境变量` ➔ `标准程序目录` ➔ `Store 应用包降序版本比对`。
 - 🛡️ **自愈与安全保障**：路径配置持久化于 `~/.ai-helper/app_paths.json`；启动自动触发失效路径自愈；严格外部参数注入防御（拦截 `&`、`;` 及换行符等控制字符）。
 
-### 5. 🔄 智能进程热重启与安全熔断 (Smart Process Lifecycle)
+### 6. 🔄 智能进程热重启与安全熔断 (Smart Process Lifecycle)
 - 🛡️ **底层安全进程树熔断**：Windows 环境下执行 `taskkill /F /T /PID` 强力清理进程树，避免 Electron/Node 孤儿进程僵尸残留。
 - ⏱️ **有界轮询句柄等待**：独创最长 2.5 秒、每 150ms 轮询机制，确保旧进程完全释放端口与文件锁后再启动新实例，杜绝多实例竞争崩溃。
 - 🚀 **测试通过后一键拉起**：弹出智能引导面板，支持一键独立重启或启动目标终端/桌面客户端；终端测试通过后自动开启 8 秒智能退出倒计时。
 
-### 6. ⚡ 实时交互式流式控制台 (Streaming Terminal Modal)
+### 7. ⚡ 实时交互式流式控制台 (Streaming Terminal Modal)
 - ⏱️ **真实网络与协议连通性测试**：模拟真实请求向网关节点发送流式测试调用；毫秒级计算首字时延（TTFT）与传输速率；终端风格流式打字机动画，直观显示 API 返回状态码与报错堆栈。
 
-### 7. 🧰 开发者极速诊断工具箱 (Diagnostic Toolbox)
+### 8. 🧰 开发者极速诊断工具箱 (Diagnostic Toolbox)
 - 🔀 **内置 [OpenAI / Claude] 双协议切换药丸**：一键生成并切换标准 cURL 测试命令（`/v1/chat/completions` 与 `/v1/messages`）；自动脱敏并带入当前 API Key、模型与网关地址。
 - 🌐 **实时网络心跳探针**：侧边栏常驻网络探针，动态呼吸光晕反馈当前网关可达性（HTTP 状态码 < 500 均认定为可达，消除 302/403 假离线误报）。
 
-### 8. 🎨 沉浸式极光磨砂玻璃美学 (Aurora Glassmorphism)
-- ✨ **GSAP 物理弹性动效**：令牌调度中枢弹窗平滑弹性入场、列表级联瀑布流、刷新按钮旋转等全站 GSAP 驱动动效。
+### 9. 🎨 沉浸式极光磨砂玻璃美学 (Aurora Glassmorphism)
+- ✨ **GSAP 物理弹性动效**：通道分组抽屉、令牌调度中枢、刷新按钮旋转等全站 GSAP 驱动流畅动效。
 - 🔐 **字符解密与金属光泽**：集成 `DecryptedText`、`ShinyText`、`SpotlightCard`、`StarBorder` 等 React-Bits 组件，科技感十足。
 - 🌗 **全场景深浅色主题**：完美支持系统主题跟随与手动一键自由切换。
 - 📐 **现代双栏桌面工作台**：固定导航侧边栏 + 自适应大屏宽阔展台，视野清晰不压抑。
@@ -199,15 +213,24 @@ AI-Helper/
 │   └── 🌐 favicon.ico              # 网页与托盘图标
 ├── 📁 scripts/              # 自动化发版脚本 (bump-version, release 等)
 ├── 📁 src/                  # React + TypeScript 前端工作区
-│   ├── 📁 components/       # 核心 UI 面板 (ChatGPTPanel, ClaudePanel, WorkbuddyPanel, AccioWorkPanel 等)
+│   ├── 📁 components/       # 核心 UI 面板
+│   │   ├── 📊 ChannelGroupMonitor.tsx  # 通道分组健康遥测与智能选组中枢
+│   │   ├── 📈 HealthTrendVisualizer.tsx # 分段条(Ribbon)/波形(Area)/柱状(Bar) 可视化图表
+│   │   ├── 📁 react-bits/              # 现代动效组件库 (SpotlightCard, ShinyText 等)
+│   │   ├── 📁 auth/                    # bob-api 登录、2FA 与令牌分发抽屉
+│   │   ├── 📄 ConfigPathBar.tsx        # 配置文件路径复制与原生调阅组件
+│   │   ├── 📄 ChatGPTPanel.tsx         # OpenAI / Codex 配置面板
+│   │   ├── 📄 ClaudePanel.tsx          # Claude Code CLI 托管面板
+│   │   ├── 📄 WorkbuddyPanel.tsx       # WorkBuddy AI 模型管理面板
+│   │   └── 📄 AccioWorkPanel.tsx       # Accio Work 本地 Bridge 托管面板
 │   ├── 📁 lib/              # API 请求、Tauri IPC 封装与工具函数
-│   ├── 📄 App.tsx           # 桌面主窗口、双栏布局与 4 阶段启动时序
+│   ├── 📄 App.tsx           # 桌面主窗口、双栏布局与全局滚动容器
 │   └── 📄 main.tsx          # 前端主入口
 ├── 📁 src-tauri/            # Tauri + Rust 桌面后端
 │   ├── 📁 icons/            # 编译生成的全平台全尺寸专属 App 图标库
 │   ├── 📁 src/
 │   │   ├── 📁 accio/        # Accio Local Bridge 网关（bridge.rs, config.rs, protocol.rs）
-│   │   ├── 📄 auth.rs       # bob-api 账号认证、会话续期与令牌分发
+│   │   ├── 📄 auth.rs       # bob-api 账号认证、会话续期、通道分组概览 (get_channel_group_overview)
 │   │   ├── 📄 app_paths.rs  # 五大 Agent 路径探测引擎
 │   │   ├── 📄 process_manager.rs # 进程树安全熔断与热重启
 │   │   ├── 📄 updater.rs    # 自动更新与断点下载
@@ -233,6 +256,8 @@ AI-Helper/
 - [x] **v1.0.37**: Accio Bridge 支持 DALL-E 3 生图协议转译，MCP 显式代理路由，Function Calling 多格式容错自愈。
 - [x] **v1.0.41**: Bridge 接入 gzip/Brotli 请求解码、端到端头部白名单治理、SSE 错误归一化、双重资源保护上限。
 - [x] **v1.0.43**: 完整切换至 OpenAI Responses API (`/v1/responses`) 协议，修复 Tool 参数类型安全问题，测试端点与运行链路完全对齐。
+- [x] **v1.0.48**: 优化官网落地页与下载区 Bento 响应式布局，修复卡片间距与样式异常。
+- [x] **v1.0.49**: 推出通道分组智能检测与健康稳定性监控（Channel Group Monitor），支持 1h/3h/6h 遥测时段切换、Ribbon/Area/Bar 三大可视化模式、四大 Agent 专属通道路由规则与横向对比抽屉；新增配置文件路径一键原生调阅 (ConfigPathBar)。
 - [ ] **v1.1.0** *(Planned)*: 支持更多新兴 AI 编程工具与 Agent 扩展（如 Roo Code、Cursor、Windsurf 配置文件管理）。
 - [ ] **v1.2.0** *(Planned)*: 支持多套环境配置档案（Profiles）一键快照保存与秒级切换。
 - [ ] **v1.3.0** *(Planned)*: 探索 macOS / Linux 桌面版本的原生多平台适配构建。

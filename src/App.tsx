@@ -832,62 +832,62 @@ function AppContent() {
           </div>
         </aside>
 
-        {/* ── 右侧主工作台内容区 (占满右侧全部屏幕) ── */}
+        {/* ── 右侧主工作台内容区 (占满右侧全部屏幕，作为唯一全局滚动条容器) ── */}
         <main className="flex-1 min-w-0 h-full overflow-y-auto p-5 lg:p-6 xl:p-8 flex flex-col">
-          <div className="w-full flex-1 flex flex-col min-h-0">
+          <div className="w-full min-h-full flex flex-col">
             <AnimatePresence mode="wait">
               {tab === "chatgpt" ? (
                 <motion.div
                   key="chatgpt"
-                  initial={{ opacity: 0, y: 8 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -8 }}
-                  transition={{ duration: 0.2, ease: "easeOut" }}
-                  className="w-full flex-1 flex flex-col min-h-0"
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  transition={{ duration: 0.18, ease: "easeOut" }}
+                  className="w-full min-h-full flex flex-col"
                 >
                   <ChatGPTPanel />
                 </motion.div>
               ) : tab === "claude" ? (
                 <motion.div
                   key="claude"
-                  initial={{ opacity: 0, y: 8 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -8 }}
-                  transition={{ duration: 0.2, ease: "easeOut" }}
-                  className="w-full flex-1 flex flex-col min-h-0"
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  transition={{ duration: 0.18, ease: "easeOut" }}
+                  className="w-full min-h-full flex flex-col"
                 >
                   <ClaudePanel />
                 </motion.div>
               ) : tab === "workbuddy" ? (
                 <motion.div
                   key="workbuddy"
-                  initial={{ opacity: 0, y: 8 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -8 }}
-                  transition={{ duration: 0.2, ease: "easeOut" }}
-                  className="w-full flex-1 flex flex-col min-h-0"
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  transition={{ duration: 0.18, ease: "easeOut" }}
+                  className="w-full min-h-full flex flex-col"
                 >
                   <WorkbuddyPanel />
                 </motion.div>
               ) : tab === "acciowork" ? (
                 <motion.div
                   key="acciowork"
-                  initial={{ opacity: 0, y: 8 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -8 }}
-                  transition={{ duration: 0.2, ease: "easeOut" }}
-                  className="w-full flex-1 flex flex-col min-h-0"
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  transition={{ duration: 0.18, ease: "easeOut" }}
+                  className="w-full min-h-full flex flex-col"
                 >
                   <AccioWorkPanel />
                 </motion.div>
               ) : (
                 <motion.div
                   key="paths"
-                  initial={{ opacity: 0, y: 8 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -8 }}
-                  transition={{ duration: 0.2, ease: "easeOut" }}
-                  className="w-full flex-1 flex flex-col min-h-0"
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  transition={{ duration: 0.18, ease: "easeOut" }}
+                  className="w-full min-h-full flex flex-col"
                 >
                   <AppPathsPanel />
                 </motion.div>

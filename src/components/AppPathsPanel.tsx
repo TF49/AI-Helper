@@ -418,7 +418,7 @@ export function AppPathsPanel() {
   }
 
   return (
-    <div className="w-full flex-1 flex flex-col justify-between min-h-0 gap-5 pb-2">
+    <div className="w-full min-h-full flex flex-col justify-between gap-5 pb-2">
       {/* ── 顶部面板标题栏与快速概览 ── */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 pb-3.5 border-b border-slate-200/80 dark:border-white/10 flex-shrink-0">
         <div className="flex items-center gap-3">
@@ -485,7 +485,7 @@ export function AppPathsPanel() {
       </div>
 
       {/* ── 主配置列表 ── */}
-      <div className="flex-1 flex flex-col gap-4 overflow-y-auto pr-1 pb-2 min-h-0 scroll-smooth">
+      <div className="w-full flex-1 flex flex-col gap-4">
         {/* ── CLI 手动安装与更新命令中心 ── */}
         {showManualInstallGuide && (
           <div ref={topGuideRef} className="flex-shrink-0 min-h-fit">
@@ -1737,8 +1737,8 @@ export function AppPathsPanel() {
 
       </div>
 
-      {/* ── 底部保存栏 ── */}
-      <div className="pt-2 flex-shrink-0">
+      {/* ── 底部保存栏 (吸附于视口底部，确保随时可保存) ── */}
+      <div className="sticky bottom-0 z-20 pt-3 pb-1 flex-shrink-0 bg-white/95 dark:bg-[#0c0e18]/95 backdrop-blur-md border-t border-slate-200/80 dark:border-white/10 mt-auto">
         <StarBorder
           className="w-full shadow-md"
           color="#0d9488"

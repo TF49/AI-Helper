@@ -5,8 +5,6 @@ import {
   Save,
   RefreshCw,
   Server,
-  FileCode,
-  ShieldAlert,
   Cpu,
   Sliders,
   HelpCircle,
@@ -27,9 +25,10 @@ import {
   fetchCodexModels,
   getWorkbuddyConfig,
 } from "../lib/api";
-import { StatusBadge } from "./StatusBadge";
+import { ConfigPathBar } from "./ConfigPathBar";
 import { NodeCardSelector } from "./NodeCardSelector";
 import { ApiKeyInput } from "./ApiKeyInput";
+import { ChannelGroupMonitor } from "./ChannelGroupMonitor";
 import { ModelInput } from "./ModelInput";
 import { Label } from "./ui/label";
 import {
@@ -326,7 +325,10 @@ export function WorkbuddyPanel() {
   };
 
   const urlSummary = url
-    ? url.replace(/https?:\/\//, "").replace(/\/$/, "").split("/")[0]
+    ? url
+        .replace(/https?:\/\//, "")
+        .replace(/\/$/, "")
+        .split("/")[0]
     : undefined;
   const keySummary =
     apiKey.length > 8
@@ -357,7 +359,7 @@ export function WorkbuddyPanel() {
   }
 
   return (
-    <div className="w-full flex-1 flex flex-col justify-between min-h-0 gap-4 pb-2">
+    <div className="w-full min-h-full flex flex-col justify-between gap-5 pb-2">
       {/* ── 顶部面板标题栏 ── */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 pb-3 border-b border-slate-200/80 dark:border-white/10 flex-shrink-0">
         <div className="flex items-center gap-3">
@@ -374,20 +376,29 @@ export function WorkbuddyPanel() {
               </span>
             </div>
             <p className="text-xs text-slate-500 dark:text-gray-400 mt-0.5">
-              为 WorkBuddy 自定义服务商以数组形式拼接追加多个模型，支持独立路由节点与认证凭据
+              为 WorkBuddy
+              自定义服务商以数组形式拼接追加多个模型，支持独立路由节点与认证凭据
             </p>
           </div>
         </div>
 
-        <button
-          type="button"
-          onClick={handleReload}
-          className="self-start md:self-auto flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-medium transition-colors bg-white hover:bg-slate-50 border-slate-200 text-slate-700 dark:bg-white/5 dark:hover:bg-white/10 dark:border-white/10 dark:text-gray-300 shadow-2xs cursor-pointer"
-          title="重新载入本地配置"
-        >
-          <RefreshCw size={12} />
-          <span>重新载入</span>
-        </button>
+        <div className="self-start md:self-auto flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={handleReload}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-medium transition-colors bg-white hover:bg-slate-50 border-slate-200 text-slate-700 dark:bg-white/5 dark:hover:bg-white/10 dark:border-white/10 dark:text-gray-300 shadow-2xs cursor-pointer"
+            title="重新载入本地配置"
+          >
+            <RefreshCw size={12} />
+            <span>重新载入</span>
+          </button>
+          <ConfigPathBar
+            path={configPath}
+            shortPath="~/.workbuddy-ai/models.json"
+            exists={configExists}
+            accentColor="emerald"
+          />
+        </div>
       </div>
 
       {/* ── 步骤指示条（非摘要模式下显示） ── */}
@@ -404,10 +415,10 @@ export function WorkbuddyPanel() {
       )}
 
       {/* ── 主内容工作区 ── */}
-      <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
+      <div className="w-full flex-1 flex flex-col gap-4">
         {showSummary ? (
           /* ── 摘要视图（已有配置时默认呈现） ── */
-          <div className="flex-1 overflow-y-auto px-1 py-1 flex flex-col gap-4">
+          <div className="w-full flex flex-col gap-4">
             <SpotlightCard
               className="p-5 rounded-2xl border border-slate-200/90 dark:border-white/10 bg-white/80 dark:bg-[#121524]/60 shadow-sm"
               spotlightColor="rgba(16, 185, 129, 0.12)"
@@ -432,7 +443,10 @@ export function WorkbuddyPanel() {
                     <Server size={13} className="text-emerald-500" />
                     <span>服务网关节点</span>
                   </div>
-                  <div className="text-xs font-mono font-medium text-slate-800 dark:text-gray-200 truncate" title={url}>
+                  <div
+                    className="text-xs font-mono font-medium text-slate-800 dark:text-gray-200 truncate"
+                    title={url}
+                  >
                     {urlSummary || url}
                   </div>
                 </div>
@@ -491,7 +505,8 @@ export function WorkbuddyPanel() {
                   <div className="flex flex-wrap gap-1.5 max-h-[100px] overflow-y-auto">
                     {configuredModels.map((item) => {
                       const isSelected =
-                        item.id.trim().toLowerCase() === model.trim().toLowerCase();
+                        item.id.trim().toLowerCase() ===
+                        model.trim().toLowerCase();
                       return (
                         <button
                           key={item.id}
@@ -514,30 +529,7 @@ export function WorkbuddyPanel() {
                   </div>
                 </div>
               )}
-            </SpotlightCard>
-
-            <SpotlightCard
-              className="p-5 rounded-2xl border border-slate-200/90 dark:border-white/10 bg-white/80 dark:bg-[#121524]/60 shadow-sm"
-              spotlightColor="rgba(16, 185, 129, 0.12)"
-            >
-              <div className="flex items-center justify-between mb-3">
-                <Label className="text-xs font-semibold text-slate-800 dark:text-gray-200 flex items-center gap-2">
-                  <FileCode size={14} className="text-emerald-500" />
-                  本地配置文件路径
-                </Label>
-                <span className="text-[11px] font-mono text-slate-400 dark:text-gray-500">
-                  ~/.workbuddy-ai/models.json
-                </span>
-              </div>
-
-              <StatusBadge
-                exists={configExists}
-                path={configPath}
-                onReload={handleReload}
-                accentColor="emerald"
-              />
-
-              <div className="mt-3">
+              <div className="mt-4 pt-3.5 border-t border-slate-100 dark:border-white/5">
                 <div className="flex items-center gap-2 p-2.5 rounded-xl bg-slate-50/70 border border-slate-200/80 dark:bg-white/[0.03] dark:border-white/5 text-xs text-slate-500 dark:text-gray-400">
                   <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 flex-shrink-0" />
                   <span className="leading-relaxed">
@@ -550,6 +542,13 @@ export function WorkbuddyPanel() {
                 </div>
               </div>
             </SpotlightCard>
+
+            {/* 实时通道分组健康监控面板（概览模式直接呈现） */}
+            <ChannelGroupMonitor
+              toolName="WorkBuddy"
+              toolId="workbuddy"
+              accentColor="emerald"
+            />
           </div>
         ) : (
           /* ── 步骤化引导视图 ── */
@@ -561,7 +560,7 @@ export function WorkbuddyPanel() {
               initial="enter"
               animate="center"
               exit="exit"
-              className="flex-1 min-h-0 flex flex-col overflow-y-auto px-1 py-1 gap-4"
+              className="w-full flex flex-col gap-4"
             >
               {currentStep === 0 && (
                 <SpotlightCard
@@ -581,7 +580,6 @@ export function WorkbuddyPanel() {
                     value={url}
                     onChange={setUrl}
                     accentColor="emerald"
-                    className="h-full"
                   />
                   <p className="mt-3 text-[11px] text-slate-500 dark:text-gray-400">
                     选择 API 服务中转节点，WorkBuddy 将通过此节点转发模型请求。
@@ -590,69 +588,23 @@ export function WorkbuddyPanel() {
               )}
 
               {currentStep === 1 && (
-                <div className="space-y-4">
-                  <SpotlightCard
-                    className="p-5 rounded-2xl border border-slate-200/90 dark:border-white/10 bg-white/80 dark:bg-[#121524]/60 shadow-sm"
-                    spotlightColor="rgba(16, 185, 129, 0.12)"
-                  >
-                    <ApiKeyInput
-                      title="OpenAI API Key"
-                      badgeText="models.json"
-                      value={apiKey}
-                      onChange={setApiKey}
-                      placeholder="sk-... (填入 API Key)"
-                      storageLocation="~/.workbuddy-ai/models.json"
-                      hintText="无需环境变量"
-                      accentColor="emerald"
-                      toolName="WorkBuddy"
-                      toolId="workbuddy"
-                    />
-                  </SpotlightCard>
-
-                  <SpotlightCard
-                    className="p-5 rounded-2xl border border-slate-200/90 dark:border-white/10 bg-white/80 dark:bg-[#121524]/60 shadow-sm"
-                    spotlightColor="rgba(16, 185, 129, 0.12)"
-                  >
-                    <div className="flex items-center justify-between mb-3">
-                      <Label className="text-xs font-semibold text-slate-800 dark:text-gray-200 flex items-center gap-2">
-                        <FileCode size={14} className="text-emerald-500" />
-                        本地配置文件路径
-                      </Label>
-                      <span className="text-[11px] font-mono text-slate-400 dark:text-gray-500">
-                        ~/.workbuddy-ai/models.json
-                      </span>
-                    </div>
-
-                    <StatusBadge
-                      exists={configExists}
-                      path={configPath}
-                      onReload={handleReload}
-                      accentColor="emerald"
-                    />
-
-                    <div className="mt-3">
-                      {!configExists ? (
-                        <div className="flex items-start gap-1.5 p-2.5 rounded-lg bg-amber-500/10 border border-amber-500/20 text-amber-700 dark:text-amber-300 text-xs">
-                          <ShieldAlert size={14} className="flex-shrink-0 mt-0.5" />
-                          <span>
-                            未检测到 WorkBuddy models.json 文件，保存新模型后将自动创建。
-                          </span>
-                        </div>
-                      ) : (
-                        <div className="flex items-center gap-2 p-2.5 rounded-xl bg-slate-50/70 border border-slate-200/80 dark:bg-white/[0.03] dark:border-white/5 text-xs text-slate-500 dark:text-gray-400">
-                          <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 flex-shrink-0" />
-                          <span className="leading-relaxed">
-                            当前已配置{" "}
-                            <strong className="text-emerald-600 dark:text-emerald-400 font-mono">
-                              {configuredModels.length}
-                            </strong>{" "}
-                            个独立模型。保存后支持内部热重载。
-                          </span>
-                        </div>
-                      )}
-                    </div>
-                  </SpotlightCard>
-                </div>
+                <SpotlightCard
+                  className="p-5 rounded-2xl border border-slate-200/90 dark:border-white/10 bg-white/80 dark:bg-[#121524]/60 shadow-sm"
+                  spotlightColor="rgba(16, 185, 129, 0.12)"
+                >
+                  <ApiKeyInput
+                    title="OpenAI API Key"
+                    badgeText="models.json"
+                    value={apiKey}
+                    onChange={setApiKey}
+                    placeholder="sk-... (填入 API Key)"
+                    storageLocation="~/.workbuddy-ai/models.json"
+                    hintText="无需环境变量"
+                    accentColor="emerald"
+                    toolName="WorkBuddy"
+                    toolId="workbuddy"
+                  />
+                </SpotlightCard>
               )}
 
               {currentStep === 2 && (
@@ -702,7 +654,9 @@ export function WorkbuddyPanel() {
 
                               <button
                                 type="button"
-                                onClick={(e) => void handleDeleteModel(e, item.id)}
+                                onClick={(e) =>
+                                  void handleDeleteModel(e, item.id)
+                                }
                                 disabled={isDeleting}
                                 className="opacity-40 group-hover:opacity-100 hover:text-red-500 transition-opacity p-0.5 rounded ml-0.5"
                                 title={`从 WorkBuddy 中移除模型 ${item.id}`}
@@ -743,14 +697,16 @@ export function WorkbuddyPanel() {
                         <div className="flex items-center gap-1.5 p-2 rounded-lg bg-blue-500/10 border border-blue-500/20 text-blue-700 dark:text-blue-300 text-xs">
                           <Info size={13} className="flex-shrink-0" />
                           <span>
-                            当前模型已存在于 models.json 中，保存将更新此模型的各项配置参数。
+                            当前模型已存在于 models.json
+                            中，保存将更新此模型的各项配置参数。
                           </span>
                         </div>
                       ) : model.trim() ? (
                         <div className="flex items-center gap-1.5 p-2 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-emerald-700 dark:text-emerald-300 text-xs">
                           <Sparkles size={13} className="flex-shrink-0" />
                           <span>
-                            新增模型模式：保存将作为新模型追加（拼接）至 models.json 末尾。
+                            新增模型模式：保存将作为新模型追加（拼接）至
+                            models.json 末尾。
                           </span>
                         </div>
                       ) : null}
@@ -763,9 +719,13 @@ export function WorkbuddyPanel() {
                 <div className="space-y-4">
                   {/* 可快速跳过提示横幅 */}
                   <div className="flex items-start gap-2 p-3 rounded-xl bg-slate-50 dark:bg-white/[0.03] border border-slate-200/60 dark:border-white/5 text-xs text-slate-500 dark:text-gray-400">
-                    <Info size={14} className="flex-shrink-0 mt-0.5 text-emerald-500" />
+                    <Info
+                      size={14}
+                      className="flex-shrink-0 mt-0.5 text-emerald-500"
+                    />
                     <span>
-                      以下高级特性与 Token 参数均已预置合理默认值。若不确定可保持默认，直接点击下方保存即可完成配置。
+                      以下高级特性与 Token
+                      参数均已预置合理默认值。若不确定可保持默认，直接点击下方保存即可完成配置。
                     </span>
                   </div>
 
@@ -789,7 +749,9 @@ export function WorkbuddyPanel() {
                         <input
                           type="checkbox"
                           checked={supportsToolCall}
-                          onChange={(e) => setSupportsToolCall(e.target.checked)}
+                          onChange={(e) =>
+                            setSupportsToolCall(e.target.checked)
+                          }
                           className="w-3.5 h-3.5 rounded text-emerald-600 focus:ring-emerald-500 border-slate-300 dark:border-white/20 dark:bg-white/5"
                         />
                         <span className="text-xs text-slate-700 dark:text-gray-300 select-none">
@@ -813,7 +775,9 @@ export function WorkbuddyPanel() {
                         <input
                           type="checkbox"
                           checked={supportsReasoning}
-                          onChange={(e) => setSupportsReasoning(e.target.checked)}
+                          onChange={(e) =>
+                            setSupportsReasoning(e.target.checked)
+                          }
                           className="w-3.5 h-3.5 rounded text-emerald-600 focus:ring-emerald-500 border-slate-300 dark:border-white/20 dark:bg-white/5"
                         />
                         <span className="text-xs text-slate-700 dark:text-gray-300 select-none">
@@ -837,7 +801,9 @@ export function WorkbuddyPanel() {
                         <input
                           type="checkbox"
                           checked={canDisableThinking}
-                          onChange={(e) => setCanDisableThinking(e.target.checked)}
+                          onChange={(e) =>
+                            setCanDisableThinking(e.target.checked)
+                          }
                           className="w-3.5 h-3.5 rounded text-emerald-600 focus:ring-emerald-500 border-slate-300 dark:border-white/20 dark:bg-white/5"
                         />
                         <span className="text-xs text-slate-700 dark:text-gray-300 select-none">
@@ -852,7 +818,9 @@ export function WorkbuddyPanel() {
                         <input
                           type="checkbox"
                           checked={useCustomProtocol}
-                          onChange={(e) => setUseCustomProtocol(e.target.checked)}
+                          onChange={(e) =>
+                            setUseCustomProtocol(e.target.checked)
+                          }
                           className="w-3.5 h-3.5 rounded text-emerald-600 focus:ring-emerald-500 border-slate-300 dark:border-white/20 dark:bg-white/5"
                         />
                         <span className="text-xs text-slate-700 dark:text-gray-300 select-none flex items-center gap-1">
@@ -905,7 +873,9 @@ export function WorkbuddyPanel() {
                           </span>
                           <div className="flex flex-wrap gap-2 pt-0.5">
                             {EFFORT_OPTIONS.map((item) => {
-                              const checked = supportedEfforts.includes(item.id);
+                              const checked = supportedEfforts.includes(
+                                item.id,
+                              );
                               return (
                                 <button
                                   key={item.id}
@@ -945,7 +915,9 @@ export function WorkbuddyPanel() {
                             value={maxInputTokens}
                             onChange={(e) =>
                               setMaxInputTokens(
-                                e.target.value === "" ? "" : Number(e.target.value),
+                                e.target.value === ""
+                                  ? ""
+                                  : Number(e.target.value),
                               )
                             }
                             placeholder="默认 32768"
@@ -978,7 +950,9 @@ export function WorkbuddyPanel() {
                             value={maxOutputTokens}
                             onChange={(e) =>
                               setMaxOutputTokens(
-                                e.target.value === "" ? "" : Number(e.target.value),
+                                e.target.value === ""
+                                  ? ""
+                                  : Number(e.target.value),
                               )
                             }
                             placeholder="默认 32768"
@@ -1011,8 +985,8 @@ export function WorkbuddyPanel() {
         )}
       </div>
 
-      {/* ── 底部操作栏 ── */}
-      <div className="pt-2 flex-shrink-0 border-t border-slate-100 dark:border-white/5">
+      {/* ── 底部操作栏 (吸附于视口底部，确保随时可保存) ── */}
+      <div className="sticky bottom-0 z-20 pt-3 pb-1 flex-shrink-0 bg-white/95 dark:bg-[#0c0e18]/95 backdrop-blur-md border-t border-slate-200/80 dark:border-white/10 mt-auto">
         {showSummary ? (
           <div className="flex items-center gap-3">
             <button
@@ -1092,7 +1066,11 @@ export function WorkbuddyPanel() {
                     innerClassName="bg-emerald-600 hover:bg-emerald-700 text-white dark:bg-[#0c1c18] dark:text-emerald-100 py-2 cursor-pointer"
                   >
                     <div className="flex items-center justify-center gap-1.5 font-semibold tracking-wide text-xs">
-                      {isExistingModel ? <Save size={14} /> : <Plus size={14} />}
+                      {isExistingModel ? (
+                        <Save size={14} />
+                      ) : (
+                        <Plus size={14} />
+                      )}
                       <span>
                         {isExistingModel
                           ? `保存并更新 (${model})`

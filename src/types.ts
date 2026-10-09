@@ -284,4 +284,23 @@ export interface CurrentAuthState {
   access_token_expires_at?: number | null;
 }
 
+export interface ChannelTrendPoint {
+  timestamp: number;
+  success_rate: number;
+  avg_response_time: number;
+  has_data: boolean;
+  total_requests: number;
+  failed_requests: number;
+}
+
+export interface ChannelGroupOverview {
+  group_name: string;
+  success_rate: number;
+  avg_response_time: number;
+  has_successful_requests: boolean;
+  total_requests: number;
+  failed_requests: number;
+  trend_points: ChannelTrendPoint[];
+}
+
 

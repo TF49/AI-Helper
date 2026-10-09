@@ -10,10 +10,8 @@ import {
   Power,
   RotateCcw,
   Sparkles,
-  FolderOpen,
   Radio,
   AlertCircle,
-  FileCode,
   ChevronLeft,
   ChevronRight,
   CheckCircle2,
@@ -30,11 +28,11 @@ import {
   fetchCodexModels,
   checkAppProcessStatus,
   restartTargetApp,
-  openConfigFile,
 } from "../lib/api";
-import { StatusBadge } from "./StatusBadge";
+import { ConfigPathBar } from "./ConfigPathBar";
 import { NodeCardSelector } from "./NodeCardSelector";
 import { ApiKeyInput } from "./ApiKeyInput";
+import { ChannelGroupMonitor } from "./ChannelGroupMonitor";
 import { ModelInput } from "./ModelInput";
 import { Label } from "./ui/label";
 import {
@@ -293,7 +291,10 @@ export function AccioWorkPanel() {
 
   // ── 摘要计算 ──
   const urlSummary = url
-    ? url.replace(/https?:\/\//, "").replace(/\/$/, "").split("/")[0]
+    ? url
+        .replace(/https?:\/\//, "")
+        .replace(/\/$/, "")
+        .split("/")[0]
     : undefined;
   const keySummary =
     apiKey.length > 8
@@ -337,11 +338,11 @@ export function AccioWorkPanel() {
                 value={url}
                 onChange={setUrl}
                 accentColor="orange"
-                className="h-full"
               />
             </SpotlightCard>
             <p className="text-[11px] text-slate-500 dark:text-gray-400 text-center px-2">
-              选择一个距离最近或延迟最低的接入节点，Bridge 网关将通过此节点转发请求。
+              选择一个距离最近或延迟最低的接入节点，Bridge
+              网关将通过此节点转发请求。
             </p>
           </div>
         );
@@ -354,7 +355,7 @@ export function AccioWorkPanel() {
               spotlightColor="rgba(255, 106, 0, 0.12)"
             >
               <ApiKeyInput
-                title="API Key 凭据"
+                title="API Key"
                 badgeText="accio_config.json"
                 value={apiKey}
                 onChange={setApiKey}
@@ -365,76 +366,6 @@ export function AccioWorkPanel() {
                 toolName="Accio Work"
                 toolId="acciowork"
               />
-            </SpotlightCard>
-
-            <SpotlightCard
-              className="p-5 rounded-2xl border border-slate-200/90 dark:border-white/10 bg-white/80 dark:bg-[#121524]/60 shadow-sm dark:shadow-none"
-              spotlightColor="rgba(255, 106, 0, 0.12)"
-            >
-              <div className="flex items-center justify-between mb-3">
-                <Label className="text-xs font-semibold text-slate-800 dark:text-gray-200 flex items-center gap-2">
-                  <FileCode size={14} className="text-orange-500" />
-                  本地配置文件路径
-                </Label>
-                <div className="flex items-center gap-2">
-                  <span className="text-[11px] font-mono text-slate-400 dark:text-gray-500">
-                    ~/.ai-helper/accio_config.json
-                  </span>
-                  {configPath && (
-                    <button
-                      type="button"
-                      onClick={() => void openConfigFile(configPath)}
-                      className="flex items-center gap-1 text-[11px] text-orange-600 hover:text-orange-700 dark:text-orange-400 dark:hover:text-orange-300 cursor-pointer"
-                      title="在默认文本编辑器中打开"
-                    >
-                      <FolderOpen size={12} />
-                      <span>打开</span>
-                    </button>
-                  )}
-                </div>
-              </div>
-
-              <StatusBadge
-                exists={configExists}
-                path={configPath}
-                onReload={() => void load(true)}
-                accentColor="orange"
-              />
-
-              <div className="mt-3">
-                <div className="flex items-center justify-between p-2.5 rounded-xl bg-slate-50/70 dark:bg-white/[0.03] border border-slate-200/80 dark:border-white/5 text-xs">
-                  <div className="flex items-center gap-2 truncate pr-2">
-                    <span
-                      className={`w-2 h-2 rounded-full shrink-0 ${
-                        clientRunning
-                          ? "bg-emerald-500 animate-pulse"
-                          : isInstalled
-                            ? "bg-blue-400"
-                            : "bg-slate-400"
-                      }`}
-                    />
-                    <span className="text-slate-700 dark:text-gray-300 truncate">
-                      {clientRunning
-                        ? "Accio Work 客户端运行中"
-                        : isInstalled
-                          ? "客户端已安装就绪"
-                          : "未检测到默认安装路径"}
-                    </span>
-                  </div>
-                  {appPath ? (
-                    <span
-                      className="text-[10px] font-mono text-slate-400 dark:text-gray-500 truncate max-w-[160px]"
-                      title={appPath}
-                    >
-                      {appPath}
-                    </span>
-                  ) : (
-                    <span className="text-[10px] text-amber-500">
-                      可在【路径管理】中指定
-                    </span>
-                  )}
-                </div>
-              </div>
             </SpotlightCard>
           </div>
         );
@@ -620,7 +551,7 @@ export function AccioWorkPanel() {
 
   // ── 摘要视图 ──
   const SummarySection = () => (
-    <div className="flex-1 overflow-y-auto px-1 py-1 flex flex-col gap-4">
+    <div className="w-full flex flex-col gap-4">
       <SpotlightCard
         className="p-5 rounded-2xl border border-slate-200/90 dark:border-white/10 bg-white/80 dark:bg-[#121524]/60 shadow-sm"
         spotlightColor="rgba(255, 106, 0, 0.12)"
@@ -643,7 +574,10 @@ export function AccioWorkPanel() {
               <Server size={13} className="text-orange-500" />
               <span>服务网关节点</span>
             </div>
-            <div className="text-xs font-mono font-medium text-slate-800 dark:text-gray-200 truncate" title={url}>
+            <div
+              className="text-xs font-mono font-medium text-slate-800 dark:text-gray-200 truncate"
+              title={url}
+            >
               {urlSummary || url}
             </div>
           </div>
@@ -674,47 +608,12 @@ export function AccioWorkPanel() {
               <span>Bridge 网关端口</span>
             </div>
             <div className="text-xs font-mono font-medium text-slate-800 dark:text-gray-200 truncate">
-              :{bridgeStatus.port || bridgePort} ({bridgeStatus.is_running ? "在线" : "未启动"})
+              :{bridgeStatus.port || bridgePort} (
+              {bridgeStatus.is_running ? "在线" : "未启动"})
             </div>
           </div>
         </div>
-      </SpotlightCard>
-
-      <SpotlightCard
-        className="p-5 rounded-2xl border border-slate-200/90 dark:border-white/10 bg-white/80 dark:bg-[#121524]/60 shadow-sm"
-        spotlightColor="rgba(255, 106, 0, 0.12)"
-      >
-        <div className="flex items-center justify-between mb-3">
-          <Label className="text-xs font-semibold text-slate-800 dark:text-gray-200 flex items-center gap-2">
-            <FileCode size={14} className="text-orange-500" />
-            本地配置文件路径
-          </Label>
-          <div className="flex items-center gap-2">
-            <span className="text-[11px] font-mono text-slate-400 dark:text-gray-500">
-              ~/.ai-helper/accio_config.json
-            </span>
-            {configPath && (
-              <button
-                type="button"
-                onClick={() => void openConfigFile(configPath)}
-                className="flex items-center gap-1 text-[11px] text-orange-600 hover:text-orange-700 dark:text-orange-400 dark:hover:text-orange-300 cursor-pointer"
-                title="在默认文本编辑器中打开"
-              >
-                <FolderOpen size={12} />
-                <span>打开</span>
-              </button>
-            )}
-          </div>
-        </div>
-
-        <StatusBadge
-          exists={configExists}
-          path={configPath}
-          onReload={() => void load(true)}
-          accentColor="orange"
-        />
-
-        <div className="mt-3">
+        <div className="mt-4 pt-3.5 border-t border-slate-100 dark:border-white/5">
           <div className="flex items-center justify-between p-2.5 rounded-xl bg-slate-50/70 dark:bg-white/[0.03] border border-slate-200/80 dark:border-white/5 text-xs">
             <div className="flex items-center gap-2 truncate pr-2">
               <span
@@ -749,6 +648,13 @@ export function AccioWorkPanel() {
           </div>
         </div>
       </SpotlightCard>
+
+      {/* 实时通道分组健康监控面板（概览模式直接呈现） */}
+      <ChannelGroupMonitor
+        toolName="Accio Work"
+        toolId="acciowork"
+        accentColor="orange"
+      />
     </div>
   );
 
@@ -764,7 +670,7 @@ export function AccioWorkPanel() {
   }
 
   return (
-    <div className="w-full flex-1 flex flex-col min-h-0 pb-2">
+    <div className="w-full min-h-full flex flex-col justify-between gap-5 pb-2">
       {/* ── 标题栏 ── */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 pb-3.5 border-b border-slate-200/80 dark:border-white/10 flex-shrink-0">
         <div className="flex items-center gap-3">
@@ -781,8 +687,8 @@ export function AccioWorkPanel() {
               </span>
             </div>
             <p className="text-xs text-slate-500 dark:text-gray-400 mt-0.5">
-              为阿里巴巴国际站 Accio Work
-              桌面客户端提供智能转译网关，零耗 i 豆对接任意第三方大模型
+              为阿里巴巴国际站 Accio Work 桌面客户端提供智能转译网关，零耗 i
+              豆对接任意第三方大模型
             </p>
           </div>
         </div>
@@ -819,6 +725,12 @@ export function AccioWorkPanel() {
             <RefreshCw size={12} />
             <span>重新载入</span>
           </button>
+          <ConfigPathBar
+            path={configPath}
+            shortPath="~/.ai-helper/accio_config.json"
+            exists={configExists}
+            accentColor="orange"
+          />
         </div>
       </div>
 
@@ -836,7 +748,7 @@ export function AccioWorkPanel() {
       )}
 
       {/* ── 主内容区 ── */}
-      <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
+      <div className="w-full flex-1 flex flex-col gap-4">
         {showSummary ? (
           <SummarySection />
         ) : (
@@ -848,7 +760,7 @@ export function AccioWorkPanel() {
               initial="enter"
               animate="center"
               exit="exit"
-              className="flex-1 min-h-0 flex flex-col overflow-y-auto"
+              className="w-full flex flex-col gap-4"
             >
               {renderStep(currentStep)}
             </motion.div>
@@ -856,8 +768,8 @@ export function AccioWorkPanel() {
         )}
       </div>
 
-      {/* ── 底部导航栏 ── */}
-      <div className="pt-3 flex-shrink-0 border-t border-slate-100/80 dark:border-white/5">
+      {/* ── 底部导航栏 (吸附于视口底部，确保随时可保存) ── */}
+      <div className="sticky bottom-0 z-20 pt-3 pb-1 flex-shrink-0 bg-white/95 dark:bg-[#0c0e18]/95 backdrop-blur-md border-t border-slate-200/80 dark:border-white/10 mt-auto">
         {showSummary ? (
           <div className="flex gap-3">
             <button
