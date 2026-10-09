@@ -19,7 +19,7 @@ set -euo pipefail
 
 # ── 配置区（按实际环境修改）─────────────────────────────────────────────────
 GITHUB_REPO="TF49/AI-Helper"
-DOWNLOAD_DIR="/var/www/ai-helper/downloads"
+DOWNLOAD_DIR="${DOWNLOAD_DIR:-/var/www/ai-helper/downloads}"
 # Tauri updater 公钥（与 tauri.conf.json pubkey 对应的私钥签出的 .sig 文件即为合法签名）
 # latest.json 中的 signature 字段直接取自 GitHub Release 附件里的 .sig 文件内容
 # ── 配置区结束 ───────────────────────────────────────────────────────────────
@@ -32,6 +32,35 @@ log() { echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*"; }
 cleanup_old_versions() {
     find "${DOWNLOAD_DIR}" -maxdepth 1 -type f -name 'AI-Helper-v*-Windows-x64-*' ! -name "AI-Helper-${TAG}-*" -print -delete \
         | while read -r removed; do log "已删除旧版本: ${removed}"; done
+}
+
+# 生成 downloads/version.json 供前端网站读取
+write_site_version() {
+    local ver="${1:-${VERSION}}"
+    local tag="v${ver#v}"
+    local setup="AI-Helper-${tag}-Windows-x64-Setup.exe"
+    local zip="AI-Helper-${tag}-Windows-x64-Standalone.zip"
+    local rel_date
+    rel_date=$(date '+%Y-%m-%d')
+
+    mkdir -p "${DOWNLOAD_DIR}"
+    cat > "${DOWNLOAD_DIR}/version.json" <<EOF
+{
+  "version": "${ver#v}",
+  "tag": "${tag}",
+  "releaseDate": "${rel_date}",
+  "setupFileName": "${setup}",
+  "zipFileName": "${zip}",
+  "setupDownloadUrl": "https://helper.bob-api.com/downloads/${setup}",
+  "zipDownloadUrl": "https://helper.bob-api.com/downloads/${zip}",
+  "fastSetupDownloadUrl": "https://ghfast.top/https://github.com/${GITHUB_REPO}/releases/download/${tag}/${setup}",
+  "fastZipDownloadUrl": "https://ghfast.top/https://github.com/${GITHUB_REPO}/releases/download/${tag}/${zip}",
+  "githubSetupDownloadUrl": "https://github.com/${GITHUB_REPO}/releases/download/${tag}/${setup}",
+  "githubZipDownloadUrl": "https://github.com/${GITHUB_REPO}/releases/download/${tag}/${zip}",
+  "releasePageUrl": "https://github.com/${GITHUB_REPO}/releases/tag/${tag}"
+}
+EOF
+    log "Generated ${DOWNLOAD_DIR}/version.json for ${tag}"
 }
 
 # ── 1. 确定版本号 ─────────────────────────────────────────────────────────────
@@ -58,6 +87,7 @@ if [[ -f "${LATEST_JSON}" ]]; then
     SYNCED_VER=$(grep '"version"' "${LATEST_JSON}" | head -1 | sed 's/.*"version": *"\([^"]*\)".*/\1/' | tr -d 'v')
     if [[ "${SYNCED_VER}" == "${VERSION}" ]]; then
         log "Already up to date (v${VERSION}). Nothing to do."
+        write_site_version "${VERSION}"
         cleanup_old_versions
         exit 0
     fi
@@ -115,6 +145,7 @@ mv "${TMP_DIR}/${SETUP_FILE}" "${DOWNLOAD_DIR}/${SETUP_FILE}"
 mv "${TMP_DIR}/${ZIP_FILE}"   "${DOWNLOAD_DIR}/${ZIP_FILE}"
 mv "${TMP_DIR}/latest.json"  "${DOWNLOAD_DIR}/latest.json"
 
+write_site_version "${VERSION}"
 cleanup_old_versions
 
 log "Sync complete: ${DOWNLOAD_DIR}/"

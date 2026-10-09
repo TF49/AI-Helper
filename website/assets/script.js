@@ -993,26 +993,33 @@ async function initReleaseInfo() {
 
   if (window.location.protocol === "file:") return;
 
-  // 只读同源 version.json，不再向 api.github.com / raw.githubusercontent.com 发起同步请求
-  // （那两个请求在国内不稳定，且回来后会把本站地址覆盖回 GitHub 直链）
-  try {
-    const localResponse = await fetch("./version.json?t=" + Date.now(), { cache: "no-store" });
-    if (localResponse.ok) {
-      const localData = await localResponse.json();
-      if (localData && (localData.tag || localData.version)) {
-        applyReleaseData({
-          tag: localData.tag || "v" + localData.version,
-          setupUrl: localData.setupDownloadUrl,
-          zipUrl: localData.zipDownloadUrl,
-          fastSetupUrl: localData.fastSetupDownloadUrl,
-          fastZipUrl: localData.fastZipDownloadUrl,
-          releasePageUrl: localData.releasePageUrl,
-          setupFileName: localData.setupFileName
-        });
+  // 依次尝试 /downloads/version.json（镜像站自动生成）与 ./version.json（静态打包），成功即返回
+  const versionEndpoints = [
+    "/downloads/version.json",
+    "./version.json"
+  ];
+
+  for (const endpoint of versionEndpoints) {
+    try {
+      const response = await fetch(endpoint + "?t=" + Date.now(), { cache: "no-store" });
+      if (response.ok) {
+        const data = await response.json();
+        if (data && (data.tag || data.version)) {
+          applyReleaseData({
+            tag: data.tag || "v" + data.version,
+            setupUrl: data.setupDownloadUrl,
+            zipUrl: data.zipDownloadUrl,
+            fastSetupUrl: data.fastSetupDownloadUrl,
+            fastZipUrl: data.fastZipDownloadUrl,
+            releasePageUrl: data.releasePageUrl,
+            setupFileName: data.setupFileName
+          });
+          return;
+        }
       }
+    } catch (_) {
+      // 忽略单个源请求失败，继续尝试下一个源
     }
-  } catch (_) {
-    // 同源请求失败时保持 CURRENT_VERSION 静态兜底
   }
 }
 
