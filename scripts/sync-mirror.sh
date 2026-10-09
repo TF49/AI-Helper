@@ -9,8 +9,10 @@
 #   例：bash sync-mirror.sh 1.0.50
 #   不传 VERSION 时自动从 GitHub API 获取最新版本号
 #
-# 建议配合 cron 自动化（每 10 分钟检查一次）：
-#   */10 * * * * /var/www/ai-helper/scripts/sync-mirror.sh >> /var/log/ai-helper-sync.log 2>&1
+# 建议配合 cron 自动化（每 10 分钟检查一次，避开整点）：
+#   3-59/10 * * * * /bin/bash /root/AI-Helper/scripts/sync-mirror.sh >> /var/log/ai-helper-mirror-sync.log 2>&1
+#
+# 每次运行都会只保留最新版本的安装包与 zip，旧版本自动删除。
 # =============================================================================
 
 set -euo pipefail
@@ -25,6 +27,12 @@ DOWNLOAD_DIR="/var/www/ai-helper/downloads"
 GITHUB_API="https://api.github.com/repos/${GITHUB_REPO}/releases/latest"
 
 log() { echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*"; }
+
+# 清理旧版本安装包：只保留当前 TAG 的 Setup.exe 和 Standalone.zip
+cleanup_old_versions() {
+    find "${DOWNLOAD_DIR}" -maxdepth 1 -type f -name 'AI-Helper-v*-Windows-x64-*' ! -name "AI-Helper-${TAG}-*" -print -delete \
+        | while read -r removed; do log "已删除旧版本: ${removed}"; done
+}
 
 # ── 1. 确定版本号 ─────────────────────────────────────────────────────────────
 if [[ "${1:-}" != "" ]]; then
@@ -50,6 +58,7 @@ if [[ -f "${LATEST_JSON}" ]]; then
     SYNCED_VER=$(grep '"version"' "${LATEST_JSON}" | head -1 | sed 's/.*"version": *"\([^"]*\)".*/\1/' | tr -d 'v')
     if [[ "${SYNCED_VER}" == "${VERSION}" ]]; then
         log "Already up to date (v${VERSION}). Nothing to do."
+        cleanup_old_versions
         exit 0
     fi
 fi
@@ -105,6 +114,8 @@ log "Generated latest.json for v${VERSION}"
 mv "${TMP_DIR}/${SETUP_FILE}" "${DOWNLOAD_DIR}/${SETUP_FILE}"
 mv "${TMP_DIR}/${ZIP_FILE}"   "${DOWNLOAD_DIR}/${ZIP_FILE}"
 mv "${TMP_DIR}/latest.json"  "${DOWNLOAD_DIR}/latest.json"
+
+cleanup_old_versions
 
 log "Sync complete: ${DOWNLOAD_DIR}/"
 log "  ${SETUP_FILE}"
