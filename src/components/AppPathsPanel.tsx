@@ -1736,10 +1736,10 @@ export function AppPathsPanel() {
 
       </div>
 
-      {/* ── 底部保存栏 (统一优化设计：布局均衡、去除过度拉伸与动态光晕) ── */}
-      <div className="sticky bottom-0 z-20 py-2.5 px-1 flex-shrink-0 bg-white/95 dark:bg-[#0c0e18]/95 backdrop-blur-md border-t border-slate-200/80 dark:border-white/10 mt-auto">
+      {/* ── 底部保存栏 (苹果风毛玻璃悬浮 Dock 栏) ── */}
+      <div className="sticky bottom-0 z-20 mt-auto py-2.5 px-4 rounded-2xl bg-white/45 dark:bg-[#0c0e18]/45 backdrop-blur-xl backdrop-saturate-150 border border-white/60 dark:border-white/10 shadow-[0_4px_24px_-2px_rgba(0,0,0,0.06),inset_0_1px_1px_0_rgba(255,255,255,0.7)] dark:shadow-[0_4px_24px_-2px_rgba(0,0,0,0.3),inset_0_1px_1px_0_rgba(255,255,255,0.08)] flex-shrink-0 transition-all">
         <div className="flex items-center justify-between gap-4">
-          <div className="text-[11px] text-slate-500 dark:text-gray-400 flex items-center gap-1.5">
+          <div className="text-[11px] text-slate-500 dark:text-gray-400 font-medium flex items-center gap-1.5">
             <span className="w-1.5 h-1.5 rounded-full bg-teal-500" />
             <span>保存后在完成模型连通性测试并应用配置时，系统将使用上述路径进行针对性拉起与环境变量注入</span>
           </div>

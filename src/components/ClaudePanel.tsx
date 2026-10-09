@@ -398,8 +398,8 @@ export function ClaudePanel() {
         )}
       </div>
 
-      {/* ── 底部操作栏 (统一优化设计：布局均衡、去除过度拉伸与动态光晕) ── */}
-      <div className="sticky bottom-0 z-20 py-2.5 px-1 flex-shrink-0 bg-white/95 dark:bg-[#0c0e18]/95 backdrop-blur-md border-t border-slate-200/80 dark:border-white/10 mt-auto">
+      {/* ── 底部操作栏 (苹果风毛玻璃悬浮 Dock 栏) ── */}
+      <div className="sticky bottom-0 z-20 mt-auto py-2.5 px-4 rounded-2xl bg-white/45 dark:bg-[#0c0e18]/45 backdrop-blur-xl backdrop-saturate-150 border border-white/60 dark:border-white/10 shadow-[0_4px_24px_-2px_rgba(0,0,0,0.06),inset_0_1px_1px_0_rgba(255,255,255,0.7)] dark:shadow-[0_4px_24px_-2px_rgba(0,0,0,0.3),inset_0_1px_1px_0_rgba(255,255,255,0.08)] flex-shrink-0 transition-all">
         {showSummary ? (
           <div className="flex items-center justify-between gap-4">
             {/* 左侧：辅助动作与状态指示 */}
@@ -410,13 +410,13 @@ export function ClaudePanel() {
                   setShowSummary(false);
                   setCurrentStep(0);
                 }}
-                className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-medium border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 dark:bg-white/5 dark:hover:bg-white/10 dark:border-white/10 dark:text-gray-300 transition-colors shadow-2xs cursor-pointer"
+                className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-medium border border-white/80 dark:border-white/10 bg-white/60 hover:bg-white/90 text-slate-700 dark:bg-white/5 dark:hover:bg-white/10 dark:text-gray-300 transition-all shadow-2xs backdrop-blur-xs cursor-pointer"
                 title="重新启动 3 步分步配置向导"
               >
                 <RefreshCw size={13} className="text-slate-500 dark:text-gray-400" />
                 <span>重新配置向导</span>
               </button>
-              <div className="hidden sm:flex items-center gap-1.5 text-[11px] text-slate-400 dark:text-gray-500">
+              <div className="hidden sm:flex items-center gap-1.5 text-[11px] text-slate-500 dark:text-gray-400 font-medium">
                 <span className="w-1.5 h-1.5 rounded-full bg-purple-500" />
                 <span>Claude Code 配置已生效 (settings.json)</span>
               </div>
@@ -443,13 +443,13 @@ export function ClaudePanel() {
                 <button
                   type="button"
                   onClick={handlePrev}
-                  className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-medium border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 dark:bg-white/5 dark:hover:bg-white/10 dark:border-white/10 dark:text-gray-300 transition-colors shadow-2xs cursor-pointer"
+                  className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-medium border border-white/80 dark:border-white/10 bg-white/60 hover:bg-white/90 text-slate-700 dark:bg-white/5 dark:hover:bg-white/10 dark:text-gray-300 transition-all shadow-2xs backdrop-blur-xs cursor-pointer"
                 >
                   <ChevronLeft size={14} />
                   <span>上一步</span>
                 </button>
               ) : null}
-              <span className="text-[11px] text-slate-400 dark:text-gray-500 font-medium px-2">
+              <span className="text-[11px] text-slate-500 dark:text-gray-400 font-medium px-2">
                 步骤 {currentStep + 1} / {TOTAL_STEPS}
               </span>
             </div>

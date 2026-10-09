@@ -608,45 +608,6 @@ function AppContent() {
                     />
                   )}
                 </button>
-
-                {/* 应用与 CLI 路径选项 */}
-                <button
-                  type="button"
-                  onClick={() => switchTab("paths")}
-                  className={cn(
-                    "relative w-full flex items-center justify-between p-2.5 rounded-xl border text-left transition-all cursor-pointer",
-                    tab === "paths"
-                      ? "border-teal-500/70 bg-teal-50/80 text-teal-900 dark:bg-teal-500/15 dark:border-teal-500/50 dark:text-teal-100 shadow-xs"
-                      : "border-transparent text-slate-600 dark:text-gray-400 hover:bg-slate-100/80 dark:hover:bg-white/5 hover:text-slate-900 dark:hover:text-gray-200",
-                  )}
-                >
-                  <div className="flex items-center gap-2.5 min-w-0">
-                    <div
-                      className={cn(
-                        "w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 transition-colors",
-                        tab === "paths"
-                          ? "bg-teal-600 text-white dark:bg-teal-500 dark:text-white"
-                          : "bg-slate-100 text-slate-500 dark:bg-white/5 dark:text-gray-400",
-                      )}
-                    >
-                      <FolderGit2 size={15} />
-                    </div>
-                    <div className="min-w-0">
-                      <div className="text-xs font-semibold truncate leading-tight">
-                        应用与 CLI 路径
-                      </div>
-                      <div className="text-[10px] font-mono text-slate-400 dark:text-gray-500 truncate mt-0.5">
-                        app_paths.json
-                      </div>
-                    </div>
-                  </div>
-                  {tab === "paths" && (
-                    <ChevronRight
-                      size={14}
-                      className="text-teal-600 dark:text-teal-400 flex-shrink-0"
-                    />
-                  )}
-                </button>
               </div>
             </div>
 
@@ -661,7 +622,7 @@ function AppContent() {
                 <button
                   type="button"
                   onClick={() => setInitModalOpen(true)}
-                  className="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-xl text-left text-xs font-medium text-slate-700 dark:text-gray-300 hover:bg-slate-100 dark:hover:bg-white/5 transition-colors cursor-pointer group"
+                  className="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-xl border border-transparent text-left text-xs font-medium text-slate-700 dark:text-gray-300 hover:bg-slate-100 dark:hover:bg-white/5 transition-colors cursor-pointer group"
                 >
                   <div className="w-6 h-6 rounded-md bg-blue-50 dark:bg-blue-500/10 text-blue-600 dark:text-blue-400 flex items-center justify-center flex-shrink-0">
                     <ShieldCheck size={14} />
@@ -683,17 +644,54 @@ function AppContent() {
                 <button
                   type="button"
                   onClick={() => setToolsOpen(true)}
-                  className="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-xl text-left text-xs font-medium text-slate-700 dark:text-gray-300 hover:bg-slate-100 dark:hover:bg-white/5 transition-colors cursor-pointer group"
+                  className="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-xl border border-transparent text-left text-xs font-medium text-slate-700 dark:text-gray-300 hover:bg-slate-100 dark:hover:bg-white/5 transition-colors cursor-pointer group"
                 >
                   <div className="w-6 h-6 rounded-md bg-amber-50 dark:bg-amber-500/10 text-amber-600 dark:text-amber-400 flex items-center justify-center flex-shrink-0">
                     <Wrench size={13} />
                   </div>
                   <div className="min-w-0 flex-1">
                     <div className="leading-tight">快速诊断工具箱</div>
-                    <div className="text-[10px] text-slate-400 dark:text-gray-500">
+                    <div className="text-[10px] text-slate-400 dark:text-gray-500 mt-0.5">
                       cURL 脚本与在线文档
                     </div>
                   </div>
+                </button>
+
+                {/* 应用与 CLI 路径选项 */}
+                <button
+                  type="button"
+                  onClick={() => switchTab("paths")}
+                  className={cn(
+                    "w-full flex items-center justify-between px-2.5 py-2 rounded-xl border text-left text-xs font-medium transition-all cursor-pointer group",
+                    tab === "paths"
+                      ? "border-teal-500/70 bg-teal-50/80 text-teal-900 dark:bg-teal-500/15 dark:border-teal-500/50 dark:text-teal-100 shadow-xs"
+                      : "border-transparent text-slate-700 dark:text-gray-300 hover:bg-slate-100 dark:hover:bg-white/5",
+                  )}
+                >
+                  <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                    <div
+                      className={cn(
+                        "w-6 h-6 rounded-md flex items-center justify-center flex-shrink-0 transition-colors",
+                        tab === "paths"
+                          ? "bg-teal-600 text-white dark:bg-teal-500 dark:text-white"
+                          : "bg-teal-50 dark:bg-teal-500/10 text-teal-600 dark:text-teal-400",
+                      )}
+                    >
+                      <FolderGit2 size={13} />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="leading-tight">应用与 CLI 路径</div>
+                      <div className="text-[10px] font-mono text-slate-400 dark:text-gray-500 truncate mt-0.5">
+                        app_paths.json
+                      </div>
+                    </div>
+                  </div>
+                  {tab === "paths" && (
+                    <ChevronRight
+                      size={14}
+                      className="text-teal-600 dark:text-teal-400 flex-shrink-0"
+                    />
+                  )}
                 </button>
               </div>
             </div>
