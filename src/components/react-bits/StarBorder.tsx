@@ -43,22 +43,7 @@ export const StarBorder: React.FC<StarBorderProps> = ({
       }}
       {...rest}
     >
-      {/* 顶部流星动效 */}
-      <div
-        className="absolute w-[300%] h-[60%] opacity-80 top-[-10px] left-[-250%] rounded-full animate-star-movement-top pointer-events-none z-0"
-        style={{
-          background: `radial-gradient(circle, ${color}, transparent 60%)`,
-          animationDuration: speed,
-        }}
-      />
-      {/* 底部流星动效 */}
-      <div
-        className="absolute w-[300%] h-[60%] opacity-80 bottom-[-10px] right-[-250%] rounded-full animate-star-movement-bottom pointer-events-none z-0"
-        style={{
-          background: `radial-gradient(circle, ${color}, transparent 60%)`,
-          animationDuration: speed,
-        }}
-      />
+
 
       {/* 内部按钮实体容器 */}
       <div

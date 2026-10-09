@@ -42,7 +42,6 @@ import {
 } from "../types";
 import { useModelFetch } from "../lib/useModelFetch";
 import { SpotlightCard } from "./react-bits/SpotlightCard";
-import { StarBorder } from "./react-bits/StarBorder";
 import { TerminalTestModal } from "./TerminalTestModal";
 import { StepIndicator, type StepDef } from "./StepIndicator";
 
@@ -716,6 +715,21 @@ export function AccioWorkPanel() {
             </span>
           </div>
 
+          {showSummary && (
+            <button
+              type="button"
+              onClick={() => {
+                setShowSummary(false);
+                setCurrentStep(0);
+              }}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-medium transition-colors bg-orange-50 hover:bg-orange-100 border-orange-200 text-orange-700 dark:bg-orange-500/10 dark:hover:bg-orange-500/20 dark:border-orange-500/30 dark:text-orange-300 shadow-2xs cursor-pointer"
+              title="切换到 4 步配置向导引导模式"
+            >
+              <Sparkles size={12} />
+              <span>分步向导</span>
+            </button>
+          )}
+
           <button
             type="button"
             onClick={() => void load()}
@@ -768,55 +782,69 @@ export function AccioWorkPanel() {
         )}
       </div>
 
-      {/* ── 底部导航栏 (吸附于视口底部，确保随时可保存) ── */}
-      <div className="sticky bottom-0 z-20 pt-3 pb-1 flex-shrink-0 bg-white/95 dark:bg-[#0c0e18]/95 backdrop-blur-md border-t border-slate-200/80 dark:border-white/10 mt-auto">
+      {/* ── 底部导航栏 (统一优化设计：布局均衡、去除过度拉伸与动态光晕) ── */}
+      <div className="sticky bottom-0 z-20 py-2.5 px-1 flex-shrink-0 bg-white/95 dark:bg-[#0c0e18]/95 backdrop-blur-md border-t border-slate-200/80 dark:border-white/10 mt-auto">
         {showSummary ? (
-          <div className="flex gap-3">
-            <button
-              onClick={() => {
-                setShowSummary(false);
-                setCurrentStep(0);
-              }}
-              className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-medium border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 dark:bg-white/5 dark:hover:bg-white/10 dark:border-white/10 dark:text-gray-300 transition-colors shadow-xs cursor-pointer"
-            >
-              编辑配置
-            </button>
-            <StarBorder
-              className="flex-1 shadow-md"
-              color="#FF6A00"
-              speed="3.5s"
-              onClick={handleSave}
-              disabled={testModalOpen}
-              innerClassName="bg-orange-600 hover:bg-orange-700 text-white dark:bg-[#1a120c] dark:text-orange-100 py-2.5 cursor-pointer"
-            >
-              <div className="flex items-center justify-center gap-2 font-semibold tracking-wide">
-                <Save
-                  size={16}
-                  className="text-white dark:text-orange-400 group-hover:scale-110 transition-transform"
-                />
-                <span className="text-sm">保存并应用</span>
+          <div className="flex items-center justify-between gap-4">
+            {/* 左侧：辅助动作与状态指示 */}
+            <div className="flex items-center gap-3">
+              <button
+                type="button"
+                onClick={() => {
+                  setShowSummary(false);
+                  setCurrentStep(0);
+                }}
+                className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-medium border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 dark:bg-white/5 dark:hover:bg-white/10 dark:border-white/10 dark:text-gray-300 transition-colors shadow-2xs cursor-pointer"
+                title="重新启动 3 步分步配置向导"
+              >
+                <RefreshCw size={13} className="text-slate-500 dark:text-gray-400" />
+                <span>重新配置向导</span>
+              </button>
+              <div className="hidden sm:flex items-center gap-1.5 text-[11px] text-slate-400 dark:text-gray-500">
+                <span className="w-1.5 h-1.5 rounded-full bg-orange-500" />
+                <span>Accio 配置已生效 (accio_config.json)</span>
               </div>
-            </StarBorder>
+            </div>
+
+            {/* 右侧：主保存操作 */}
+            <div className="flex items-center gap-2.5">
+              <button
+                type="button"
+                onClick={handleSave}
+                disabled={testModalOpen}
+                className="flex items-center justify-center gap-2 px-6 py-2.5 min-w-[190px] rounded-xl text-xs font-semibold bg-orange-600 hover:bg-orange-700 active:bg-orange-800 text-white transition-colors shadow-xs cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <Save size={14} />
+                <span>保存并应用 Accio 配置</span>
+              </button>
+            </div>
           </div>
         ) : (
           <div className="flex items-center justify-between gap-3">
-            {currentStep > 0 ? (
-              <button
-                onClick={goPrev}
-                className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-medium border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 dark:bg-white/5 dark:hover:bg-white/10 dark:border-white/10 dark:text-gray-300 transition-colors shadow-xs cursor-pointer"
-              >
-                <ChevronLeft size={14} /> 上一步
-              </button>
-            ) : (
-              <div />
-            )}
-
+            {/* 左侧：上一步与进度 */}
             <div className="flex items-center gap-2">
+              {currentStep > 0 ? (
+                <button
+                  type="button"
+                  onClick={goPrev}
+                  className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-medium border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 dark:bg-white/5 dark:hover:bg-white/10 dark:border-white/10 dark:text-gray-300 transition-colors shadow-2xs cursor-pointer"
+                >
+                  <ChevronLeft size={14} />
+                  <span>上一步</span>
+                </button>
+              ) : null}
+              <span className="text-[11px] text-slate-400 dark:text-gray-500 font-medium px-2">
+                步骤 {currentStep + 1} / {TOTAL_STEPS}
+              </span>
+            </div>
+
+            {/* 右侧：返回概览与推进/保存 */}
+            <div className="flex items-center gap-2.5">
               {configExists && (
                 <button
                   type="button"
                   onClick={() => setShowSummary(true)}
-                  className="text-xs text-slate-500 hover:text-slate-800 dark:text-gray-400 dark:hover:text-gray-200 px-3 py-1.5 transition-colors cursor-pointer"
+                  className="text-xs text-slate-500 hover:text-slate-800 dark:text-gray-400 dark:hover:text-gray-200 px-3 py-2 rounded-lg transition-colors cursor-pointer"
                 >
                   返回概览
                 </button>
@@ -824,28 +852,23 @@ export function AccioWorkPanel() {
 
               {currentStep < TOTAL_STEPS - 1 ? (
                 <button
+                  type="button"
                   onClick={goNext}
-                  className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-medium bg-orange-600 hover:bg-orange-700 text-white transition-colors shadow-xs cursor-pointer"
+                  className="flex items-center gap-1.5 px-6 py-2 rounded-xl text-xs font-medium bg-orange-600 hover:bg-orange-700 active:bg-orange-800 text-white transition-colors shadow-xs cursor-pointer"
                 >
-                  下一步 <ChevronRight size={14} />
+                  <span>下一步</span>
+                  <ChevronRight size={14} />
                 </button>
               ) : (
-                <StarBorder
-                  className="shadow-md"
-                  color="#FF6A00"
-                  speed="3.5s"
+                <button
+                  type="button"
                   onClick={handleSave}
                   disabled={testModalOpen}
-                  innerClassName="bg-orange-600 hover:bg-orange-700 text-white dark:bg-[#1a120c] dark:text-orange-100 py-2.5 cursor-pointer"
+                  className="flex items-center justify-center gap-1.5 px-6 py-2 min-w-[190px] rounded-xl text-xs font-semibold bg-orange-600 hover:bg-orange-700 active:bg-orange-800 text-white transition-colors shadow-xs cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  <div className="flex items-center justify-center gap-2 font-semibold tracking-wide">
-                    <Save
-                      size={16}
-                      className="text-white dark:text-orange-400 group-hover:scale-110 transition-transform"
-                    />
-                    <span className="text-sm">保存并测试</span>
-                  </div>
-                </StarBorder>
+                  <Save size={14} />
+                  <span>保存并应用 Accio 配置</span>
+                </button>
               )}
             </div>
           </div>

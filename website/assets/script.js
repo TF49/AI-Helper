@@ -1,6 +1,6 @@
 "use strict";
 
-const CURRENT_VERSION = "v1.0.49";
+const CURRENT_VERSION = "v1.0.50";
 const GITHUB_REPO = "TF49/AI-Helper";
 const GITHUB_RELEASES_URL = "https://github.com/" + GITHUB_REPO + "/releases";
 const GHFAST_PREFIX = "https://ghfast.top/";
@@ -991,84 +991,31 @@ function applyReleaseData(data) {
 async function initReleaseInfo() {
   applyReleaseData({ tag: CURRENT_VERSION });
 
-  if (window.location.protocol !== "file:") {
-    try {
-      const localResponse = await fetch("./version.json?t=" + Date.now(), { cache: "no-store" });
-      if (localResponse.ok) {
-        const localData = await localResponse.json();
-        if (localData && (localData.tag || localData.version)) {
-          applyReleaseData({
-            tag: localData.tag || "v" + localData.version,
-            setupUrl: localData.setupDownloadUrl,
-            zipUrl: localData.zipDownloadUrl,
-            fastSetupUrl: localData.fastSetupDownloadUrl,
-            fastZipUrl: localData.fastZipDownloadUrl,
-            releasePageUrl: localData.releasePageUrl,
-            setupFileName: localData.setupFileName
-          });
-        }
-      }
-    } catch (_) {
-      // Local fallback remains active.
-    }
-  }
+  if (window.location.protocol === "file:") return;
 
-  let synchronized = false;
+  // 只读同源 version.json，不再向 api.github.com / raw.githubusercontent.com 发起同步请求
+  // （那两个请求在国内不稳定，且回来后会把本站地址覆盖回 GitHub 直链）
   try {
-    const response = await fetchWithTimeout("https://api.github.com/repos/" + GITHUB_REPO + "/releases/latest", {
-      headers: { Accept: "application/vnd.github.v3+json" }
-    }, 4000);
-    if (response.ok) {
-      const release = await response.json();
-      const tag = release.tag_name;
-      if (tag) {
-        const setupAsset = release.assets && release.assets.find(function (asset) { return asset.name.endsWith("-Setup.exe"); });
-        const zipAsset = release.assets && release.assets.find(function (asset) { return asset.name.endsWith("-Standalone.zip"); });
-        const setupUrl = setupAsset ? setupAsset.browser_download_url : GITHUB_RELEASES_URL + "/download/" + tag + "/AI-Helper-" + tag + "-Windows-x64-Setup.exe";
-        const zipUrl = zipAsset ? zipAsset.browser_download_url : GITHUB_RELEASES_URL + "/download/" + tag + "/AI-Helper-" + tag + "-Windows-x64-Standalone.zip";
+    const localResponse = await fetch("./version.json?t=" + Date.now(), { cache: "no-store" });
+    if (localResponse.ok) {
+      const localData = await localResponse.json();
+      if (localData && (localData.tag || localData.version)) {
         applyReleaseData({
-          tag: tag,
-          setupUrl: setupUrl,
-          zipUrl: zipUrl,
-          fastSetupUrl: GHFAST_PREFIX + setupUrl,
-          fastZipUrl: GHFAST_PREFIX + zipUrl,
-          releasePageUrl: release.html_url,
-          setupFileName: setupAsset ? setupAsset.name : undefined
+          tag: localData.tag || "v" + localData.version,
+          setupUrl: localData.setupDownloadUrl,
+          zipUrl: localData.zipDownloadUrl,
+          fastSetupUrl: localData.fastSetupDownloadUrl,
+          fastZipUrl: localData.fastZipDownloadUrl,
+          releasePageUrl: localData.releasePageUrl,
+          setupFileName: localData.setupFileName
         });
-        synchronized = true;
       }
     }
   } catch (_) {
-    // Continue with raw fallbacks.
-  }
-
-  if (!synchronized) {
-    const sources = [
-      GHFAST_PREFIX + "https://raw.githubusercontent.com/" + GITHUB_REPO + "/main/website/version.json",
-      "https://raw.githubusercontent.com/" + GITHUB_REPO + "/main/website/version.json"
-    ];
-    for (const source of sources) {
-      try {
-        const response = await fetchWithTimeout(source, { cache: "no-store" }, 4000);
-        if (!response.ok) continue;
-        const raw = await response.json();
-        if (!raw || !(raw.tag || raw.version)) continue;
-        applyReleaseData({
-          tag: raw.tag || "v" + raw.version,
-          setupUrl: raw.setupDownloadUrl,
-          zipUrl: raw.zipDownloadUrl,
-          fastSetupUrl: raw.fastSetupDownloadUrl,
-          fastZipUrl: raw.fastZipDownloadUrl,
-          releasePageUrl: raw.releasePageUrl,
-          setupFileName: raw.setupFileName
-        });
-        break;
-      } catch (_) {
-        // Try the next source.
-      }
-    }
+    // 同源请求失败时保持 CURRENT_VERSION 静态兜底
   }
 }
+
 
 async function fetchWithTimeout(url, options, timeout) {
   const controller = new AbortController();

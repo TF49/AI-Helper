@@ -108,13 +108,13 @@ export function StepIndicator({
                   isDone &&
                     cn(
                       c.filled,
-                      "cursor-pointer hover:scale-110 hover:shadow-sm",
+                      "cursor-pointer hover:opacity-90 hover:shadow-xs",
                     ),
-                  isActive && cn(c.filled, c.ring, "scale-110 cursor-default"),
+                  isActive && cn(c.filled, c.ring, "cursor-default shadow-xs"),
                   !isDone &&
                     !isActive &&
                     canClick &&
-                    "border-slate-400 dark:border-white/40 text-slate-700 dark:text-gray-200 cursor-pointer hover:scale-105 hover:border-slate-600 bg-white dark:bg-white/5",
+                    "border-slate-400 dark:border-white/40 text-slate-700 dark:text-gray-200 cursor-pointer hover:border-slate-600 dark:hover:border-white/60 bg-white dark:bg-white/5",
                   !isDone &&
                     !isActive &&
                     !canClick &&

@@ -1298,7 +1298,7 @@ export function ChannelGroupMonitor({
         typeof document !== "undefined" &&
         createPortal(
           <div
-            className="fixed inset-0 z-[120] flex items-center justify-center p-4 sm:p-6 bg-slate-950/60 backdrop-blur-md select-none animate-in fade-in duration-200"
+            className="fixed inset-0 top-11 z-[85] flex items-center justify-center p-4 sm:p-6 bg-slate-950/60 backdrop-blur-md select-none animate-in fade-in duration-200"
             onClick={(e) => {
               if (e.target === e.currentTarget) setCompareModalOpen(false);
             }}

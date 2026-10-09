@@ -38,7 +38,6 @@ import {
 import { cn } from "../lib/utils";
 import type { AppPathsConfig, DetectedPathInfo } from "../types";
 import { SpotlightCard } from "./react-bits/SpotlightCard";
-import { StarBorder } from "./react-bits/StarBorder";
 
 export interface CliInstallOption {
   id: string;
@@ -1737,28 +1736,28 @@ export function AppPathsPanel() {
 
       </div>
 
-      {/* ── 底部保存栏 (吸附于视口底部，确保随时可保存) ── */}
-      <div className="sticky bottom-0 z-20 pt-3 pb-1 flex-shrink-0 bg-white/95 dark:bg-[#0c0e18]/95 backdrop-blur-md border-t border-slate-200/80 dark:border-white/10 mt-auto">
-        <StarBorder
-          className="w-full shadow-md"
-          color="#0d9488"
-          speed="3.5s"
-          onClick={handleSaveAll}
-          disabled={saving}
-          innerClassName="bg-teal-600 hover:bg-teal-700 text-white dark:bg-[#0c1a1a] dark:text-teal-100 py-3 cursor-pointer"
-        >
-          <div className="flex items-center justify-center gap-2 font-semibold tracking-wide">
-            {saving ? (
-              <Loader2 size={18} className="animate-spin text-white" />
-            ) : (
-              <Save size={18} className="text-white dark:text-teal-300" />
-            )}
-            <span className="text-sm">保存应用与 CLI 路径设置</span>
+      {/* ── 底部保存栏 (统一优化设计：布局均衡、去除过度拉伸与动态光晕) ── */}
+      <div className="sticky bottom-0 z-20 py-2.5 px-1 flex-shrink-0 bg-white/95 dark:bg-[#0c0e18]/95 backdrop-blur-md border-t border-slate-200/80 dark:border-white/10 mt-auto">
+        <div className="flex items-center justify-between gap-4">
+          <div className="text-[11px] text-slate-500 dark:text-gray-400 flex items-center gap-1.5">
+            <span className="w-1.5 h-1.5 rounded-full bg-teal-500" />
+            <span>保存后在完成模型连通性测试并应用配置时，系统将使用上述路径进行针对性拉起与环境变量注入</span>
           </div>
-        </StarBorder>
-        <p className="text-[11px] text-center text-slate-500 dark:text-gray-400 pt-2">
-          保存后在完成模型连通性测试并应用配置时，系统将使用上述路径进行针对性的重启与拉起
-        </p>
+
+          <button
+            type="button"
+            onClick={handleSaveAll}
+            disabled={saving}
+            className="flex items-center justify-center gap-2 px-6 py-2.5 min-w-[210px] rounded-xl text-xs font-semibold bg-teal-600 hover:bg-teal-700 active:bg-teal-800 text-white transition-colors shadow-xs cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {saving ? (
+              <Loader2 size={14} className="animate-spin text-white" />
+            ) : (
+              <Save size={14} className="text-white" />
+            )}
+            <span>保存应用与 CLI 路径设置</span>
+          </button>
+        </div>
       </div>
     </div>
   );

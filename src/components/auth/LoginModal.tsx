@@ -196,7 +196,7 @@ export function LoginModal({
     <>
       <AnimatePresence>
         <div
-          className={`fixed inset-0 flex items-center justify-center p-4 select-none ${
+          className={`fixed inset-0 top-11 flex items-center justify-center p-4 select-none ${
             mandatory
               ? "z-[95] bg-slate-950/85 backdrop-blur-md"
               : "z-[90] bg-black/60 backdrop-blur-xs"

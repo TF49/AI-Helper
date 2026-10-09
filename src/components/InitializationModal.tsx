@@ -940,7 +940,7 @@ export function InitializationModal({
   return (
     <AnimatePresence>
       {open && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/65 backdrop-blur-md transition-all duration-300">
+        <div className="fixed inset-0 top-11 z-50 flex items-center justify-center p-4 bg-black/65 backdrop-blur-md transition-all duration-300">
           <motion.div
             initial={{ opacity: 0, scale: 0.95, y: 15 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}

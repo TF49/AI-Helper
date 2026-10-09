@@ -393,7 +393,7 @@ export function TokenSelectModal({
   return createPortal(
     <div
       ref={overlayRef}
-      className="fixed inset-0 z-[100] flex items-center justify-center p-3 sm:p-6 bg-slate-950/60 backdrop-blur-lg select-none overflow-hidden"
+      className="fixed inset-0 top-11 z-[80] flex items-center justify-center p-3 sm:p-6 bg-slate-950/60 backdrop-blur-lg select-none overflow-hidden"
       onClick={(e) => {
         if (e.target === e.currentTarget) {
           handleSmoothClose();

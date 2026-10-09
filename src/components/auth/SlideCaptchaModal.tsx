@@ -148,7 +148,7 @@ export function SlideCaptchaModal({
 
   return createPortal(
     <AnimatePresence>
-      <div className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs select-none">
+      <div className="fixed inset-0 top-11 z-[85] flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs select-none">
         <motion.div
           initial={{ opacity: 0, scale: 0.95 }}
           animate={{ opacity: 1, scale: 1 }}

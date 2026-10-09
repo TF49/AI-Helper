@@ -10,6 +10,8 @@ use serde::{Deserialize, Serialize};
 use std::time::Duration;
 
 const CURRENT_VERSION: &str = env!("CARGO_PKG_VERSION");
+/// 本站自托管更新元数据（第一优先级，国内直连稳定）
+const UPDATER_JSON_LOCAL_URL: &str = "https://helper.bob-api.com/downloads/latest.json";
 const UPDATER_JSON_MIRROR_URL: &str =
     "https://ghfast.top/https://github.com/TF49/AI-Helper/releases/latest/download/latest.json";
 const UPDATER_JSON_MIRROR_BACKUP_URL: &str =
@@ -271,6 +273,10 @@ pub fn get_candidate_mirrors(version: &str) -> Vec<CandidateMirror> {
     let clean_ver = version.trim_start_matches('v');
     let installer_name = format!("AI-Helper-v{}-Windows-x64-Setup.exe", clean_ver);
 
+    let local_mirror = CandidateMirror {
+        name: "本站直链 (helper.bob-api.com)".to_string(),
+        url: format!("https://helper.bob-api.com/downloads/{}", installer_name),
+    };
     let official = CandidateMirror {
         name: "GitHub 官方直链 (带 VPN 极速)".to_string(),
         url: format!(
@@ -300,11 +306,12 @@ pub fn get_candidate_mirrors(version: &str) -> Vec<CandidateMirror> {
         ),
     };
 
-    // 若检测到有效代理（VPN 已开启），优先使用官方 GitHub 直链；否则国内镜像优先
+    // 本站直链始终放第一位（国内直连，速度最快）
+    // 若检测到有效代理（VPN 已开启），官方 GitHub 升为第二位；否则国内镜像次之
     if get_upstream_proxy_url().is_some() {
-        vec![official, gh_proxy, ghfast, ghproxy_net]
+        vec![local_mirror, official, gh_proxy, ghfast, ghproxy_net]
     } else {
-        vec![ghfast, gh_proxy, ghproxy_net, official]
+        vec![local_mirror, ghfast, gh_proxy, ghproxy_net, official]
     }
 }
 
@@ -319,6 +326,22 @@ pub async fn check_for_updates() -> Result<UpdateInfo, String> {
 async fn check_for_updates_internal() -> Result<UpdateInfo, String> {
     let has_proxy = get_upstream_proxy_url().is_some();
 
+    // 0. 优先尝试本站自托管 latest.json（国内直连稳定，无需代理）
+    match check_updater_json(
+        UPDATER_JSON_LOCAL_URL,
+        "updater.json (本站 helper.bob-api.com)",
+    )
+    .await
+    {
+        Ok(info) => return Ok(info),
+        Err(e) => {
+            log::warn!(
+                "Local mirror updater.json check failed: {}. Trying official GitHub...",
+                e
+            );
+        }
+    }
+
     // 如果开启了 VPN 代理，优先尝试 GitHub 官方更新源，避免被国内镜像防火墙拦截
     if has_proxy {
         if let Ok(info) =
@@ -328,7 +351,7 @@ async fn check_for_updates_internal() -> Result<UpdateInfo, String> {
         }
     }
 
-    // 1. 优先 ghfast.top 镜像 updater.json (国内高速通道)
+    // 1. ghfast.top 镜像 updater.json (国内高速通道)
     match check_updater_json(UPDATER_JSON_MIRROR_URL, "updater.json (ghfast)").await {
         Ok(info) => return Ok(info),
         Err(e) => {

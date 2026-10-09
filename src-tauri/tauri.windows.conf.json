@@ -8,11 +8,11 @@
         "decorations": false,
         "shadow": true,
         "visible": true,
-        "width": 1000,
-        "height": 650,
+        "width": 1040,
+        "height": 680,
         "minWidth": 900,
         "minHeight": 600,
-        "maximized": true
+        "maximized": false
       }
     ]
   }

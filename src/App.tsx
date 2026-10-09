@@ -16,6 +16,7 @@ import {
   FolderGit2,
   User,
   KeyRound,
+  Radio,
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
@@ -40,8 +41,6 @@ import { AuthProvider, useAuth } from "./lib/useAuth";
 import { ThemeToggle } from "./components/ThemeToggle";
 import { useTheme } from "./components/theme-provider";
 import { AuroraBackground } from "./components/react-bits/AuroraBackground";
-import { DecryptedText } from "./components/react-bits/DecryptedText";
-import { ShinyText } from "./components/react-bits/ShinyText";
 import { cn } from "./lib/utils";
 import { checkBobApiNetwork, openUrl, isTauri } from "./lib/api";
 import { ForceUpdateModal, useAppUpdater } from "./components/ForceUpdateModal";
@@ -314,9 +313,9 @@ function AppContent() {
       }
       className="text-slate-800 dark:text-gray-200 transition-colors duration-200 h-screen w-screen overflow-hidden flex flex-col"
     >
-      {/* ── 顶部无缝桌面标题栏 ── */}
+      {/* ── 顶部无缝桌面标题栏 (始终置顶 z-[100]，确保窗口控制随时可用) ── */}
       <div
-        className="flex items-center justify-between h-11 px-3 border-b flex-shrink-0 z-30 backdrop-blur-xl transition-colors duration-200 bg-white/80 border-slate-200/90 dark:bg-[#0c0e18]/85 dark:border-white/10 select-none cursor-default"
+        className="flex items-center justify-between h-11 px-3 border-b flex-shrink-0 z-[100] backdrop-blur-xl transition-colors duration-200 bg-white/90 border-slate-200/90 dark:bg-[#0c0e18]/90 dark:border-white/10 select-none cursor-default"
         data-tauri-drag-region
         onDoubleClick={(e) => {
           const target = e.target as HTMLElement;
@@ -334,20 +333,12 @@ function AppContent() {
           <BrandLogo size={22} className="w-[22px] h-[22px] drop-shadow-sm" />
           <div className="flex items-center gap-2">
             <div className="flex items-center gap-1 leading-none">
-              <DecryptedText
-                text="AI"
-                className="text-xs font-bold tracking-wider text-slate-900 dark:text-white"
-                encryptedClassName="text-xs font-bold tracking-wider text-blue-600 dark:text-blue-400"
-                speed={35}
-                animateOn="hover"
-              />
-              <ShinyText
-                text="Helper"
-                className="text-xs font-semibold text-slate-500 dark:text-gray-400"
-                color={isDark ? "#94a3b8" : "#475569"}
-                shineColor={isDark ? "#ffffff" : "#0284c7"}
-                speed={3}
-              />
+              <span className="text-xs font-bold tracking-wider text-slate-900 dark:text-white">
+                AI
+              </span>
+              <span className="text-xs font-semibold text-slate-500 dark:text-gray-400">
+                Helper
+              </span>
             </div>
             <span className="text-[10px] font-mono px-1.5 py-0.2 rounded bg-slate-100 text-slate-500 border border-slate-200 dark:bg-white/5 dark:text-gray-400 dark:border-white/10">
               v{appVersion}
@@ -358,18 +349,46 @@ function AppContent() {
         {/* 中间留白可拖动区域 */}
         <div className="flex-1 h-full" data-tauri-drag-region />
 
-        {/* 右侧：深浅色切换与窗口控制按钮 */}
+        {/* 右侧：主题切换与窗口控制按钮 (包含明确的后台运行按钮) */}
         <div className="flex items-center gap-1.5">
           <ThemeToggle />
 
           <div className="h-3.5 w-[1px] bg-slate-200 dark:bg-white/10 mx-1" />
+
+          {/* 明确的“后台运行”按钮 (转入系统托盘常驻守护，无需快捷键) */}
+          <button
+            type="button"
+            onClick={async () => {
+              try {
+                if (isTauri) {
+                  toast.info("已转入系统托盘后台常驻，可在任务栏右下角随时唤醒", {
+                    duration: 3000,
+                  });
+                  try {
+                    await win.hide();
+                  } catch {
+                    await win.close();
+                  }
+                } else {
+                  toast.info("Web 预览：已模拟转入后台托盘");
+                }
+              } catch (err) {
+                console.error("Failed to hide to tray:", err);
+              }
+            }}
+            className="h-7 px-2 flex items-center gap-1.5 rounded-lg text-xs font-medium border border-transparent hover:border-slate-200 dark:hover:border-white/10 bg-slate-100/60 hover:bg-slate-200/80 text-slate-600 hover:text-slate-900 dark:bg-white/5 dark:hover:bg-white/10 dark:text-gray-300 dark:hover:text-white transition-colors cursor-pointer"
+            title="转入系统托盘后台运行 (Bridge 网关保持在后台常驻)"
+          >
+            <Radio size={12} className="text-emerald-500 animate-pulse" />
+            <span className="text-[11px] font-normal">后台运行</span>
+          </button>
 
           {/* 最小化 */}
           <button
             type="button"
             onClick={() => win.minimize()}
             className="w-7 h-7 flex items-center justify-center rounded-lg transition-colors hover:bg-slate-200/80 text-slate-500 hover:text-slate-800 dark:hover:bg-white/10 dark:text-gray-400 dark:hover:text-gray-200 cursor-pointer"
-            title="最小化"
+            title="最小化到任务栏"
           >
             <Minus size={13} />
           </button>
@@ -644,13 +663,18 @@ function AppContent() {
                   onClick={() => setInitModalOpen(true)}
                   className="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-xl text-left text-xs font-medium text-slate-700 dark:text-gray-300 hover:bg-slate-100 dark:hover:bg-white/5 transition-colors cursor-pointer group"
                 >
-                  <div className="w-6 h-6 rounded-md bg-blue-50 dark:bg-blue-500/10 text-blue-600 dark:text-blue-400 flex items-center justify-center flex-shrink-0 group-hover:scale-105 transition-transform">
+                  <div className="w-6 h-6 rounded-md bg-blue-50 dark:bg-blue-500/10 text-blue-600 dark:text-blue-400 flex items-center justify-center flex-shrink-0">
                     <ShieldCheck size={14} />
                   </div>
                   <div className="min-w-0 flex-1">
-                    <div className="leading-tight">环境初始化向导</div>
-                    <div className="text-[10px] text-slate-400 dark:text-gray-500">
-                      检测并修复运行环境
+                    <div className="flex items-center justify-between gap-1 leading-tight">
+                      <span>环境初始化向导</span>
+                      <span className="text-[9px] font-medium px-1.5 py-0.2 rounded bg-blue-100 text-blue-700 dark:bg-blue-500/20 dark:text-blue-300">
+                        新手向导
+                      </span>
+                    </div>
+                    <div className="text-[10px] text-slate-400 dark:text-gray-500 mt-0.5">
+                      检测并一键修复环境
                     </div>
                   </div>
                 </button>
@@ -661,7 +685,7 @@ function AppContent() {
                   onClick={() => setToolsOpen(true)}
                   className="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-xl text-left text-xs font-medium text-slate-700 dark:text-gray-300 hover:bg-slate-100 dark:hover:bg-white/5 transition-colors cursor-pointer group"
                 >
-                  <div className="w-6 h-6 rounded-md bg-amber-50 dark:bg-amber-500/10 text-amber-600 dark:text-amber-400 flex items-center justify-center flex-shrink-0 group-hover:scale-105 transition-transform">
+                  <div className="w-6 h-6 rounded-md bg-amber-50 dark:bg-amber-500/10 text-amber-600 dark:text-amber-400 flex items-center justify-center flex-shrink-0">
                     <Wrench size={13} />
                   </div>
                   <div className="min-w-0 flex-1">
@@ -732,7 +756,7 @@ function AppContent() {
                   className="w-full p-2.5 rounded-xl border border-blue-200/90 dark:border-blue-500/30 bg-blue-50/70 dark:bg-blue-500/10 hover:bg-blue-100/80 dark:hover:bg-blue-500/20 text-left transition-all cursor-pointer group shadow-2xs"
                 >
                   <div className="flex items-center gap-2">
-                    <div className="w-7 h-7 rounded-lg bg-blue-600 text-white flex items-center justify-center font-bold text-xs flex-shrink-0 group-hover:scale-105 transition-transform">
+                    <div className="w-7 h-7 rounded-lg bg-blue-600 text-white flex items-center justify-center font-bold text-xs flex-shrink-0">
                       <User size={13} />
                     </div>
                     <div className="min-w-0 flex-1">
@@ -997,31 +1021,46 @@ function AppContent() {
         }
       />
 
-      {/* ── 阶段 1：启动检查更新阶段的全屏过渡层 ── */}
+      {/* ── 阶段 1：启动检查更新阶段过渡层 (置于标题栏下方，保留窗口控制并提供引导入口) ── */}
       {!isBootCheckComplete && updatePhase === "idle" && (
-        <div className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-slate-950/80 backdrop-blur-xl select-none">
-          <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-blue-600/30 to-purple-600/30 border border-blue-500/40 flex items-center justify-center shadow-lg shadow-blue-500/20 mb-4">
-            <RefreshCw className="w-7 h-7 text-blue-400 animate-spin" />
+        <div className="fixed inset-0 top-11 z-50 flex flex-col items-center justify-center bg-slate-950/75 backdrop-blur-md select-none p-4">
+          <div className="max-w-sm w-full p-6 rounded-2xl bg-white dark:bg-[#121524] border border-slate-200 dark:border-white/10 shadow-2xl flex flex-col items-center text-center">
+            <div className="w-12 h-12 rounded-xl bg-blue-50 dark:bg-blue-500/10 border border-blue-200 dark:border-blue-500/20 flex items-center justify-center shadow-sm mb-3.5">
+              <RefreshCw className="w-5 h-5 text-blue-600 dark:text-blue-400 animate-spin" />
+            </div>
+            <h2 className="text-sm font-semibold text-slate-900 dark:text-white tracking-wide">
+              正在检查版本与环境...
+            </h2>
+            <p className="text-xs text-slate-500 dark:text-gray-400 mt-1 leading-relaxed">
+              优先确认最新版本与运行依赖，请稍候
+            </p>
+            <div className="flex items-center gap-2 mt-5 w-full">
+              <button
+                type="button"
+                onClick={() => {
+                  handleUpdateClose();
+                  setInitModalOpen(true);
+                }}
+                className="flex-1 px-3.5 py-2 rounded-xl text-xs font-semibold text-white bg-blue-600 hover:bg-blue-700 active:bg-blue-800 transition-colors shadow-xs flex items-center justify-center gap-1.5 cursor-pointer"
+              >
+                <ShieldCheck size={14} />
+                <span>配置引导向导</span>
+              </button>
+              <button
+                type="button"
+                onClick={handleUpdateClose}
+                className="px-3.5 py-2 rounded-xl text-xs font-medium text-slate-600 hover:text-slate-900 dark:text-gray-400 dark:hover:text-white bg-slate-100 hover:bg-slate-200 dark:bg-white/5 dark:hover:bg-white/10 border border-slate-200 dark:border-white/10 transition-colors cursor-pointer"
+              >
+                直接进入
+              </button>
+            </div>
           </div>
-          <h2 className="text-sm font-semibold text-white tracking-wide">
-            正在检查软件版本与更新...
-          </h2>
-          <p className="text-xs text-slate-400 mt-1.5">
-            优先确认最新版本与运行环境，请稍候
-          </p>
-          <button
-            type="button"
-            onClick={handleUpdateClose}
-            className="mt-5 px-3.5 py-1.5 rounded-lg text-xs text-slate-400 hover:text-white bg-white/5 hover:bg-white/10 border border-white/10 transition-colors cursor-pointer"
-          >
-            跳过检查直接进入
-          </button>
         </div>
       )}
 
       {/* ── 阶段 2：启动凭据初次校验恢复微过渡 ── */}
       {isBootCheckComplete && updatePhase === "idle" && !isAuthReady && (
-        <div className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-slate-950/80 backdrop-blur-xl select-none">
+        <div className="fixed inset-0 top-11 z-50 flex flex-col items-center justify-center bg-slate-950/75 backdrop-blur-md select-none">
           <div className="w-12 h-12 rounded-2xl bg-blue-500/10 border border-blue-500/30 flex items-center justify-center shadow-lg shadow-blue-500/10 mb-3">
             <Loader2 className="w-6 h-6 text-blue-400 animate-spin" />
           </div>

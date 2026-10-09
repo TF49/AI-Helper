@@ -24,7 +24,6 @@ import { Label } from "./ui/label";
 import { PRESET_URLS } from "../types";
 import { useModelFetch } from "../lib/useModelFetch";
 import { SpotlightCard } from "./react-bits/SpotlightCard";
-import { StarBorder } from "./react-bits/StarBorder";
 import { TerminalTestModal } from "./TerminalTestModal";
 import { StepIndicator, type StepDef } from "./StepIndicator";
 
@@ -191,6 +190,20 @@ export function ChatGPTPanel() {
         </div>
 
         <div className="self-start md:self-auto flex flex-wrap items-center gap-2">
+          {showSummary && (
+            <button
+              type="button"
+              onClick={() => {
+                setShowSummary(false);
+                setCurrentStep(0);
+              }}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-medium transition-colors bg-blue-50 hover:bg-blue-100 border-blue-200 text-blue-700 dark:bg-blue-500/10 dark:hover:bg-blue-500/20 dark:border-blue-500/30 dark:text-blue-300 shadow-2xs cursor-pointer"
+              title="切换到 3 步配置向导引导模式"
+            >
+              <Sparkles size={12} />
+              <span>分步向导</span>
+            </button>
+          )}
           <button
             type="button"
             onClick={() => void load()}
@@ -382,58 +395,69 @@ export function ChatGPTPanel() {
         )}
       </div>
 
-      {/* ── 底部操作栏 (吸附于视口底部，确保随时可保存) ── */}
-      <div className="sticky bottom-0 z-20 pt-3 pb-1 flex-shrink-0 bg-white/95 dark:bg-[#0c0e18]/95 backdrop-blur-md border-t border-slate-200/80 dark:border-white/10 mt-auto">
+      {/* ── 底部操作栏 (统一优化设计：布局均衡、去除过度拉伸与动态光晕) ── */}
+      <div className="sticky bottom-0 z-20 py-2.5 px-1 flex-shrink-0 bg-white/95 dark:bg-[#0c0e18]/95 backdrop-blur-md border-t border-slate-200/80 dark:border-white/10 mt-auto">
         {showSummary ? (
-          <div className="flex items-center gap-3">
-            <button
-              type="button"
-              onClick={() => {
-                setShowSummary(false);
-                setCurrentStep(0);
-              }}
-              className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-xs font-medium border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 dark:bg-white/5 dark:hover:bg-white/10 dark:border-white/10 dark:text-gray-300 transition-colors shadow-2xs cursor-pointer"
-            >
-              <span>重新配置向导</span>
-            </button>
+          <div className="flex items-center justify-between gap-4">
+            {/* 左侧：辅助动作与状态指示 */}
+            <div className="flex items-center gap-3">
+              <button
+                type="button"
+                onClick={() => {
+                  setShowSummary(false);
+                  setCurrentStep(0);
+                }}
+                className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-medium border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 dark:bg-white/5 dark:hover:bg-white/10 dark:border-white/10 dark:text-gray-300 transition-colors shadow-2xs cursor-pointer"
+                title="重新启动 3 步分步配置向导"
+              >
+                <RefreshCw size={13} className="text-slate-500 dark:text-gray-400" />
+                <span>重新配置向导</span>
+              </button>
+              <div className="hidden sm:flex items-center gap-1.5 text-[11px] text-slate-400 dark:text-gray-500">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                <span>Codex 配置已生效 (config.toml)</span>
+              </div>
+            </div>
 
-            <div className="flex-1">
-              <StarBorder
-                className="w-full shadow-md"
-                color="#3b82f6"
-                speed="3.5s"
+            {/* 右侧：主保存操作 */}
+            <div className="flex items-center gap-2.5">
+              <button
+                type="button"
                 onClick={handleSave}
                 disabled={testModalOpen}
-                innerClassName="bg-blue-600 hover:bg-blue-700 text-white dark:bg-[#0e1726] dark:text-blue-100 py-2.5 cursor-pointer"
+                className="flex items-center justify-center gap-2 px-6 py-2.5 min-w-[190px] rounded-xl text-xs font-semibold bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white transition-colors shadow-xs cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                <div className="flex items-center justify-center gap-2 font-semibold tracking-wide text-xs">
-                  <Save size={15} />
-                  <span>保存并应用 Codex 配置</span>
-                </div>
-              </StarBorder>
+                <Save size={14} />
+                <span>保存并应用 Codex 配置</span>
+              </button>
             </div>
           </div>
         ) : (
           <div className="flex items-center justify-between gap-3">
-            {currentStep > 0 ? (
-              <button
-                type="button"
-                onClick={handlePrev}
-                className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-medium border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 dark:bg-white/5 dark:hover:bg-white/10 dark:border-white/10 dark:text-gray-300 transition-colors shadow-2xs cursor-pointer"
-              >
-                <ChevronLeft size={14} />
-                <span>上一步</span>
-              </button>
-            ) : (
-              <div />
-            )}
-
+            {/* 左侧：上一步与进度 */}
             <div className="flex items-center gap-2">
+              {currentStep > 0 ? (
+                <button
+                  type="button"
+                  onClick={handlePrev}
+                  className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-medium border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 dark:bg-white/5 dark:hover:bg-white/10 dark:border-white/10 dark:text-gray-300 transition-colors shadow-2xs cursor-pointer"
+                >
+                  <ChevronLeft size={14} />
+                  <span>上一步</span>
+                </button>
+              ) : null}
+              <span className="text-[11px] text-slate-400 dark:text-gray-500 font-medium px-2">
+                步骤 {currentStep + 1} / {TOTAL_STEPS}
+              </span>
+            </div>
+
+            {/* 右侧：返回概览与推进/保存 */}
+            <div className="flex items-center gap-2.5">
               {configExists && (
                 <button
                   type="button"
                   onClick={() => setShowSummary(true)}
-                  className="text-xs text-slate-500 hover:text-slate-800 dark:text-gray-400 dark:hover:text-gray-200 px-3 py-1.5 transition-colors cursor-pointer"
+                  className="text-xs text-slate-500 hover:text-slate-800 dark:text-gray-400 dark:hover:text-gray-200 px-3 py-2 rounded-lg transition-colors cursor-pointer"
                 >
                   返回概览
                 </button>
@@ -443,27 +467,21 @@ export function ChatGPTPanel() {
                 <button
                   type="button"
                   onClick={handleNext}
-                  className="flex items-center gap-1.5 px-5 py-2 rounded-xl text-xs font-medium bg-blue-600 hover:bg-blue-700 text-white transition-colors shadow-xs cursor-pointer"
+                  className="flex items-center gap-1.5 px-6 py-2 rounded-xl text-xs font-medium bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white transition-colors shadow-xs cursor-pointer"
                 >
                   <span>下一步</span>
                   <ChevronRight size={14} />
                 </button>
               ) : (
-                <div className="min-w-[200px]">
-                  <StarBorder
-                    className="w-full shadow-md"
-                    color="#3b82f6"
-                    speed="3.5s"
-                    onClick={handleSave}
-                    disabled={testModalOpen}
-                    innerClassName="bg-blue-600 hover:bg-blue-700 text-white dark:bg-[#0e1726] dark:text-blue-100 py-2 cursor-pointer"
-                  >
-                    <div className="flex items-center justify-center gap-1.5 font-semibold tracking-wide text-xs">
-                      <Save size={14} />
-                      <span>保存并应用 Codex 配置</span>
-                    </div>
-                  </StarBorder>
-                </div>
+                <button
+                  type="button"
+                  onClick={handleSave}
+                  disabled={testModalOpen}
+                  className="flex items-center justify-center gap-1.5 px-6 py-2 min-w-[190px] rounded-xl text-xs font-semibold bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white transition-colors shadow-xs cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  <Save size={14} />
+                  <span>保存并应用 Codex 配置</span>
+                </button>
               )}
             </div>
           </div>
