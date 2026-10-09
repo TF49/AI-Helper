@@ -823,7 +823,7 @@ mod tests {
     #[test]
     fn test_get_candidate_mirrors() {
         let mirrors = get_candidate_mirrors("1.0.32");
-        assert_eq!(mirrors.len(), 4);
+        assert_eq!(mirrors.len(), 5);
         for m in &mirrors {
             assert!(m.url.contains("AI-Helper-v1.0.32-Windows-x64-Setup.exe"));
         }
