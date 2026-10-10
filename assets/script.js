@@ -1,6 +1,6 @@
 "use strict";
 
-const CURRENT_VERSION = "v1.0.52";
+const CURRENT_VERSION = "v1.0.53";
 const GITHUB_REPO = "TF49/AI-Helper";
 const GITHUB_RELEASES_URL = "https://github.com/" + GITHUB_REPO + "/releases";
 const GHFAST_PREFIX = "https://ghfast.top/";
@@ -315,6 +315,7 @@ document.addEventListener("DOMContentLoaded", function () {
   safeInit(initFaq);
   safeInit(initUtilityActions);
   safeInit(initGroupMonitorSection);
+  safeInit(initDynamicDownloadButtons);
 });
 
 function safeInit(initializer) {
@@ -967,8 +968,11 @@ function initUtilityActions() {
   });
 }
 
+let latestReleaseData = null;
+
 function applyReleaseData(data) {
   if (!data.tag) return;
+  latestReleaseData = data;
   const tag = data.tag.indexOf("v") === 0 ? data.tag : "v" + data.tag;
   const setupFileName = data.setupFileName || "AI-Helper-" + tag + "-Windows-x64-Setup.exe";
   const zipFileName = "AI-Helper-" + tag + "-Windows-x64-Standalone.zip";
@@ -993,23 +997,30 @@ async function initReleaseInfo() {
 
   if (window.location.protocol === "file:") return;
 
-  // 依次尝试 /downloads/version.json（镜像站自动生成）与 ./version.json（静态打包），成功即返回
+  // 依次尝试同源镜像站、本地静态文件、远程镜像与动态配置
   const versionEndpoints = [
     "/downloads/version.json",
-    "./version.json"
+    "./version.json",
+    "./download-config.json",
+    "https://helper.bob-api.com/downloads/version.json"
   ];
 
   for (const endpoint of versionEndpoints) {
     try {
-      const response = await fetch(endpoint + "?t=" + Date.now(), { cache: "no-store" });
+      const response = await fetchWithTimeout(endpoint + "?t=" + Date.now(), { cache: "no-store" }, 3000);
       if (response.ok) {
         const data = await response.json();
         if (data && (data.tag || data.version)) {
+          const directUrl = data.setupDownloadUrl || (data.channels && data.channels.direct && data.channels.direct.downloadUrl);
+          const ossUrl = data.ossSetupDownloadUrl || (data.channels && data.channels.oss && data.channels.oss.downloadUrl);
+          const mirrorUrl = data.fastSetupDownloadUrl || (data.channels && data.channels.mirror && data.channels.mirror.downloadUrl);
+
           applyReleaseData({
             tag: data.tag || "v" + data.version,
-            setupUrl: data.setupDownloadUrl,
+            setupUrl: directUrl,
+            ossSetupDownloadUrl: ossUrl,
             zipUrl: data.zipDownloadUrl,
-            fastSetupUrl: data.fastSetupDownloadUrl,
+            fastSetupUrl: mirrorUrl,
             fastZipUrl: data.fastZipDownloadUrl,
             releasePageUrl: data.releasePageUrl,
             setupFileName: data.setupFileName
@@ -1021,6 +1032,138 @@ async function initReleaseInfo() {
       // 忽略单个源请求失败，继续尝试下一个源
     }
   }
+
+  // 最终兜底：若全部分流文件不可用，尝试读取 GitHub Release 最新 Tag
+  try {
+    const ghRes = await fetchWithTimeout("https://api.github.com/repos/" + GITHUB_REPO + "/releases/latest", { cache: "no-store" }, 3000);
+    if (ghRes.ok) {
+      const ghData = await ghRes.json();
+      if (ghData && ghData.tag_name) {
+        applyReleaseData({ tag: ghData.tag_name });
+      }
+    }
+  } catch (_) {}
+}
+
+/**
+ * 访问后端接口获取下载地址（解耦设计：前端不写死外部链接，由服务端/配置文件下发）
+ * @param {string} channel 通道标识，例如 'oss' | 'direct' | 'mirror'
+ * @returns {Promise<string|null>} 真实的下载目标 URL
+ */
+async function fetchDownloadUrlFromBackend(channel) {
+  // 1. 优先请求后端动态 API 接口 (/api/download?channel=xxx)
+  const apiEndpoints = [
+    "/api/download?channel=" + encodeURIComponent(channel),
+    "/api/get-download-url?channel=" + encodeURIComponent(channel)
+  ];
+
+  for (const api of apiEndpoints) {
+    try {
+      const res = await fetchWithTimeout(api + "&t=" + Date.now(), { cache: "no-store" }, 3000);
+      if (res.ok) {
+        const json = await res.json();
+        if (json && json.downloadUrl) {
+          return json.downloadUrl;
+        }
+      }
+    } catch (_) {}
+  }
+
+  // 2. 备用读取配置文件接口（download-config.json）
+  const configEndpoints = [
+    "/downloads/download-config.json",
+    "./download-config.json"
+  ];
+
+  for (const endpoint of configEndpoints) {
+    try {
+      const res = await fetchWithTimeout(endpoint + "?t=" + Date.now(), { cache: "no-store" }, 3000);
+      if (res.ok) {
+        const data = await res.json();
+        if (data && data.channels && data.channels[channel] && data.channels[channel].downloadUrl) {
+          return data.channels[channel].downloadUrl;
+        }
+      }
+    } catch (_) {}
+  }
+
+  // 3. 尝试从已获取的 releaseData 缓存读取
+  if (latestReleaseData) {
+    if (channel === "oss" && latestReleaseData.ossSetupDownloadUrl) {
+      return latestReleaseData.ossSetupDownloadUrl;
+    }
+  }
+
+  // 4. 兜底读取 version.json 配置文件
+  const versionEndpoints = [
+    "/downloads/version.json",
+    "./version.json"
+  ];
+
+  for (const endpoint of versionEndpoints) {
+    try {
+      const res = await fetchWithTimeout(endpoint + "?t=" + Date.now(), { cache: "no-store" }, 3000);
+      if (res.ok) {
+        const data = await res.json();
+        if (channel === "oss" && data.ossSetupDownloadUrl) {
+          return data.ossSetupDownloadUrl;
+        }
+        if (channel === "direct" && data.setupDownloadUrl) {
+          return data.setupDownloadUrl;
+        }
+      }
+    } catch (_) {}
+  }
+
+  return null;
+}
+
+/**
+ * 初始化动态下载按钮事件
+ */
+function initDynamicDownloadButtons() {
+  const btnOss = document.getElementById("btn-dl-oss");
+  if (!btnOss) return;
+
+  btnOss.addEventListener("click", async function (e) {
+    e.preventDefault();
+    if (btnOss.dataset.loading === "true") return;
+
+    btnOss.dataset.loading = "true";
+    const textSpan = document.getElementById("btn-dl-oss-text") || btnOss;
+    const originalText = textSpan.textContent;
+    textSpan.textContent = "正在获取下载地址...";
+    btnOss.style.opacity = "0.75";
+    btnOss.style.pointerEvents = "none";
+    showToast("正在连接后端接口获取 OSS 高速下载通道...");
+
+    try {
+      const downloadUrl = await fetchDownloadUrlFromBackend("oss");
+      if (!downloadUrl) {
+        throw new Error("后端接口或配置未返回有效的下载地址");
+      }
+
+      showToast("已成功获取 OSS 下载地址，正在拉起下载...");
+
+      // 前端拉起文件下载
+      const trigger = document.createElement("a");
+      trigger.href = downloadUrl;
+      trigger.download = "";
+      trigger.target = "_blank";
+      trigger.rel = "noopener noreferrer";
+      document.body.appendChild(trigger);
+      trigger.click();
+      document.body.removeChild(trigger);
+    } catch (err) {
+      console.error("[Download] 获取下载链接异常:", err);
+      showToast("获取下载链接失败，请稍后重试或使用备用通道");
+    } finally {
+      btnOss.dataset.loading = "false";
+      textSpan.textContent = originalText;
+      btnOss.style.opacity = "";
+      btnOss.style.pointerEvents = "";
+    }
+  });
 }
 
 
