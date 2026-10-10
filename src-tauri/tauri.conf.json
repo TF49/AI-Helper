@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "AI Helper",
-  "version": "1.0.55",
+  "version": "1.0.56",
   "identifier": "com.aihelper.app",
   "build": {
     "frontendDist": "../dist",
@@ -14,7 +14,8 @@
       {
         "label": "main",
         "title": "AI Helper",
-        "decorations": false,
+        "titleBarStyle": "Overlay",
+        "trafficLightPosition": { "x": 14, "y": 16 },
         "shadow": true,
         "width": 1040,
         "height": 680,
@@ -54,6 +55,9 @@
       "wix": {
         "template": "wix/per-user-main.wxs"
       }
+    },
+    "macOS": {
+      "minimumSystemVersion": "11.0"
     }
   },
   "plugins": {

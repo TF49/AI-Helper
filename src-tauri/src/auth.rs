@@ -183,6 +183,39 @@ struct ApiRawTokenKeyData {
     pub key: String,
 }
 
+fn parse_api_response_body<T: serde::de::DeserializeOwned>(
+    status: reqwest::StatusCode,
+    text: &str,
+    action_name: &str,
+) -> Result<ApiResponse<T>, String> {
+    let trimmed = text.trim();
+    if trimmed.starts_with('<') {
+        return Err(format!(
+            "{action_name}遇到网络拦截 (收到 HTML 页面，HTTP {})，请检查网络或开启代理 / VPN 的 TUN 模式重试",
+            status.as_u16()
+        ));
+    }
+
+    if !status.is_success() {
+        if let Ok(err_val) = serde_json::from_str::<serde_json::Value>(trimmed) {
+            if let Some(msg) = err_val.get("message").and_then(|m| m.as_str()) {
+                if !msg.is_empty() {
+                    return Err(msg.to_string());
+                }
+            }
+        }
+        return Err(format!(
+            "{action_name}异常 (HTTP {}): {}",
+            status.as_u16(),
+            trimmed.chars().take(120).collect::<String>()
+        ));
+    }
+
+    serde_json::from_str::<ApiResponse<T>>(trimmed).map_err(|e| {
+        format!("解析{action_name}响应数据失败: {e} (若处于受限网络请检查代理设置或开启 TUN 模式)")
+    })
+}
+
 // ── 内部认证状态管理器 ──
 
 pub struct AuthManager {
@@ -199,10 +232,22 @@ pub struct AuthManager {
 impl AuthManager {
     pub fn new() -> Self {
         let cookie_jar = Arc::new(Jar::default());
-        let client = Client::builder()
+        let mut builder = Client::builder()
             .cookie_provider(cookie_jar.clone())
             .user_agent(USER_AGENT)
             .timeout(Duration::from_secs(15))
+            .no_proxy();
+
+        let proxy = reqwest::Proxy::custom(|_url| {
+            if let Some(proxy_str) = crate::updater::get_cached_upstream_proxy_url() {
+                Url::parse(&proxy_str).ok()
+            } else {
+                None
+            }
+        });
+        builder = builder.proxy(proxy);
+
+        let client = builder
             .build()
             .expect("Failed to build reqwest client for auth");
 
@@ -340,17 +385,23 @@ pub async fn get_site_status() -> Result<SiteStatus, String> {
     let resp = mgr
         .client
         .get(&url)
+        .header(reqwest::header::ACCEPT, "application/json")
+        .header(ORIGIN, AUTH_ORIGIN)
         .send()
         .await
         .map_err(|e| format!("请求站点状态失败: {e}"))?;
 
-    let json_resp: serde_json::Value = resp
-        .json()
+    let status = resp.status();
+    let text = resp
+        .text()
         .await
-        .map_err(|e| format!("解析站点状态 JSON 失败: {e}"))?;
+        .map_err(|e| format!("读取站点状态响应失败: {e}"))?;
 
-    let data = json_resp
-        .get("data")
+    let parsed: ApiResponse<serde_json::Value> =
+        parse_api_response_body(status, &text, "获取站点状态")?;
+
+    let data = parsed
+        .data
         .ok_or_else(|| "站点状态未包含 data 字段".to_string())?;
 
     Ok(SiteStatus {
@@ -384,14 +435,20 @@ pub async fn get_encryption_key() -> Result<EncryptionKeyData, String> {
     let resp = mgr
         .client
         .get(&url)
+        .header(reqwest::header::ACCEPT, "application/json")
+        .header(ORIGIN, AUTH_ORIGIN)
         .send()
         .await
         .map_err(|e| format!("获取加密公钥失败: {e}"))?;
 
-    let parsed: ApiResponse<EncryptionKeyData> = resp
-        .json()
+    let status = resp.status();
+    let text = resp
+        .text()
         .await
-        .map_err(|e| format!("解析加密公钥响应失败: {e}"))?;
+        .map_err(|e| format!("读取加密公钥响应失败: {e}"))?;
+
+    let parsed: ApiResponse<EncryptionKeyData> =
+        parse_api_response_body(status, &text, "获取加密公钥")?;
 
     if !parsed.success {
         return Err(format!("服务端拒绝提供加密公钥: {}", parsed.message));
@@ -407,14 +464,20 @@ pub async fn generate_captcha() -> Result<CaptchaGenerateData, String> {
     let resp = mgr
         .client
         .get(&url)
+        .header(reqwest::header::ACCEPT, "application/json")
+        .header(ORIGIN, AUTH_ORIGIN)
         .send()
         .await
         .map_err(|e| format!("获取滑块验证码失败: {e}"))?;
 
-    let parsed: ApiResponse<CaptchaGenerateData> = resp
-        .json()
+    let status = resp.status();
+    let text = resp
+        .text()
         .await
-        .map_err(|e| format!("解析滑块验证码响应失败: {e}"))?;
+        .map_err(|e| format!("读取滑块响应内容失败: {e}"))?;
+
+    let parsed: ApiResponse<CaptchaGenerateData> =
+        parse_api_response_body(status, &text, "获取滑块验证码")?;
 
     if !parsed.success {
         return Err(format!("生成滑块失败: {}", parsed.message));
@@ -437,16 +500,21 @@ pub async fn verify_captcha(captcha_id: String, x: i32, y: i32) -> Result<(), St
     let resp = mgr
         .client
         .post(&url)
+        .header(reqwest::header::ACCEPT, "application/json")
+        .header(ORIGIN, AUTH_ORIGIN)
         .json(&body)
         .send()
         .await
         .map_err(|e| format!("滑块校验网络请求失败: {e}"))?;
 
     let status = resp.status();
-    let parsed: ApiResponse<serde_json::Value> = resp
-        .json()
+    let text = resp
+        .text()
         .await
-        .map_err(|e| format!("解析滑块校验结果失败: {e}"))?;
+        .map_err(|e| format!("读取滑块校验结果失败: {e}"))?;
+
+    let parsed: ApiResponse<serde_json::Value> =
+        parse_api_response_body(status, &text, "滑块校验")?;
 
     if !status.is_success() || !parsed.success {
         let msg = if parsed.message.is_empty() {
@@ -482,6 +550,8 @@ pub async fn login(payload: LoginPayload) -> Result<LoginResult, String> {
     let resp = mgr
         .client
         .post(&url)
+        .header(reqwest::header::ACCEPT, "application/json")
+        .header(ORIGIN, AUTH_ORIGIN)
         .json(&body)
         .send()
         .await
@@ -501,30 +571,24 @@ pub async fn login(payload: LoginPayload) -> Result<LoginResult, String> {
         }
     }
 
-    let raw_json: serde_json::Value = resp
-        .json()
+    let text = resp
+        .text()
         .await
-        .map_err(|e| format!("解析登录返回失败: {e}"))?;
+        .map_err(|e| format!("读取登录响应返回失败: {e}"))?;
 
-    let success = raw_json
-        .get("success")
-        .and_then(|v| v.as_bool())
-        .unwrap_or(false);
-    let message = raw_json
-        .get("message")
-        .and_then(|v| v.as_str())
-        .unwrap_or("");
+    let parsed: ApiResponse<serde_json::Value> =
+        parse_api_response_body(status, &text, "账号登录")?;
 
-    if !status.is_success() || !success {
-        return Err(if message.is_empty() {
+    if !status.is_success() || !parsed.success {
+        return Err(if parsed.message.is_empty() {
             format!("登录失败，状态码: {}", status)
         } else {
-            message.to_string()
+            parsed.message
         });
     }
 
-    let data = raw_json
-        .get("data")
+    let data = parsed
+        .data
         .ok_or_else(|| "登录响应中缺少 data 字段".to_string())?;
 
     // 检查是否需要 2FA
@@ -547,7 +611,7 @@ pub async fn login(payload: LoginPayload) -> Result<LoginResult, String> {
     }
 
     // 完整登录成功
-    let success_data = parse_login_success_data(data)?;
+    let success_data = parse_login_success_data(&data)?;
     mgr.access_token = Some(success_data.access_token.clone());
     mgr.access_expires_at = success_data.access_expires_at;
     mgr.current_user = Some(success_data.user.clone());
@@ -570,6 +634,8 @@ pub async fn login_2fa(flow_token: String, code: String) -> Result<LoginSuccessD
     let resp = mgr
         .client
         .post(&url)
+        .header(reqwest::header::ACCEPT, "application/json")
+        .header(ORIGIN, AUTH_ORIGIN)
         .json(&body)
         .send()
         .await
@@ -586,10 +652,14 @@ pub async fn login_2fa(flow_token: String, code: String) -> Result<LoginSuccessD
         }
     }
 
-    let parsed: ApiResponse<serde_json::Value> = resp
-        .json()
+    let status = resp.status();
+    let text = resp
+        .text()
         .await
-        .map_err(|e| format!("解析 2FA 响应失败: {e}"))?;
+        .map_err(|e| format!("读取 2FA 响应失败: {e}"))?;
+
+    let parsed: ApiResponse<serde_json::Value> =
+        parse_api_response_body(status, &text, "2FA 验证")?;
 
     if !parsed.success {
         return Err(if parsed.message.is_empty() {
@@ -691,30 +761,29 @@ pub async fn refresh_session() -> Result<LoginSuccessData, String> {
         }
     }
 
-    let raw_json: serde_json::Value = resp
-        .json()
+    let text = resp
+        .text()
         .await
-        .map_err(|e| format!("解析会话刷新结果失败: {e}"))?;
+        .map_err(|e| format!("读取会话刷新响应失败: {e}"))?;
 
-    let success = raw_json
-        .get("success")
-        .and_then(|v| v.as_bool())
-        .unwrap_or(false);
+    let parsed: ApiResponse<serde_json::Value> =
+        parse_api_response_body(status, &text, "刷新会话")?;
 
-    if !status.is_success() || !success {
-        let msg = raw_json
-            .get("message")
-            .and_then(|v| v.as_str())
-            .unwrap_or("刷新凭据失效，请重新登录");
+    if !status.is_success() || !parsed.success {
+        let msg = if parsed.message.is_empty() {
+            "刷新凭据失效，请重新登录".to_string()
+        } else {
+            parsed.message
+        };
         mgr.clear_persisted_session();
-        return Err(msg.to_string());
+        return Err(msg);
     }
 
-    let data = raw_json
-        .get("data")
+    let data = parsed
+        .data
         .ok_or_else(|| "刷新成功但缺少 data 字段".to_string())?;
 
-    let success_data = parse_login_success_data(data)?;
+    let success_data = parse_login_success_data(&data)?;
     mgr.access_token = Some(success_data.access_token.clone());
     mgr.access_expires_at = success_data.access_expires_at;
     mgr.current_user = Some(success_data.user.clone());
@@ -807,33 +876,33 @@ pub async fn get_user_tokens() -> Result<Vec<TokenItem>, String> {
         .await
         .map_err(|e| format!("获取 API Key 列表失败: {e}"))?;
 
-    let parsed: serde_json::Value = resp
-        .json()
+    let status = resp.status();
+    let text = resp
+        .text()
         .await
-        .map_err(|e| format!("解析 API Key 列表 JSON 失败: {e}"))?;
+        .map_err(|e| format!("读取 API Key 列表响应失败: {e}"))?;
 
-    let success = parsed
-        .get("success")
-        .and_then(|v| v.as_bool())
-        .unwrap_or(false);
+    let parsed: ApiResponse<serde_json::Value> =
+        parse_api_response_body(status, &text, "获取 API Key 列表")?;
 
-    if !success {
-        let msg = parsed
-            .get("message")
-            .and_then(|v| v.as_str())
-            .unwrap_or("获取令牌列表失败");
-        return Err(msg.to_string());
+    if !parsed.success {
+        let msg = if parsed.message.is_empty() {
+            "获取令牌列表失败".to_string()
+        } else {
+            parsed.message
+        };
+        return Err(msg);
     }
 
     let data = parsed
-        .get("data")
+        .data
         .ok_or_else(|| "响应数据中无 data 字段".to_string())?;
 
     // 兼容 data 为数组或 data.items 为数组
     let items_val = if let Some(items) = data.get("items") {
         items
     } else if data.is_array() {
-        data
+        &data
     } else {
         return Ok(vec![]);
     };
@@ -858,10 +927,14 @@ pub async fn get_token_key(token_id: i64) -> Result<String, String> {
         .await
         .map_err(|e| format!("读取明文 API Key 失败: {e}"))?;
 
-    let parsed: ApiResponse<ApiRawTokenKeyData> = resp
-        .json()
+    let status = resp.status();
+    let text = resp
+        .text()
         .await
-        .map_err(|e| format!("解析明文 API Key 响应失败: {e}"))?;
+        .map_err(|e| format!("读取明文 API Key 响应失败: {e}"))?;
+
+    let parsed: ApiResponse<ApiRawTokenKeyData> =
+        parse_api_response_body(status, &text, "读取明文 API Key")?;
 
     if !parsed.success {
         return Err(if parsed.message.is_empty() {
@@ -910,10 +983,14 @@ pub async fn create_user_token(name: String) -> Result<TokenItem, String> {
         .await
         .map_err(|e| format!("创建新令牌网络异常: {e}"))?;
 
-    let parsed: ApiResponse<serde_json::Value> = resp
-        .json()
+    let status = resp.status();
+    let text = resp
+        .text()
         .await
-        .map_err(|e| format!("解析创建新令牌响应失败: {e}"))?;
+        .map_err(|e| format!("读取创建令牌响应失败: {e}"))?;
+
+    let parsed: ApiResponse<serde_json::Value> =
+        parse_api_response_body(status, &text, "创建新令牌")?;
 
     if !parsed.success {
         return Err(if parsed.message.is_empty() {
@@ -1066,30 +1143,30 @@ pub async fn get_channel_group_overview(
         .await
         .map_err(|e| format!("请求分组监控数据网络异常: {e}"))?;
 
-    let parsed: serde_json::Value = resp
-        .json()
+    let status = resp.status();
+    let text = resp
+        .text()
         .await
-        .map_err(|e| format!("解析分组监控数据失败: {e}"))?;
+        .map_err(|e| format!("读取分组监控数据响应失败: {e}"))?;
 
-    let success = parsed
-        .get("success")
-        .and_then(|v| v.as_bool())
-        .unwrap_or(false);
+    let parsed: ApiResponse<serde_json::Value> =
+        parse_api_response_body(status, &text, "获取分组监控数据")?;
 
-    if !success {
-        let msg = parsed
-            .get("message")
-            .and_then(|v| v.as_str())
-            .unwrap_or("获取分组监控数据失败");
-        return Err(msg.to_string());
+    if !parsed.success {
+        let msg = if parsed.message.is_empty() {
+            "获取分组监控数据失败".to_string()
+        } else {
+            parsed.message
+        };
+        return Err(msg);
     }
 
     let data_val = parsed
-        .get("data")
+        .data
         .ok_or_else(|| "分组监控数据中无 data 字段".to_string())?;
 
-    let items: Vec<ChannelGroupOverview> = serde_json::from_value(data_val.clone())
-        .map_err(|e| format!("反序列化分组监控列表失败: {e}"))?;
+    let items: Vec<ChannelGroupOverview> =
+        serde_json::from_value(data_val).map_err(|e| format!("反序列化分组监控列表失败: {e}"))?;
 
     Ok(items)
 }

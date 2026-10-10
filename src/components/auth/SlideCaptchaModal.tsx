@@ -226,6 +226,10 @@ export function SlideCaptchaModal({
                   alt="Captcha Master"
                   className="w-full h-full object-cover block pointer-events-none"
                   draggable={false}
+                  onError={() => {
+                    setErrorMsg("验证码底图加载失败，请点击重试");
+                    setCaptchaData(null);
+                  }}
                 />
 
                 {/* 浮动拼图块 */}
@@ -243,6 +247,10 @@ export function SlideCaptchaModal({
                     alt="Captcha Tile"
                     className="w-full h-full object-contain pointer-events-none"
                     draggable={false}
+                    onError={() => {
+                      setErrorMsg("拼图滑块碎片加载失败，请点击重试");
+                      setCaptchaData(null);
+                    }}
                   />
                 </div>
 
@@ -255,15 +263,20 @@ export function SlideCaptchaModal({
                 )}
               </>
             ) : errorMsg ? (
-              <div className="flex flex-col items-center gap-2 p-4 text-center">
-                <AlertCircle size={20} className="text-red-500" />
-                <span className="text-xs text-red-500">{errorMsg}</span>
+              <div className="flex flex-col items-center gap-2 p-4 text-center max-w-[280px]">
+                <AlertCircle size={22} className="text-red-500 shrink-0" />
+                <span className="text-xs font-medium text-red-600 dark:text-red-400 leading-relaxed">
+                  {errorMsg}
+                </span>
+                <p className="text-[11px] text-slate-500 dark:text-gray-400 leading-normal">
+                  💡 若反复加载失败，请检查网络或开启系统代理 / VPN 的 TUN 模式
+                </p>
                 <button
                   type="button"
                   onClick={() => void loadChallenge()}
-                  className="mt-1 px-3 py-1 bg-blue-500 text-white rounded-lg text-xs font-medium cursor-pointer"
+                  className="mt-1 px-4 py-1.5 bg-blue-500 hover:bg-blue-600 active:scale-95 text-white rounded-lg text-xs font-medium cursor-pointer transition-all shadow-xs"
                 >
-                  重试
+                  点击重试
                 </button>
               </div>
             ) : null}
@@ -271,9 +284,19 @@ export function SlideCaptchaModal({
 
           {/* 错误提示条 */}
           {errorMsg && !loading && (
-            <div className="text-[11px] text-red-500 dark:text-red-400 bg-red-50 dark:bg-red-500/10 px-2.5 py-1.5 rounded-lg flex items-center gap-1.5">
-              <AlertCircle size={13} className="flex-shrink-0" />
-              <span>{errorMsg}</span>
+            <div className="text-[11px] text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-500/10 border border-red-200/60 dark:border-red-500/20 px-2.5 py-1.5 rounded-lg flex items-start gap-1.5">
+              <AlertCircle size={13} className="flex-shrink-0 mt-0.5" />
+              <div className="flex-1 leading-snug">
+                <div>{errorMsg}</div>
+                {(errorMsg.includes("代理") ||
+                  errorMsg.includes("TUN") ||
+                  errorMsg.includes("网络") ||
+                  errorMsg.includes("拦截")) && (
+                  <div className="text-[10px] text-slate-500 dark:text-gray-400 mt-0.5">
+                    💡 提示：若使用科学上网工具，建议开启 TUN 虚拟网卡模式或确保系统代理开启
+                  </div>
+                )}
+              </div>
             </div>
           )}
 

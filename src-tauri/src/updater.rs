@@ -220,6 +220,27 @@ pub fn get_upstream_proxy_url() -> Option<String> {
     None
 }
 
+static PROXY_CACHE: std::sync::Mutex<Option<(std::time::Instant, Option<String>)>> =
+    std::sync::Mutex::new(None);
+
+/// 获取带轻量级缓存 (TTL 3秒) 的可用代理配置，避免高频请求重复进行 TCP 端口握手探测
+pub fn get_cached_upstream_proxy_url() -> Option<String> {
+    if let Ok(guard) = PROXY_CACHE.lock() {
+        if let Some((timestamp, ref cached_val)) = *guard {
+            if timestamp.elapsed() < Duration::from_secs(3) {
+                return cached_val.clone();
+            }
+        }
+    }
+
+    let now = std::time::Instant::now();
+    let fresh = get_upstream_proxy_url();
+    if let Ok(mut guard) = PROXY_CACHE.lock() {
+        *guard = Some((now, fresh.clone()));
+    }
+    fresh
+}
+
 /// 创建带安全策略的 HTTP 客户端
 pub fn create_client(timeout: Duration) -> Result<reqwest::Client, String> {
     let mut builder = reqwest::Client::builder()
@@ -271,6 +292,9 @@ fn compare_versions(latest: &str, current: &str) -> bool {
 /// 获取全平台候选下载镜像源列表
 pub fn get_candidate_mirrors(version: &str) -> Vec<CandidateMirror> {
     let clean_ver = version.trim_start_matches('v');
+    #[cfg(target_os = "macos")]
+    let installer_name = format!("AI-Helper-v{}-macOS.dmg", clean_ver);
+    #[cfg(not(target_os = "macos"))]
     let installer_name = format!("AI-Helper-v{}-Windows-x64-Setup.exe", clean_ver);
 
     let local_mirror = CandidateMirror {
@@ -280,8 +304,8 @@ pub fn get_candidate_mirrors(version: &str) -> Vec<CandidateMirror> {
     let oss_mirror = CandidateMirror {
         name: "阿里云 OSS 高速镜像".to_string(),
         url: format!(
-            "https://bobdong.oss-cn-beijing.aliyuncs.com/desktop/AI-Helper-v{}-Windows-x64-Setup.exe",
-            clean_ver
+            "https://bobdong.oss-cn-beijing.aliyuncs.com/desktop/{}",
+            installer_name
         ),
     };
     let official = CandidateMirror {
@@ -609,6 +633,9 @@ pub async fn download_and_install_update(
     let clean_ver = version.trim_start_matches('v');
     let candidate_mirrors = get_candidate_mirrors(clean_ver);
     let temp_dir = std::env::temp_dir();
+    #[cfg(target_os = "macos")]
+    let temp_file_path = temp_dir.join(format!("AI-Helper-v{}-macOS.dmg", clean_ver));
+    #[cfg(not(target_os = "macos"))]
     let temp_file_path = temp_dir.join(format!("AI-Helper-v{}-Windows-x64-Setup.exe", clean_ver));
 
     // 使用 60 秒单次超时，适配大安装包下载
@@ -761,9 +788,29 @@ pub async fn download_and_install_update(
             }
         }
 
-        #[cfg(not(target_os = "windows"))]
+        #[cfg(target_os = "macos")]
         {
-            return Err("非 Windows 平台请手动安装更新包".to_string());
+            log::info!("Opening macOS DMG: {:?}", temp_file_path);
+            let spawn_res = std::process::Command::new("open")
+                .arg(&temp_file_path)
+                .spawn();
+
+            match spawn_res {
+                Ok(_) => {
+                    log::info!("DMG package opened successfully. Exiting current process.");
+                    std::process::exit(0);
+                }
+                Err(e) => {
+                    let err = format!("打开安装包失败: {}", e);
+                    log::error!("{}", err);
+                    return Err(err);
+                }
+            }
+        }
+
+        #[cfg(not(any(target_os = "windows", target_os = "macos")))]
+        {
+            return Err("当前平台请手动安装更新包".to_string());
         }
     }
 

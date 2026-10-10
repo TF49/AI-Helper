@@ -15,11 +15,13 @@ concurrency:
 
 jobs:
   windows:
-    name: Build and publish Windows x64
+    name: Build Windows x64
     runs-on: windows-2022
     defaults:
       run:
         shell: pwsh
+    outputs:
+      tag: ${{ steps.package.outputs.tag }}
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-node@v6
@@ -30,7 +32,7 @@ jobs:
           version: 10.12.3
       - uses: dtolnay/rust-toolchain@master
         with:
-          toolchain: '1.95'
+          toolchain: '1.85.0'
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: src-tauri
@@ -52,31 +54,91 @@ jobs:
           $tag = "v$($package.version)"
           ./scripts/package-release.ps1 -Tag $tag
           "tag=$tag" >> $env:GITHUB_OUTPUT
-      - name: Preserve build artifacts
+      - name: Upload Windows artifacts
         uses: actions/upload-artifact@v7
         with:
-          name: AI-Helper-${{ steps.package.outputs.tag }}-Windows-x64
-          path: |
-            release/${{ steps.package.outputs.tag }}/*.exe
-            release/${{ steps.package.outputs.tag }}/*.sig
-            release/${{ steps.package.outputs.tag }}/*.zip
-            release/${{ steps.package.outputs.tag }}/*.json
-            release/${{ steps.package.outputs.tag }}/SHA256SUMS.txt
+          name: windows-assets
+          path: release/${{ steps.package.outputs.tag }}/*
           if-no-files-found: error
-      - name: Publish release
+
+  macos:
+    name: Build macOS (${{ matrix.target }})
+    runs-on: macos-14
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [aarch64-apple-darwin, x86_64-apple-darwin]
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.12.3
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: '1.85.0'
+          targets: ${{ matrix.target }}
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Build DMG installer
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: pnpm tauri build --target ${{ matrix.target }} --bundles dmg
+      - name: Package macOS release
+        id: package
+        run: |
+          chmod +x ./scripts/package-macos.sh
+          ./scripts/package-macos.sh "" "${{ matrix.target }}"
+          package_ver=$(node -p "require('./package.json').version")
+          echo "tag=v${package_ver}" >> $GITHUB_OUTPUT
+      - name: Upload macOS artifacts
+        uses: actions/upload-artifact@v7
+        with:
+          name: macos-assets-${{ matrix.target }}
+          path: release/${{ steps.package.outputs.tag }}/*
+          if-no-files-found: error
+
+  publish:
+    name: Publish Release
+    needs: [windows, macos]
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v6
+      - name: Download all artifacts
+        uses: actions/download-artifact@v7
+        with:
+          path: artifacts
+      - name: Prepare release directory
+        id: prep
+        run: |
+          mkdir -p release_assets
+          # 将所有子目录下载的文件合并到 release_assets
+          find artifacts -type f -exec cp {} release_assets/ \;
+          package_ver=$(node -p "require('./package.json').version")
+          tag="v${package_ver}"
+          echo "tag=$tag" >> $GITHUB_OUTPUT
+          ls -la release_assets/
+      - name: Publish release to GitHub
         env:
           GH_TOKEN: ${{ github.token }}
-          RELEASE_TAG: ${{ steps.package.outputs.tag }}
+          RELEASE_TAG: ${{ steps.prep.outputs.tag }}
         run: |
-          $ErrorActionPreference = 'Stop'
-          $tag = $env:RELEASE_TAG
-          if (-not $tag) { throw 'RELEASE_TAG is empty - Package release step may have failed to set its output.' }
-          $notes = "docs/releases/$tag.md"
-          if (-not (Test-Path -LiteralPath $notes)) { throw "Missing release notes: $notes" }
-          $assets = @(Get-ChildItem -LiteralPath "release/$tag" -File | Select-Object -ExpandProperty FullName)
-          if ($assets.Count -eq 0) { throw "No release assets found in release/$tag" }
-          gh release create $tag @assets --repo $env:GITHUB_REPOSITORY --target $env:GITHUB_SHA --title "AI Helper $tag" --notes-file $notes --draft
-          if ($LASTEXITCODE -ne 0) { throw 'Release creation failed; existing releases are never overwritten.' }
-          gh release edit $tag --repo $env:GITHUB_REPOSITORY --draft=false --latest
-          if ($LASTEXITCODE -ne 0) { throw 'Release is still a draft; inspect its uploaded assets before publishing.' }
-
+          tag="${RELEASE_TAG}"
+          notes="docs/releases/${tag}.md"
+          if [ ! -f "$notes" ]; then
+            echo "Missing release notes: $notes"
+            exit 1
+          fi
+          assets=(release_assets/*)
+          if [ ${#assets[@]} -eq 0 ]; then
+            echo "No release assets found"
+            exit 1
+          fi
+          gh release create "$tag" "${assets[@]}" --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --title "AI Helper $tag" --notes-file "$notes" --draft
+          gh release edit "$tag" --repo "$GITHUB_REPOSITORY" --draft=false --latest

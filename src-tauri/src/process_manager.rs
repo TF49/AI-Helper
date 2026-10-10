@@ -198,7 +198,25 @@ pub fn launch_app(app_type: &str, custom_path: Option<&str>) -> Result<String, S
                 )
             }
 
-            #[cfg(not(target_os = "windows"))]
+            #[cfg(target_os = "macos")]
+            {
+                let mut cmd = Command::new("open");
+                if let Some(ref path_str) = resolved_path {
+                    let p = Path::new(path_str);
+                    if p.exists() {
+                        cmd.arg(path_str);
+                    } else {
+                        cmd.args(["-a", "ChatGPT"]);
+                    }
+                } else {
+                    cmd.args(["-a", "ChatGPT"]);
+                }
+                cmd.spawn()
+                    .map_err(|e| format!("启动 ChatGPT 客户端失败: {}", e))?;
+                return Ok("ChatGPT 桌面客户端已启动".to_string());
+            }
+
+            #[cfg(not(any(target_os = "windows", target_os = "macos")))]
             {
                 Err("当前平台不支持自动拉起 ChatGPT 客户端".to_string())
             }
@@ -220,7 +238,31 @@ pub fn launch_app(app_type: &str, custom_path: Option<&str>) -> Result<String, S
                 Ok(format!("Claude Code 终端已在独立窗口中拉起 ({})", path_str))
             }
 
-            #[cfg(not(target_os = "windows"))]
+            #[cfg(target_os = "macos")]
+            {
+                let escaped_path = path_str.replace('\\', "\\\\").replace('"', "\\\"");
+                let script = format!(
+                    r#"set was_running to application "Terminal" is running
+tell application "Terminal"
+    if was_running then
+        activate
+        do script "exec \"{}\""
+    else
+        launch
+        do script "exec \"{}\""
+        activate
+    end if
+end tell"#,
+                    escaped_path, escaped_path
+                );
+                Command::new("osascript")
+                    .args(["-e", &script])
+                    .spawn()
+                    .map_err(|e| format!("启动 Claude Code 终端失败: {}", e))?;
+                Ok(format!("Claude Code 终端已在独立窗口中拉起 ({})", path_str))
+            }
+
+            #[cfg(not(any(target_os = "windows", target_os = "macos")))]
             {
                 Err("当前平台不支持自动拉起 Claude CLI".to_string())
             }
@@ -250,7 +292,31 @@ pub fn launch_app(app_type: &str, custom_path: Option<&str>) -> Result<String, S
                 Ok(format!("Codex CLI 终端已在独立窗口中拉起 ({})", path_str))
             }
 
-            #[cfg(not(target_os = "windows"))]
+            #[cfg(target_os = "macos")]
+            {
+                let escaped_path = path_str.replace('\\', "\\\\").replace('"', "\\\"");
+                let script = format!(
+                    r#"set was_running to application "Terminal" is running
+tell application "Terminal"
+    if was_running then
+        activate
+        do script "exec \"{}\" --no-daemon"
+    else
+        launch
+        do script "exec \"{}\" --no-daemon"
+        activate
+    end if
+end tell"#,
+                    escaped_path, escaped_path
+                );
+                Command::new("osascript")
+                    .args(["-e", &script])
+                    .spawn()
+                    .map_err(|e| format!("启动 Codex CLI 终端失败: {}", e))?;
+                Ok(format!("Codex CLI 终端已在独立窗口中拉起 ({})", path_str))
+            }
+
+            #[cfg(not(any(target_os = "windows", target_os = "macos")))]
             {
                 Err("当前平台不支持自动拉起 Codex CLI".to_string())
             }
@@ -276,7 +342,16 @@ pub fn launch_app(app_type: &str, custom_path: Option<&str>) -> Result<String, S
                 Err(format!("WorkBuddy 可执行文件不存在: {}", path_str))
             }
 
-            #[cfg(not(target_os = "windows"))]
+            #[cfg(target_os = "macos")]
+            {
+                let mut cmd = Command::new("open");
+                cmd.arg(&path_str);
+                cmd.spawn()
+                    .map_err(|e| format!("启动 WorkBuddy 客户端失败: {}", e))?;
+                Ok(format!("WorkBuddy 客户端已启动: {}", path_str))
+            }
+
+            #[cfg(not(any(target_os = "windows", target_os = "macos")))]
             {
                 Err("当前平台不支持自动拉起 WorkBuddy 客户端".to_string())
             }
@@ -349,7 +424,30 @@ pub fn launch_app(app_type: &str, custom_path: Option<&str>) -> Result<String, S
                 Err(format!("Accio Work 可执行文件不存在: {}", path_str))
             }
 
-            #[cfg(not(target_os = "windows"))]
+            #[cfg(target_os = "macos")]
+            {
+                let bridge_port = crate::accio::bridge::get_bridge_port().unwrap_or_else(|| {
+                    tauri::async_runtime::block_on(async {
+                        crate::accio::bridge::start_bridge(None)
+                            .await
+                            .unwrap_or(8787)
+                    })
+                });
+                let mut cmd = Command::new("open");
+                cmd.arg(&path_str);
+                cmd.env(
+                    "GATEWAY_BASE_URL",
+                    format!("http://127.0.0.1:{}", bridge_port),
+                );
+                cmd.spawn()
+                    .map_err(|e| format!("启动 Accio Work 客户端失败: {}", e))?;
+                return Ok(format!(
+                    "Accio Work 客户端已成功注入本地网关 (127.0.0.1:{}) 并拉起: {}",
+                    bridge_port, path_str
+                ));
+            }
+
+            #[cfg(not(any(target_os = "windows", target_os = "macos")))]
             {
                 Err("当前平台不支持自动拉起 Accio Work 客户端".to_string())
             }
@@ -503,7 +601,31 @@ pub fn execute_in_terminal(command: &str) -> Result<String, String> {
         Ok(format!("已在独立终端窗口中启动安装: {}", trimmed))
     }
 
-    #[cfg(not(target_os = "windows"))]
+    #[cfg(target_os = "macos")]
+    {
+        let escaped_cmd = trimmed.replace('\\', "\\\\").replace('"', "\\\"");
+        let script = format!(
+            r#"set was_running to application "Terminal" is running
+tell application "Terminal"
+    if was_running then
+        activate
+        do script "{}"
+    else
+        launch
+        do script "{}"
+        activate
+    end if
+end tell"#,
+            escaped_cmd, escaped_cmd
+        );
+        Command::new("osascript")
+            .args(["-e", &script])
+            .spawn()
+            .map_err(|e| format!("拉起外部终端失败: {}", e))?;
+        Ok(format!("已在终端窗口中启动: {}", trimmed))
+    }
+
+    #[cfg(not(any(target_os = "windows", target_os = "macos")))]
     {
         Err("当前操作系统暂不支持自动唤起外部终端，请手动复制命令到终端中执行".to_string())
     }

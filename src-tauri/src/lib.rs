@@ -426,7 +426,7 @@ fn setup_tray(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
         let _tray = TrayIconBuilder::new()
             .icon(icon)
             .menu(&menu)
-            .show_menu_on_left_click(false)
+            .show_menu_on_left_click(cfg!(not(target_os = "windows")))
             .tooltip("AI Helper - 客户端后台守护中")
             .on_menu_event(|app, event| match event.id.as_ref() {
                 "show" => {
@@ -484,6 +484,11 @@ pub fn run() {
             }
 
             if let Some(window) = app.get_webview_window("main") {
+                #[cfg(target_os = "windows")]
+                {
+                    let _ = window.set_decorations(false);
+                    let _ = window.set_shadow(true);
+                }
                 let _ = window.show();
                 #[cfg(debug_assertions)]
                 window.open_devtools();
@@ -558,6 +563,16 @@ pub fn run() {
             apply_api_key_to_agents,
             get_channel_group_overview,
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running ai-helper");
+        .build(tauri::generate_context!())
+        .expect("error while building ai-helper")
+        .run(|_app_handle, _event| {
+            #[cfg(target_os = "macos")]
+            if let tauri::RunEvent::Reopen { .. } = _event {
+                if let Some(window) = _app_handle.get_webview_window("main") {
+                    let _ = window.unminimize();
+                    let _ = window.show();
+                    let _ = window.set_focus();
+                }
+            }
+        });
 }

@@ -14,8 +14,19 @@ pub struct NetworkStatus {
 
 pub async fn check_bob_api_network() -> NetworkStatus {
     let start = Instant::now();
-    // Build HTTP client with timeout configuration
-    let client = match reqwest::Client::builder().timeout(CHECK_TIMEOUT).build() {
+    // Build HTTP client with timeout configuration and dynamic proxy
+    let mut builder = reqwest::Client::builder().timeout(CHECK_TIMEOUT).no_proxy();
+
+    let proxy = reqwest::Proxy::custom(|_url| {
+        if let Some(proxy_str) = crate::updater::get_cached_upstream_proxy_url() {
+            reqwest::Url::parse(&proxy_str).ok()
+        } else {
+            None
+        }
+    });
+    builder = builder.proxy(proxy);
+
+    let client = match builder.build() {
         Ok(c) => c,
         Err(e) => {
             return NetworkStatus {
@@ -51,9 +62,13 @@ pub async fn check_bob_api_network() -> NetworkStatus {
             let latency_ms = start.elapsed().as_millis() as u64;
             let mut err_msg = "网络请求失败: ".to_string();
             if err.is_timeout() {
-                err_msg.push_str("连接超时(5秒)，无法连接至指定站点，请检查网络或开启代理");
+                err_msg.push_str(
+                    "连接超时(5秒)，无法连接至官方服务，请检查网络或开启代理 / VPN 的 TUN 模式",
+                );
             } else if err.is_connect() {
-                err_msg.push_str("目标服务器连接失败或DNS无法解析，请检查本地网络配置");
+                err_msg.push_str(
+                    "目标服务器连接失败或DNS无法解析，请检查本地网络配置或开启代理 / TUN 模式",
+                );
             } else {
                 err_msg.push_str(&err.to_string());
             }

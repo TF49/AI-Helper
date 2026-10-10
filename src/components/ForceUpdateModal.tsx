@@ -35,6 +35,7 @@ import {
   type UpdateDownloadEvent,
   type CandidateMirror,
 } from "../lib/api";
+import { isMac } from "../lib/platform";
 
 // ── 类型定义 ─────────────────────────────────────────────────────────────────
 
@@ -72,7 +73,9 @@ const GITHUB_RELEASES_URL = "https://github.com/TF49/AI-Helper/releases/latest";
 function getAcceleratedDownloadUrls(version?: string) {
   if (!version) return [];
   const cleanVer = version.replace(/^v/, "");
-  const setupName = `AI-Helper-v${cleanVer}-Windows-x64-Setup.exe`;
+  const setupName = isMac()
+    ? `AI-Helper-v${cleanVer}-macOS.dmg`
+    : `AI-Helper-v${cleanVer}-Windows-x64-Setup.exe`;
   return [
     {
       name: "阿里云 OSS 高速通道",

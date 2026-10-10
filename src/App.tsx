@@ -46,6 +46,7 @@ import { useTheme } from "./components/theme-provider";
 import { AuroraBackground } from "./components/react-bits/AuroraBackground";
 import { cn } from "./lib/utils";
 import { checkBobApiNetwork, openUrl, isTauri } from "./lib/api";
+import { isMac, modifierKey } from "./lib/platform";
 import { ForceUpdateModal, useAppUpdater } from "./components/ForceUpdateModal";
 import type { UserInfo } from "./types";
 
@@ -390,8 +391,8 @@ function AppContent() {
           }
         }}
       >
-        {/* 左侧：Logo + 标题与版本 + 侧边栏折叠收起开关 */}
-        <div className="flex items-center gap-2 pl-1">
+        {/* 左侧：Logo + 标题与版本 + 侧边栏折叠收起开关 (macOS 预留红绿灯间距) */}
+        <div className={cn("flex items-center gap-2", isMac() ? "pl-20" : "pl-1")}>
           <div className="flex items-center gap-2.5 pointer-events-none">
             <BrandLogo size={22} className="w-[22px] h-[22px] drop-shadow-sm" />
             <div className="flex items-center gap-2">
@@ -414,7 +415,9 @@ function AppContent() {
             onClick={toggleSidebarCollapsed}
             className="w-7 h-7 ml-1 flex items-center justify-center rounded-lg transition-colors hover:bg-slate-200/80 text-slate-500 hover:text-slate-800 dark:hover:bg-white/10 dark:text-gray-400 dark:hover:text-gray-200 cursor-pointer pointer-events-auto"
             title={
-              isSidebarCollapsed ? "展开侧边栏 (Ctrl+B)" : "收起侧边栏 (Ctrl+B)"
+              isSidebarCollapsed
+                ? `展开侧边栏 (${modifierKey()}+B)`
+                : `收起侧边栏 (${modifierKey()}+B)`
             }
           >
             {isSidebarCollapsed ? (
@@ -465,58 +468,63 @@ function AppContent() {
             <span className="text-[11px] font-normal">后台运行</span>
           </button>
 
-          {/* 最小化 */}
-          <button
-            type="button"
-            onClick={() => win.minimize()}
-            className="w-7 h-7 flex items-center justify-center rounded-lg transition-colors hover:bg-slate-200/80 text-slate-500 hover:text-slate-800 dark:hover:bg-white/10 dark:text-gray-400 dark:hover:text-gray-200 cursor-pointer"
-            title="最小化到任务栏"
-          >
-            <Minus size={13} />
-          </button>
-          {/* 最大化/还原 */}
-          <button
-            type="button"
-            onClick={() => void handleToggleMaximize()}
-            className="w-7 h-7 flex items-center justify-center rounded-lg transition-colors hover:bg-slate-200/80 text-slate-500 hover:text-slate-800 dark:hover:bg-white/10 dark:text-gray-400 dark:hover:text-gray-200 cursor-pointer"
-            title={isWindowMaximized ? "向下还原" : "最大化"}
-          >
-            {isWindowMaximized ? (
-              <Minimize2 size={13} />
-            ) : (
-              <Maximize2 size={13} />
-            )}
-          </button>
-          {/* 关闭/转入后台托盘守护 */}
-          <button
-            type="button"
-            onClick={async () => {
-              try {
-                if (isTauri) {
-                  toast.info("已最小化至后台托盘，Bridge 网关持续为您守护", {
-                    duration: 3500,
-                  });
+          {/* Windows / Linux 专属窗口控制按钮 (macOS 采用左上角原生红绿灯) */}
+          {!isMac() && (
+            <>
+              {/* 最小化 */}
+              <button
+                type="button"
+                onClick={() => win.minimize()}
+                className="w-7 h-7 flex items-center justify-center rounded-lg transition-colors hover:bg-slate-200/80 text-slate-500 hover:text-slate-800 dark:hover:bg-white/10 dark:text-gray-400 dark:hover:text-gray-200 cursor-pointer"
+                title="最小化到任务栏"
+              >
+                <Minus size={13} />
+              </button>
+              {/* 最大化/还原 */}
+              <button
+                type="button"
+                onClick={() => void handleToggleMaximize()}
+                className="w-7 h-7 flex items-center justify-center rounded-lg transition-colors hover:bg-slate-200/80 text-slate-500 hover:text-slate-800 dark:hover:bg-white/10 dark:text-gray-400 dark:hover:text-gray-200 cursor-pointer"
+                title={isWindowMaximized ? "向下还原" : "最大化"}
+              >
+                {isWindowMaximized ? (
+                  <Minimize2 size={13} />
+                ) : (
+                  <Maximize2 size={13} />
+                )}
+              </button>
+              {/* 关闭/转入后台托盘守护 */}
+              <button
+                type="button"
+                onClick={async () => {
                   try {
-                    await win.hide();
-                  } catch (hideErr) {
-                    console.warn(
-                      "win.hide() failed, fallback to win.close():",
-                      hideErr,
-                    );
-                    await win.close();
+                    if (isTauri) {
+                      toast.info("已最小化至后台托盘，Bridge 网关持续为您守护", {
+                        duration: 3500,
+                      });
+                      try {
+                        await win.hide();
+                      } catch (hideErr) {
+                        console.warn(
+                          "win.hide() failed, fallback to win.close():",
+                          hideErr,
+                        );
+                        await win.close();
+                      }
+                    } else {
+                      await win.close();
+                    }
+                  } catch (err) {
+                    console.error("Failed to close/hide window:", err);
                   }
-                } else {
-                  await win.close();
-                }
-              } catch (err) {
-                console.error("Failed to close/hide window:", err);
-              }
-            }}
-            className="w-7 h-7 flex items-center justify-center rounded-lg transition-colors hover:bg-red-500 hover:text-white text-slate-500 dark:hover:bg-red-500/90 dark:text-gray-400 dark:hover:text-white cursor-pointer"
-            title="关闭窗口 (转入系统托盘保持后台常驻守护)"
-          >
-            <X size={13} />
-          </button>
+                }}
+                className="w-7 h-7 flex items-center justify-center rounded-lg transition-colors hover:bg-red-500 hover:text-white text-slate-500 dark:hover:bg-red-500/90 dark:text-gray-400 dark:hover:text-white cursor-pointer"
+                title="关闭窗口 (转入系统托盘保持后台常驻守护)"
+              >
+                <X size={13} />
+              </button>
+            </>
+          )}
         </div>
       </div>
 

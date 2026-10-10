@@ -83,6 +83,47 @@ fn find_in_path(cmd_name: &str) -> Option<PathBuf> {
     None
 }
 
+/// 在 macOS 常见安装目录与 Node 管理器目录中查找 CLI 工具
+#[cfg(target_os = "macos")]
+fn find_cli_in_macos(cmd_name: &str) -> Option<PathBuf> {
+    let mut search_dirs = vec![
+        PathBuf::from("/opt/homebrew/bin"),
+        PathBuf::from("/usr/local/bin"),
+        PathBuf::from("/usr/bin"),
+        PathBuf::from("/bin"),
+    ];
+
+    if let Some(home) = dirs::home_dir() {
+        search_dirs.push(home.join(".npm-global/bin"));
+        search_dirs.push(home.join(".local/bin"));
+        search_dirs.push(home.join(".bun/bin"));
+        search_dirs.push(home.join(".cargo/bin"));
+
+        // 探测 NVM 默认或多版本 node 目录
+        let nvm_versions = home.join(".nvm/versions/node");
+        if nvm_versions.exists() {
+            if let Ok(entries) = std::fs::read_dir(nvm_versions) {
+                let mut v_dirs: Vec<PathBuf> = entries
+                    .flatten()
+                    .map(|e| e.path().join("bin"))
+                    .filter(|p| p.exists())
+                    .collect();
+                v_dirs.sort();
+                v_dirs.reverse(); // 优先选用最新版本 node
+                search_dirs.extend(v_dirs);
+            }
+        }
+    }
+
+    for dir in search_dirs {
+        let candidate = dir.join(cmd_name);
+        if candidate.exists() {
+            return Some(candidate);
+        }
+    }
+    None
+}
+
 fn matches_process(
     target: &str,
     name_lower: &str,
@@ -251,6 +292,21 @@ pub fn detect_claude_cli_path_internal(
         }
     }
 
+    // 2.1 检查 macOS 常见安装目录与 Node 运行环境
+    #[cfg(target_os = "macos")]
+    {
+        if let Some(path) = find_cli_in_macos("claude") {
+            return DetectedPathInfo {
+                app_type: "claude".to_string(),
+                path: path.to_string_lossy().to_string(),
+                exists: true,
+                source: "standard_dir".to_string(),
+                is_running,
+                extra_info: Some(format!("探测自 macOS 系统环境 ({})", path.display())),
+            };
+        }
+    }
+
     // 3. 检查 PATH 环境变量
     if let Some(path) = find_in_path("claude") {
         return DetectedPathInfo {
@@ -311,6 +367,21 @@ pub fn detect_codex_cli_path_internal(
                     extra_info: Some("探测自全局 npm 目录 (%APPDATA%\\npm)".to_string()),
                 };
             }
+        }
+    }
+
+    // 2.1 检查 macOS 常见安装目录与 Node 运行环境
+    #[cfg(target_os = "macos")]
+    {
+        if let Some(path) = find_cli_in_macos("codex") {
+            return DetectedPathInfo {
+                app_type: "codex".to_string(),
+                path: path.to_string_lossy().to_string(),
+                exists: true,
+                source: "standard_dir".to_string(),
+                is_running,
+                extra_info: Some(format!("探测自 macOS 系统环境 ({})", path.display())),
+            };
         }
     }
 
@@ -448,6 +519,28 @@ pub fn detect_chatgpt_client_path_internal(
                     source: "standard_dir".to_string(),
                     is_running,
                     extra_info: Some("系统安装目录 (Program Files\\ChatGPT)".to_string()),
+                };
+            }
+        }
+    }
+
+    #[cfg(target_os = "macos")]
+    {
+        let mac_candidates = [
+            PathBuf::from("/Applications/ChatGPT.app"),
+            dirs::home_dir()
+                .map(|h| h.join("Applications/ChatGPT.app"))
+                .unwrap_or_default(),
+        ];
+        for app_path in mac_candidates {
+            if app_path.exists() {
+                return DetectedPathInfo {
+                    app_type: "chatgpt".to_string(),
+                    path: app_path.to_string_lossy().to_string(),
+                    exists: true,
+                    source: "standard_dir".to_string(),
+                    is_running,
+                    extra_info: Some("探测自 macOS /Applications 目录".to_string()),
                 };
             }
         }
@@ -1195,7 +1288,34 @@ pub fn browse_path_dialog(app_type: &str) -> Result<Option<String>, String> {
     }
 }
 
-#[cfg(not(target_os = "windows"))]
+#[cfg(target_os = "macos")]
+pub fn browse_path_dialog(app_type: &str) -> Result<Option<String>, String> {
+    let prompt = match app_type {
+        "chatgpt" => "选择 ChatGPT 客户端应用 (ChatGPT.app)",
+        "claude" => "选择 Claude CLI 执行文件",
+        "codex" => "选择 Codex CLI 执行文件",
+        "workbuddy" => "选择 WorkBuddy 客户端应用",
+        "acciowork" => "选择 Accio 客户端应用",
+        _ => "选择应用文件",
+    };
+    let script = format!(
+        "try\nset f to choose file with prompt \"{}\"\nPOSIX path of f\non error\n\"\"\nend try",
+        prompt
+    );
+    let output = std::process::Command::new("osascript")
+        .args(["-e", &script])
+        .output()
+        .map_err(|e| format!("唤起文件选择对话框失败: {}", e))?;
+
+    let path = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    if path.is_empty() {
+        Ok(None)
+    } else {
+        Ok(Some(path))
+    }
+}
+
+#[cfg(not(any(target_os = "windows", target_os = "macos")))]
 pub fn browse_path_dialog(_app_type: &str) -> Result<Option<String>, String> {
     Err("当前平台不支持文件选择器".to_string())
 }
