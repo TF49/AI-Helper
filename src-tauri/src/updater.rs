@@ -277,6 +277,13 @@ pub fn get_candidate_mirrors(version: &str) -> Vec<CandidateMirror> {
         name: "本站直链 (helper.bob-api.com)".to_string(),
         url: format!("https://helper.bob-api.com/downloads/{}", installer_name),
     };
+    let oss_mirror = CandidateMirror {
+        name: "阿里云 OSS 高速镜像".to_string(),
+        url: format!(
+            "https://bobdong.oss-cn-beijing.aliyuncs.com/desktop/AI-Helper-v{}-Windows-x64-Setup.exe",
+            clean_ver
+        ),
+    };
     let official = CandidateMirror {
         name: "GitHub 官方直链 (带 VPN 极速)".to_string(),
         url: format!(
@@ -306,12 +313,26 @@ pub fn get_candidate_mirrors(version: &str) -> Vec<CandidateMirror> {
         ),
     };
 
-    // 本站直链始终放第一位（国内直连，速度最快）
-    // 若检测到有效代理（VPN 已开启），官方 GitHub 升为第二位；否则国内镜像次之
+    // 本站直链与阿里云 OSS 高速镜像始终位于前列（国内直连，千兆带宽）
+    // 若检测到有效代理（VPN 已开启），官方 GitHub 提升优先级；否则国内镜像次之
     if get_upstream_proxy_url().is_some() {
-        vec![local_mirror, official, gh_proxy, ghfast, ghproxy_net]
+        vec![
+            local_mirror,
+            oss_mirror,
+            official,
+            gh_proxy,
+            ghfast,
+            ghproxy_net,
+        ]
     } else {
-        vec![local_mirror, ghfast, gh_proxy, ghproxy_net, official]
+        vec![
+            local_mirror,
+            oss_mirror,
+            ghfast,
+            gh_proxy,
+            ghproxy_net,
+            official,
+        ]
     }
 }
 

@@ -52,6 +52,7 @@ write_site_version() {
   "setupFileName": "${setup}",
   "zipFileName": "${zip}",
   "setupDownloadUrl": "https://helper.bob-api.com/downloads/${setup}",
+  "ossSetupDownloadUrl": "https://bobdong.oss-cn-beijing.aliyuncs.com/desktop/${setup}",
   "zipDownloadUrl": "https://helper.bob-api.com/downloads/${zip}",
   "fastSetupDownloadUrl": "https://ghfast.top/https://github.com/${GITHUB_REPO}/releases/download/${tag}/${setup}",
   "fastZipDownloadUrl": "https://ghfast.top/https://github.com/${GITHUB_REPO}/releases/download/${tag}/${zip}",
@@ -61,6 +62,50 @@ write_site_version() {
 }
 EOF
     log "Generated ${DOWNLOAD_DIR}/version.json for ${tag}"
+
+    # 同步到站点根目录（若站点根目录与下载目录分离）
+    local site_dir="${SITE_DIR:-$(dirname "${DOWNLOAD_DIR}")}"
+    if [[ -d "${site_dir}" && "${site_dir}" != "${DOWNLOAD_DIR}" ]]; then
+        cp -f "${DOWNLOAD_DIR}/version.json" "${site_dir}/version.json" 2>/dev/null || true
+        # 同步更新 download-config.json（如果存在）
+        if [[ -f "${site_dir}/download-config.json" ]]; then
+            cat > "${site_dir}/download-config.json" <<CFGEOF
+{
+  "version": "${ver#v}",
+  "channels": {
+    "oss": {
+      "name": "阿里云 OSS 高速镜像",
+      "downloadUrl": "https://bobdong.oss-cn-beijing.aliyuncs.com/desktop/${setup}",
+      "description": "基于阿里云北京 OSS 节点，国内高并发千兆带宽直连",
+      "enabled": true
+    },
+    "direct": {
+      "name": "本站直链下载",
+      "downloadUrl": "https://helper.bob-api.com/downloads/${setup}",
+      "description": "自建服务器源站直连",
+      "enabled": true
+    },
+    "mirror": {
+      "name": "国内加速镜像 (ghfast)",
+      "downloadUrl": "https://ghfast.top/https://github.com/${GITHUB_REPO}/releases/download/${tag}/${setup}",
+      "description": "GitHub Release 反代加速镜像",
+      "enabled": true
+    }
+  }
+}
+CFGEOF
+            log "Updated ${site_dir}/download-config.json for ${tag}"
+        fi
+    fi
+
+    # 自动拉取并更新 website 前端静态页面
+    local repo_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+    if [[ -d "${repo_dir}/website" && -d "${site_dir}" && "${repo_dir}/website" != "${site_dir}" ]]; then
+        if git -C "${repo_dir}" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+            git -C "${repo_dir}" pull origin main --quiet 2>/dev/null || true
+        fi
+        rsync -av --exclude 'downloads' "${repo_dir}/website/" "${site_dir}/" 2>/dev/null || cp -rn "${repo_dir}/website/"* "${site_dir}/" 2>/dev/null || true
+    fi
 }
 
 # ── 1. 确定版本号 ─────────────────────────────────────────────────────────────

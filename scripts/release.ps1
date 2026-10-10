@@ -34,50 +34,10 @@ $newVersion = $pkg.version
 $tag = "v$newVersion"
 
 # Ensure website files are strictly synced with $newVersion before commit
-$websiteDir = Join-Path $repoRoot 'website'
-if (Test-Path -LiteralPath $websiteDir) {
-    $utf8NoBom = [System.Text.UTF8Encoding]::new($false)
-    $scriptJsPath = Join-Path $websiteDir 'assets/script.js'
-    if (Test-Path -LiteralPath $scriptJsPath) {
-        $scriptJsContent = Get-Content -LiteralPath $scriptJsPath -Encoding UTF8 -Raw
-        if ($scriptJsContent -notmatch [regex]::Escape("const CURRENT_VERSION = `"v$newVersion`";")) {
-            $scriptJsContent = $scriptJsContent -replace 'const CURRENT_VERSION = "v[^"]+";', "const CURRENT_VERSION = `"v$newVersion`";"
-            [System.IO.File]::WriteAllText($scriptJsPath, $scriptJsContent, $utf8NoBom)
-            Write-Host "  Synced website/assets/script.js to v$newVersion" -ForegroundColor DarkGray
-        }
-    }
-    $indexHtmlPath = Join-Path $websiteDir 'index.html'
-    if (Test-Path -LiteralPath $indexHtmlPath) {
-        $indexHtmlContent = Get-Content -LiteralPath $indexHtmlPath -Encoding UTF8 -Raw
-        $indexHtmlContent = [System.Text.RegularExpressions.Regex]::Replace($indexHtmlContent, 'AI-Helper-v\d+\.\d+\.\d+', "AI-Helper-v$newVersion")
-        $indexHtmlContent = [System.Text.RegularExpressions.Regex]::Replace($indexHtmlContent, 'releases/download/v\d+\.\d+\.\d+', "releases/download/v$newVersion")
-        $indexHtmlContent = [System.Text.RegularExpressions.Regex]::Replace($indexHtmlContent, 'helper\.bob-api\.com/downloads/AI-Helper-v\d+\.\d+\.\d+', "helper.bob-api.com/downloads/AI-Helper-v$newVersion")
-        $indexHtmlContent = [System.Text.RegularExpressions.Regex]::Replace($indexHtmlContent, 'releases/tag/v\d+\.\d+\.\d+', "releases/tag/v$newVersion")
-        $indexHtmlContent = [System.Text.RegularExpressions.Regex]::Replace($indexHtmlContent, '<span class="tag-version current-version-tag">v\d+\.\d+\.\d+</span>', "<span class=`"tag-version current-version-tag`">v$newVersion</span>")
-        $indexHtmlContent = [System.Text.RegularExpressions.Regex]::Replace($indexHtmlContent, '<strong class="current-version-tag"[^>]*>v\d+\.\d+\.\d+</strong>', "<strong class=`"current-version-tag`" style=`"color: var(--accent-blue);`">v$newVersion</strong>")
-        $indexHtmlContent = [System.Text.RegularExpressions.Regex]::Replace($indexHtmlContent, '<span id="hero-btn-text">[^<]+</span>', "<span id=`"hero-btn-text`">立即下载 Windows 安装版 (v$newVersion)</span>")
-        $indexHtmlContent = [System.Text.RegularExpressions.Regex]::Replace($indexHtmlContent, '<span id="checksum-setup-filename">[^<]+</span>', "<span id=`"checksum-setup-filename`">AI-Helper-v$newVersion-Windows-x64-Setup.exe</span>")
-        [System.IO.File]::WriteAllText($indexHtmlPath, $indexHtmlContent, $utf8NoBom)
-    }
-    $versionJsonPath = Join-Path $websiteDir 'version.json'
-    $repoName = "TF49/AI-Helper"
-    $mirrorBase = "https://helper.bob-api.com/downloads"
-    $versionInfo = [ordered]@{
-        version              = $newVersion
-        tag                  = "v$newVersion"
-        releaseDate          = (Get-Date -Format "yyyy-MM-dd")
-        setupFileName        = "AI-Helper-v$newVersion-Windows-x64-Setup.exe"
-        zipFileName          = "AI-Helper-v$newVersion-Windows-x64-Standalone.zip"
-        setupDownloadUrl     = "$mirrorBase/AI-Helper-v$newVersion-Windows-x64-Setup.exe"
-        zipDownloadUrl       = "$mirrorBase/AI-Helper-v$newVersion-Windows-x64-Standalone.zip"
-        fastSetupDownloadUrl = "https://ghfast.top/https://github.com/$repoName/releases/download/v$newVersion/AI-Helper-v$newVersion-Windows-x64-Setup.exe"
-        fastZipDownloadUrl   = "https://ghfast.top/https://github.com/$repoName/releases/download/v$newVersion/AI-Helper-v$newVersion-Windows-x64-Standalone.zip"
-        githubSetupDownloadUrl = "https://github.com/$repoName/releases/download/v$newVersion/AI-Helper-v$newVersion-Windows-x64-Setup.exe"
-        githubZipDownloadUrl   = "https://github.com/$repoName/releases/download/v$newVersion/AI-Helper-v$newVersion-Windows-x64-Standalone.zip"
-        releasePageUrl       = "https://github.com/$repoName/releases/tag/v$newVersion"
-    }
-    $versionJsonStr = ($versionInfo | ConvertTo-Json -Depth 4) + "`n"
-    [System.IO.File]::WriteAllText($versionJsonPath, $versionJsonStr, $utf8NoBom)
+$syncScript = Join-Path $PSScriptRoot 'sync-website.js'
+if (Test-Path -LiteralPath $syncScript) {
+    node $syncScript $newVersion
+    if ($LASTEXITCODE -ne 0) { throw "sync-website.js failed" }
     Write-Host "  Verified website files synced with $tag" -ForegroundColor Green
 }
 

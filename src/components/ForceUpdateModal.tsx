@@ -75,6 +75,10 @@ function getAcceleratedDownloadUrls(version?: string) {
   const setupName = `AI-Helper-v${cleanVer}-Windows-x64-Setup.exe`;
   return [
     {
+      name: "阿里云 OSS 高速通道",
+      url: `https://bobdong.oss-cn-beijing.aliyuncs.com/desktop/${setupName}`,
+    },
+    {
       name: "国内高速通道 1 (ghfast)",
       url: `https://ghfast.top/https://github.com/TF49/AI-Helper/releases/download/v${cleanVer}/${setupName}`,
     },

@@ -1,4 +1,10 @@
 #!/bin/sh
+# Pre-commit hook: 自动保证 website 官网所有版本号与 package.json 实时同步
+if [ -f "scripts/sync-website.js" ]; then
+    node scripts/sync-website.js
+    git add -u website/
+fi
+
 # Pre-commit hook: Auto format Rust code if any .rs file is staged
 if git diff --cached --name-only | grep -q '\.rs$'; then
     cargo fmt --manifest-path src-tauri/Cargo.toml
