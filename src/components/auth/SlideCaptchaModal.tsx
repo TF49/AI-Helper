@@ -288,7 +288,9 @@ export function SlideCaptchaModal({
             >
               {/* 已经拖动的进度条高亮 */}
               <div
-                className="absolute left-0 top-0 bottom-0 bg-blue-500/20 dark:bg-blue-500/30 transition-all pointer-events-none"
+                className={`absolute left-0 top-0 bottom-0 bg-blue-500/20 dark:bg-blue-500/30 pointer-events-none ${
+                  isDragging ? "" : "transition-all duration-200"
+                }`}
                 style={{ width: `${sliderPercent}%` }}
               />
 
@@ -299,9 +301,11 @@ export function SlideCaptchaModal({
 
               {/* 滑块手柄 */}
               <div
-                className="absolute top-1 bottom-1 w-10 bg-white dark:bg-blue-600 rounded-lg shadow-md border border-slate-200 dark:border-blue-400 flex items-center justify-center text-slate-600 dark:text-white cursor-grab active:cursor-grabbing hover:scale-105 active:scale-95 transition-transform"
+                className={`absolute top-1 bottom-1 w-10 bg-white dark:bg-blue-600 rounded-lg shadow-md border border-slate-200 dark:border-blue-400 flex items-center justify-center text-slate-600 dark:text-white cursor-grab active:cursor-grabbing hover:scale-105 active:scale-95 ${
+                  isDragging ? "transition-transform" : "transition-all duration-200"
+                }`}
                 style={{
-                  left: `calc(${sliderPercent}% * (1 - 40px / 100%))`,
+                  left: `calc(${sliderPercent}% - ${sliderPercent * 0.4}px)`,
                 }}
               >
                 <div className="flex items-center gap-0.5 pointer-events-none">
