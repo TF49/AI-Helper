@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { createPortal } from "react-dom";
 import { motion, AnimatePresence } from "motion/react";
 import {
@@ -52,6 +52,7 @@ export function LoginModal({
   const [captchaOpen, setCaptchaOpen] = useState(false);
   const [preparedLoginPayload, setPreparedLoginPayload] =
     useState<LoginPayload | null>(null);
+  const preparedLoginPayloadRef = useRef<LoginPayload | null>(null);
 
   // 2FA 流程状态
   const [twoFaFlowToken, setTwoFaFlowToken] = useState<string | null>(null);
@@ -100,6 +101,7 @@ export function LoginModal({
         encryption_key_id: kid,
       };
 
+      preparedLoginPayloadRef.current = payload;
       setPreparedLoginPayload(payload);
 
       // 3. 判断是否需要完成 GO 滑块
@@ -146,8 +148,9 @@ export function LoginModal({
   // 滑块通过后的回调
   const handleCaptchaSuccess = () => {
     setCaptchaOpen(false);
-    if (preparedLoginPayload) {
-      void doExecuteLogin(preparedLoginPayload);
+    const payload = preparedLoginPayloadRef.current || preparedLoginPayload;
+    if (payload) {
+      void doExecuteLogin(payload);
     }
   };
 
@@ -380,7 +383,7 @@ export function LoginModal({
                 <div className="pt-2">
                   <button
                     type="submit"
-                    disabled={loading || !username.trim() || !password}
+                    disabled={loading || captchaOpen || !username.trim() || !password}
                     className="w-full py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 active:scale-[0.99] text-white text-xs font-semibold flex items-center justify-center gap-2 shadow-md shadow-blue-500/20 disabled:opacity-50 transition-all cursor-pointer"
                   >
                     {loading ? (

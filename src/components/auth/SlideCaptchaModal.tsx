@@ -28,6 +28,7 @@ export function SlideCaptchaModal({
   const [isDragging, setIsDragging] = useState(false);
   const dragStartXRef = useRef(0);
   const dragStartOriginXRef = useRef(0);
+  const currentXRef = useRef(0);
 
   const containerRef = useRef<HTMLDivElement>(null);
   const [displayScale, setDisplayScale] = useState(1);
@@ -37,6 +38,7 @@ export function SlideCaptchaModal({
     setLoading(true);
     setErrorMsg(null);
     setOriginX(0);
+    currentXRef.current = 0;
     try {
       const data = await generateCaptcha();
       setCaptchaData(data);
@@ -56,12 +58,16 @@ export function SlideCaptchaModal({
       setCaptchaData(null);
       setErrorMsg(null);
       setOriginX(0);
+      currentXRef.current = 0;
     }
   }, [open, loadChallenge]);
 
   // 根据容器计算缩放比例 s = display_width / master_width
   useEffect(() => {
     if (!containerRef.current || !captchaData) return;
+    if (containerRef.current.clientWidth > 0 && captchaData.master_width > 0) {
+      setDisplayScale(containerRef.current.clientWidth / captchaData.master_width);
+    }
     const observer = new ResizeObserver((entries) => {
       for (const entry of entries) {
         const width = entry.contentRect.width;
@@ -102,7 +108,12 @@ export function SlideCaptchaModal({
     setIsDragging(true);
     dragStartXRef.current = e.clientX;
     dragStartOriginXRef.current = originX;
-    (e.target as HTMLElement).setPointerCapture(e.pointerId);
+    currentXRef.current = originX;
+    try {
+      (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+    } catch {
+      // ignore
+    }
   };
 
   const handlePointerMove = (e: React.PointerEvent) => {
@@ -114,6 +125,7 @@ export function SlideCaptchaModal({
       0,
       Math.min(maxX, Math.round(dragStartOriginXRef.current + deltaOrigin)),
     );
+    currentXRef.current = newX;
     setOriginX(newX);
   };
 
@@ -121,11 +133,13 @@ export function SlideCaptchaModal({
     if (!isDragging) return;
     setIsDragging(false);
     try {
-      (e.target as HTMLElement).releasePointerCapture(e.pointerId);
+      (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
     } catch {
       // ignore
     }
-    void submitVerification(originX);
+    // 未发生有效拖动时不重复提交
+    if (currentXRef.current <= 0) return;
+    void submitVerification(currentXRef.current);
   };
 
   if (!open || typeof document === "undefined") return null;
@@ -148,7 +162,14 @@ export function SlideCaptchaModal({
 
   return createPortal(
     <AnimatePresence>
-      <div className="fixed inset-0 top-11 z-[85] flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs select-none">
+      <div
+        className="fixed inset-0 top-11 z-[110] flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs select-none"
+        onClick={(e) => {
+          if (!verifying && e.target === e.currentTarget) {
+            onClose();
+          }
+        }}
+      >
         <motion.div
           initial={{ opacity: 0, scale: 0.95 }}
           animate={{ opacity: 1, scale: 1 }}
@@ -259,7 +280,7 @@ export function SlideCaptchaModal({
           {/* 下方拖动滑块轨道 */}
           <div className="space-y-1.5">
             <div
-              className="relative w-full h-10 bg-slate-100 dark:bg-black/30 border border-slate-200 dark:border-white/10 rounded-xl overflow-hidden flex items-center select-none"
+              className="relative w-full h-10 bg-slate-100 dark:bg-black/30 border border-slate-200 dark:border-white/10 rounded-xl overflow-hidden flex items-center select-none touch-none"
               onPointerDown={handlePointerDown}
               onPointerMove={handlePointerMove}
               onPointerUp={handlePointerUp}

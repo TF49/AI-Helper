@@ -1,15 +1,15 @@
 {
-  "version": "1.0.53",
-  "tag": "v1.0.53",
+  "version": "1.0.54",
+  "tag": "v1.0.54",
   "releaseDate": "2026-10-10",
-  "setupFileName": "AI-Helper-v1.0.53-Windows-x64-Setup.exe",
-  "zipFileName": "AI-Helper-v1.0.53-Windows-x64-Standalone.zip",
-  "setupDownloadUrl": "https://helper.bob-api.com/downloads/AI-Helper-v1.0.53-Windows-x64-Setup.exe",
-  "ossSetupDownloadUrl": "https://bobdong.oss-cn-beijing.aliyuncs.com/desktop/AI-Helper-v1.0.53-Windows-x64-Setup.exe",
-  "zipDownloadUrl": "https://helper.bob-api.com/downloads/AI-Helper-v1.0.53-Windows-x64-Standalone.zip",
-  "fastSetupDownloadUrl": "https://ghfast.top/https://github.com/TF49/AI-Helper/releases/download/v1.0.53/AI-Helper-v1.0.53-Windows-x64-Setup.exe",
-  "fastZipDownloadUrl": "https://ghfast.top/https://github.com/TF49/AI-Helper/releases/download/v1.0.53/AI-Helper-v1.0.53-Windows-x64-Standalone.zip",
-  "githubSetupDownloadUrl": "https://github.com/TF49/AI-Helper/releases/download/v1.0.53/AI-Helper-v1.0.53-Windows-x64-Setup.exe",
-  "githubZipDownloadUrl": "https://github.com/TF49/AI-Helper/releases/download/v1.0.53/AI-Helper-v1.0.53-Windows-x64-Standalone.zip",
-  "releasePageUrl": "https://github.com/TF49/AI-Helper/releases/tag/v1.0.53"
+  "setupFileName": "AI-Helper-v1.0.54-Windows-x64-Setup.exe",
+  "zipFileName": "AI-Helper-v1.0.54-Windows-x64-Standalone.zip",
+  "setupDownloadUrl": "https://helper.bob-api.com/downloads/AI-Helper-v1.0.54-Windows-x64-Setup.exe",
+  "ossSetupDownloadUrl": "https://bobdong.oss-cn-beijing.aliyuncs.com/desktop/AI-Helper-v1.0.54-Windows-x64-Setup.exe",
+  "zipDownloadUrl": "https://helper.bob-api.com/downloads/AI-Helper-v1.0.54-Windows-x64-Standalone.zip",
+  "fastSetupDownloadUrl": "https://ghfast.top/https://github.com/TF49/AI-Helper/releases/download/v1.0.54/AI-Helper-v1.0.54-Windows-x64-Setup.exe",
+  "fastZipDownloadUrl": "https://ghfast.top/https://github.com/TF49/AI-Helper/releases/download/v1.0.54/AI-Helper-v1.0.54-Windows-x64-Standalone.zip",
+  "githubSetupDownloadUrl": "https://github.com/TF49/AI-Helper/releases/download/v1.0.54/AI-Helper-v1.0.54-Windows-x64-Setup.exe",
+  "githubZipDownloadUrl": "https://github.com/TF49/AI-Helper/releases/download/v1.0.54/AI-Helper-v1.0.54-Windows-x64-Standalone.zip",
+  "releasePageUrl": "https://github.com/TF49/AI-Helper/releases/tag/v1.0.54"
 }

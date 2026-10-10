@@ -92,6 +92,40 @@ function getMockResponse<T>(cmd: string, _args?: Record<string, unknown>): T {
         captcha_type: "slide",
         slide_captcha_check: true,
       } as unknown as T;
+    case "get_encryption_key":
+      return {
+        enabled: false,
+        kid: "",
+        public_key: "",
+      } as unknown as T;
+    case "generate_captcha":
+      return {
+        captcha_id: "mock-captcha-id",
+        master_image:
+          "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='300' height='220'><rect width='300' height='220' fill='%231e293b'/><circle cx='100' cy='100' r='50' fill='%2338bdf8'/><text x='150' y='120' font-size='18' fill='white' text-anchor='middle'>Mock Captcha</text></svg>",
+        tile_image:
+          "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='70' height='70'><rect width='70' height='70' fill='%2338bdf8' rx='8'/></svg>",
+        master_width: 300,
+        master_height: 220,
+        tile_width: 70,
+        tile_height: 70,
+        thumb_display_x: 0,
+        thumb_display_y: 65,
+      } as unknown as T;
+    case "verify_captcha":
+      return undefined as unknown as T;
+    case "login_account":
+      return {
+        type: "success",
+        user: {
+          id: 1,
+          username: (_args?.payload as LoginPayload)?.username || "mock_user",
+          display_name: "Mock User",
+        },
+        access_token: "mock-token",
+        access_expires_at: Math.floor(Date.now() / 1000) + 86400,
+        session_sid: "mock-sid",
+      } as unknown as T;
     case "get_auth_state":
       return {
         is_logged_in: false,
