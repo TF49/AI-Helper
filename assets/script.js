@@ -1,6 +1,6 @@
 "use strict";
 
-const CURRENT_VERSION = "v1.0.57";
+const CURRENT_VERSION = "v1.0.58";
 const GITHUB_REPO = "TF49/AI-Helper";
 const GITHUB_RELEASES_URL = "https://github.com/" + GITHUB_REPO + "/releases";
 const GHFAST_PREFIX = "https://ghfast.top/";
@@ -316,6 +316,10 @@ document.addEventListener("DOMContentLoaded", function () {
   safeInit(initUtilityActions);
   safeInit(initGroupMonitorSection);
   safeInit(initDynamicDownloadButtons);
+  safeInit(initParallaxMotion);
+  safeInit(initHorizontalScroll);
+  safeInit(initReactBitsComponents);
+  safeInit(initCrossPlatformFeatures);
 });
 
 function safeInit(initializer) {
@@ -335,14 +339,42 @@ function initNavigation() {
   const faq = document.getElementById("faq");
   let ticking = false;
 
+  const navLinks = Array.from(document.querySelectorAll("[data-nav-section]"));
+  const observedSections = navLinks.map(function (link) {
+    return document.getElementById(link.getAttribute("data-nav-section"));
+  }).filter(Boolean);
+
+  function updateScrollSpy() {
+    const scrollY = window.scrollY;
+    const navHeight = nav ? nav.offsetHeight : 64;
+    const probe = scrollY + navHeight + 80;
+
+    let activeId = "";
+    for (let i = observedSections.length - 1; i >= 0; i--) {
+      const sec = observedSections[i];
+      if (sec && sec.offsetTop <= probe) {
+        activeId = sec.id;
+        break;
+      }
+    }
+
+    if (activeId) {
+      navLinks.forEach(function (link) {
+        link.classList.toggle("active", link.getAttribute("data-nav-section") === activeId);
+      });
+    }
+  }
+
   function updateScrollState() {
     ticking = false;
-    nav.classList.toggle("scrolled", window.scrollY > 24);
+    const scrollY = window.scrollY;
+    nav.classList.toggle("scrolled", scrollY > 24);
     if (story && faq && floating) {
-      const showAfter = story.offsetTop + Math.min(story.offsetHeight * 0.75, window.innerHeight * 3);
+      const showAfter = story.offsetTop + Math.min(story.offsetHeight * 0.5, window.innerHeight * 2);
       const hideAfter = faq.offsetTop - window.innerHeight * 0.35;
-      floating.classList.toggle("visible", window.scrollY > showAfter && window.scrollY < hideAfter);
+      floating.classList.toggle("visible", scrollY > showAfter && scrollY < hideAfter);
     }
+    updateScrollSpy();
   }
 
   window.addEventListener("scroll", function () {
@@ -353,6 +385,47 @@ function initNavigation() {
   }, { passive: true });
   updateScrollState();
 
+  // 1. 全局内部锚点平滑滚动 (避免任何原生跳跃与错位)
+  document.querySelectorAll('a[href^="#"]').forEach(function (anchor) {
+    anchor.addEventListener("click", function (e) {
+      const href = anchor.getAttribute("href");
+      if (!href || href === "#") return;
+      const target = document.querySelector(href);
+      if (target) {
+        e.preventDefault();
+        const navHeight = nav ? nav.offsetHeight : 64;
+        let targetTop;
+        if (window.ScrollTrigger) {
+          const sectionId = href.replace(/^#/, "");
+          const st = window.ScrollTrigger.getAll().find(function (s) {
+            return s.trigger === target || (s.vars && s.vars.id === sectionId);
+          });
+          if (st && st.pin) {
+            targetTop = st.start;
+          }
+        }
+        if (targetTop === undefined) {
+          targetTop = target.getBoundingClientRect().top + window.scrollY - navHeight;
+        }
+        window.scrollTo({
+          top: Math.max(0, targetTop),
+          behavior: "smooth"
+        });
+
+        // 立即高亮对应导航
+        const sectionId = href.replace(/^#/, "");
+        navLinks.forEach(function (link) {
+          link.classList.toggle("active", link.getAttribute("data-nav-section") === sectionId);
+        });
+
+        if (history.pushState) {
+          history.pushState(null, "", href);
+        }
+      }
+    });
+  });
+
+  // 2. 移动端抽屉菜单
   if (toggle && menu) {
     toggle.addEventListener("click", function () {
       const open = toggle.getAttribute("aria-expanded") === "true";
@@ -378,20 +451,23 @@ function initNavigation() {
     });
   }
 
-  const observedSections = Array.from(document.querySelectorAll("[data-nav-section]")).map(function (link) {
-    return document.getElementById(link.getAttribute("data-nav-section"));
-  }).filter(Boolean);
+  // 3. 首屏若带 Hash 则就绪后自愈对齐
+  function alignToHash() {
+    if (!window.location.hash) return;
+    const hashTarget = document.querySelector(window.location.hash);
+    if (hashTarget) {
+      const navHeight = nav ? nav.offsetHeight : 64;
+      const targetTop = hashTarget.getBoundingClientRect().top + window.scrollY - navHeight;
+      window.scrollTo({ top: Math.max(0, targetTop), behavior: "auto" });
+      updateScrollSpy();
+    }
+  }
 
-  if ("IntersectionObserver" in window) {
-    const observer = new IntersectionObserver(function (entries) {
-      const visible = entries.filter(function (entry) { return entry.isIntersecting; })
-        .sort(function (a, b) { return b.intersectionRatio - a.intersectionRatio; })[0];
-      if (!visible) return;
-      document.querySelectorAll("[data-nav-section]").forEach(function (link) {
-        link.classList.toggle("active", link.getAttribute("data-nav-section") === visible.target.id);
-      });
-    }, { rootMargin: "-28% 0px -58% 0px", threshold: [0.01, 0.2, 0.5] });
-    observedSections.forEach(function (section) { observer.observe(section); });
+  if (window.location.hash) {
+    setTimeout(alignToHash, 80);
+    window.addEventListener("load", function () {
+      setTimeout(alignToHash, 80);
+    }, { once: true });
   }
 }
 
@@ -507,9 +583,11 @@ function initCinematicStory() {
   window.gsap.registerPlugin(window.ScrollTrigger);
   storyScrollTrigger = window.ScrollTrigger.create({
     trigger: "#story",
+    pin: true,
+    pinSpacing: true,
     start: "top top",
-    end: "bottom bottom",
-    scrub: 0.55,
+    end: "+=2400",
+    scrub: 0.45,
     invalidateOnRefresh: true,
     onUpdate: function (self) {
       const sceneIndex = Math.min(SCENES.length - 1, Math.floor(self.progress * SCENES.length));
@@ -531,12 +609,18 @@ function scrollToScene(index) {
     return;
   }
 
-  const story = document.getElementById("story");
-  if (!story) return;
-  const start = story.offsetTop;
-  const scrollDistance = Math.max(0, story.offsetHeight - window.innerHeight);
-  const target = start + scrollDistance * (sceneIndex / (SCENES.length - 1));
-  window.scrollTo({ top: target, behavior: "smooth" });
+  if (storyScrollTrigger) {
+    const p = (sceneIndex + 0.5) / SCENES.length;
+    const target = storyScrollTrigger.start + (storyScrollTrigger.end - storyScrollTrigger.start) * p;
+    window.scrollTo({ top: target, behavior: "smooth" });
+  } else {
+    const story = document.getElementById("story");
+    if (!story) return;
+    const start = story.offsetTop;
+    const scrollDistance = Math.max(0, story.offsetHeight - window.innerHeight);
+    const target = start + scrollDistance * (sceneIndex / (SCENES.length - 1));
+    window.scrollTo({ top: target, behavior: "smooth" });
+  }
 }
 
 function updateStoryProgress(progress) {
@@ -955,9 +1039,10 @@ function initUtilityActions() {
     copyToClipboard("git clone https://github.com/TF49/AI-Helper.git", "Git 克隆命令已复制");
   });
 
-  const checksumButton = document.getElementById("btn-copy-checksum");
-  if (checksumButton) checksumButton.addEventListener("click", function () {
-    copyToClipboard(activeReleasePageUrl, "官方发布页链接已复制");
+  document.querySelectorAll("#btn-copy-checksum, .btn-copy-checksum-mac").forEach(function (btn) {
+    btn.addEventListener("click", function () {
+      copyToClipboard(activeReleasePageUrl, "官方发布页链接已复制");
+    });
   });
 
   ["open-config-demo", "native-open-demo"].forEach(function (id) {
@@ -976,20 +1061,46 @@ function applyReleaseData(data) {
   const tag = data.tag.indexOf("v") === 0 ? data.tag : "v" + data.tag;
   const setupFileName = data.setupFileName || "AI-Helper-" + tag + "-Windows-x64-Setup.exe";
   const zipFileName = "AI-Helper-" + tag + "-Windows-x64-Standalone.zip";
+  const macArm64FileName = data.macArm64FileName || "AI-Helper-" + tag + "-macOS-aarch64.dmg";
+  const macX64FileName = data.macX64FileName || "AI-Helper-" + tag + "-macOS-x64.dmg";
+
   const setupUrl = data.setupUrl || GITHUB_RELEASES_URL + "/download/" + tag + "/" + setupFileName;
   const zipUrl = data.zipUrl || GITHUB_RELEASES_URL + "/download/" + tag + "/" + zipFileName;
+  const macArm64Url = data.macArm64Url || GITHUB_RELEASES_URL + "/download/" + tag + "/" + macArm64FileName;
+  const macX64Url = data.macX64Url || GITHUB_RELEASES_URL + "/download/" + tag + "/" + macX64FileName;
+
   const fastSetupUrl = data.fastSetupUrl || GHFAST_PREFIX + setupUrl;
   const fastZipUrl = data.fastZipUrl || GHFAST_PREFIX + zipUrl;
+  const fastMacArm64Url = data.fastMacArm64Url || GHFAST_PREFIX + macArm64Url;
+  const fastMacX64Url = data.fastMacX64Url || GHFAST_PREFIX + macX64Url;
+
   activeReleasePageUrl = data.releasePageUrl || GITHUB_RELEASES_URL + "/tag/" + tag;
 
   document.querySelectorAll(".current-version-tag").forEach(function (element) { element.textContent = tag; });
-  setLink("btn-hero-download", setupUrl);
-  setText("hero-btn-text", "立即下载 Windows 安装版 (" + tag + ")");
+
+  const isMac = /Macintosh|MacIntel|MacPPC|Mac68K/.test(navigator.userAgent) || (navigator.platform && navigator.platform.toUpperCase().indexOf('MAC') >= 0);
+
+  if (isMac) {
+    setLink("btn-hero-download", macArm64Url);
+    setText("hero-btn-text", "立即下载 macOS 安装包 (" + tag + ")");
+  } else {
+    setLink("btn-hero-download", setupUrl);
+    setText("hero-btn-text", "立即下载 Windows 安装包 (" + tag + ")");
+  }
+
+  // Windows 下载链接
   setLink("link-dl-setup", setupUrl);
   setLink("link-dl-fast-setup", fastSetupUrl);
   setLink("link-dl-zip", zipUrl);
   setLink("link-dl-fast-zip", fastZipUrl);
-  setText("checksum-setup-filename", setupFileName);
+
+  // macOS 下载链接
+  setLink("link-dl-mac-arm64", macArm64Url);
+  setLink("link-dl-mac-arm64-fast", fastMacArm64Url);
+  setLink("link-dl-mac-x64", macX64Url);
+  setLink("link-dl-mac-x64-fast", fastMacX64Url);
+
+  setText("checksum-setup-filename", isMac ? macArm64FileName : setupFileName);
 }
 
 async function initReleaseInfo() {
@@ -1015,6 +1126,14 @@ async function initReleaseInfo() {
           const ossUrl = data.ossSetupDownloadUrl || (data.channels && data.channels.oss && data.channels.oss.downloadUrl);
           const mirrorUrl = data.fastSetupDownloadUrl || (data.channels && data.channels.mirror && data.channels.mirror.downloadUrl);
 
+          // macOS 分流
+          const macArm64Direct = data.macArm64DownloadUrl || (data.macosChannels && data.macosChannels.arm64 && data.macosChannels.arm64.direct);
+          const macArm64Oss = data.ossMacArm64DownloadUrl || (data.macosChannels && data.macosChannels.arm64 && data.macosChannels.arm64.oss);
+          const macArm64Mirror = data.fastMacArm64DownloadUrl || (data.macosChannels && data.macosChannels.arm64 && data.macosChannels.arm64.mirror);
+
+          const macX64Direct = data.macX64DownloadUrl || (data.macosChannels && data.macosChannels.x64 && data.macosChannels.x64.direct);
+          const macX64Mirror = data.fastMacX64DownloadUrl || (data.macosChannels && data.macosChannels.x64 && data.macosChannels.x64.mirror);
+
           applyReleaseData({
             tag: data.tag || "v" + data.version,
             setupUrl: directUrl,
@@ -1022,8 +1141,15 @@ async function initReleaseInfo() {
             zipUrl: data.zipDownloadUrl,
             fastSetupUrl: mirrorUrl,
             fastZipUrl: data.fastZipDownloadUrl,
+            macArm64Url: macArm64Direct,
+            ossMacArm64DownloadUrl: macArm64Oss,
+            fastMacArm64Url: macArm64Mirror,
+            macX64Url: macX64Direct,
+            fastMacX64Url: macX64Mirror,
             releasePageUrl: data.releasePageUrl,
-            setupFileName: data.setupFileName
+            setupFileName: data.setupFileName,
+            macArm64FileName: data.macArm64FileName,
+            macX64FileName: data.macX64FileName
           });
           return;
         }
@@ -1513,3 +1639,670 @@ function initGroupMonitorSection() {
     });
   }
 }
+
+/* ==========================================================================
+   1. 首页视差滚动引擎 (Parallax Motion Engine)
+   ========================================================================== */
+function initParallaxMotion() {
+  if (!window.gsap || !window.ScrollTrigger || REDUCED_MOTION.matches) return;
+  const gsap = window.gsap;
+  gsap.registerPlugin(window.ScrollTrigger);
+
+  // 1.1 背景光斑与网格多层视差流动
+  gsap.to(".ambient-orb-cyan", {
+    y: 200,
+    ease: "none",
+    scrollTrigger: {
+      trigger: "#home",
+      start: "top top",
+      end: "bottom top",
+      scrub: 1
+    }
+  });
+
+  gsap.to(".ambient-orb-violet", {
+    y: -240,
+    ease: "none",
+    scrollTrigger: {
+      trigger: "#home",
+      start: "top top",
+      end: "bottom top",
+      scrub: 1
+    }
+  });
+
+  gsap.to(".ambient-grid", {
+    y: 100,
+    ease: "none",
+    scrollTrigger: {
+      trigger: "#home",
+      start: "top top",
+      end: "bottom top",
+      scrub: 1
+    }
+  });
+
+  // 1.2 首页 3D 浮动徽章滚动视差 (不同层级差速运动)
+  const parallaxBadges = document.querySelectorAll(".parallax-badge");
+  parallaxBadges.forEach(function (badge) {
+    const speed = parseFloat(badge.getAttribute("data-parallax-speed")) || 0.35;
+    gsap.to(badge, {
+      y: -150 * speed,
+      rotate: speed > 0 ? 3.5 : -3.5,
+      ease: "none",
+      scrollTrigger: {
+        trigger: "#home",
+        start: "top top",
+        end: "bottom top",
+        scrub: 0.8
+      }
+    });
+  });
+
+  // 1.3 鼠标指针空间 3D 视差微动 (Fine Pointer)
+  if (FINE_POINTER.matches) {
+    const heroSection = document.getElementById("home");
+    const brandMark = document.querySelector(".hero-brand-mark");
+    if (heroSection) {
+      heroSection.addEventListener("pointermove", function (e) {
+        const rect = heroSection.getBoundingClientRect();
+        const xNorm = (e.clientX - rect.left) / rect.width - 0.5;
+        const yNorm = (e.clientY - rect.top) / rect.height - 0.5;
+
+        if (brandMark) {
+          gsap.to(brandMark, {
+            x: xNorm * 32,
+            y: yNorm * 32,
+            rotateY: xNorm * 20,
+            rotateX: -yNorm * 20,
+            duration: 0.5,
+            ease: "power2.out"
+          });
+        }
+
+        parallaxBadges.forEach(function (badge) {
+          const depth = parseFloat(badge.getAttribute("data-depth")) || 26;
+          gsap.to(badge, {
+            x: xNorm * depth,
+            y: yNorm * depth,
+            duration: 0.6,
+            ease: "power2.out"
+          });
+        });
+      });
+
+      heroSection.addEventListener("pointerleave", function () {
+        if (brandMark) {
+          gsap.to(brandMark, {
+            x: 0,
+            y: 0,
+            rotateX: 0,
+            rotateY: 0,
+            duration: 1.1,
+            ease: "elastic.out(1, 0.45)"
+          });
+        }
+        parallaxBadges.forEach(function (badge) {
+          gsap.to(badge, {
+            x: 0,
+            y: 0,
+            duration: 0.95,
+            ease: "elastic.out(1, 0.45)"
+          });
+        });
+      });
+    }
+  }
+}
+
+/* ==========================================================================
+   2. 横向滚动全景画卷 (Horizontal Architecture Panoramic Gallery Engine)
+   ========================================================================== */
+function initHorizontalScroll() {
+  if (!window.gsap || !window.ScrollTrigger || REDUCED_MOTION.matches) return;
+  const section = document.querySelector(".horizontal-showcase");
+  const viewport = document.querySelector(".horizontal-viewport");
+  const track = document.getElementById("horizontal-track");
+  const progressFill = document.getElementById("horizontal-progress-fill");
+  const counterText = document.getElementById("showcase-card-counter");
+  const btnPrev = document.getElementById("btn-showcase-prev");
+  const btnNext = document.getElementById("btn-showcase-next");
+  if (!section || !viewport || !track) return;
+
+  const cards = Array.from(track.querySelectorAll(".panoramic-card"));
+  const totalCards = cards.length;
+  const gsap = window.gsap;
+  gsap.registerPlugin(window.ScrollTrigger);
+
+  window.ScrollTrigger.matchMedia({
+    // 桌面宽屏：GSAP Pin 锁定并横向视差漫游
+    "(min-width: 961px)": function () {
+      const getScrollDistance = function () {
+        return Math.max(0, track.scrollWidth - window.innerWidth);
+      };
+
+      const horizontalTween = gsap.to(track, {
+        x: function () {
+          return -getScrollDistance();
+        },
+        ease: "none",
+        scrollTrigger: {
+          trigger: section,
+          pin: true,
+          pinSpacing: true,
+          scrub: 0.6,
+          start: "top top",
+          end: function () {
+            return "+=" + Math.round(getScrollDistance() + 450);
+          },
+          invalidateOnRefresh: true,
+          onUpdate: function (self) {
+            if (progressFill) {
+              const pct = Math.min(100, Math.max(12, Math.round(self.progress * 100)));
+              progressFill.style.width = pct + "%";
+            }
+            if (counterText && totalCards > 0) {
+              const idx = Math.min(totalCards - 1, Math.floor(self.progress * totalCards));
+              counterText.textContent = (idx + 1).toString().padStart(2, "0") + " / " + totalCards.toString().padStart(2, "0");
+            }
+          }
+        }
+      });
+
+      // 按钮联动：点击直接平滑滚动到相应进度的卡片
+      if (btnPrev) {
+        btnPrev.onclick = function () {
+          const st = horizontalTween.scrollTrigger;
+          if (st) {
+            const step = 1 / (totalCards - 1);
+            const targetP = Math.max(0, st.progress - step);
+            window.scrollTo({
+              top: st.start + (st.end - st.start) * targetP,
+              behavior: "smooth"
+            });
+          }
+        };
+      }
+
+      if (btnNext) {
+        btnNext.onclick = function () {
+          const st = horizontalTween.scrollTrigger;
+          if (st) {
+            const step = 1 / (totalCards - 1);
+            const targetP = Math.min(1, st.progress + step);
+            window.scrollTo({
+              top: st.start + (st.end - st.start) * targetP,
+              behavior: "smooth"
+            });
+          }
+        };
+      }
+    },
+
+    // 移动端：保持丝滑原生触控横滑，联动进度条
+    "(max-width: 960px)": function () {
+      track.style.transform = "none";
+      viewport.style.overflowX = "auto";
+
+      function updateMobileProgress() {
+        const maxScroll = Math.max(1, viewport.scrollWidth - viewport.clientWidth);
+        const scrollLeft = viewport.scrollLeft;
+        const ratio = Math.min(1, Math.max(0, scrollLeft / maxScroll));
+
+        if (progressFill) {
+          progressFill.style.width = Math.min(100, Math.max(12, Math.round(ratio * 100))) + "%";
+        }
+        if (counterText && totalCards > 0) {
+          const idx = Math.min(totalCards - 1, Math.floor(ratio * totalCards));
+          counterText.textContent = (idx + 1).toString().padStart(2, "0") + " / " + totalCards.toString().padStart(2, "0");
+        }
+      }
+
+      viewport.addEventListener("scroll", updateMobileProgress, { passive: true });
+      updateMobileProgress();
+
+      if (btnPrev) {
+        btnPrev.onclick = function () {
+          viewport.scrollBy({ left: -(cards[0]?.offsetWidth || 340), behavior: "smooth" });
+        };
+      }
+      if (btnNext) {
+        btnNext.onclick = function () {
+          viewport.scrollBy({ left: (cards[0]?.offsetWidth || 340), behavior: "smooth" });
+        };
+      }
+    }
+  });
+}
+
+/* ==========================================================================
+   3. React-Bits 动画组件集 (BlurText, TiltedCard, DecryptedText Hover)
+   ========================================================================== */
+function initReactBitsComponents() {
+  // 3.1 React-Bits: BlurText 文本模糊飞入动画
+  if (window.gsap && window.ScrollTrigger && !REDUCED_MOTION.matches) {
+    const gsap = window.gsap;
+    document.querySelectorAll(".react-bits-blur-text").forEach(function (heading) {
+      gsap.from(heading, {
+        scrollTrigger: {
+          trigger: heading,
+          start: "top 88%",
+          once: true
+        },
+        opacity: 0,
+        y: 20,
+        filter: "blur(12px)",
+        duration: 0.75,
+        ease: "power2.out",
+        clearProps: "filter,transform"
+      });
+    });
+  }
+
+  // 3.2 React-Bits: TiltedCard 3D 空间倾斜与光泽响应 (带 rAF 高性能平滑微动)
+  if (FINE_POINTER.matches && !REDUCED_MOTION.matches && window.gsap) {
+    const tiltedCards = document.querySelectorAll(".panoramic-card, .capability-card-macos");
+    tiltedCards.forEach(function (card) {
+      let rafId = 0;
+      card.addEventListener("pointermove", function (e) {
+        if (rafId) return;
+        rafId = requestAnimationFrame(function () {
+          rafId = 0;
+          const rect = card.getBoundingClientRect();
+          const x = e.clientX - rect.left - rect.width / 2;
+          const y = e.clientY - rect.top - rect.height / 2;
+
+          const rotateX = (-y / (rect.height / 2)) * 3.5;
+          const rotateY = (x / (rect.width / 2)) * 3.5;
+
+          window.gsap.to(card, {
+            rotateX: rotateX,
+            rotateY: rotateY,
+            transformPerspective: 1000,
+            scale: 1.01,
+            duration: 0.35,
+            ease: "power2.out",
+            overwrite: "auto"
+          });
+        });
+      });
+
+      card.addEventListener("pointerleave", function () {
+        if (rafId) {
+          cancelAnimationFrame(rafId);
+          rafId = 0;
+        }
+        window.gsap.to(card, {
+          rotateX: 0,
+          rotateY: 0,
+          scale: 1,
+          duration: 0.6,
+          ease: "power2.out",
+          overwrite: "auto"
+        });
+      });
+    });
+  }
+
+  // 3.3 鼠标悬浮触发 DecryptedText 字符解密动效
+  document.querySelectorAll(".decrypted-text").forEach(function (el) {
+    el.addEventListener("mouseenter", function () {
+      runDecryptedText(el);
+    });
+  });
+}
+
+/* ==========================================================================
+   4. 跨平台专属交互引擎 (Cross-Platform Hub & Simulator Mode Toggle)
+   ========================================================================== */
+function initCrossPlatformFeatures() {
+  const isMac = /Macintosh|MacIntel|MacPPC|Mac68K/.test(navigator.userAgent) || (navigator.platform && navigator.platform.toUpperCase().indexOf('MAC') >= 0);
+
+  // 4.1 下载专区平台切换选项卡 (Windows / macOS / All)
+  const dlTabs = document.querySelectorAll(".dl-tab-btn");
+  const dlPanels = {
+    windows: document.getElementById("view-win-downloads"),
+    macos: document.getElementById("view-mac-downloads"),
+    all: document.getElementById("view-all-downloads")
+  };
+
+  function switchDlTab(targetKey) {
+    dlTabs.forEach(function (btn) {
+      const active = btn.getAttribute("data-tab-target") === targetKey;
+      btn.classList.toggle("active", active);
+      btn.setAttribute("aria-selected", String(active));
+    });
+
+    Object.keys(dlPanels).forEach(function (key) {
+      const panel = dlPanels[key];
+      if (panel) {
+        if (key === targetKey) {
+          panel.classList.add("active");
+          if (window.gsap && !REDUCED_MOTION.matches) {
+            window.gsap.fromTo(panel, { opacity: 0, y: 12 }, { opacity: 1, y: 0, duration: 0.35, ease: "power2.out" });
+          }
+        } else {
+          panel.classList.remove("active");
+        }
+      }
+    });
+
+    if (window.ScrollTrigger) {
+      setTimeout(function () {
+        window.ScrollTrigger.refresh();
+      }, 100);
+    }
+  }
+
+  dlTabs.forEach(function (btn) {
+    btn.addEventListener("click", function () {
+      const target = btn.getAttribute("data-tab-target");
+      if (target) switchDlTab(target);
+    });
+  });
+
+  // 首页平台快捷下载胶囊事件
+  document.querySelectorAll(".hero-pill-btn").forEach(function (pill) {
+    pill.addEventListener("click", function () {
+      const target = pill.getAttribute("data-target-tab");
+      if (target) {
+        switchDlTab(target);
+        document.querySelectorAll(".hero-pill-btn").forEach(function (p) {
+          p.classList.toggle("active", p === pill);
+        });
+      }
+    });
+  });
+
+  // 若用户为 macOS 系统，自动激活 macOS 专属下载面板
+  if (isMac) {
+    switchDlTab("macos");
+    document.querySelectorAll(".hero-pill-btn").forEach(function (p) {
+      p.classList.toggle("active", p.getAttribute("data-target-tab") === "macos");
+    });
+  }
+
+  // 4.2 演示模拟器视界模式切换 (macOS 红绿灯 / Windows 双模)
+  const simOsButtons = document.querySelectorAll(".win-os-btn");
+  const productFrame = document.getElementById("product-frame");
+  const windowControls = document.getElementById("window-controls");
+  const windowTitle = document.getElementById("window-title-text");
+
+  simOsButtons.forEach(function (btn) {
+    btn.addEventListener("click", function () {
+      const osMode = btn.getAttribute("data-sim-os");
+      simOsButtons.forEach(function (b) { b.classList.toggle("active", b === btn); });
+
+      if (osMode === "macos") {
+        if (productFrame) productFrame.classList.add("macos-mode");
+        if (windowControls) windowControls.style.display = "none";
+        if (windowTitle) windowTitle.textContent = "AI Helper · macOS Sonoma (Apple Silicon)";
+
+        const s1 = document.getElementById("strip-item-1-desc");
+        const s2 = document.getElementById("strip-item-2-desc");
+        const s3 = document.getElementById("strip-item-3-desc");
+        const s4 = document.getElementById("strip-item-4-desc");
+        if (s1) s1.textContent = "~/.codex/config.toml (Native)";
+        if (s2) s2.textContent = "/usr/local/bin/claude (Homebrew)";
+        if (s3) s3.textContent = "~/.workbuddy-ai/models.json";
+        if (s4) s4.textContent = "Bridge :8787 (AppleScript Terminal)";
+
+        showToast("已切换至 macOS 原生红绿灯 Overlay 视界");
+      } else {
+        if (productFrame) productFrame.classList.remove("macos-mode");
+        if (windowControls) windowControls.style.display = "";
+        if (windowTitle) windowTitle.textContent = "AI Helper Studio";
+
+        const s1 = document.getElementById("strip-item-1-desc");
+        const s2 = document.getElementById("strip-item-2-desc");
+        const s3 = document.getElementById("strip-item-3-desc");
+        const s4 = document.getElementById("strip-item-4-desc");
+        if (s1) s1.textContent = "Win32 · 已发现";
+        if (s2) s2.textContent = "NPM · 已发现";
+        if (s3) s3.textContent = "Native · 已发现";
+        if (s4) s4.textContent = "Bridge · 已发现";
+
+        showToast("已切换至 Windows 视界");
+      }
+    });
+  });
+
+  // 4.3 macOS 终端解除隔离命令一键复制
+  const btnCopyMacCmd = document.getElementById("btn-copy-mac-cmd");
+  if (btnCopyMacCmd) {
+    btnCopyMacCmd.addEventListener("click", function () {
+      copyToClipboard("xattr -cr /Applications/AI\\ Helper.app", "macOS 终端解锁命令已复制到剪贴板");
+    });
+  }
+
+  // 4.4 macOS 阿里云 OSS 高速镜像拉起
+  const btnMacOss = document.getElementById("btn-dl-mac-arm64-oss");
+  if (btnMacOss) {
+    btnMacOss.addEventListener("click", async function (e) {
+      e.preventDefault();
+      const textSpan = document.getElementById("btn-dl-mac-arm64-oss-text") || btnMacOss;
+      const origText = textSpan.textContent;
+      textSpan.textContent = "正在获取 OSS 地址...";
+      showToast("正在获取阿里云 OSS macOS 安装包高速通道...");
+
+      try {
+        let downloadUrl = "https://bobdong.oss-cn-beijing.aliyuncs.com/desktop/AI-Helper-" + CURRENT_VERSION + "-macOS-aarch64.dmg";
+        if (latestReleaseData && latestReleaseData.ossMacArm64DownloadUrl) {
+          downloadUrl = latestReleaseData.ossMacArm64DownloadUrl;
+        }
+
+        const trigger = document.createElement("a");
+        trigger.href = downloadUrl;
+        trigger.download = "";
+        trigger.target = "_blank";
+        trigger.rel = "noopener noreferrer";
+        document.body.appendChild(trigger);
+        trigger.click();
+        document.body.removeChild(trigger);
+        showToast("已成功拉起 macOS Apple Silicon DMG 下载");
+      } catch (err) {
+        showToast("拉起下载失败，请使用备用镜像");
+      } finally {
+        textSpan.textContent = origText;
+      }
+    });
+  }
+}
+
+
+/* ============================================
+   ACCESSIBILITY ENHANCEMENTS
+   ============================================ */
+
+// Keyboard navigation detection
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Tab') {
+    document.body.classList.add('keyboard-nav');
+  }
+});
+
+document.addEventListener('mousedown', () => {
+  document.body.classList.remove('keyboard-nav');
+});
+
+// Skip to main content enhancement
+const skipLink = document.querySelector('.skip-link');
+if (skipLink) {
+  skipLink.addEventListener('click', (e) => {
+    e.preventDefault();
+    const target = document.querySelector(skipLink.getAttribute('href'));
+    if (target) {
+      target.setAttribute('tabindex', '-1');
+      target.focus();
+      target.addEventListener('blur', () => target.removeAttribute('tabindex'), { once: true });
+      
+      // Smooth scroll if not reduced motion
+      if (!window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+        target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      } else {
+        target.scrollIntoView({ block: 'start' });
+      }
+    }
+  });
+}
+
+// Announce page section changes for screen readers
+const announceSectionChange = (sectionName) => {
+  const announcement = document.createElement('div');
+  announcement.setAttribute('role', 'status');
+  announcement.setAttribute('aria-live', 'polite');
+  announcement.className = 'sr-only';
+  announcement.textContent = `已进入${sectionName}部分`;
+  document.body.appendChild(announcement);
+  setTimeout(() => announcement.remove(), 1000);
+};
+
+// Enhanced focus management for modals and dialogs
+const trapFocus = (element) => {
+  const focusableElements = element.querySelectorAll(
+    'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])'
+  );
+  const firstFocusable = focusableElements[0];
+  const lastFocusable = focusableElements[focusableElements.length - 1];
+  
+  element.addEventListener('keydown', (e) => {
+    if (e.key === 'Tab') {
+      if (e.shiftKey && document.activeElement === firstFocusable) {
+        e.preventDefault();
+        lastFocusable.focus();
+      } else if (!e.shiftKey && document.activeElement === lastFocusable) {
+        e.preventDefault();
+        firstFocusable.focus();
+      }
+    }
+    
+    if (e.key === 'Escape') {
+      element.dispatchEvent(new CustomEvent('modal:close'));
+    }
+  });
+};
+
+// Improve button click feedback with haptic on supported devices
+const enhanceButtonFeedback = () => {
+  const buttons = document.querySelectorAll('button, .button, .nav-github, .nav-download');
+  buttons.forEach(button => {
+    button.addEventListener('click', () => {
+      // Haptic feedback for mobile
+      if ('vibrate' in navigator) {
+        navigator.vibrate(10);
+      }
+    });
+  });
+};
+
+// Initialize accessibility enhancements
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', enhanceButtonFeedback);
+} else {
+  enhanceButtonFeedback();
+}
+
+/* ============================================
+   PERFORMANCE OPTIMIZATIONS
+   ============================================ */
+
+// Lazy load images when they enter viewport
+const lazyLoadImages = () => {
+  const images = document.querySelectorAll('img[data-src]');
+  const imageObserver = new IntersectionObserver((entries, observer) => {
+    entries.forEach(entry => {
+      if (entry.isIntersecting) {
+        const img = entry.target;
+        img.src = img.dataset.src;
+        img.removeAttribute('data-src');
+        observer.unobserve(img);
+      }
+    });
+  }, {
+    rootMargin: '50px 0px',
+    threshold: 0.01
+  });
+  
+  images.forEach(img => imageObserver.observe(img));
+};
+
+// Preload critical resources on hover (for mouse users)
+if (window.matchMedia('(hover: hover)').matches) {
+  const preloadOnHover = (selector, resourceUrl, type = 'fetch') => {
+    document.querySelectorAll(selector).forEach(element => {
+      element.addEventListener('mouseenter', () => {
+        const link = document.createElement('link');
+        link.rel = 'prefetch';
+        link.href = resourceUrl;
+        link.as = type;
+        document.head.appendChild(link);
+      }, { once: true });
+    });
+  };
+  
+  // Example: Preload download page resources when hovering download button
+  preloadOnHover('.nav-download, #btn-hero-download', '/downloads', 'document');
+}
+
+// Reduce animation complexity on low-end devices
+const optimizeForLowEndDevices = () => {
+  // Detect low-end device (simple heuristic)
+  const isLowEnd = navigator.hardwareConcurrency <= 2 || 
+                   navigator.deviceMemory <= 2 ||
+                   /Android 4|Android 5/.test(navigator.userAgent);
+  
+  if (isLowEnd) {
+    document.documentElement.classList.add('reduced-animations');
+  }
+};
+
+optimizeForLowEndDevices();
+
+/* ============================================
+   PROGRESSIVE ENHANCEMENT
+   ============================================ */
+
+// Enhance form validation
+const enhanceFormValidation = () => {
+  const forms = document.querySelectorAll('form');
+  forms.forEach(form => {
+    const inputs = form.querySelectorAll('input, textarea');
+    inputs.forEach(input => {
+      input.addEventListener('invalid', (e) => {
+        e.preventDefault();
+        input.setAttribute('aria-invalid', 'true');
+        
+        // Add visual error indicator
+        input.classList.add('error');
+        
+        // Announce error to screen reader
+        const errorMsg = input.validationMessage;
+        const errorAnnouncement = document.createElement('span');
+        errorAnnouncement.className = 'error-message';
+        errorAnnouncement.setAttribute('role', 'alert');
+        errorAnnouncement.textContent = errorMsg;
+        errorAnnouncement.id = `${input.id}-error`;
+        input.setAttribute('aria-describedby', errorAnnouncement.id);
+        
+        if (!input.nextElementSibling?.classList.contains('error-message')) {
+          input.parentNode.insertBefore(errorAnnouncement, input.nextSibling);
+        }
+      });
+      
+      input.addEventListener('input', () => {
+        if (input.validity.valid) {
+          input.removeAttribute('aria-invalid');
+          input.classList.remove('error');
+          const errorMsg = input.nextElementSibling;
+          if (errorMsg?.classList.contains('error-message')) {
+            errorMsg.remove();
+          }
+        }
+      });
+    });
+  });
+};
+
+enhanceFormValidation();
+
+console.log('✓ Accessibility and performance enhancements loaded');

@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
+
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -7,13 +8,146 @@
   <meta http-equiv="Pragma" content="no-cache">
   <meta http-equiv="Expires" content="0">
   <meta name="theme-color" content="#f8faff">
-  <title>AI Helper - 下一代 AI 编程配置与调度中枢</title>
-  <meta name="description" content="AI Helper 基于 Rust 2024 与 Tauri v2 打造，统一管理 Claude Code、OpenAI Codex、Workbuddy 与 Accio Work 的配置、流式验证和进程安全热重启。">
-  <meta name="keywords" content="AI Helper, Claude Code, OpenAI Codex, Workbuddy, Accio Work, Tauri, Rust, AI Agent, 进程管理, 配置中心">
+  <title>AI Helper - 下一代 AI 编程配置与调度中枢 (Windows &amp; macOS)</title>
+  <meta name="description"
+    content="AI Helper 基于 Rust 2024 与 Tauri v2 打造，原生支持 Windows 10/11 与 macOS (Apple Silicon &amp; Intel 双架构)。统一管理 OpenAI Codex、Claude Code、Workbuddy 与 Accio Work，提供账号额度大盘、零感通道秒级热切换与进程安全热重启。">
+  <meta name="keywords"
+    content="AI Helper, macOS, Apple Silicon, Windows, Claude Code, OpenAI Codex, Workbuddy, Accio Work, Tauri v2, Rust 2024, AI Agent, 进程管理, 通道分组, 钱包额度">
   <link rel="icon" type="image/x-icon" href="assets/favicon.ico">
-  <link rel="stylesheet" href="assets/style.css?v=1.0.57">
+  <link rel="stylesheet" href="assets/style.css?v=1.0.58">
+
+  <!-- Preload critical resources -->
+  <link rel="preconnect" href="https://helper.bob-api.com">
+  <link rel="preload" href="assets/app-icon-squircle.png" as="image">
+  <link rel="modulepreload" href="assets/script.js">
+
+  <!-- SEO & Social Meta -->
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://helper.bob-api.com/">
+  <meta property="og:title" content="AI Helper - 下一代 AI 编程配置与调度中枢">
+  <meta property="og:description"
+    content="统一管理 OpenAI Codex、Claude Code、Workbuddy 与 Accio Work。原生支持 Windows 与 macOS，提供零感热切换与进程安全热重启。">
+  <meta property="og:image" content="https://helper.bob-api.com/assets/app-preview.png">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="AI Helper - AI 编程配置中枢">
+  <meta name="twitter:description" content="统一管理主流 AI 编程工具，Windows & macOS 双端原生适配">
+  <meta name="twitter:image" content="https://helper.bob-api.com/assets/app-preview.png">
+
+  <!-- Structured Data -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "SoftwareApplication",
+    "name": "AI Helper",
+    "applicationCategory": "DeveloperApplication",
+    "operatingSystem": ["Windows 10", "Windows 11", "macOS 11+"],
+    "offers": {
+      "@type": "Offer",
+      "price": "0",
+      "priceCurrency": "USD"
+    },
+    "aggregateRating": {
+      "@type": "AggregateRating",
+      "ratingValue": "4.8",
+      "ratingCount": "256"
+    }
+  }
+  </script>
 </head>
+
 <body>
+  <!-- 全局内联 SVG 图标库 (彻底杜绝 file:/// 协议与静态部署时的 CORS 跨域拦截问题) -->
+  <svg xmlns="http://www.w3.org/2000/svg" style="display: none;" aria-hidden="true">
+    <defs>
+      <!-- Apple/macOS Icon (viewBox 0 0 256 256) -->
+      <symbol id="icon-apple" viewBox="0 0 256 256">
+        <path fill="currentColor" transform="scale(10.6667)" d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.81-.91.65.03 2.47.26 3.64 1.98-.09.06-2.17 1.28-2.15 3.81.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.38 2.83M15.97 6.37c.64-.78 1.08-1.86.96-2.95-1 .04-2.17.65-2.85 1.45-.59.68-1.12 1.77-.98 2.83 1.12.09 2.23-.55 2.87-1.33Z" />
+      </symbol>
+
+      <!-- Windows Icon (viewBox 0 0 256 256) -->
+      <symbol id="icon-windows" viewBox="0 0 256 256">
+        <path fill="currentColor" transform="scale(10.6667)" d="M3 5.5 11 4.4v7.1H3V5.5Zm9-1.25L21 3v8.5h-9V4.25ZM3 12.5h8v7.1l-8-1.1v-6Zm9 0h9V21l-9-1.25V12.5Z" />
+      </symbol>
+
+      <!-- Lightning/Performance Icon -->
+      <symbol id="icon-lightning" viewBox="0 0 256 256">
+        <path fill="currentColor" d="M213.85,125.46l-112,120a8,8,0,0,1-13.69-7l14.66-73.33L45.19,143.49a8,8,0,0,1-3-13l112-120a8,8,0,0,1,13.69,7L153.18,90.9l57.63,21.61a8,8,0,0,1,3,12.95Z" />
+      </symbol>
+
+      <!-- Rust/Crab/Code Icon -->
+      <symbol id="icon-code" viewBox="0 0 256 256">
+        <path fill="currentColor" d="M69.12,94.15,28.5,128l40.62,33.85a8,8,0,1,1-10.24,12.29l-48-40a8,8,0,0,1,0-12.29l48-40a8,8,0,0,1,10.24,12.3Zm176,27.7-48-40a8,8,0,1,0-10.24,12.3L227.5,128l-40.62,33.85a8,8,0,1,0,10.24,12.29l48-40a8,8,0,0,0,0-12.29ZM162.73,32.48a8,8,0,0,0-10.25,4.79l-64,176a8,8,0,0,0,4.79,10.26A8.14,8.14,0,0,0,96,224a8,8,0,0,0,7.52-5.27l64-176A8,8,0,0,0,162.73,32.48Z" />
+      </symbol>
+
+      <!-- Wallet/Credit Card Icon -->
+      <symbol id="icon-wallet" viewBox="0 0 256 256">
+        <path fill="currentColor" d="M224,48H32A16,16,0,0,0,16,64V192a16,16,0,0,0,16,16H224a16,16,0,0,0,16-16V64A16,16,0,0,0,224,48Zm0,16V88H32V64Zm0,128H32V104H224v88Zm-16-24a12,12,0,1,1-12-12A12,12,0,0,1,208,168Z" />
+      </symbol>
+
+      <!-- Diamond/Atomic Icon -->
+      <symbol id="icon-diamond" viewBox="0 0 256 256">
+        <path fill="currentColor" d="M235.33,116.72,139.28,20.66a16,16,0,0,0-22.56,0l-96,96.06a16,16,0,0,0,0,22.56l96.05,96.06a16,16,0,0,0,22.56,0l96.06-96.06A16,16,0,0,0,235.33,116.72ZM128,224h0L32,128,128,32,224,128Z" />
+      </symbol>
+
+      <!-- Checkmark Icon -->
+      <symbol id="icon-check" viewBox="0 0 256 256">
+        <path fill="currentColor" d="M229.66,77.66l-128,128a8,8,0,0,1-11.32,0l-56-56a8,8,0,0,1,11.32-11.32L96,188.69,218.34,66.34a8,8,0,0,1,11.32,11.32Z" />
+      </symbol>
+
+      <!-- Arrow Right Icon -->
+      <symbol id="icon-arrow-right" viewBox="0 0 256 256">
+        <path fill="currentColor" d="M221.66,133.66l-72,72a8,8,0,0,1-11.32-11.32L196.69,136H40a8,8,0,0,1,0-16H196.69L138.34,61.66a8,8,0,0,1,11.32-11.32l72,72A8,8,0,0,1,221.66,133.66Z" />
+      </symbol>
+
+      <!-- Download Icon -->
+      <symbol id="icon-download" viewBox="0 0 256 256">
+        <path fill="currentColor" d="M224,144v64a8,8,0,0,1-8,8H40a8,8,0,0,1-8-8V144a8,8,0,0,1,16,0v56H208V144a8,8,0,0,1,16,0Zm-101.66,5.66a8,8,0,0,0,11.32,0l40-40a8,8,0,0,0-11.32-11.32L136,124.69V32a8,8,0,0,0-16,0v92.69L93.66,98.34a8,8,0,0,0-11.32,11.32Z" />
+      </symbol>
+
+      <!-- Play Icon -->
+      <symbol id="icon-play" viewBox="0 0 256 256">
+        <path fill="currentColor" d="M240,128a15.74,15.74,0,0,1-7.6,13.51L88.32,229.65a16,16,0,0,1-16.2.3A15.86,15.86,0,0,1,64,216.13V39.87a15.86,15.86,0,0,1,8.12-13.82,16,16,0,0,1,16.2.3L232.4,114.49A15.74,15.74,0,0,1,240,128Z" />
+      </symbol>
+
+      <!-- Refresh Icon -->
+      <symbol id="icon-refresh" viewBox="0 0 256 256">
+        <path fill="currentColor" d="M197.67,186.37a8,8,0,0,1,0,11.29C196.58,198.73,170.82,224,128,224c-37.39,0-64.53-22.4-80-39.85V208a8,8,0,0,1-16,0V160a8,8,0,0,1,8-8H88a8,8,0,0,1,0,16H55.44C67.76,183.35,93,208,128,208c36,0,58.14-21.46,58.36-21.68A8,8,0,0,1,197.67,186.37ZM216,40a8,8,0,0,0-8,8V71.85C192.53,54.4,165.39,32,128,32,85.18,32,59.42,57.27,58.34,58.34a8,8,0,0,0,11.3,11.34C69.86,69.46,92,48,128,48c35,0,60.24,24.65,72.56,40H168a8,8,0,0,0,0,16h48a8,8,0,0,0,8-8V48A8,8,0,0,0,216,40Z" />
+      </symbol>
+
+      <!-- Sparkle/Magic Icon -->
+      <symbol id="icon-sparkle" viewBox="0 0 256 256">
+        <path fill="currentColor" d="M197.58,129.06,146,110l-19-51.62a15.92,15.92,0,0,0-29.88,0L78,110,26.42,129.06a16,16,0,0,0,0,29.88L78,178l19.06,51.62a15.92,15.92,0,0,0,29.88,0L146,178l51.62-19.06a16,16,0,0,0,0-29.88ZM137.87,164.18a16,16,0,0,0-9.69,9.69L112,223.94l-16.18-50.07a16,16,0,0,0-9.69-9.69L36.06,144l50.07-16.18a16,16,0,0,0,9.69-9.69L112,68.06l16.18,50.07a16,16,0,0,0,9.69,9.69L187.94,144ZM144,40a8,8,0,0,1,8-8h16V16a8,8,0,0,1,16,0V32h16a8,8,0,0,1,0,16H184V64a8,8,0,0,1-16,0V48H152A8,8,0,0,1,144,40ZM248,88a8,8,0,0,1-8,8h-8v8a8,8,0,0,1-16,0V96h-8a8,8,0,0,1,0-16h8V72a8,8,0,0,1,16,0v8h8A8,8,0,0,1,248,88Z" />
+      </symbol>
+
+      <!-- Traffic Lights Icon (macOS 3 窗口圆点) -->
+      <symbol id="icon-traffic-light" viewBox="0 0 256 256">
+        <circle cx="64" cy="128" r="28" fill="#ff5f57" />
+        <circle cx="128" cy="128" r="28" fill="#febc2e" />
+        <circle cx="192" cy="128" r="28" fill="#28c840" />
+      </symbol>
+
+      <!-- Beer/Homebrew Icon -->
+      <symbol id="icon-package" viewBox="0 0 256 256">
+        <path fill="currentColor" d="M224,48H32A16,16,0,0,0,16,64V184a16,16,0,0,0,16,16H224a16,16,0,0,0,16-16V64A16,16,0,0,0,224,48ZM88,168a8,8,0,0,1-16,0V88a8,8,0,0,1,16,0Zm48,0a8,8,0,0,1-16,0V88a8,8,0,0,1,16,0Zm48,0a8,8,0,0,1-16,0V88a8,8,0,0,1,16,0Z" />
+      </symbol>
+
+      <!-- Command Key Icon -->
+      <symbol id="icon-command" viewBox="0 0 256 256">
+        <path fill="currentColor" d="M180,144H160V112h20a36,36,0,1,0-36-36v20H112V76a36,36,0,1,0-36,36H96v32H76a36,36,0,1,0,36,36V160h32v20a36,36,0,1,0,36-36Zm0-64a20,20,0,1,1-20,20V96A20,20,0,0,1,180,80ZM56,76A20,20,0,0,1,76,56a20,20,0,0,1,20,20v4H92A20,20,0,0,1,56,76Zm20,104a20,20,0,1,1,20-20H92v4A20,20,0,0,1,76,180Zm68-36H112V112h32Zm36,36a20,20,0,0,1-20-20v-4h4a20,20,0,0,1,20,20Z" />
+      </symbol>
+
+      <!-- Open/External Link Icon -->
+      <symbol id="icon-arrow-square-out" viewBox="0 0 256 256">
+        <path fill="currentColor" d="M224,104a8,8,0,0,1-16,0V59.32l-66.33,66.34a8,8,0,0,1-11.32-11.32L196.68,48H152a8,8,0,0,1,0-16h64a8,8,0,0,1,8,8Zm-40,24a8,8,0,0,0-8,8v72H48V80h72a8,8,0,0,0,0-16H48A16,16,0,0,0,32,80V208a16,16,0,0,0,16,16H176a16,16,0,0,0,16-16V136A8,8,0,0,0,184,128Z" />
+      </symbol>
+
+      <!-- Process/CPU Icon -->
+      <symbol id="icon-cpu" viewBox="0 0 256 256">
+        <path fill="currentColor" d="M152,96H104a8,8,0,0,0-8,8v48a8,8,0,0,0,8,8h48a8,8,0,0,0,8-8V104A8,8,0,0,0,152,96Zm-8,48H112V112h32ZM232,56V200a16,16,0,0,1-16,16H40a16,16,0,0,1-16-16V56A16,16,0,0,1,40,40H216A16,16,0,0,1,232,56ZM216,200V152H192a8,8,0,0,1,0-16h24V120H192a8,8,0,0,1,0-16h24V56H40v48H64a8,8,0,0,1,0,16H40v16H64a8,8,0,0,1,0,16H40v48H216Z" />
+      </symbol>
+    </defs>
+  </svg>
+
   <a class="skip-link" href="#main-content">跳到主要内容</a>
   <div class="ambient-layer" aria-hidden="true">
     <div class="ambient-orb ambient-orb-cyan"></div>
@@ -26,111 +160,240 @@
     <div class="container nav-shell">
       <a href="#home" class="brand-unit" aria-label="返回 AI Helper 首页">
         <img src="assets/logo.png" alt="" class="brand-symbol" width="36" height="36">
-        <span class="brand-copy"><strong>AI Helper</strong><span class="version-pill current-version-tag">v1.0.57</span></span>
+        <span class="brand-copy"><strong>AI Helper</strong><span
+            class="version-pill current-version-tag">v1.0.58</span></span>
       </a>
       <nav class="desktop-nav" aria-label="主导航">
         <a href="#story" data-nav-section="story">产品演示</a>
         <a href="#bento" data-nav-section="bento">核心能力</a>
+        <a href="#showcase" data-nav-section="showcase">全景画卷</a>
         <a href="#workflow" data-nav-section="workflow">工作流程</a>
         <a href="#downloads" data-nav-section="downloads">下载</a>
         <a href="#faq" data-nav-section="faq">问答</a>
       </nav>
       <div class="nav-actions">
-        <a class="nav-github" href="https://github.com/TF49/AI-Helper" target="_blank" rel="noopener noreferrer" aria-label="打开 GitHub 仓库">
-          <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12 2C6.477 2 2 6.484 2 12.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.53 1.032 1.53 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0112 6.844c.85.004 1.705.115 2.504.337 1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.202 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.943.359.309.678.92.678 1.855 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.019 10.019 0 0022 12.017C22 6.484 17.522 2 12 2z"/></svg>
+        <a class="nav-github" href="https://github.com/TF49/AI-Helper" target="_blank" rel="noopener noreferrer"
+          aria-label="打开 GitHub 仓库">
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path fill="currentColor"
+              d="M12 2C6.477 2 2 6.484 2 12.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.53 1.032 1.53 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0112 6.844c.85.004 1.705.115 2.504.337 1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.202 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.943.359.309.678.92.678 1.855 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.019 10.019 0 0022 12.017C22 6.484 17.522 2 12 2z" />
+          </svg>
           <span>GitHub</span>
         </a>
         <a class="nav-download" href="#downloads">下载客户端</a>
-        <button class="mobile-menu-toggle" id="mobile-menu-toggle" type="button" aria-expanded="false" aria-controls="mobile-menu" aria-label="打开导航菜单"><span></span><span></span></button>
+        <button class="mobile-menu-toggle" id="mobile-menu-toggle" type="button" aria-expanded="false"
+          aria-controls="mobile-menu" aria-label="打开导航菜单"><span></span><span></span></button>
       </div>
     </div>
     <nav class="mobile-menu" id="mobile-menu" aria-label="移动端导航">
-      <a href="#story">产品演示</a><a href="#bento">核心能力</a><a href="#workflow">工作流程</a><a href="#downloads">下载专区</a><a href="#faq">常见问答</a>
+      <a href="#story">产品演示</a><a href="#bento">核心能力</a><a href="#showcase">全景画卷</a><a href="#workflow">工作流程</a><a
+        href="#downloads">下载专区</a><a href="#faq">常见问答</a>
     </nav>
   </header>
 
   <main id="main-content">
     <section class="hero-section" id="home">
+      <!-- 视差滚动浮动徽章图层 (React-Bits Parallax Floating Badges) -->
+      <div class="parallax-badge-layer" aria-hidden="true">
+        <div class="parallax-badge badge-pos-top-left" data-parallax-speed="0.4" data-depth="22">
+          <svg class="badge-icon" viewBox="0 0 256 256" aria-hidden="true">
+            <use href="#icon-apple" xlink:href="#icon-apple" />
+          </svg>
+          <span class="badge-text"><strong>macOS 原生</strong><small>Apple Silicon M1-M4</small></span>
+        </div>
+        <div class="parallax-badge badge-pos-top-right" data-parallax-speed="-0.35" data-depth="26">
+          <svg class="badge-icon" viewBox="0 0 256 256" aria-hidden="true">
+            <use href="#icon-lightning" xlink:href="#icon-lightning" />
+          </svg>
+          <span class="badge-text"><strong>零感热切换</strong><small>四大 Agent 秒级同频</small></span>
+        </div>
+        <div class="parallax-badge badge-pos-bottom-left" data-parallax-speed="-0.25" data-depth="20">
+          <svg class="badge-icon" viewBox="0 0 256 256" aria-hidden="true">
+            <use href="#icon-code" xlink:href="#icon-code" />
+          </svg>
+          <span class="badge-text"><strong>Rust 2024 内核</strong><small>&lt; 35MB 极速常驻</small></span>
+        </div>
+        <div class="parallax-badge badge-pos-bottom-right" data-parallax-speed="0.45" data-depth="28">
+          <svg class="badge-icon" viewBox="0 0 256 256" aria-hidden="true">
+            <use href="#icon-wallet" xlink:href="#icon-wallet" />
+          </svg>
+          <span class="badge-text"><strong>钱包额度全景</strong><small>USD / CNY 双币折算</small></span>
+        </div>
+      </div>
+
       <div class="container hero-content">
         <div class="hero-brand-mark" aria-hidden="true">
           <span class="hero-brand-halo"></span>
           <img src="assets/app-icon-squircle.png" alt="" width="82" height="82">
         </div>
-        <div class="hero-eyebrow"><span class="eyebrow-dot" aria-hidden="true"></span><span>TAURI V2 · RUST 2024 · WINDOWS</span></div>
+        <div class="hero-eyebrow shiny-badge">
+          <span class="eyebrow-dot" aria-hidden="true"></span>
+          <span class="shiny-text">TAURI V2 · RUST 2024 · WINDOWS &amp; macOS 双端原生适配</span>
+        </div>
         <h1 class="hero-title">
           <span class="hero-line"><span>AI Helper.</span></span>
           <span class="hero-line hero-line-gradient"><span>配置、验证、重启，</span></span>
           <span class="hero-line hero-line-gradient"><span>在一个中枢完成。</span></span>
         </h1>
-        <p class="hero-lead">统一管理 Claude Code、OpenAI Codex、Workbuddy 与 Accio Work。从通道分组检测到流式验证，再到进程树安全热重启，全程不打断开发节奏。</p>
+        <p class="hero-lead">统一管理 OpenAI Codex、Claude Code、Workbuddy 与 Accio Work。原生适配 Windows 与 macOS (Apple Silicon /
+          Intel)，从通道分组遥测、钱包额度大盘到无感热重启，全程不打断开发心流。</p>
+
         <div class="hero-actions">
-          <a id="btn-hero-download" class="button button-primary magnetic-target" href="https://helper.bob-api.com/downloads/AI-Helper-v1.0.57-Windows-x64-Setup.exe">
-            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12m0 0 5-5m-5 5-5-5M5 20h14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
-            <span id="hero-btn-text">立即下载 Windows 安装包 (v1.0.57)</span>
+          <a id="btn-hero-download" class="button button-primary magnetic-target"
+            href="https://helper.bob-api.com/downloads/AI-Helper-v1.0.58-Windows-x64-Setup.exe">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M12 3v12m0 0 5-5m-5 5-5-5M5 20h14" fill="none" stroke="currentColor" stroke-width="2"
+                stroke-linecap="round" stroke-linejoin="round" />
+            </svg>
+            <span id="hero-btn-text">立即下载 Windows 安装包 (v1.0.58)</span>
           </a>
-          <a class="button button-secondary" href="#story"><span>观看动态演示</span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 18 6-6-6-6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></a>
+          <a class="button button-secondary" href="#story"><span>观看动态演示</span><svg viewBox="0 0 24 24"
+              aria-hidden="true">
+              <path d="m9 18 6-6-6-6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                stroke-linejoin="round" />
+            </svg></a>
         </div>
+
+        <!-- 平台快速选择通道胶囊 -->
+        <div class="hero-platform-pills" role="group" aria-label="快捷下载架构选择">
+          <a class="hero-pill-btn active" href="#downloads" data-target-tab="windows">
+            <svg class="pill-os-symbol" viewBox="0 0 256 256" aria-hidden="true">
+              <use href="#icon-windows" xlink:href="#icon-windows" />
+            </svg>
+            <span>Windows x64 安装包</span>
+          </a>
+          <a class="hero-pill-btn" href="#downloads" data-target-tab="macos">
+            <svg class="pill-os-symbol" viewBox="0 0 256 256" aria-hidden="true">
+              <use href="#icon-apple" xlink:href="#icon-apple" />
+            </svg>
+            <span>macOS DMG (Apple Silicon &amp; Intel)</span><small class="pill-badge">v1.0.57 原生</small>
+          </a>
+        </div>
+
         <ul class="hero-trust" aria-label="产品特性">
-          <li><span>✓</span> Windows 10 / 11 64 位</li><li><span>✓</span> MIT 开源协议</li><li><span>✓</span> 常驻内存低于 35MB</li>
+          <li><svg class="trust-check" viewBox="0 0 256 256" aria-hidden="true">
+              <use href="#icon-check" xlink:href="#icon-check" />
+            </svg> Windows 10/11 &amp; macOS 11+ 双生态</li>
+          <li><svg class="trust-check" viewBox="0 0 256 256" aria-hidden="true">
+              <use href="#icon-check" xlink:href="#icon-check" />
+            </svg> Apple Silicon M 系列 &amp; Intel 双架构</li>
+          <li><svg class="trust-check" viewBox="0 0 256 256" aria-hidden="true">
+              <use href="#icon-check" xlink:href="#icon-check" />
+            </svg> 常驻内存低于 35MB</li>
+          <li><svg class="trust-check" viewBox="0 0 256 256" aria-hidden="true">
+              <use href="#icon-check" xlink:href="#icon-check" />
+            </svg> MIT 永久开源免费</li>
         </ul>
+
         <div class="signal-runway" aria-label="AI Helper 数据调度流程">
           <div class="runway-line" aria-hidden="true"><span></span></div>
-          <div class="runway-node runway-node-source"><span class="runway-icon">◎</span><span><small>INPUT</small>AI 云端网关</span></div>
-          <div class="runway-node runway-node-core"><span class="core-pulse" aria-hidden="true"></span><span class="runway-icon">✦</span><span><small>ORCHESTRATE</small>AI Helper 中枢</span></div>
-          <div class="runway-node runway-node-target"><span class="runway-icon">⌁</span><span><small>OUTPUT</small>Agent / CLI 进程</span></div>
+          <div class="runway-node runway-node-source"><span class="runway-icon">◎</span><span><small>INPUT</small>AI
+              云端网关</span></div>
+          <div class="runway-node runway-node-core"><span class="core-pulse" aria-hidden="true"></span><span
+              class="runway-icon">✦</span><span><small>ORCHESTRATE</small>AI Helper 中枢</span></div>
+          <div class="runway-node runway-node-target"><span class="runway-icon">⌁</span><span><small>OUTPUT</small>Agent
+              / CLI 进程</span></div>
         </div>
-        <a class="scroll-cue" href="#story"><span>向下滚动，进入产品演示</span><span class="scroll-cue-line" aria-hidden="true"></span></a>
+        <a class="scroll-cue" href="#story"><span>向下滚动，进入产品演示</span><span class="scroll-cue-line"
+            aria-hidden="true"></span></a>
       </div>
     </section>
 
+    <!-- 01-05 产品分镜与模拟器 (支持 Windows / macOS 视界双模切换) -->
     <section class="story-section" id="story" data-active-scene="0" aria-labelledby="story-title">
       <div class="story-sticky">
         <div class="container story-layout">
           <header class="story-heading">
             <span class="section-kicker">PRODUCT FILM · 01—05</span>
             <h2 id="story-title">一次滚动，看完整条配置链路。</h2>
-            <p>真实 DOM 驱动的产品分镜。每一步都对应 AI Helper 的实际能力。</p>
+            <p>真实 DOM 驱动的产品分镜。每一步都对应 AI Helper 的实际能力与跨端原生设计。</p>
           </header>
           <div class="story-stage">
             <aside class="scene-rail" aria-label="产品演示章节">
               <div class="scene-progress-track" aria-hidden="true"><span id="scene-progress-fill"></span></div>
-              <button class="scene-nav-item active" type="button" data-scene-target="0" aria-current="step"><span class="scene-index">01</span><span><strong>环境发现</strong><small>扫描 Agent 与路径</small></span></button>
-              <button class="scene-nav-item" type="button" data-scene-target="1"><span class="scene-index">02</span><span><strong>统一配置</strong><small>网关、模型、密钥</small></span></button>
-              <button class="scene-nav-item" type="button" data-scene-target="2"><span class="scene-index">03</span><span><strong>流式验证</strong><small>实时 Token 握手</small></span></button>
-              <button class="scene-nav-item" type="button" data-scene-target="3"><span class="scene-index">04</span><span><strong>原子写入</strong><small>校验并安全落盘</small></span></button>
-              <button class="scene-nav-item" type="button" data-scene-target="4"><span class="scene-index">05</span><span><strong>安全热重启</strong><small>清理进程树与句柄</small></span></button>
+              <button class="scene-nav-item active" type="button" data-scene-target="0" aria-current="step"><span
+                  class="scene-index">01</span><span><strong>环境发现</strong><small>扫描 Agent 与路径</small></span></button>
+              <button class="scene-nav-item" type="button" data-scene-target="1"><span
+                  class="scene-index">02</span><span><strong>统一配置</strong><small>网关、模型、密钥</small></span></button>
+              <button class="scene-nav-item" type="button" data-scene-target="2"><span
+                  class="scene-index">03</span><span><strong>流式验证</strong><small>实时 Token 握手</small></span></button>
+              <button class="scene-nav-item" type="button" data-scene-target="3"><span
+                  class="scene-index">04</span><span><strong>原子写入</strong><small>校验并安全落盘</small></span></button>
+              <button class="scene-nav-item" type="button" data-scene-target="4"><span
+                  class="scene-index">05</span><span><strong>安全热重启</strong><small>清理进程树与句柄</small></span></button>
             </aside>
 
             <div class="product-frame-wrap">
               <div class="product-glow" aria-hidden="true"></div>
               <div class="product-frame" id="product-frame">
-                <div class="window-bar">
-                  <div class="window-lights" aria-hidden="true"><span></span><span></span><span></span></div>
-                  <div class="window-title"><img src="assets/logo.png" alt="" width="18" height="18"><span>AI Helper Studio</span><span class="window-live"><i></i> LIVE</span></div>
-                  <div class="window-controls" aria-hidden="true"><span>—</span><span>□</span><span>×</span></div>
+                <!-- 窗口标题栏（保持 3 列网格：左侧灯控+切换器，中间标题，右侧控制） -->
+                <div class="window-bar" id="window-bar">
+                  <div class="window-left-group">
+                    <div class="window-lights" id="window-lights" aria-hidden="true">
+                      <span></span><span></span><span></span>
+                    </div>
+                    <div class="mac-traffic-lights" id="mac-traffic-lights" aria-label="macOS 原生红绿灯">
+                      <span class="mac-light light-red" title="关闭"><i>×</i></span>
+                      <span class="mac-light light-yellow" title="最小化"><i>—</i></span>
+                      <span class="mac-light light-green" title="全屏"><i>+</i></span>
+                    </div>
+                  </div>
+                  <div class="window-title"><img src="assets/logo.png" alt="" width="18" height="18"><span
+                      id="window-title-text">AI Helper Studio</span><span class="window-live"><i></i> LIVE</span></div>
+                  <div class="window-right-group">
+                    <div class="window-platform-toggle" role="radiogroup" aria-label="演示平台切换">
+                      <button class="win-os-btn" type="button" data-sim-os="macos"><span>🍎 macOS</span></button>
+                      <button class="win-os-btn active" type="button" data-sim-os="windows"><span>🪟
+                          Windows</span></button>
+                    </div>
+                    <div class="window-controls" id="window-controls" aria-hidden="true">
+                      <span>—</span><span>□</span><span>×</span>
+                    </div>
+                  </div>
                 </div>
+
                 <div class="product-body">
                   <div class="agent-tabs" role="tablist" aria-label="选择 Agent">
-                    <button class="agent-tab active" type="button" role="tab" aria-selected="true" data-tab="chatgpt"><i class="agent-dot dot-green"></i><span>Codex</span><small>v1</small></button>
-                    <button class="agent-tab" type="button" role="tab" aria-selected="false" data-tab="claude"><i class="agent-dot dot-purple"></i><span>Claude</span><small>3.7</small></button>
-                    <button class="agent-tab" type="button" role="tab" aria-selected="false" data-tab="workbuddy"><i class="agent-dot dot-orange"></i><span>Workbuddy</span><small>Sync</small></button>
-                    <button class="agent-tab" type="button" role="tab" aria-selected="false" data-tab="acciowork"><i class="agent-dot dot-gold"></i><span>Accio Work</span><small>Bridge</small></button>
-                    <button class="agent-tab" type="button" role="tab" aria-selected="false" data-tab="paths"><i class="agent-dot dot-blue"></i><span>进程守护</span><small>On</small></button>
+                    <button class="agent-tab active" type="button" role="tab" aria-selected="true" data-tab="chatgpt"><i
+                        class="agent-dot dot-green"></i><span>Codex</span><small>v1</small></button>
+                    <button class="agent-tab" type="button" role="tab" aria-selected="false" data-tab="claude"><i
+                        class="agent-dot dot-purple"></i><span>Claude</span><small>3.7</small></button>
+                    <button class="agent-tab" type="button" role="tab" aria-selected="false" data-tab="workbuddy"><i
+                        class="agent-dot dot-orange"></i><span>Workbuddy</span><small>Sync</small></button>
+                    <button class="agent-tab" type="button" role="tab" aria-selected="false" data-tab="acciowork"><i
+                        class="agent-dot dot-gold"></i><span>Accio Work</span><small>Bridge</small></button>
+                    <button class="agent-tab" type="button" role="tab" aria-selected="false" data-tab="paths"><i
+                        class="agent-dot dot-blue"></i><span>进程守护</span><small>On</small></button>
                   </div>
                   <div class="product-workspace">
                     <div class="workspace-head">
-                      <div><div class="workspace-overline" id="scene-overline">SCENE 01 · DISCOVERY</div><h3 id="sim-title">正在发现本机 AI 开发环境</h3><p id="sim-desc">自动扫描 PATH、NPM 全局脚本与 Store 隔离包，定位全部可用客户端。</p></div>
+                      <div>
+                        <div class="workspace-overline" id="scene-overline">SCENE 01 · DISCOVERY</div>
+                        <h3 id="sim-title">正在发现本机 AI 开发环境</h3>
+                        <p id="sim-desc">自动扫描 PATH、NPM 全局脚本、Homebrew 与 Store 隔离包，定位可用客户端。</p>
+                      </div>
                       <span class="status-badge" id="sim-status-badge"><i></i>扫描中</span>
                     </div>
                     <div class="discovery-strip" id="discovery-strip" aria-label="Agent 扫描结果">
-                      <div class="discovery-item"><span class="discovery-check">✓</span><span><strong>OpenAI Codex</strong><small>Win32 · 已发现</small></span></div>
-                      <div class="discovery-item"><span class="discovery-check">✓</span><span><strong>Claude Code</strong><small>NPM · 已发现</small></span></div>
-                      <div class="discovery-item"><span class="discovery-check">✓</span><span><strong>Workbuddy</strong><small>Native · 已发现</small></span></div>
-                      <div class="discovery-item"><span class="discovery-check">✓</span><span><strong>Accio Work</strong><small>Bridge · 已发现</small></span></div>
+                      <div class="discovery-item"><span class="discovery-check">✓</span><span><strong
+                            id="strip-item-1-title">OpenAI Codex</strong><small id="strip-item-1-desc">Win32 ·
+                            已发现</small></span></div>
+                      <div class="discovery-item"><span class="discovery-check">✓</span><span><strong
+                            id="strip-item-2-title">Claude Code</strong><small id="strip-item-2-desc">NPM ·
+                            已发现</small></span></div>
+                      <div class="discovery-item"><span class="discovery-check">✓</span><span><strong
+                            id="strip-item-3-title">Workbuddy</strong><small id="strip-item-3-desc">Native ·
+                            已发现</small></span></div>
+                      <div class="discovery-item"><span class="discovery-check">✓</span><span><strong
+                            id="strip-item-4-title">Accio Work</strong><small id="strip-item-4-desc">Bridge ·
+                            已发现</small></span></div>
                     </div>
                     <div class="config-panel">
-                      <label class="field-wide"><span>配置文件路径 <button class="text-action" type="button" id="open-config-demo">原生调阅 ↗</button></span><input id="sim-input-config" type="text" readonly value="~/.codex/config.toml"></label>
-                      <label><span>API 服务网关</span><input id="sim-input-api" type="text" value="https://api.openai.com/v1"></label>
+                      <label class="field-wide"><span>配置文件路径 <button class="text-action" type="button"
+                            id="open-config-demo">原生调阅 ↗</button></span><input id="sim-input-config" type="text"
+                          readonly value="~/.codex/config.toml"></label>
+                      <label><span>API 服务网关</span><input id="sim-input-api" type="text"
+                          value="https://api.openai.com/v1"></label>
                       <label><span>默认模型</span><input id="sim-input-model" type="text" value="gpt-4o"></label>
                       <div class="model-chips field-wide" id="sim-chips" aria-label="快速选择模型"></div>
                       <div class="sim-group-preview field-wide" id="sim-group-row">
@@ -139,12 +402,18 @@
                       </div>
                     </div>
                     <div class="terminal-panel">
-                      <div class="terminal-head"><span><i></i> STREAM DIAGNOSTIC</span><span id="sim-latency-badge">READY</span></div>
+                      <div class="terminal-head"><span><i></i> STREAM DIAGNOSTIC</span><span
+                          id="sim-latency-badge">READY</span></div>
                       <pre id="sim-terminal-text" aria-live="polite">// 等待场景推进，或点击下方按钮开始验证...</pre>
                     </div>
                     <div class="workspace-footer">
-                      <div class="write-state" id="write-state"><span></span><span></span><span></span><strong>等待任务</strong></div>
-                      <button class="product-action" id="btn-sim-test" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 5 11 7-11 7V5Z" fill="currentColor"/></svg>测试流式连通性</button>
+                      <div class="write-state" id="write-state">
+                        <span></span><span></span><span></span><strong>等待任务</strong>
+                      </div>
+                      <button class="product-action" id="btn-sim-test" type="button"><svg viewBox="0 0 24 24"
+                          aria-hidden="true">
+                          <path d="m8 5 11 7-11 7V5Z" fill="currentColor" />
+                        </svg>测试流式连通性</button>
                     </div>
                   </div>
                 </div>
@@ -155,8 +424,15 @@
               <div class="scene-copy-index" id="scene-copy-index">01 / 05</div>
               <h3 id="scene-copy-title">自动发现，不再手动翻路径。</h3>
               <p id="scene-copy-body">启动即感知 Claude Code、Codex、Workbuddy 与 Accio Work 的安装位置和运行状态，并自动纠偏失效路径。</p>
-              <ul class="scene-bullets" id="scene-bullets"><li>PATH 与 NPM 全局脚本扫描</li><li>Store 隔离包智能识别</li><li>异常路径自动修复</li></ul>
-              <button class="replay-button" id="replay-story" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12a8 8 0 1 0 2.34-5.66L4 8.68M4 4v4.68h4.68" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>重新播放</button>
+              <ul class="scene-bullets" id="scene-bullets">
+                <li>PATH 与 NPM 全局脚本扫描</li>
+                <li>Homebrew 与 NVM 多环境探测</li>
+                <li>异常路径自动纠偏与自愈</li>
+              </ul>
+              <button class="replay-button" id="replay-story" type="button"><svg viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M4 12a8 8 0 1 0 2.34-5.66L4 8.68M4 4v4.68h4.68" fill="none" stroke="currentColor"
+                    stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+                </svg>重新播放</button>
             </aside>
           </div>
         </div>
@@ -164,32 +440,96 @@
       <div class="mobile-story container" id="mobile-story-list" aria-label="移动端产品演示"></div>
     </section>
 
+    <!-- 核心能力 Bento Grid (严密 12 列对称布局，无空缺) -->
     <section class="capability-section section-space" id="bento" aria-labelledby="capability-title">
       <div class="container">
-        <header class="section-heading"><span class="section-kicker">CORE CAPABILITIES</span><h2 id="capability-title">强悍内核，保持轻盈。</h2><p>复杂的配置差异和进程生命周期交给 AI Helper，你只需要继续编码。</p></header>
+        <header class="section-heading"><span class="section-kicker">CORE CAPABILITIES</span>
+          <h2 id="capability-title">强悍内核，保持轻盈。</h2>
+          <p>双端系统底层的配置差异和进程生命周期交给 AI Helper，你只需继续专心编码。</p>
+        </header>
         <div class="capability-grid">
+          <!-- Row 1 & 2: 统一纳管 (span 8, 2 rows) + 轻量常驻 (span 4) + 原子配置 (span 4) -->
           <article class="capability-card capability-card-main spotlight-card">
-            <span class="card-glare" aria-hidden="true"></span><div class="card-label">统一纳管</div><h3>一个界面，接管主流 AI 编程终端。</h3><p>针对不同工具的底层配置格式进行专属适配，避免在多个隐藏目录和配置文件之间来回切换。</p>
+            <span class="card-glare" aria-hidden="true"></span>
+            <div class="card-label">统一纳管</div>
+            <h3>一个界面，接管主流 AI 编程终端。</h3>
+            <p>跨 Windows 与 macOS 原生环境适配各工具底层配置格式，告别在隐藏目录、TOML、JSON 与环境变量之间繁复穿梭。</p>
             <div class="agent-orbit" aria-label="支持的 Agent">
-              <div><i class="dot-purple"></i><span><strong>Claude Code</strong><small>~/.claude.json</small></span><b>READY</b></div>
-              <div><i class="dot-green"></i><span><strong>OpenAI Codex</strong><small>~/.codex/config.toml</small></span><b>READY</b></div>
-              <div><i class="dot-orange"></i><span><strong>Workbuddy AI</strong><small>models.json</small></span><b>READY</b></div>
-              <div><i class="dot-gold"></i><span><strong>Accio Work</strong><small>accio_config.json</small></span><b>BRIDGE</b></div>
+              <div><i class="dot-purple"></i><span><strong>Claude
+                    Code</strong><small>~/.claude.json</small></span><b>READY</b></div>
+              <div><i class="dot-green"></i><span><strong>OpenAI
+                    Codex</strong><small>~/.codex/config.toml</small></span><b>READY</b></div>
+              <div><i class="dot-orange"></i><span><strong>Workbuddy
+                    AI</strong><small>models.json</small></span><b>READY</b></div>
+              <div><i class="dot-gold"></i><span><strong>Accio
+                    Work</strong><small>accio_config.json</small></span><b>BRIDGE</b></div>
             </div>
           </article>
-          <article class="capability-card metric-card spotlight-card"><span class="card-glare" aria-hidden="true"></span><div class="card-icon">↯</div><span class="metric-value" data-count="35" data-suffix=" MB">&lt; 35 MB</span><h3>轻量常驻</h3><p>Rust 2024 原生编译与 Tauri v2 渲染，不让工具本身成为负担。</p></article>
-          <article class="capability-card spotlight-card"><span class="card-glare" aria-hidden="true"></span><div class="card-icon">◇</div><h3>原子配置写入</h3><p>先校验、再落盘，同时注入进程内环境变量，减少配置损坏与重复重启。</p><div class="mini-flow"><span>VALIDATE</span><i></i><span>WRITE</span><i></i><span>SYNC</span></div></article>
-          <!-- 全新特性：通道分组智能检测与健康稳定性雷达 (结合 react-bits 与 GSAP) -->
+          <article class="capability-card metric-card spotlight-card"><span class="card-glare"
+              aria-hidden="true"></span>
+            <div class="card-icon">↯</div><span class="metric-value" data-count="35" data-suffix=" MB">&lt; 35 MB</span>
+            <h3>轻量常驻</h3>
+            <p>Rust 2024 原生编译与 Tauri v2 渲染，Apple Silicon 纯原生零转译，常驻内存仅 28~35MB。</p>
+          </article>
+          <article class="capability-card spotlight-card"><span class="card-glare" aria-hidden="true"></span>
+            <div class="card-icon">◇</div>
+            <h3>原子配置写入</h3>
+            <p>先校验、再落盘，同时注入进程内环境变量，彻底避免配置损坏与重复配置。</p>
+            <div class="mini-flow"><span>VALIDATE</span><i></i><span>WRITE</span><i></i><span>SYNC</span></div>
+          </article>
+
+          <!-- Row 3: macOS 原生全生态适配 (span 12 全景横幅，100% 填满无缺口) -->
+          <article class="capability-card capability-card-macos spotlight-card">
+            <span class="card-glare" aria-hidden="true"></span>
+            <div class="card-label shiny-text"><span class="label-dot"></span>全新原生 · macOS 全生态支持</div>
+            <h3>macOS 原生视界与双架构支持。</h3>
+            <p>专为 Apple Silicon M 系列芯片深度原生优化，零 Rosetta 2 转译开销；同时完整适配 Intel 架构 Mac。内嵌红绿灯 Overlay 沉浸顶栏，自动识别 Homebrew 与 NVM
+              多版本 Node 环境。</p>
+            <div class="macos-feature-strip">
+              <div class="mac-feat-item">
+                <svg class="mac-feat-icon" viewBox="0 0 256 256" aria-hidden="true">
+                  <use href="#icon-lightning" xlink:href="#icon-lightning" />
+                </svg>
+                <strong>ARM64 原生</strong>
+                <small>M1~M4 毫秒秒启</small>
+              </div>
+              <div class="mac-feat-item">
+                <svg class="mac-feat-icon" viewBox="0 0 256 256" aria-hidden="true">
+                  <use href="#icon-traffic-light" xlink:href="#icon-traffic-light" />
+                </svg>
+                <strong>红绿灯 Overlay</strong>
+                <small>预留 80px 沉浸边距</small>
+              </div>
+              <div class="mac-feat-item">
+                <svg class="mac-feat-icon" viewBox="0 0 256 256" aria-hidden="true">
+                  <use href="#icon-package" xlink:href="#icon-package" />
+                </svg>
+                <strong>Homebrew &amp; NVM</strong>
+                <small>智能锁定最优 CLI</small>
+              </div>
+              <div class="mac-feat-item">
+                <svg class="mac-feat-icon" viewBox="0 0 256 256" aria-hidden="true">
+                  <use href="#icon-command" xlink:href="#icon-command" />
+                </svg>
+                <strong>原生快捷键</strong>
+                <small>⌘+B 极客折叠</small>
+              </div>
+            </div>
+          </article>
+
+          <!-- Row 4: 通道分组健康雷达与钱包大盘 (span 12 全景卡片) -->
           <article class="capability-card capability-card-group spotlight-card" id="card-group-monitor">
             <span class="card-glare" aria-hidden="true"></span>
             <div class="group-monitor-head">
               <div class="group-head-copy">
-                <div class="card-label shiny-text"><span class="label-dot"></span>全新特性 · 通道分组检测</div>
-                <h3>通道分组健康稳定性雷达</h3>
-                <p>实时监控上游通道近 1h / 3h / 6h 可用率与 TTFT 首字时延。针对 Codex 流式补全与 Claude 深度推理等差异化场景，智能匹配专属高稳定性通道，彻底告别 404/400 协议错误与超时中断。</p>
+                <div class="card-label shiny-text"><span class="label-dot"></span>核心进化 · 通道分组 &amp; 钱包大盘</div>
+                <h3>通道分组健康雷达与钱包大盘</h3>
+                <p>实时监控上游通道近 1h / 3h / 6h 可用率与 TTFT 首字时延；结合 v1.0.57 全新上线的账户额度双币实时折算大盘与 401 会话凭据透明重试自愈，四大 Agent
+                  联动热广播，杜绝生成中断。</p>
               </div>
               <div class="group-tabs-list" role="tablist" aria-label="选择 Agent 通道分组">
-                <button class="group-tab-btn active" type="button" role="tab" aria-selected="true" data-group-key="chatgpt">
+                <button class="group-tab-btn active" type="button" role="tab" aria-selected="true"
+                  data-group-key="chatgpt">
                   <i class="dot-green"></i><span>Codex 流式专用</span><small>SVIP-Codex</small>
                 </button>
                 <button class="group-tab-btn" type="button" role="tab" aria-selected="false" data-group-key="claude">
@@ -221,8 +561,14 @@
                     <button class="mode-btn" type="button" data-mode="area">平滑波形</button>
                     <button class="mode-btn" type="button" data-mode="bar">遥测柱</button>
                   </div>
-                  <button class="widget-refresh-btn" id="btn-group-refresh" type="button" title="刷新通道遥测数据" aria-label="刷新数据">
-                    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8m0 0V3m0 5h5M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16m0 0v5m0-5h-5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                  <button class="widget-refresh-btn" id="btn-group-refresh" type="button" title="刷新通道遥测数据"
+                    aria-label="刷新数据">
+                    <svg viewBox="0 0 24 24" aria-hidden="true">
+                      <path
+                        d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8m0 0V3m0 5h5M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16m0 0v5m0-5h-5"
+                        fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                        stroke-linejoin="round" />
+                    </svg>
                   </button>
                 </div>
               </div>
@@ -243,13 +589,12 @@
                 </div>
                 <div class="hud-item">
                   <span class="hud-value text-emerald" id="hud-metric-failed">0 熔断</span>
-                  <small>通道健康指数 100</small>
+                  <small>健康指数 100</small>
                 </div>
               </div>
 
               <!-- 视觉图表区域 (Ribbon / Area / Bar) -->
               <div class="widget-charts-container">
-                <!-- 1. 分段条 (Ribbon: GitHub Status 风格 24 个 5 分钟时间桶) -->
                 <div class="chart-view chart-view-ribbon active" id="chart-view-ribbon" aria-label="分段连续健康条">
                   <div class="ribbon-track" id="ribbon-track"></div>
                   <div class="ribbon-legend">
@@ -260,17 +605,17 @@
                   </div>
                 </div>
 
-                <!-- 2. 平滑波形图 (Area: SVG 贝塞尔曲线) -->
                 <div class="chart-view chart-view-area" id="chart-view-area" aria-label="平滑波形曲线">
                   <svg class="area-svg" viewBox="0 0 600 70" preserveAspectRatio="none">
                     <defs>
                       <linearGradient id="area-gradient" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="0%" stop-color="#0877f9" stop-opacity="0.32"/>
-                        <stop offset="100%" stop-color="#0877f9" stop-opacity="0.0"/>
+                        <stop offset="0%" stop-color="#0877f9" stop-opacity="0.32" />
+                        <stop offset="100%" stop-color="#0877f9" stop-opacity="0.0" />
                       </linearGradient>
                     </defs>
-                    <path class="area-fill-path" id="area-fill-path" d="" fill="url(#area-gradient)"/>
-                    <path class="area-stroke-path" id="area-stroke-path" d="" fill="none" stroke="#0877f9" stroke-width="2.5" stroke-linecap="round"/>
+                    <path class="area-fill-path" id="area-fill-path" d="" fill="url(#area-gradient)" />
+                    <path class="area-stroke-path" id="area-stroke-path" d="" fill="none" stroke="#0877f9"
+                      stroke-width="2.5" stroke-linecap="round" />
                   </svg>
                   <div class="area-stats-overlay">
                     <span>时延波动区间: <strong>72ms ~ 82ms</strong></span>
@@ -278,7 +623,6 @@
                   </div>
                 </div>
 
-                <!-- 3. 遥测柱图 (Bar: 24 根高密度柱状图) -->
                 <div class="chart-view chart-view-bar" id="chart-view-bar" aria-label="高密度遥测柱">
                   <div class="bar-track" id="bar-track"></div>
                   <div class="bar-legend">
@@ -288,153 +632,687 @@
                 </div>
               </div>
 
+              <!-- v1.0.57 账号额度大盘 HUD 预览 -->
+              <div class="wallet-quota-hud">
+                <div class="wallet-header">
+                  <span><i class="wallet-icon">💳</i> 账号钱包全景大盘 (v1.0.57)</span>
+                  <span class="wallet-badge"><i class="live-dot-pulse"></i> 401 透明自愈守卫</span>
+                </div>
+                <div class="wallet-metrics">
+                  <div class="wallet-val-box">
+                    <span class="wallet-label">账户实时余额折算</span>
+                    <div class="wallet-currency-pair">
+                      <span class="cur-usd">$98.50 <small>USD</small></span>
+                      <span class="cur-divider">≈</span>
+                      <span class="cur-cny">¥712.80 <small>CNY</small></span>
+                    </div>
+                  </div>
+                  <div class="wallet-val-box">
+                    <span class="wallet-label">零感通道热广播</span>
+                    <span class="wallet-rate text-emerald">四大 Agent 秒级同频生效</span>
+                  </div>
+                </div>
+              </div>
+
               <!-- 专属指南说明与避坑建议 (带 DecryptedText 解密效果) -->
               <div class="widget-guide-box">
                 <div class="guide-lead-tag">💡 专属匹配规则</div>
-                <p class="decrypted-text" id="widget-guide-desc" data-text="Codex 命令行深度依赖高并发流式代码补全与特定上游模型，自动绑定拥有专属流式权限的分组，拒绝补全超时。">Codex 命令行深度依赖高并发流式代码补全与特定上游模型，自动绑定拥有专属流式权限的分组，拒绝补全超时。</p>
+                <p class="decrypted-text" id="widget-guide-desc"
+                  data-text="Codex 命令行深度依赖高并发流式代码补全与特定上游模型，自动绑定拥有专属流式权限的分组，拒绝补全超时。">Codex
+                  命令行深度依赖高并发流式代码补全与特定上游模型，自动绑定拥有专属流式权限的分组，拒绝补全超时。</p>
               </div>
 
               <!-- 底部特性芯片条 -->
               <div class="widget-chips-row">
                 <span><i>✓</i> 1h / 3h / 6h 历史遥测</span>
-                <span><i>✓</i> 四大 Agent 规则自动匹配</span>
-                <span><i>✓</i> 毫秒级多维排序与对比抽屉</span>
-                <span><i>✓</i> 90 秒后台静默自愈轮询</span>
+                <span><i>✓</i> 美元/人民币双币实时折算</span>
+                <span><i>✓</i> 401 凭据透明重试自愈</span>
+                <span><i>✓</i> 零感通道秒级热切换</span>
               </div>
             </div>
           </article>
 
-          <article class="capability-card capability-card-half spotlight-card"><span class="card-glare" aria-hidden="true"></span><div class="card-icon">⌁</div><h3>进程树安全热重启</h3><p>清理子进程树并轮询文件句柄释放，杜绝僵尸进程、端口冲突和多实例竞争。</p><div class="process-status"><span><i></i>Process tree</span><span><i></i>Handles released</span></div></article>
-          <article class="capability-card capability-card-half spotlight-card"><span class="card-glare" aria-hidden="true"></span><div class="card-icon">↗</div><h3>配置文件原生直达</h3><p>默认编辑器、系统记事本、资源管理器三级降级，让每一份配置都能快速打开。</p><button class="inline-demo-button" id="native-open-demo" type="button">演示原生调阅 <span>↗</span></button></article>
+          <!-- Row 5: 进程树热重启 (span 6) + 配置文件原生直达 (span 6) = 12 -->
+          <article class="capability-card capability-card-half spotlight-card"><span class="card-glare"
+              aria-hidden="true"></span>
+            <div class="card-icon">⌁</div>
+            <h3>进程树安全热重启</h3>
+            <p>清理子进程树并轮询文件句柄释放，杜绝僵尸进程、端口冲突和多实例竞争。</p>
+            <div class="process-status"><span><i></i>Process tree</span><span><i></i>Handles released</span></div>
+          </article>
+          <article class="capability-card capability-card-half spotlight-card"><span class="card-glare"
+              aria-hidden="true"></span>
+            <div class="card-icon">↗</div>
+            <h3>配置文件原生直达</h3>
+            <p>默认编辑器、系统记事本、资源管理器三级降级，让每一份配置都能快速打开。</p><button class="inline-demo-button" id="native-open-demo"
+              type="button">演示原生调阅 <span>↗</span></button>
+          </article>
         </div>
       </div>
     </section>
 
+    <!-- 横向滚动动画长廊 (GSAP Horizontal Scroll Showcase · 视差横向画卷) -->
+    <section class="horizontal-showcase" id="showcase" aria-labelledby="showcase-title">
+      <div class="horizontal-wrapper">
+        <div class="horizontal-header container">
+          <div class="header-left">
+            <span class="section-kicker shiny-badge"><span class="shiny-text">PANORAMIC ARCHITECTURE ·
+                01—05</span></span>
+            <h2 id="showcase-title">全景画卷：极速跨端，一揽全景。</h2>
+            <p>向下滑动页面，横向漫游四大 Agent 矩阵、macOS 原生视界与零感通道技术架构。</p>
+          </div>
+          <div class="horizontal-nav-hint">
+            <span class="hint-text" id="showcase-card-counter">01 / 05</span>
+            <div class="h-progress-bar">
+              <div class="h-progress-fill" id="horizontal-progress-fill"></div>
+            </div>
+            <div class="h-nav-buttons" role="group" aria-label="画卷翻页控制">
+              <button class="h-nav-btn prev" id="btn-showcase-prev" type="button" aria-label="上一张卡片"
+                title="上一张卡片">‹</button>
+              <button class="h-nav-btn next" id="btn-showcase-next" type="button" aria-label="下一张卡片"
+                title="下一张卡片">›</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="horizontal-viewport">
+          <div class="horizontal-track" id="horizontal-track">
+            <!-- Card 1: macOS 原生全生态 -->
+            <article class="panoramic-card panoramic-card-macos spotlight-card">
+              <span class="card-glare" aria-hidden="true"></span>
+              <div class="panoramic-badge"><span class="os-pill">🍎 macOS 原生视界</span><span class="version-tag">Apple
+                  Silicon &amp; Intel</span></div>
+              <div class="panoramic-content">
+                <h3>Apple Silicon 纯原生飞驰，红绿灯沉浸设计。</h3>
+                <p>为 M1/M2/M3/M4 系列芯片提供纯原生 aarch64 构建，彻底消除 Rosetta 2 转译开销。独创原生红绿灯 Overlay 融合，80px 预留安全边距，与 macOS
+                  系统风格浑然一体。</p>
+                <div class="panoramic-pills">
+                  <span>M系列 ARM64 原生架构</span>
+                  <span>Homebrew / NVM 智能探测</span>
+                  <span>⌘+B 极客快捷键</span>
+                  <span>AppleScript 终端会话拉起</span>
+                </div>
+              </div>
+              <div class="panoramic-preview macos-mockup">
+                <div class="mockup-mac-bar">
+                  <span class="mac-dot red"></span><span class="mac-dot yellow"></span><span
+                    class="mac-dot green"></span>
+                  <span class="mockup-title">AI Helper · macOS Sonoma / Sequoia</span>
+                </div>
+                <div class="mockup-body">
+                  <div class="mockup-dock-preview">
+                    <span class="dock-item active">Codex</span><span class="dock-item">Claude</span><span
+                      class="dock-item">WorkBuddy</span><span class="dock-item">Accio</span>
+                  </div>
+                  <div class="mockup-log">
+                    <code>✓ /opt/homebrew/bin/node detected (v22.14.0)</code>
+                    <code>✓ Native Overlay Traffic Lights mounted (80px inset)</code>
+                    <code>✓ Zero Rosetta 2 overhead · 28MB RAM</code>
+                  </div>
+                </div>
+              </div>
+            </article>
+
+            <!-- Card 2: Windows 极客体验与深层进程自愈 -->
+            <article class="panoramic-card panoramic-card-win spotlight-card">
+              <span class="card-glare" aria-hidden="true"></span>
+              <div class="panoramic-badge"><span class="os-pill">🪟 Windows 深度熔断</span><span class="version-tag">Win32
+                  &amp; Store</span></div>
+              <div class="panoramic-content">
+                <h3>单快照高并发进程扫描，杜绝僵尸进程与端口冲突。</h3>
+                <p>基于 Rust 2024 系统底层 API，实施进程树单快照并发探测。配置文件更新后，精准执行安全树状熔断与文件句柄释放轮询，确保目标客户端携最新配置平滑重启。</p>
+                <div class="panoramic-pills">
+                  <span>Win32 &amp; Store 隔离包兼容</span>
+                  <span>句柄轮询毫秒级释放</span>
+                  <span>Ctrl+B 侧边栏折叠</span>
+                  <span>WebView2 独立渲染隔离</span>
+                </div>
+              </div>
+              <div class="panoramic-preview win-mockup">
+                <div class="mockup-win-bar">
+                  <span class="mockup-title">Process Manager · PID Scanner</span>
+                  <div class="win-controls"><span>—</span><span>□</span><span>×</span></div>
+                </div>
+                <div class="mockup-body">
+                  <div class="process-tree-vis">
+                    <div class="p-node root"><span>AI-Helper.exe (Parent)</span><span class="p-status green">32MB</span>
+                    </div>
+                    <div class="p-node branch"><span>├─ node.exe (Claude Code CLI)</span><span
+                        class="p-status blue">Active</span></div>
+                    <div class="p-node branch"><span>└─ rlab_bridge.exe (Axum :8787)</span><span
+                        class="p-status blue">Active</span></div>
+                  </div>
+                  <div class="mockup-log">
+                    <code>[RESTART] Snapshot PID scan: 3 handles traced</code>
+                    <code>[RESTART] Mutex unlocked · Restart completed in 180ms</code>
+                  </div>
+                </div>
+              </div>
+            </article>
+
+            <!-- Card 3: 账号额度大盘与 401 凭据自愈 -->
+            <article class="panoramic-card panoramic-card-wallet spotlight-card">
+              <span class="card-glare" aria-hidden="true"></span>
+              <div class="panoramic-badge"><span class="os-pill">💳 账号钱包大盘</span><span class="version-tag">v1.0.57
+                  全新上线</span></div>
+              <div class="panoramic-content">
+                <h3>双币实时折算与 401 会话透明重试自愈。</h3>
+                <p>实时汇率折算账户可用额度（USD / CNY），掌握每笔 Token 消耗。遭遇 401 会话失效时，自动触发后台无感静默续期与重试自愈，杜绝正在执行的代码生成或补全中断。</p>
+                <div class="panoramic-pills">
+                  <span>美元/人民币实时折算</span>
+                  <span>401 会话透明续期</span>
+                  <span>RSA-OAEP 加密分发</span>
+                  <span>2FA 双因素鉴权护航</span>
+                </div>
+              </div>
+              <div class="panoramic-preview wallet-mockup">
+                <div class="wallet-dash-card">
+                  <div class="dash-row">
+                    <div><small>当前账号总资产折算</small><strong class="dash-balance">$128.60 <span class="cny-tag">/
+                          ¥930.50</span></strong></div>
+                    <div class="token-status-pill"><span>健康运行中</span></div>
+                  </div>
+                  <div class="dash-bars">
+                    <div class="dash-bar-item"><small>Codex 补全</small>
+                      <div class="bar-fill" style="width: 65%;"></div><span>65%</span>
+                    </div>
+                    <div class="dash-bar-item"><small>Claude 推理</small>
+                      <div class="bar-fill fill-purple" style="width: 25%;"></div><span>25%</span>
+                    </div>
+                    <div class="dash-bar-item"><small>WorkBuddy</small>
+                      <div class="bar-fill fill-orange" style="width: 10%;"></div><span>10%</span>
+                    </div>
+                  </div>
+                  <div class="mockup-log">
+                    <code>✓ 401 Handshake Interceptor: Token auto-refreshed (0ms lag)</code>
+                  </div>
+                </div>
+              </div>
+            </article>
+
+            <!-- Card 4: 零感通道分组秒级广播 -->
+            <article class="panoramic-card panoramic-card-broadcast spotlight-card">
+              <span class="card-glare" aria-hidden="true"></span>
+              <div class="panoramic-badge"><span class="os-pill">⚡ 零感通道广播</span><span class="version-tag">热切换中枢</span>
+              </div>
+              <div class="panoramic-content">
+                <h3>一键热切换通道分组，四大 Agent 同步秒级生效。</h3>
+                <p>告别繁杂的逐个客户端修改。在 AI Helper 中枢秒级切换通道分组后，最新网关地址与 API Key 将立即通过全局事件总线广播至 OpenAI Codex、Claude
+                  Code、WorkBuddy 与 Accio Work。</p>
+                <div class="panoramic-pills">
+                  <span>全局总线秒级广播</span>
+                  <span>免去重启与配置落盘等待</span>
+                  <span>专属 SLA 通道规则匹配</span>
+                  <span>实时首字延迟遥测</span>
+                </div>
+              </div>
+              <div class="panoramic-preview broadcast-mockup">
+                <div class="broadcast-center-node">
+                  <span class="hub-circle">AI Helper 中枢</span>
+                  <div class="pulse-rings"><span></span><span></span></div>
+                </div>
+                <div class="broadcast-targets">
+                  <div class="target-item target-codex"><span>OpenAI Codex</span><small>Synced</small></div>
+                  <div class="target-item target-claude"><span>Claude Code</span><small>Synced</small></div>
+                  <div class="target-item target-workbuddy"><span>WorkBuddy</span><small>Synced</small></div>
+                  <div class="target-item target-accio"><span>Accio Work</span><small>Synced</small></div>
+                </div>
+              </div>
+            </article>
+
+            <!-- Card 5: Accio Work Local Bridge -->
+            <article class="panoramic-card panoramic-card-bridge spotlight-card">
+              <span class="card-glare" aria-hidden="true"></span>
+              <div class="panoramic-badge"><span class="os-pill">🧩 本地网关协议</span><span class="version-tag">Axum +
+                  Tokio</span></div>
+              <div class="panoramic-content">
+                <h3>Rust Axum + Tokio 本地网关，自定义模型无缝注入。</h3>
+                <p>内置 RLab Bridge 本地高性能协议转译服务（127.0.0.1:8787），支持 DALL-E 3 生图协议自适应转译、SSE 流式错误自愈与 MCP 显式代理路由，赋予 Accio Work
+                  调用任何第三方大模型的无限能力。</p>
+                <div class="panoramic-pills">
+                  <span>Axum 高并发网关</span>
+                  <span>DALL-E 3 协议翻译</span>
+                  <span>SSE 错误归一化</span>
+                  <span>MCP 显式代理集成</span>
+                </div>
+              </div>
+              <div class="panoramic-preview bridge-mockup">
+                <div class="bridge-stream-vis">
+                  <div class="stream-line"><span class="stream-badge client">Accio Work</span><span
+                      class="stream-arrow">→</span><span class="stream-badge bridge">RLab Bridge :8787</span><span
+                      class="stream-arrow">→</span><span class="stream-badge upstream">Any LLM API</span></div>
+                  <div class="bridge-metrics">
+                    <div><small>转译吞吐</small><strong>1,200 req/s</strong></div>
+                    <div><small>网关开销</small><strong>&lt; 0.8ms</strong></div>
+                    <div><small>内存占用</small><strong>12.4 MB</strong></div>
+                  </div>
+                </div>
+              </div>
+            </article>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 工作流程 Workflow -->
     <section class="workflow-section section-space" id="workflow" aria-labelledby="workflow-title">
       <div class="container">
-        <header class="section-heading"><span class="section-kicker">STREAMLINED WORKFLOW</span><h2 id="workflow-title">从发现到生效，不到 10 秒。</h2><p>三步完成原本需要反复切换终端、编辑器和任务管理器的工作。</p></header>
+        <header class="section-heading"><span class="section-kicker">STREAMLINED WORKFLOW</span>
+          <h2 id="workflow-title">从发现到生效，不到 10 秒。</h2>
+          <p>三步完成原本需要反复切换终端、编辑器和任务管理器的工作。</p>
+        </header>
         <div class="workflow-path">
           <div class="workflow-line" aria-hidden="true"><span id="workflow-line-fill"></span></div>
-          <article class="workflow-step"><span class="workflow-number">01</span><div class="workflow-dot"><i></i></div><h3>环境感知</h3><p>自动识别客户端、配置文件与运行状态，修复失效路径。</p><small>DISCOVER</small></article>
-          <article class="workflow-step"><span class="workflow-number">02</span><div class="workflow-dot"><i></i></div><h3>配置与验证</h3><p>选择模型和网关，通过真实流式握手确认首字延迟与连通状态。</p><small>VERIFY</small></article>
-          <article class="workflow-step"><span class="workflow-number">03</span><div class="workflow-dot"><i></i></div><h3>写入与热重启</h3><p>原子写入配置，等待句柄释放，再携最新配置重新拉起客户端。</p><small>ACTIVATE</small></article>
+          <article class="workflow-step"><span class="workflow-number">01</span>
+            <div class="workflow-dot"><i></i></div>
+            <h3>环境感知</h3>
+            <p>自动识别客户端、配置文件与运行状态，修复失效路径。</p><small>DISCOVER</small>
+          </article>
+          <article class="workflow-step"><span class="workflow-number">02</span>
+            <div class="workflow-dot"><i></i></div>
+            <h3>配置与验证</h3>
+            <p>选择模型和网关，通过真实流式握手确认首字延迟与连通状态。</p><small>VERIFY</small>
+          </article>
+          <article class="workflow-step"><span class="workflow-number">03</span>
+            <div class="workflow-dot"><i></i></div>
+            <h3>写入与热重启</h3>
+            <p>原子写入配置，等待句柄释放，再携最新配置重新拉起客户端。</p><small>ACTIVATE</small>
+          </article>
         </div>
       </div>
     </section>
 
+    <!-- 下载专区 Downloads (完全对称的跨平台双端面板与校验条) -->
     <section class="download-section section-space" id="downloads" aria-labelledby="downloads-title">
       <div class="container">
         <header class="section-heading">
           <span class="section-kicker">OFFICIAL DOWNLOADS</span>
           <h2 id="downloads-title">现在开始，把配置工作交出去。</h2>
-          <p>当前官方版本 <strong class="current-version-tag" style="color: var(--accent-blue);">v1.0.57</strong> · 纯净无广告 · 永久开源免费</p>
+          <p>当前官方版本 <strong class="current-version-tag" style="color: var(--accent-blue);">v1.0.58</strong> · 原生支持
+            Windows 与 macOS · 纯净无广告 · 永久开源免费</p>
         </header>
-        <div class="download-layout">
-          <article class="download-primary spotlight-card">
-            <span class="card-glare" aria-hidden="true"></span>
-            <div class="download-recommend">推荐首选</div>
-            <div class="download-platform-icon" aria-hidden="true">
-              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 5.5 11 4.4v7.1H3V5.5Zm9-1.25L21 3v8.5h-9V4.25ZM3 12.5h8v7.1l-8-1.1v-6Zm9 0h9V21l-9-1.25V12.5Z" fill="currentColor"/></svg>
-            </div>
-            <span class="download-kicker">WINDOWS INSTALLER</span>
-            <h3>Windows 官方安装包</h3>
-            <p>NSIS 自动安装程序，包含快捷方式、开始菜单、WebView2 检测与平滑自动更新。</p>
-            <ul>
-              <li><span>✓</span> Windows 10 1809 及以上 / Windows 11</li>
-              <li><span>✓</span> 64 位系统 · 安装包约 12MB</li>
-              <li><span>✓</span> GitHub Actions 官方自动化构建</li>
-            </ul>
-            <div class="download-buttons">
-              <a id="link-dl-setup" class="button button-primary magnetic-target" href="https://helper.bob-api.com/downloads/AI-Helper-v1.0.57-Windows-x64-Setup.exe">
-                <span>本站直链下载</span>
-                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 18 6-6-6-6" fill="none" stroke="currentColor" stroke-width="2"/></svg>
-              </a>
-              <button id="btn-dl-oss" type="button" class="button button-secondary" title="通过后端接口获取阿里云 OSS 专属高速下载通道">
-                <svg viewBox="0 0 24 24" aria-hidden="true" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
-                  <polyline points="7 10 12 15 17 10"></polyline>
-                  <line x1="12" y1="15" x2="12" y2="3"></line>
+
+        <!-- 平台切换器 -->
+        <div class="download-platform-nav" role="tablist" aria-label="选择操作系统平台">
+          <button class="dl-tab-btn active" type="button" role="tab" aria-selected="true" data-tab-target="windows"
+            id="tab-btn-win">
+            <span>🪟 Windows (x64)</span>
+          </button>
+          <button class="dl-tab-btn" type="button" role="tab" aria-selected="false" data-tab-target="macos"
+            id="tab-btn-mac">
+            <span>🍎 macOS (Apple Silicon &amp; Intel)</span><small class="tab-chip">全新支持</small>
+          </button>
+          <button class="dl-tab-btn" type="button" role="tab" aria-selected="false" data-tab-target="all"
+            id="tab-btn-all">
+            <span>📦 全部版本与校验</span>
+          </button>
+        </div>
+
+        <!-- 1. Windows 下载视图 -->
+        <div class="download-view-panel active" id="view-win-downloads" role="tabpanel">
+          <div class="download-layout">
+            <article class="download-primary spotlight-card">
+              <span class="card-glare" aria-hidden="true"></span>
+              <div class="download-recommend">推荐首选</div>
+              <div class="download-platform-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <path
+                    d="M3 5.5 11 4.4v7.1H3V5.5Zm9-1.25L21 3v8.5h-9V4.25ZM3 12.5h8v7.1l-8-1.1v-6Zm9 0h9V21l-9-1.25V12.5Z"
+                    fill="currentColor" />
                 </svg>
-                <span id="btn-dl-oss-text">阿里云 OSS 镜像</span>
-              </button>
-              <a id="link-dl-fast-setup" class="button button-secondary" href="https://ghfast.top/https://github.com/TF49/AI-Helper/releases/download/v1.0.57/AI-Helper-v1.0.57-Windows-x64-Setup.exe">国内加速镜像</a>
+              </div>
+              <span class="download-kicker">WINDOWS INSTALLER</span>
+              <h3>Windows 官方安装包</h3>
+              <p>NSIS 自动安装程序，包含快捷方式、开始菜单、WebView2 检测与平滑自动更新。</p>
+              <ul>
+                <li><span>✓</span> Windows 10 1809 及以上 / Windows 11</li>
+                <li><span>✓</span> 64 位系统 · 安装包约 12MB</li>
+                <li><span>✓</span> GitHub Actions 官方自动化构建</li>
+              </ul>
+              <div class="download-buttons">
+                <a id="link-dl-setup" class="button button-primary magnetic-target"
+                  href="https://helper.bob-api.com/downloads/AI-Helper-v1.0.58-Windows-x64-Setup.exe">
+                  <span>本站直链下载</span>
+                  <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="m9 18 6-6-6-6" fill="none" stroke="currentColor" stroke-width="2" />
+                  </svg>
+                </a>
+                <button id="btn-dl-oss" type="button" class="button button-secondary" title="通过后端接口获取阿里云 OSS 专属高速下载通道">
+                  <svg viewBox="0 0 24 24" aria-hidden="true" width="18" height="18" fill="none" stroke="currentColor"
+                    stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                    <polyline points="7 10 12 15 17 10"></polyline>
+                    <line x1="12" y1="15" x2="12" y2="3"></line>
+                  </svg>
+                  <span id="btn-dl-oss-text">阿里云 OSS 镜像</span>
+                </button>
+                <a id="link-dl-fast-setup" class="button button-secondary"
+                  href="https://ghfast.top/https://github.com/TF49/AI-Helper/releases/download/v1.0.58/AI-Helper-v1.0.58-Windows-x64-Setup.exe">国内加速镜像</a>
+              </div>
+            </article>
+            <div class="download-secondary-column">
+              <article class="download-compact spotlight-card">
+                <span class="card-glare" aria-hidden="true"></span>
+                <div class="compact-body">
+                  <div class="compact-top">
+                    <div class="compact-icon" aria-hidden="true">▣</div>
+                    <span class="download-kicker">PORTABLE ZIP</span>
+                  </div>
+                  <h3>便携免安装版</h3>
+                  <p>解压即用，不写入系统注册表，即插即走，适合 U 盘或企业受限办公环境。</p>
+                </div>
+                <div class="compact-actions">
+                  <a id="link-dl-zip" class="compact-btn"
+                    href="https://helper.bob-api.com/downloads/AI-Helper-v1.0.58-Windows-x64-Standalone.zip">本站下载 ↗</a>
+                  <a id="link-dl-fast-zip" class="compact-btn compact-btn-subtle"
+                    href="https://ghfast.top/https://github.com/TF49/AI-Helper/releases/download/v1.0.58/AI-Helper-v1.0.58-Windows-x64-Standalone.zip">国内镜像
+                    ↗</a>
+                </div>
+              </article>
+              <article class="download-compact spotlight-card">
+                <span class="card-glare" aria-hidden="true"></span>
+                <div class="compact-body">
+                  <div class="compact-top">
+                    <div class="compact-icon" aria-hidden="true">&lt;/&gt;</div>
+                    <span class="download-kicker">BUILD FROM SOURCE</span>
+                  </div>
+                  <h3>源码本地构建</h3>
+                  <p>基于 Tauri v2 + React 18 + Rust 2024，源码完全开放透明，随心定制扩展。</p>
+                </div>
+                <div class="compact-actions">
+                  <a class="compact-btn" href="https://github.com/TF49/AI-Helper" target="_blank"
+                    rel="noopener noreferrer">访问 GitHub ↗</a>
+                  <button id="copy-clone-command" class="compact-btn compact-btn-subtle" type="button">复制克隆命令
+                    📋</button>
+                </div>
+              </article>
             </div>
-          </article>
-          <div class="download-secondary-column">
-            <article class="download-compact spotlight-card">
+            <!-- 校验条作为 grid-column: 1 / -1 自然占据底行 -->
+            <div class="security-strip spotlight-card">
               <span class="card-glare" aria-hidden="true"></span>
-              <div class="compact-body">
-                <div class="compact-top">
-                  <div class="compact-icon" aria-hidden="true">▣</div>
-                  <span class="download-kicker">PORTABLE ZIP</span>
+              <div class="security-left">
+                <div class="security-mark" aria-hidden="true">✓</div>
+                <div class="security-info">
+                  <strong>官方构建与安全校验</strong>
+                  <p><code id="checksum-setup-filename">AI-Helper-v1.0.58-Windows-x64-Setup.exe</code> · 包含全平台二进制
+                    SHA-256 校验和。</p>
                 </div>
-                <h3>便携免安装版</h3>
-                <p>解压即用，不写入系统注册表，即插即走，适合 U 盘或企业受限办公环境。</p>
               </div>
-              <div class="compact-actions">
-                <a id="link-dl-zip" class="compact-btn" href="https://helper.bob-api.com/downloads/AI-Helper-v1.0.57-Windows-x64-Standalone.zip">本站下载 ↗</a>
-                <a id="link-dl-fast-zip" class="compact-btn compact-btn-subtle" href="https://ghfast.top/https://github.com/TF49/AI-Helper/releases/download/v1.0.57/AI-Helper-v1.0.57-Windows-x64-Standalone.zip">国内镜像 ↗</a>
-              </div>
-            </article>
-            <article class="download-compact spotlight-card">
-              <span class="card-glare" aria-hidden="true"></span>
-              <div class="compact-body">
-                <div class="compact-top">
-                  <div class="compact-icon" aria-hidden="true">&lt;/&gt;</div>
-                  <span class="download-kicker">BUILD FROM SOURCE</span>
-                </div>
-                <h3>源码本地构建</h3>
-                <p>基于 Tauri v2 + React 18 + Rust 2024，源码完全开放透明，随心定制扩展。</p>
-              </div>
-              <div class="compact-actions">
-                <a class="compact-btn" href="https://github.com/TF49/AI-Helper" target="_blank" rel="noopener noreferrer">访问 GitHub ↗</a>
-                <button id="copy-clone-command" class="compact-btn compact-btn-subtle" type="button">复制克隆命令 📋</button>
-              </div>
-            </article>
+              <button id="btn-copy-checksum" type="button">复制发布页链接</button>
+            </div>
           </div>
-          <div class="security-strip spotlight-card">
-            <span class="card-glare" aria-hidden="true"></span>
-            <div class="security-left">
-              <div class="security-mark" aria-hidden="true">✓</div>
-              <div class="security-info">
-                <strong>官方构建与安全校验</strong>
-                <p><code id="checksum-setup-filename">AI-Helper-v1.0.57-Windows-x64-Setup.exe</code> · 可在 GitHub 发布页比对 SHA-256 校验和。</p>
+        </div>
+
+        <!-- 2. macOS 下载视图 (继承同一套 download-layout 完美对齐) -->
+        <div class="download-view-panel" id="view-mac-downloads" role="tabpanel">
+          <div class="download-layout">
+            <!-- Apple Silicon DMG -->
+            <article class="download-primary mac-card-silicon spotlight-card">
+              <span class="card-glare" aria-hidden="true"></span>
+              <div class="download-recommend">Apple Silicon 推荐首选</div>
+              <div class="download-platform-icon mac-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <path fill="currentColor"
+                    d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.81-.91.65.03 2.47.26 3.64 1.98-.09.06-2.17 1.28-2.15 3.81.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.38 2.83M15.97 6.37c.64-.78 1.08-1.86.96-2.95-1 .04-2.17.65-2.85 1.45-.59.68-1.12 1.77-.98 2.83 1.12.09 2.23-.55 2.87-1.33Z" />
+                </svg>
               </div>
+              <span class="download-kicker">MACOS APPLE SILICON (ARM64)</span>
+              <h3>Apple Silicon DMG 安装包</h3>
+              <p>专为搭载 M1 / M2 / M3 / M4 / M5 芯片的 Mac 深度原生优化。纯 ARM64 编译，零转译损耗，常驻内存低至 28MB。</p>
+              <ul>
+                <li><span>✓</span> MacBook Air / Pro、Mac mini、Mac Studio、iMac</li>
+                <li><span>✓</span> macOS 11.0 (Big Sur) 及更高版本</li>
+                <li><span>✓</span> 原生红绿灯 Overlay 沉浸顶栏支持</li>
+              </ul>
+              <div class="download-buttons">
+                <a id="link-dl-mac-arm64" class="button button-primary magnetic-target"
+                  href="https://helper.bob-api.com/downloads/AI-Helper-v1.0.58-macOS-aarch64.dmg">
+                  <span>本站直链下载 (DMG)</span>
+                  <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="m9 18 6-6-6-6" fill="none" stroke="currentColor" stroke-width="2" />
+                  </svg>
+                </a>
+                <button id="btn-dl-mac-arm64-oss" type="button" class="button button-secondary"
+                  title="通过阿里云 OSS 获取高速下载">
+                  <span id="btn-dl-mac-arm64-oss-text">阿里云 OSS 镜像</span>
+                </button>
+                <a id="link-dl-mac-arm64-fast" class="button button-secondary"
+                  href="https://ghfast.top/https://github.com/TF49/AI-Helper/releases/download/v1.0.58/AI-Helper-v1.0.58-macOS-aarch64.dmg">国内加速镜像</a>
+              </div>
+            </article>
+
+            <!-- Intel DMG & Tips -->
+            <div class="download-secondary-column">
+              <article class="download-compact spotlight-card">
+                <span class="card-glare" aria-hidden="true"></span>
+                <div class="compact-body">
+                  <div class="compact-top">
+                    <div class="compact-icon" aria-hidden="true">💻</div>
+                    <span class="download-kicker">MACOS INTEL (X64)</span>
+                  </div>
+                  <h3>Intel 架构 DMG 安装包</h3>
+                  <p>适用于搭载 Intel Core 处理器的经典 Mac 设备，自动化 DMG 打包，保持一致的流畅体验。</p>
+                </div>
+                <div class="compact-actions">
+                  <a id="link-dl-mac-x64" class="compact-btn"
+                    href="https://helper.bob-api.com/downloads/AI-Helper-v1.0.58-macOS-x64.dmg">本站下载 ↗</a>
+                  <a id="link-dl-mac-x64-fast" class="compact-btn compact-btn-subtle"
+                    href="https://ghfast.top/https://github.com/TF49/AI-Helper/releases/download/v1.0.58/AI-Helper-v1.0.58-macOS-x64.dmg">国内镜像
+                    ↗</a>
+                </div>
+              </article>
+
+              <article class="download-compact mac-tips-card spotlight-card">
+                <span class="card-glare" aria-hidden="true"></span>
+                <div class="compact-body">
+                  <div class="compact-top">
+                    <div class="compact-icon" aria-hidden="true">🛡️</div>
+                    <span class="download-kicker">GATEKEEPER TIP</span>
+                  </div>
+                  <h3>macOS 首次打开安全提示</h3>
+                  <p>若提示“已损坏”或“未验证的开发者”，只需在终端执行一行命令即可清除隔离属性：</p>
+                  <code class="terminal-cmd">xattr -cr /Applications/AI\ Helper.app</code>
+                </div>
+                <div class="compact-actions">
+                  <button id="btn-copy-mac-cmd" class="compact-btn" type="button">复制终端解锁命令 📋</button>
+                  <a class="compact-btn compact-btn-subtle" href="#faq">查看完整指引 ↗</a>
+                </div>
+              </article>
             </div>
-            <button id="btn-copy-checksum" type="button">复制发布页链接</button>
+
+            <!-- macOS 校验条 -->
+            <div class="security-strip spotlight-card">
+              <span class="card-glare" aria-hidden="true"></span>
+              <div class="security-left">
+                <div class="security-mark" aria-hidden="true">✓</div>
+                <div class="security-info">
+                  <strong>macOS 官方构建与安全校验</strong>
+                  <p><code>AI-Helper-v1.0.58-macOS-aarch64.dmg</code> · 包含全平台二进制 SHA-256 校验和。</p>
+                </div>
+              </div>
+              <button class="btn-copy-checksum-mac" type="button">复制发布页链接</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- 3. 全部版本矩阵视图 -->
+        <div class="download-view-panel" id="view-all-downloads" role="tabpanel">
+          <div class="all-downloads-matrix spotlight-card">
+            <span class="card-glare" aria-hidden="true"></span>
+            <div class="matrix-table-wrap">
+              <table class="matrix-table">
+                <thead>
+                  <tr>
+                    <th>平台与架构</th>
+                    <th>文件名称</th>
+                    <th>类型</th>
+                    <th>直链下载</th>
+                    <th>国内镜像</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td><strong>Windows x64</strong></td>
+                    <td><code>AI-Helper-v1.0.58-Windows-x64-Setup.exe</code></td>
+                    <td>NSIS 安装包</td>
+                    <td><a href="https://helper.bob-api.com/downloads/AI-Helper-v1.0.58-Windows-x64-Setup.exe"
+                        class="table-dl-link">下载 ↗</a></td>
+                    <td><a
+                        href="https://ghfast.top/https://github.com/TF49/AI-Helper/releases/download/v1.0.58/AI-Helper-v1.0.58-Windows-x64-Setup.exe"
+                        class="table-dl-link">镜像 ↗</a></td>
+                  </tr>
+                  <tr>
+                    <td><strong>Windows x64 便携</strong></td>
+                    <td><code>AI-Helper-v1.0.58-Windows-x64-Standalone.zip</code></td>
+                    <td>ZIP 免安装</td>
+                    <td><a href="https://helper.bob-api.com/downloads/AI-Helper-v1.0.58-Windows-x64-Standalone.zip"
+                        class="table-dl-link">下载 ↗</a></td>
+                    <td><a
+                        href="https://ghfast.top/https://github.com/TF49/AI-Helper/releases/download/v1.0.58/AI-Helper-v1.0.58-Windows-x64-Standalone.zip"
+                        class="table-dl-link">镜像 ↗</a></td>
+                  </tr>
+                  <tr class="highlight-row">
+                    <td><strong>macOS Apple Silicon (M系列)</strong></td>
+                    <td><code>AI-Helper-v1.0.58-macOS-aarch64.dmg</code></td>
+                    <td>DMG 镜像</td>
+                    <td><a href="https://helper.bob-api.com/downloads/AI-Helper-v1.0.58-macOS-aarch64.dmg"
+                        class="table-dl-link">下载 ↗</a></td>
+                    <td><a
+                        href="https://ghfast.top/https://github.com/TF49/AI-Helper/releases/download/v1.0.58/AI-Helper-v1.0.58-macOS-aarch64.dmg"
+                        class="table-dl-link">镜像 ↗</a></td>
+                  </tr>
+                  <tr>
+                    <td><strong>macOS Intel (x86_64)</strong></td>
+                    <td><code>AI-Helper-v1.0.58-macOS-x64.dmg</code></td>
+                    <td>DMG 镜像</td>
+                    <td><a href="https://helper.bob-api.com/downloads/AI-Helper-v1.0.58-macOS-x64.dmg"
+                        class="table-dl-link">下载 ↗</a></td>
+                    <td><a
+                        href="https://ghfast.top/https://github.com/TF49/AI-Helper/releases/download/v1.0.58/AI-Helper-v1.0.58-macOS-x64.dmg"
+                        class="table-dl-link">镜像 ↗</a></td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
           </div>
         </div>
       </div>
     </section>
 
+    <!-- 问答 FAQ -->
     <section class="faq-section section-space" id="faq" aria-labelledby="faq-title">
       <div class="container faq-container">
-        <header class="section-heading"><span class="section-kicker">FAQ</span><h2 id="faq-title">常见问题与解答。</h2><p>关于费用、隐私、安装和网络连接，你关心的都在这里。</p></header>
+        <header class="section-heading"><span class="section-kicker">FAQ</span>
+          <h2 id="faq-title">常见问题与解答。</h2>
+          <p>关于 macOS 安装、架构选择、费用、隐私与网络连接，你关心的都在这里。</p>
+        </header>
         <div class="faq-list">
-          <article class="faq-item"><h3><button class="faq-trigger" type="button" aria-expanded="false"><span>AI Helper 是免费开源的吗？</span><i aria-hidden="true"></i></button></h3><div class="faq-panel"><div><p>是。AI Helper 遵循 MIT 开源协议，个人、团队和企业均可免费使用，不含广告和付费墙。</p></div></div></article>
-          <article class="faq-item"><h3><button class="faq-trigger" type="button" aria-expanded="false"><span>API Key 和本地配置会上传吗？</span><i aria-hidden="true"></i></button></h3><div class="faq-panel"><div><p>不会。配置写入在本机完成；只有在你主动执行流式连通性测试时，才会向你指定的 API 网关发起请求。</p></div></div></article>
-          <article class="faq-item"><h3><button class="faq-trigger" type="button" aria-expanded="false"><span>Windows SmartScreen 提示如何处理？</span><i aria-hidden="true"></i></button></h3><div class="faq-panel"><div><p>开源构建未购买商业 EV 代码签名证书时，SmartScreen 可能提示未知发布者。你可以核验 GitHub 发布页和 SHA-256，或选择便携 ZIP 版本。</p></div></div></article>
-          <article class="faq-item"><h3><button class="faq-trigger" type="button" aria-expanded="false"><span>国内网络下载 GitHub 很慢怎么办？</span><i aria-hidden="true"></i></button></h3><div class="faq-panel"><div><p>下载区为安装包和便携版都提供了国内高速镜像入口，也保留 GitHub 官方直链供核验。</p></div></div></article>
-          <article class="faq-item"><h3><button class="faq-trigger" type="button" aria-expanded="false"><span>什么是通道分组检测？如何帮助提升稳定性？</span><i aria-hidden="true"></i></button></h3><div class="faq-panel"><div><p>不同的 AI 客户端对上游通道有严格的协议和模型要求。例如 Codex 依赖高并发流式代码补全，Claude Code 需要 Anthropic 思考链（Extended Thinking）与 Prompt Caching 特性。若误绑定普通低频通道，常出现 400/404 错误或补全超时。AI Helper 创新加入「通道分组检测」功能，实时采集近 1h/3h/6h 的可用率与响应时延，并针对各工具智能推荐专属高稳定性通道，彻底规避断连与报错。</p></div></div></article>
-          <article class="faq-item"><h3><button class="faq-trigger" type="button" aria-expanded="false"><span>支持 Workbuddy、Accio Work 与自定义模型吗？</span><i aria-hidden="true"></i></button></h3><div class="faq-panel"><div><p>支持。Workbuddy 可直接维护自定义模型配置；Accio Work 通过本地 RLab Bridge 转译网关接入第三方模型，并由 AI Helper 负责配置和进程守护。</p></div></div></article>
+          <article class="faq-item">
+            <h3><button class="faq-trigger" type="button" aria-expanded="false"><span>macOS 端应该选择哪个 DMG 安装包？</span><i
+                  aria-hidden="true"></i></button></h3>
+            <div class="faq-panel">
+              <div>
+                <p>如果您使用的是 Apple Silicon 芯片（如 M1、M2、M3、M4、M5 及 Pro/Max/Ultra 版本），请务必下载 <strong>aarch64 (Apple Silicon)
+                    DMG</strong>，可享受纯原生架构的高能效与瞬时启动；如果您使用的是搭载 Intel 处理器的老款 Mac，请选择 <strong>x64 (Intel) DMG</strong>。</p>
+              </div>
+            </div>
+          </article>
+          <article class="faq-item">
+            <h3><button class="faq-trigger" type="button" aria-expanded="false"><span>macOS
+                  首次打开提示“已损坏”或“未验证开发者”如何处理？</span><i aria-hidden="true"></i></button></h3>
+            <div class="faq-panel">
+              <div>
+                <p>这是 macOS Gatekeeper 对未购买昂贵商业 Apple Developer
+                  证书开源软件的默认安全隔离限制。您可以打开「终端」，执行：<code>xattr -cr /Applications/AI\ Helper.app</code> 即可一键清除隔离标记；或者在「访达」中对
+                  AI Helper 应用右键点击「打开」，并在弹窗中选择确认打开。</p>
+              </div>
+            </div>
+          </article>
+          <article class="faq-item">
+            <h3><button class="faq-trigger" type="button" aria-expanded="false"><span>AI Helper 是免费开源的吗？</span><i
+                  aria-hidden="true"></i></button></h3>
+            <div class="faq-panel">
+              <div>
+                <p>是。AI Helper 遵循 MIT 开源协议，个人、团队和企业均可免费使用，不含广告和付费墙。</p>
+              </div>
+            </div>
+          </article>
+          <article class="faq-item">
+            <h3><button class="faq-trigger" type="button" aria-expanded="false"><span>API Key 和本地配置会上传到云端服务器吗？</span><i
+                  aria-hidden="true"></i></button></h3>
+            <div class="faq-panel">
+              <div>
+                <p>绝不会。全部配置写入均在您的本机电脑安全完成；只有在您主动点击测试连通性或发起代码生成补全时，才会向您指定的 API 网关安全通信。</p>
+              </div>
+            </div>
+          </article>
+          <article class="faq-item">
+            <h3><button class="faq-trigger" type="button" aria-expanded="false"><span>AI Helper 能识别 macOS 的 Homebrew 和
+                  NVM 多版本 Node 环境吗？</span><i aria-hidden="true"></i></button></h3>
+            <div class="faq-panel">
+              <div>
+                <p>能。AI Helper 内置专为 macOS 打造的应用与 CLI 路径深度探测引擎，不仅主动探测 <code>/opt/homebrew/bin</code> 和
+                  <code>/usr/local/bin</code>，还会遍历 <code>~/.nvm/versions/node</code> 自动匹配当前生效的最高版本 Node.js，彻底解决因 GUI
+                  无法继承 Shell 环境变量导致 CLI 找不到的问题。
+                </p>
+              </div>
+            </div>
+          </article>
+          <article class="faq-item">
+            <h3><button class="faq-trigger" type="button" aria-expanded="false"><span>v1.0.57
+                  账号额度大盘与零感通道热切换是如何工作的？</span><i aria-hidden="true"></i></button></h3>
+            <div class="faq-panel">
+              <div>
+                <p>AI Helper 在 v1.0.57 引入钱包全景大盘，通过实时汇率将账户余额无感折算为美元 (USD) 与人民币 (CNY)；当通道或凭据遭遇 401
+                  会话失效时，自动触发后台无感静默续期与重试自愈；首创的「零感通道分组秒级热切换」可以在中枢秒级广播至四大 Agent，无需逐一修改或重启客户端。</p>
+              </div>
+            </div>
+          </article>
+          <article class="faq-item">
+            <h3><button class="faq-trigger" type="button" aria-expanded="false"><span>支持 Workbuddy、Accio Work
+                  与自定义模型吗？</span><i aria-hidden="true"></i></button></h3>
+            <div class="faq-panel">
+              <div>
+                <p>完全支持。Workbuddy 可直接维护自定义模型配置；Accio Work 通过内置的 Rust Axum + Tokio 本地 RLab Bridge
+                  转译网关（127.0.0.1:8787）接入任意第三方模型，并由 AI Helper 负责配置和进程守护。</p>
+              </div>
+            </div>
+          </article>
         </div>
       </div>
     </section>
   </main>
 
-  <aside class="floating-download" id="floating-download" aria-label="快速下载"><span><strong>AI Helper</strong><small class="current-version-tag">v1.0.57</small></span><a href="#downloads">下载 Windows 版</a></aside>
+  <aside class="floating-download" id="floating-download" aria-label="快速下载">
+    <span><strong>AI Helper</strong><small class="current-version-tag">v1.0.58</small></span>
+    <div class="floating-btn-group">
+      <a class="floating-btn" id="floating-dl-btn" href="#downloads">下载客户端 (Win / Mac)</a>
+    </div>
+  </aside>
 
   <footer class="site-footer">
     <div class="container footer-grid">
-      <div class="footer-brand"><a href="#home" class="brand-unit"><img src="assets/logo.png" alt="" class="brand-symbol" width="36" height="36"><span class="brand-copy"><strong>AI Helper</strong></span></a><p>专为 AI 开发者打造的配置管理与进程生命周期调度中枢。</p></div>
-      <div class="footer-links"><div><strong>产品</strong><a href="#story">动态演示</a><a href="#bento">核心能力</a><a href="#downloads">下载</a></div><div><strong>开源</strong><a href="https://github.com/TF49/AI-Helper" target="_blank" rel="noopener noreferrer">GitHub</a><a href="https://github.com/TF49/AI-Helper/releases" target="_blank" rel="noopener noreferrer">发布历史</a><a href="https://github.com/TF49/AI-Helper/issues" target="_blank" rel="noopener noreferrer">问题反馈</a></div></div>
+      <div class="footer-brand"><a href="#home" class="brand-unit"><img src="assets/logo.png" alt=""
+            class="brand-symbol" width="36" height="36"><span class="brand-copy"><strong>AI Helper</strong></span></a>
+        <p>专为 AI 开发者打造的配置管理、通道遥测与进程生命周期调度中枢。</p>
+      </div>
+      <div class="footer-links">
+        <div><strong>产品</strong><a href="#story">动态演示</a><a href="#bento">核心能力</a><a href="#showcase">全景画卷</a><a
+            href="#downloads">下载专区</a></div>
+        <div><strong>开源</strong><a href="https://github.com/TF49/AI-Helper" target="_blank"
+            rel="noopener noreferrer">GitHub</a><a href="https://github.com/TF49/AI-Helper/releases" target="_blank"
+            rel="noopener noreferrer">发布历史</a><a href="https://github.com/TF49/AI-Helper/issues" target="_blank"
+            rel="noopener noreferrer">问题反馈</a></div>
+      </div>
     </div>
-    <div class="container footer-legal"><span>© 2026 AI Helper. Released under the MIT License.</span><span>Designed for AI developers.</span></div>
+    <div class="container footer-legal"><span>© 2026 AI Helper. Released under the MIT License.</span><span>Designed for
+        AI developers on Windows &amp; macOS.</span></div>
   </footer>
 
   <div class="toast" id="toast-notification" role="status" aria-live="polite"></div>
   <script src="assets/gsap.min.js?v=3.12.5"></script>
   <script src="assets/ScrollTrigger.min.js?v=3.12.5"></script>
-  <script src="assets/script.js?v=1.0.57"></script>
+  <script src="assets/script.js?v=1.0.58"></script>
 </body>
+
 </html>
