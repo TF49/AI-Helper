@@ -1020,7 +1020,7 @@ export function TokenSelectModal({
           <div className="flex items-center justify-between pt-2 border-t border-slate-100 dark:border-white/5">
             <button
               type="button"
-              onClick={() => void openUrl("https://bob-api.com/token")}
+              onClick={() => void openUrl("https://bob-api.com/keys")}
               className="text-[11px] text-blue-500 hover:text-blue-600 dark:text-blue-400 hover:underline flex items-center gap-1 cursor-pointer"
             >
               <span>网页控制台</span>

@@ -104,13 +104,23 @@ const versionData = {
   releaseDate: today,
   setupFileName: `AI-Helper-${tag}-Windows-x64-Setup.exe`,
   zipFileName: `AI-Helper-${tag}-Windows-x64-Standalone.zip`,
+  macArm64FileName: `AI-Helper-${tag}-macOS-aarch64.dmg`,
+  macX64FileName: `AI-Helper-${tag}-macOS-x64.dmg`,
   setupDownloadUrl: `${mirrorBase}/AI-Helper-${tag}-Windows-x64-Setup.exe`,
   ossSetupDownloadUrl: `https://bobdong.oss-cn-beijing.aliyuncs.com/desktop/AI-Helper-${tag}-Windows-x64-Setup.exe`,
   zipDownloadUrl: `${mirrorBase}/AI-Helper-${tag}-Windows-x64-Standalone.zip`,
+  macArm64DownloadUrl: `${mirrorBase}/AI-Helper-${tag}-macOS-aarch64.dmg`,
+  ossMacArm64DownloadUrl: `https://bobdong.oss-cn-beijing.aliyuncs.com/desktop/AI-Helper-${tag}-macOS-aarch64.dmg`,
+  macX64DownloadUrl: `${mirrorBase}/AI-Helper-${tag}-macOS-x64.dmg`,
+  ossMacX64DownloadUrl: `https://bobdong.oss-cn-beijing.aliyuncs.com/desktop/AI-Helper-${tag}-macOS-x64.dmg`,
   fastSetupDownloadUrl: `${ghfastPrefix}https://github.com/${repoName}/releases/download/${tag}/AI-Helper-${tag}-Windows-x64-Setup.exe`,
   fastZipDownloadUrl: `${ghfastPrefix}https://github.com/${repoName}/releases/download/${tag}/AI-Helper-${tag}-Windows-x64-Standalone.zip`,
+  fastMacArm64DownloadUrl: `${ghfastPrefix}https://github.com/${repoName}/releases/download/${tag}/AI-Helper-${tag}-macOS-aarch64.dmg`,
+  fastMacX64DownloadUrl: `${ghfastPrefix}https://github.com/${repoName}/releases/download/${tag}/AI-Helper-${tag}-macOS-x64.dmg`,
   githubSetupDownloadUrl: `https://github.com/${repoName}/releases/download/${tag}/AI-Helper-${tag}-Windows-x64-Setup.exe`,
   githubZipDownloadUrl: `https://github.com/${repoName}/releases/download/${tag}/AI-Helper-${tag}-Windows-x64-Standalone.zip`,
+  githubMacArm64DownloadUrl: `https://github.com/${repoName}/releases/download/${tag}/AI-Helper-${tag}-macOS-aarch64.dmg`,
+  githubMacX64DownloadUrl: `https://github.com/${repoName}/releases/download/${tag}/AI-Helper-${tag}-macOS-x64.dmg`,
   releasePageUrl: `https://github.com/${repoName}/releases/tag/${tag}`
 };
 
@@ -134,6 +144,22 @@ if (fs.existsSync(downloadConfigPath)) {
       }
       if (cfg.channels.mirror) {
         cfg.channels.mirror.downloadUrl = `${ghfastPrefix}https://github.com/${repoName}/releases/download/${tag}/AI-Helper-${tag}-Windows-x64-Setup.exe`;
+      }
+    }
+    if (cfg.macosChannels) {
+      if (cfg.macosChannels.arm64) {
+        cfg.macosChannels.arm64.fileName = `AI-Helper-${tag}-macOS-aarch64.dmg`;
+        cfg.macosChannels.arm64.direct = `${mirrorBase}/AI-Helper-${tag}-macOS-aarch64.dmg`;
+        cfg.macosChannels.arm64.oss = `https://bobdong.oss-cn-beijing.aliyuncs.com/desktop/AI-Helper-${tag}-macOS-aarch64.dmg`;
+        cfg.macosChannels.arm64.mirror = `${ghfastPrefix}https://github.com/${repoName}/releases/download/${tag}/AI-Helper-${tag}-macOS-aarch64.dmg`;
+        cfg.macosChannels.arm64.github = `https://github.com/${repoName}/releases/download/${tag}/AI-Helper-${tag}-macOS-aarch64.dmg`;
+      }
+      if (cfg.macosChannels.x64) {
+        cfg.macosChannels.x64.fileName = `AI-Helper-${tag}-macOS-x64.dmg`;
+        cfg.macosChannels.x64.direct = `${mirrorBase}/AI-Helper-${tag}-macOS-x64.dmg`;
+        cfg.macosChannels.x64.oss = `https://bobdong.oss-cn-beijing.aliyuncs.com/desktop/AI-Helper-${tag}-macOS-x64.dmg`;
+        cfg.macosChannels.x64.mirror = `${ghfastPrefix}https://github.com/${repoName}/releases/download/${tag}/AI-Helper-${tag}-macOS-x64.dmg`;
+        cfg.macosChannels.x64.github = `https://github.com/${repoName}/releases/download/${tag}/AI-Helper-${tag}-macOS-x64.dmg`;
       }
     }
     fs.writeFileSync(downloadConfigPath, JSON.stringify(cfg, null, 2) + '\n', 'utf8');
