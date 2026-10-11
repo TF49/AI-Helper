@@ -8,6 +8,8 @@ on:
       - 'src/**'
       - 'src-tauri/**'
       - 'package.json'
+      - '.github/workflows/**'
+  workflow_dispatch:
 
 permissions:
   contents: write
@@ -38,7 +40,7 @@ jobs:
 
       - uses: dtolnay/rust-toolchain@master
         with:
-          toolchain: '1.85.0'
+          toolchain: '1.95'
 
       - uses: Swatinem/rust-cache@v2
         with:
@@ -94,8 +96,10 @@ jobs:
 
       - uses: dtolnay/rust-toolchain@master
         with:
-          toolchain: '1.85.0'
+          toolchain: '1.95'
           targets: ${{ matrix.target }}
+      - name: Add Rust target
+        run: rustup target add ${{ matrix.target }}
 
       - uses: Swatinem/rust-cache@v2
         with:

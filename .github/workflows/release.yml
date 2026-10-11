@@ -32,7 +32,7 @@ jobs:
           version: 10.12.3
       - uses: dtolnay/rust-toolchain@master
         with:
-          toolchain: '1.85.0'
+          toolchain: '1.95'
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: src-tauri
@@ -78,8 +78,10 @@ jobs:
           version: 10.12.3
       - uses: dtolnay/rust-toolchain@master
         with:
-          toolchain: '1.85.0'
+          toolchain: '1.95'
           targets: ${{ matrix.target }}
+      - name: Add Rust target
+        run: rustup target add ${{ matrix.target }}
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: src-tauri
