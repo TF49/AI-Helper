@@ -27,6 +27,8 @@ import {
   setSelectedToken,
   applyApiKeyToAgents,
   openUrl,
+  updateUserTokenGroup,
+  getChannelGroupOverview,
 } from "../../lib/api";
 import type { TokenItem } from "../../types";
 import { cn } from "../../lib/utils";
@@ -65,6 +67,12 @@ export function TokenSelectModal({
   const [revealedKeys, setRevealedKeys] = useState<Record<number, string>>({});
   const [revealingId, setRevealingId] = useState<number | null>(null);
   const [copiedId, setCopiedId] = useState<number | null>(null);
+
+  // 快速修改 Token 分组状态
+  const [editingGroupToken, setEditingGroupToken] = useState<TokenItem | null>(null);
+  const [availableGroups, setAvailableGroups] = useState<string[]>([]);
+  const [selectedNewGroup, setSelectedNewGroup] = useState<string>("");
+  const [isUpdatingGroup, setIsUpdatingGroup] = useState(false);
 
   // DOM 引用（供 GSAP 流畅动效）
   const overlayRef = useRef<HTMLDivElement>(null);
@@ -361,6 +369,87 @@ export function TokenSelectModal({
     }
   };
 
+  const handleOpenEditGroup = async (token: TokenItem) => {
+    setEditingGroupToken(token);
+    setSelectedNewGroup(token.group || "default");
+    if (availableGroups.length === 0) {
+      try {
+        const overview = await getChannelGroupOverview(1);
+        if (overview && overview.length > 0) {
+          setAvailableGroups(overview.map((g) => g.group_name));
+        }
+      } catch {}
+    }
+  };
+
+  const handleSaveTokenGroup = async () => {
+    if (!editingGroupToken) return;
+    const targetGroup = selectedNewGroup.trim();
+    if (!targetGroup) {
+      toast.warning("请选择目标分组");
+      return;
+    }
+    if (targetGroup === (editingGroupToken.group || "default")) {
+      toast.info("该 Key 当前已经是此分组，无需修改");
+      setEditingGroupToken(null);
+      return;
+    }
+
+    setIsUpdatingGroup(true);
+    try {
+      await updateUserTokenGroup(editingGroupToken.id, targetGroup);
+      toast.success(`已成功将「${editingGroupToken.name}」的分组修改为「${targetGroup}」！即时生效！`);
+
+      // 更新本地 tokens 列表
+      setTokens((prev) =>
+        prev.map((t) => (t.id === editingGroupToken.id ? { ...t, group: targetGroup } : t)),
+      );
+
+      // 同步更新本地各 Agent 绑定的 boundToken 缓存
+      ["chatgpt", "claude", "workbuddy", "acciowork", "default"].forEach((tid) => {
+        try {
+          const storageKey = `bound_token_${tid}`;
+          const saved = localStorage.getItem(storageKey);
+          if (saved) {
+            const parsed = JSON.parse(saved);
+            if (parsed.id === editingGroupToken.id) {
+              localStorage.setItem(storageKey, JSON.stringify({ ...parsed, group: targetGroup }));
+            }
+          }
+        } catch {}
+      });
+
+      // 广播全局分组更新事件
+      window.dispatchEvent(
+        new CustomEvent("ai_helper_group_updated", {
+          detail: {
+            tokenId: editingGroupToken.id,
+            group: targetGroup,
+          },
+        }),
+      );
+
+      setEditingGroupToken(null);
+    } catch (err: unknown) {
+      const msg = typeof err === "string" ? err : "更新分组失败";
+      toast.error(msg);
+    } finally {
+      setIsUpdatingGroup(false);
+    }
+  };
+
+  // 聚合所有可选分组列表（系统默认 + 监控获取 + 当前已有凭据使用的分组）
+  const groupOptions = useMemo(() => {
+    const set = new Set<string>(["default", "vip", "svip"]);
+    tokens.forEach((t) => {
+      if (t.group) set.add(t.group);
+    });
+    availableGroups.forEach((g) => {
+      if (g) set.add(g);
+    });
+    return Array.from(set);
+  }, [tokens, availableGroups]);
+
   // 过滤后的 Token 列表
   const filteredTokens = useMemo(() => {
     return tokens.filter((t) => {
@@ -391,8 +480,9 @@ export function TokenSelectModal({
   if (!isRendered || typeof document === "undefined") return null;
 
   return createPortal(
-    <div
-      ref={overlayRef}
+    <>
+      <div
+        ref={overlayRef}
       className="fixed inset-0 top-11 z-[80] flex items-center justify-center p-3 sm:p-6 bg-slate-950/60 backdrop-blur-lg select-none overflow-hidden"
       onClick={(e) => {
         if (e.target === e.currentTarget) {
@@ -718,11 +808,20 @@ export function TokenSelectModal({
                           )}
                         </span>
 
-                        {token.group && (
-                          <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-100 dark:bg-white/5 border border-slate-200/50 dark:border-white/5">
-                            分组: {token.group}
-                          </span>
-                        )}
+                        <span className="inline-flex items-center gap-1.5 text-[10px] px-2 py-0.5 rounded bg-slate-100 dark:bg-white/5 border border-slate-200/50 dark:border-white/5 text-slate-600 dark:text-gray-300">
+                          <span>分组: <strong className="font-semibold text-slate-800 dark:text-white">{token.group || "default"}</strong></span>
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              void handleOpenEditGroup(token);
+                            }}
+                            className="text-blue-500 hover:text-blue-600 dark:text-blue-400 dark:hover:text-blue-300 hover:underline cursor-pointer font-medium ml-0.5"
+                            title="修改该 Key 的通道分组"
+                          >
+                            修改
+                          </button>
+                        </span>
                       </div>
                     </div>
 
@@ -837,8 +936,126 @@ export function TokenSelectModal({
           </button>
         </div>
       </div>
-    </div>,
-    document.body,
+    </div>
+
+    {/* 修改分组弹窗 */}
+    {editingGroupToken && (
+      <div
+        className="fixed inset-0 z-[120] flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-md animate-in fade-in duration-200"
+        onClick={(e) => {
+          if (e.target === e.currentTarget && !isUpdatingGroup) {
+            setEditingGroupToken(null);
+          }
+        }}
+      >
+        <div className="relative w-full max-w-md bg-white dark:bg-[#151828] border border-slate-200 dark:border-white/10 rounded-2xl shadow-2xl p-5 text-slate-800 dark:text-gray-200 flex flex-col gap-4 animate-in zoom-in-95 duration-200">
+          {/* 弹窗头部 */}
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2.5">
+              <div className="p-2 rounded-xl bg-blue-500/10 text-blue-600 dark:text-blue-400">
+                <KeyRound size={18} />
+              </div>
+              <div>
+                <h4 className="text-sm font-bold text-slate-900 dark:text-white">
+                  修改 Key 关联分组
+                </h4>
+                <p className="text-[11px] text-slate-500 dark:text-gray-400 truncate max-w-[240px]">
+                  {editingGroupToken.name} (当前: {editingGroupToken.group || "default"})
+                </p>
+              </div>
+            </div>
+            <button
+              type="button"
+              disabled={isUpdatingGroup}
+              onClick={() => setEditingGroupToken(null)}
+              className="p-1 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-gray-200 hover:bg-slate-100 dark:hover:bg-white/10 transition-colors cursor-pointer"
+            >
+              <X size={16} />
+            </button>
+          </div>
+
+          {/* 零感切流说明 */}
+          <div className="text-xs text-slate-600 dark:text-gray-300 bg-blue-50/60 dark:bg-blue-950/20 p-3 rounded-xl border border-blue-100 dark:border-blue-900/30 space-y-1">
+            <p className="font-semibold text-blue-900 dark:text-blue-300 flex items-center gap-1.5">
+              <Sparkles size={13} className="text-blue-500" />
+              服务端实时生效说明
+            </p>
+            <p className="text-[11px] text-slate-600 dark:text-gray-400 leading-relaxed">
+              直接修改云端令牌所属的分组路由。密钥明文保持不变，本地已配置的 ChatGPT / Claude / Workbuddy / Accio 将立即切换到新通道，无需重新填写或重启客户端。
+            </p>
+          </div>
+
+          {/* 候选系统分组 */}
+          <div className="space-y-2">
+            <label className="text-xs font-semibold text-slate-700 dark:text-gray-300">
+              选择目标分组:
+            </label>
+            <div className="flex flex-wrap gap-1.5 max-h-56 overflow-y-auto pr-1">
+              {groupOptions.map((grp) => {
+                const isChosen = selectedNewGroup === grp;
+                const isCurrent = (editingGroupToken.group || "default") === grp;
+                return (
+                  <button
+                    key={grp}
+                    type="button"
+                    onClick={() => setSelectedNewGroup(grp)}
+                    className={cn(
+                      "px-2.5 py-1.5 rounded-lg text-xs font-medium border transition-all cursor-pointer flex items-center gap-1",
+                      isChosen
+                        ? "bg-blue-600 text-white border-blue-600 shadow-sm shadow-blue-500/20"
+                        : "bg-slate-100/80 dark:bg-white/5 hover:bg-slate-200 dark:hover:bg-white/10 border-slate-200/80 dark:border-white/10 text-slate-700 dark:text-gray-300",
+                    )}
+                  >
+                    <span>{grp}</span>
+                    {isCurrent && (
+                      <span className="text-[10px] opacity-75">(当前)</span>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* 底部按钮 */}
+          <div className="flex items-center justify-between pt-2 border-t border-slate-100 dark:border-white/5">
+            <button
+              type="button"
+              onClick={() => void openUrl("https://bob-api.com/token")}
+              className="text-[11px] text-blue-500 hover:text-blue-600 dark:text-blue-400 hover:underline flex items-center gap-1 cursor-pointer"
+            >
+              <span>网页控制台</span>
+              <ExternalLink size={11} />
+            </button>
+
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                disabled={isUpdatingGroup}
+                onClick={() => setEditingGroupToken(null)}
+                className="px-3 py-1.5 rounded-xl text-xs font-medium text-slate-600 dark:text-gray-400 hover:bg-slate-100 dark:hover:bg-white/5 transition-colors cursor-pointer"
+              >
+                取消
+              </button>
+              <button
+                type="button"
+                disabled={isUpdatingGroup || !selectedNewGroup.trim()}
+                onClick={() => void handleSaveTokenGroup()}
+                className="px-4 py-1.5 rounded-xl text-xs font-semibold bg-blue-600 hover:bg-blue-500 text-white shadow-md shadow-blue-600/20 transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+              >
+                {isUpdatingGroup ? (
+                  <Loader2 size={13} className="animate-spin" />
+                ) : (
+                  <Check size={13} />
+                )}
+                <span>确认修改</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    )}
+  </>,
+  document.body,
   );
 }
 

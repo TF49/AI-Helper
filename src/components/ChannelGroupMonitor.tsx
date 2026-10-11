@@ -26,13 +26,22 @@ import {
   ArrowUpDown,
   X,
   Eye,
+  Loader2,
 } from "lucide-react";
 import gsap from "gsap";
 import { motion, AnimatePresence } from "motion/react";
+import { toast } from "sonner";
 import { cn } from "../lib/utils";
 import { useAuth } from "../lib/useAuth";
-import { getChannelGroupOverview, openUrl } from "../lib/api";
-import type { ChannelGroupOverview } from "../types";
+import {
+  getChannelGroupOverview,
+  openUrl,
+  getUserTokens,
+  updateUserTokenGroup,
+  getTokenKey,
+  applyApiKeyToAgents,
+} from "../lib/api";
+import type { ChannelGroupOverview, TokenItem } from "../types";
 import { HealthTrendVisualizer } from "./HealthTrendVisualizer";
 
 export interface ChannelGroupMonitorProps {
@@ -131,21 +140,74 @@ export function ChannelGroupMonitor({
     return "default";
   }, [toolId, toolName]);
 
-  // 从本地存储中尝试回退读取绑定的 group（若父组件未显式传递 currentGroupName）
-  const resolvedCurrentGroup = useMemo(() => {
-    if (currentGroupName) return currentGroupName;
+  // 从本地存储中尝试读取当前工具绑定的 token 记录
+  const [boundTokenInfo, setBoundTokenInfo] = useState<{
+    id?: number;
+    name?: string;
+    group?: string | null;
+  } | null>(() => {
     try {
       const storageKey = `bound_token_${effectiveToolId}`;
       const saved = localStorage.getItem(storageKey);
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (parsed && typeof parsed.group === "string" && parsed.group.trim()) {
-          return parsed.group.trim();
-        }
-      }
+      if (saved) return JSON.parse(saved);
     } catch {}
     return null;
-  }, [currentGroupName, effectiveToolId]);
+  });
+
+  // 监听并同步全局全套同步与分组变更事件
+  useEffect(() => {
+    const handleSyncEvent = (e: Event) => {
+      const customEvent = e as CustomEvent<{
+        id: number;
+        name: string;
+        key?: string;
+        group?: string | null;
+      }>;
+      if (customEvent.detail) {
+        setBoundTokenInfo({
+          id: customEvent.detail.id,
+          name: customEvent.detail.name,
+          group: customEvent.detail.group,
+        });
+      }
+    };
+    const handleGroupUpdated = (e: Event) => {
+      const customEvent = e as CustomEvent<{
+        toolId?: string;
+        tokenId?: number;
+        group: string;
+      }>;
+      if (customEvent.detail) {
+        setBoundTokenInfo((prev) => {
+          if (!prev) return prev;
+          if (customEvent.detail.tokenId && prev.id && prev.id !== customEvent.detail.tokenId) {
+            return prev;
+          }
+          if (customEvent.detail.toolId && customEvent.detail.toolId !== effectiveToolId) {
+            return prev;
+          }
+          const updated = { ...prev, group: customEvent.detail.group };
+          try {
+            localStorage.setItem(`bound_token_${effectiveToolId}`, JSON.stringify(updated));
+          } catch {}
+          return updated;
+        });
+      }
+    };
+    window.addEventListener("ai_helper_sync_all_tokens", handleSyncEvent);
+    window.addEventListener("ai_helper_group_updated", handleGroupUpdated);
+    return () => {
+      window.removeEventListener("ai_helper_sync_all_tokens", handleSyncEvent);
+      window.removeEventListener("ai_helper_group_updated", handleGroupUpdated);
+    };
+  }, [effectiveToolId]);
+
+  // 计算当前工具绑定的生效分组
+  const resolvedCurrentGroup = useMemo(() => {
+    if (currentGroupName) return currentGroupName;
+    if (boundTokenInfo?.group) return boundTokenInfo.group.trim();
+    return null;
+  }, [currentGroupName, boundTokenInfo]);
 
   // 专属工具指南说明
   const guide = useMemo(() => {
@@ -267,6 +329,146 @@ export function ChannelGroupMonitor({
       });
     }
     void loadData();
+  };
+
+  // ── 改分组弹窗状态与核心操作逻辑 ──
+  const [switchModalState, setSwitchModalState] = useState<{
+    open: boolean;
+    targetGroupName: string;
+    targetGroupItem?: ChannelGroupOverview | null;
+    selectedTokenId?: number;
+    tokensList: TokenItem[];
+    loadingTokens: boolean;
+    syncToAllAgents: boolean;
+    isSubmitting: boolean;
+    errorMessage?: string | null;
+  }>({
+    open: false,
+    targetGroupName: "",
+    targetGroupItem: null,
+    selectedTokenId: undefined,
+    tokensList: [],
+    loadingTokens: false,
+    syncToAllAgents: false,
+    isSubmitting: false,
+    errorMessage: null,
+  });
+
+  const handleInitiateSwitchGroup = async (groupName: string) => {
+    if (!authState.is_logged_in) {
+      toast.info("请先登录 bob-api 账号以管理 API Key 分组");
+      setLoginModalOpen(true);
+      return;
+    }
+
+    const targetItem = groups.find((g) => g.group_name === groupName) || null;
+
+    setSwitchModalState((prev) => ({
+      ...prev,
+      open: true,
+      targetGroupName: groupName,
+      targetGroupItem: targetItem,
+      loadingTokens: true,
+      errorMessage: null,
+      isSubmitting: false,
+    }));
+
+    try {
+      const userTokens = await getUserTokens();
+      let defaultId = boundTokenInfo?.id;
+      if (!defaultId || !userTokens.some((t) => t.id === defaultId)) {
+        if (
+          authState.selected_token_id &&
+          userTokens.some((t) => t.id === authState.selected_token_id)
+        ) {
+          defaultId = authState.selected_token_id;
+        } else if (userTokens.length > 0) {
+          defaultId = userTokens[0].id;
+        }
+      }
+
+      setSwitchModalState((prev) => ({
+        ...prev,
+        tokensList: userTokens,
+        selectedTokenId: defaultId,
+        loadingTokens: false,
+      }));
+    } catch (err: unknown) {
+      setSwitchModalState((prev) => ({
+        ...prev,
+        loadingTokens: false,
+        errorMessage: typeof err === "string" ? err : "获取账号 API Key 列表失败",
+      }));
+    }
+  };
+
+  const handleConfirmSwitchGroup = async () => {
+    const { targetGroupName, selectedTokenId, tokensList, syncToAllAgents } = switchModalState;
+    if (!selectedTokenId) {
+      toast.error("请选择要切换分组的 API Key");
+      return;
+    }
+
+    const tokenToUpdate = tokensList.find((t) => t.id === selectedTokenId);
+    const tokenName = tokenToUpdate?.name || "当前 API Key";
+
+    setSwitchModalState((prev) => ({ ...prev, isSubmitting: true, errorMessage: null }));
+
+    try {
+      const updated = await updateUserTokenGroup(selectedTokenId, targetGroupName);
+
+      // 更新当前工具的绑定状态
+      const newBound = {
+        id: updated.id,
+        name: updated.name,
+        group: targetGroupName,
+      };
+      localStorage.setItem(`bound_token_${effectiveToolId}`, JSON.stringify(newBound));
+      setBoundTokenInfo(newBound);
+      setSelectedGroupOverride(null);
+      if (onSelectGroup) onSelectGroup(targetGroupName);
+
+      // 如果勾选了同步到所有工具
+      if (syncToAllAgents) {
+        let plainKey = "";
+        try {
+          plainKey = await getTokenKey(selectedTokenId);
+          await applyApiKeyToAgents(plainKey);
+        } catch {}
+
+        ["chatgpt", "claude", "workbuddy", "acciowork", "default"].forEach((tid) => {
+          try {
+            localStorage.setItem(`bound_token_${tid}`, JSON.stringify(newBound));
+          } catch {}
+        });
+        window.dispatchEvent(
+          new CustomEvent("ai_helper_sync_all_tokens", {
+            detail: {
+              id: updated.id,
+              name: updated.name,
+              key: plainKey || updated.key,
+              group: targetGroupName,
+            },
+          }),
+        );
+      } else {
+        window.dispatchEvent(
+          new CustomEvent("ai_helper_group_updated", {
+            detail: {
+              toolId: effectiveToolId,
+              tokenId: updated.id,
+              group: targetGroupName,
+            },
+          }),
+        );
+      }
+
+      toast.success(`已成功将「${tokenName}」切换至「${targetGroupName}」分组！即时生效！`);
+      setSwitchModalState((prev) => ({ ...prev, open: false, isSubmitting: false }));
+    } catch (err: unknown) {
+      const msg = typeof err === "string" ? err : "切换分组失败，请检查账号权限";
+      setSwitchModalState((prev) => ({ ...prev, isSubmitting: false, errorMessage: msg }));
+    }
   };
 
   // 根据工具关键词优先计算推荐的默认分组
@@ -626,10 +828,19 @@ export function ChannelGroupMonitor({
                 )}
 
                 {isInspectingOverride && (
-                  <div className="flex items-center gap-1.5">
+                  <div className="flex items-center gap-1.5 flex-wrap">
                     <span className="text-[10px] px-1.5 py-0.5 rounded font-medium bg-amber-500/10 text-amber-700 dark:text-amber-300 border border-amber-500/20">
                       临时对比预览
                     </span>
+                    <button
+                      type="button"
+                      onClick={() => void handleInitiateSwitchGroup(activeGroup.group_name)}
+                      className="inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-md bg-blue-600 hover:bg-blue-700 text-white shadow-2xs cursor-pointer transition-colors active:scale-95"
+                      title="直接将当前 API Key 切换至此预览分组"
+                    >
+                      <Zap size={10} className="fill-current" />
+                      <span>切为此组</span>
+                    </button>
                     <button
                       type="button"
                       onClick={() => {
@@ -641,7 +852,7 @@ export function ChannelGroupMonitor({
                       className="inline-flex items-center gap-1 text-[10px] text-slate-500 hover:text-slate-800 dark:text-gray-400 dark:hover:text-white underline cursor-pointer"
                     >
                       <RotateCcw size={10} />
-                      <span>恢复查看 Key 绑定分组</span>
+                      <span>恢复当前绑定</span>
                     </button>
                   </div>
                 )}
@@ -989,8 +1200,8 @@ export function ChannelGroupMonitor({
                               )}
                             </div>
 
-                            {/* 右侧：指标数值与展开按钮 */}
-                            <div className="flex items-center gap-3.5 flex-shrink-0 text-slate-500 dark:text-gray-400 font-mono text-[11px]">
+                            {/* 右侧：指标数值、改分组与展开按钮 */}
+                            <div className="flex items-center gap-2.5 sm:gap-3 flex-shrink-0 text-slate-500 dark:text-gray-400 font-mono text-[11px]">
                               <span className="hidden md:inline-flex items-center gap-1 text-slate-400">
                                 <Clock size={10} />
                                 <span>{formatLatency(g.avg_response_time)}</span>
@@ -1009,13 +1220,40 @@ export function ChannelGroupMonitor({
                                 {g.success_rate.toFixed(1)}% {st.label}
                               </span>
 
+                              {/* 快捷改分组按钮 vs 当前使用指示 */}
+                              {isBound ? (
+                                <span
+                                  className={cn(
+                                    "px-2 py-0.5 rounded-md text-[10px] font-semibold border flex items-center gap-1 flex-shrink-0 shadow-2xs",
+                                    theme.boundBadge,
+                                  )}
+                                  title="当前所使用的 API Key 正在此通道生效"
+                                >
+                                  <Check size={11} className="stroke-[3]" />
+                                  <span>当前使用</span>
+                                </span>
+                              ) : (
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    void handleInitiateSwitchGroup(g.group_name);
+                                  }}
+                                  className="px-2 py-0.5 rounded-md text-[10px] font-semibold bg-blue-600 hover:bg-blue-700 text-white transition-all flex items-center gap-1 cursor-pointer shadow-2xs active:scale-95 flex-shrink-0"
+                                  title={`将当前 API Key 直接切换到「${g.group_name}」分组`}
+                                >
+                                  <Zap size={10} className="fill-current" />
+                                  <span>改用此组</span>
+                                </button>
+                              )}
+
                               <button
                                 type="button"
                                 onClick={handleToggleExpand}
                                 className={cn(
                                   "px-2 py-0.5 rounded-md text-[10px] font-medium transition-all flex items-center gap-1 cursor-pointer",
                                   isExpanded
-                                    ? "bg-blue-600 text-white shadow-2xs font-semibold"
+                                    ? "bg-slate-200/80 text-slate-800 dark:bg-white/20 dark:text-gray-100"
                                     : isCur
                                       ? "bg-slate-200/80 text-slate-800 dark:bg-white/15 dark:text-gray-100"
                                       : "bg-slate-100 hover:bg-slate-200/80 text-slate-600 dark:bg-white/5 dark:hover:bg-white/10 dark:text-gray-400",
@@ -1074,14 +1312,37 @@ export function ChannelGroupMonitor({
                                       )}
                                     </div>
 
-                                    <button
-                                      type="button"
-                                      onClick={() => setExpandedGroup(null)}
-                                      className="text-[10px] text-slate-400 hover:text-slate-700 dark:hover:text-gray-200 flex items-center gap-1 cursor-pointer transition-colors"
-                                    >
-                                      <ChevronUp size={12} />
-                                      <span>收起详情</span>
-                                    </button>
+                                    <div className="flex items-center gap-2">
+                                      {!isBound ? (
+                                        <button
+                                          type="button"
+                                          onClick={() => void handleInitiateSwitchGroup(g.group_name)}
+                                          className="px-2.5 py-1 rounded-lg text-xs font-semibold bg-blue-600 hover:bg-blue-700 text-white flex items-center gap-1.5 shadow-xs transition-all cursor-pointer active:scale-95"
+                                        >
+                                          <Zap size={12} className="fill-current" />
+                                          <span>设为当前生效通道</span>
+                                        </button>
+                                      ) : (
+                                        <span
+                                          className={cn(
+                                            "text-xs px-2.5 py-1 rounded-lg font-semibold border flex items-center gap-1.5",
+                                            theme.boundBadge,
+                                          )}
+                                        >
+                                          <Check size={12} className="stroke-[3]" />
+                                          <span>当前 Key 正在此通道生效</span>
+                                        </span>
+                                      )}
+
+                                      <button
+                                        type="button"
+                                        onClick={() => setExpandedGroup(null)}
+                                        className="text-[10px] text-slate-400 hover:text-slate-700 dark:hover:text-gray-200 flex items-center gap-1 cursor-pointer transition-colors ml-1"
+                                      >
+                                        <ChevronUp size={12} />
+                                        <span>收起详情</span>
+                                      </button>
+                                    </div>
                                   </div>
 
                                   {/* 四宫格核心指标 */}
@@ -1206,13 +1467,34 @@ export function ChannelGroupMonitor({
                                 {g.success_rate.toFixed(0)}%
                               </span>
 
+                              {/* 快捷改分组按钮 vs 当前使用指示 */}
+                              {isBound ? (
+                                <span className="text-[9px] px-1.5 py-0.5 rounded font-medium bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-300 flex items-center gap-0.5">
+                                  <Check size={10} className="stroke-[3]" />
+                                  使用中
+                                </span>
+                              ) : (
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    void handleInitiateSwitchGroup(g.group_name);
+                                  }}
+                                  className="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-blue-600 hover:bg-blue-700 text-white flex items-center gap-0.5 cursor-pointer shadow-2xs active:scale-95"
+                                  title={`将当前 API Key 直接切换到「${g.group_name}」分组`}
+                                >
+                                  <Zap size={9} className="fill-current" />
+                                  <span>改用</span>
+                                </button>
+                              )}
+
                               <button
                                 type="button"
                                 onClick={handleToggleExpand}
                                 className={cn(
                                   "px-1.5 py-0.5 rounded text-[10px] font-medium transition-all flex items-center gap-0.5 cursor-pointer",
                                   isExpanded
-                                    ? "bg-blue-600 text-white shadow-2xs font-semibold"
+                                    ? "bg-slate-200/80 text-slate-800 dark:bg-white/20 dark:text-gray-100"
                                     : "bg-slate-100 hover:bg-slate-200/80 text-slate-600 dark:bg-white/5 dark:hover:bg-white/10 dark:text-gray-400",
                                 )}
                               >
@@ -1233,6 +1515,26 @@ export function ChannelGroupMonitor({
                                 className="overflow-hidden"
                               >
                                 <div className="mt-1 mb-2 p-3.5 rounded-xl border border-blue-500/30 dark:border-blue-500/20 bg-white/95 dark:bg-[#111320]/95 shadow-sm space-y-3">
+                                  <div className="flex items-center justify-between pb-2 border-b border-slate-100 dark:border-white/5">
+                                    <span className="font-mono text-xs font-bold text-slate-900 dark:text-white truncate">
+                                      {g.group_name}
+                                    </span>
+                                    {!isBound ? (
+                                      <button
+                                        type="button"
+                                        onClick={() => void handleInitiateSwitchGroup(g.group_name)}
+                                        className="px-2 py-0.5 rounded-lg text-[11px] font-semibold bg-blue-600 hover:bg-blue-700 text-white flex items-center gap-1 shadow-xs transition-all cursor-pointer"
+                                      >
+                                        <Zap size={10} className="fill-current" />
+                                        <span>设为当前生效通道</span>
+                                      </button>
+                                    ) : (
+                                      <span className="text-[11px] font-semibold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-500/10 px-2 py-0.5 rounded-md border border-emerald-200 dark:border-emerald-500/20 flex items-center gap-1">
+                                        <Check size={11} className="stroke-[3]" />
+                                        <span>当前正在使用</span>
+                                      </span>
+                                    )}
+                                  </div>
                                   <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                                     <div className="p-2 rounded-lg bg-slate-50/80 dark:bg-white/[0.02] border border-slate-200/60 dark:border-white/5">
                                       <div className="text-[10px] text-slate-400">实时成功率</div>
@@ -1451,19 +1753,258 @@ export function ChannelGroupMonitor({
 
                         <button
                           type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setCompareModalOpen(false);
+                            void handleInitiateSwitchGroup(g.group_name);
+                          }}
                           className={cn(
-                            "px-3 py-1.5 rounded-xl text-xs font-semibold transition-all cursor-pointer",
-                            isCur
+                            "px-3 py-1.5 rounded-xl text-xs font-semibold transition-all cursor-pointer flex items-center gap-1.5 shadow-2xs active:scale-95",
+                            isBound
                               ? "bg-slate-200 dark:bg-white/10 text-slate-700 dark:text-gray-200"
                               : theme.btnPrimary,
                           )}
                         >
-                          {isCur ? "当前监控中" : "切换为此分组"}
+                          {isBound ? (
+                            <>
+                              <Check size={13} className="stroke-[3]" />
+                              <span>当前正在使用</span>
+                            </>
+                          ) : (
+                            <>
+                              <Zap size={13} className="fill-current" />
+                              <span>切换为此分组</span>
+                            </>
+                          )}
                         </button>
                       </div>
                     </div>
                   );
                 })}
+              </div>
+            </div>
+          </div>,
+          document.body,
+        )}
+
+      {/* ── 核心改造：一键切换分组确认弹窗 (SwitchGroupModal) ── */}
+      {switchModalState.open &&
+        typeof document !== "undefined" &&
+        createPortal(
+          <div
+            className="fixed inset-0 top-11 z-[90] flex items-center justify-center p-4 bg-slate-950/65 backdrop-blur-md select-none animate-in fade-in duration-200"
+            onClick={(e) => {
+              if (e.target === e.currentTarget && !switchModalState.isSubmitting) {
+                setSwitchModalState((prev) => ({ ...prev, open: false }));
+              }
+            }}
+          >
+            <div className="relative w-full max-w-[500px] bg-white dark:bg-[#111320] border border-slate-200 dark:border-white/10 rounded-3xl shadow-2xl flex flex-col overflow-hidden text-slate-800 dark:text-gray-200 animate-in zoom-in-95 duration-200">
+              {/* 弹窗头部 */}
+              <div className="px-6 py-4 border-b border-slate-100 dark:border-white/10 flex items-center justify-between gap-3 bg-slate-50/60 dark:bg-white/[0.02]">
+                <div className="flex items-center gap-2.5">
+                  <div
+                    className={cn(
+                      "w-9 h-9 rounded-xl flex items-center justify-center font-bold shadow-xs",
+                      theme.topIconBg,
+                    )}
+                  >
+                    <Zap size={16} className="fill-current text-blue-500" />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
+                      <span>切换 API Key 分组</span>
+                      <span className="text-[10px] px-1.5 py-0.2 rounded font-mono font-normal bg-blue-50 text-blue-600 dark:bg-blue-500/10 dark:text-blue-400 border border-blue-200/60 dark:border-blue-500/20">
+                        无需回网站
+                      </span>
+                    </h3>
+                    <p className="text-[11px] text-slate-500 dark:text-gray-400">
+                      将云端 API Key 绑定的路由通道直接拨动至新分组
+                    </p>
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  disabled={switchModalState.isSubmitting}
+                  onClick={() => setSwitchModalState((prev) => ({ ...prev, open: false }))}
+                  className="p-1.5 rounded-xl text-slate-400 hover:text-slate-700 dark:hover:text-gray-200 hover:bg-slate-100 dark:hover:bg-white/10 transition-colors cursor-pointer"
+                >
+                  <X size={16} />
+                </button>
+              </div>
+
+              {/* 弹窗内容 */}
+              <div className="p-6 space-y-4">
+                {/* 目标分组预览卡片 */}
+                <div className="p-3.5 rounded-2xl bg-blue-50/60 dark:bg-blue-500/10 border border-blue-200/80 dark:border-blue-500/20 flex items-center justify-between gap-3">
+                  <div className="min-w-0">
+                    <span className="text-[10px] font-medium text-blue-600 dark:text-blue-400 uppercase tracking-wider block mb-0.5">
+                      目标新分组通道
+                    </span>
+                    <span className="text-sm font-bold font-mono text-slate-900 dark:text-white truncate block">
+                      {switchModalState.targetGroupName}
+                    </span>
+                    {switchModalState.targetGroupItem && (
+                      <div className="flex items-center gap-2 mt-1 text-[11px] font-mono text-slate-500 dark:text-gray-400">
+                        <span>平均时延: {formatLatency(switchModalState.targetGroupItem.avg_response_time)}</span>
+                        <span>·</span>
+                        <span>调用量: {switchModalState.targetGroupItem.total_requests}次</span>
+                      </div>
+                    )}
+                  </div>
+
+                  {switchModalState.targetGroupItem && (
+                    <span
+                      className={cn(
+                        "px-2.5 py-1 rounded-full text-xs font-mono font-bold flex-shrink-0 shadow-2xs",
+                        getHealthStatus(switchModalState.targetGroupItem.success_rate).bgBadge,
+                      )}
+                    >
+                      {switchModalState.targetGroupItem.success_rate.toFixed(1)}% {getHealthStatus(switchModalState.targetGroupItem.success_rate).label}
+                    </span>
+                  )}
+                </div>
+
+                {/* 选择要更改分组的 API Key */}
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold text-slate-700 dark:text-gray-300 flex items-center justify-between">
+                    <span>生效的 API Key 凭据</span>
+                    {switchModalState.tokensList.length > 0 && (
+                      <span className="text-[10px] font-mono text-slate-400">
+                        共 {switchModalState.tokensList.length} 个 Key
+                      </span>
+                    )}
+                  </label>
+
+                  {switchModalState.loadingTokens ? (
+                    <div className="py-4 flex items-center justify-center gap-2 text-xs text-slate-400">
+                      <Loader2 size={14} className="animate-spin text-blue-500" />
+                      <span>正在获取您的 API Key 资产...</span>
+                    </div>
+                  ) : switchModalState.tokensList.length === 0 ? (
+                    <div className="p-3 rounded-xl bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-500/20 text-xs text-amber-700 dark:text-amber-300">
+                      未找到可用的 API Key，请先前往 bob-api 网页端创建。
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      <select
+                        value={switchModalState.selectedTokenId || ""}
+                        onChange={(e) =>
+                          setSwitchModalState((prev) => ({
+                            ...prev,
+                            selectedTokenId: Number(e.target.value),
+                          }))
+                        }
+                        className="w-full h-9 px-3 text-xs rounded-xl bg-slate-50 dark:bg-black/40 border border-slate-200 dark:border-white/10 text-slate-800 dark:text-gray-200 focus:outline-none focus:ring-1 focus:ring-blue-500 font-mono cursor-pointer"
+                      >
+                        {switchModalState.tokensList.map((token) => (
+                          <option key={token.id} value={token.id}>
+                            {token.name} (当前分组: {token.group || "默认"})
+                          </option>
+                        ))}
+                      </select>
+
+                      {/* 当前选中的 Token 变更指引 */}
+                      {(() => {
+                        const curToken = switchModalState.tokensList.find(
+                          (t) => t.id === switchModalState.selectedTokenId,
+                        );
+                        if (!curToken) return null;
+                        return (
+                          <div className="p-2.5 rounded-xl bg-slate-50 dark:bg-white/[0.02] border border-slate-200/60 dark:border-white/5 text-[11px] font-mono flex items-center justify-between">
+                            <span className="text-slate-500">分组变更路径:</span>
+                            <div className="flex items-center gap-1.5 font-semibold">
+                              <span className="text-slate-600 dark:text-gray-400">
+                                {curToken.group || "默认"}
+                              </span>
+                              <span className="text-slate-400">➔</span>
+                              <span className="text-blue-600 dark:text-blue-400">
+                                {switchModalState.targetGroupName}
+                              </span>
+                            </div>
+                          </div>
+                        );
+                      })()}
+                    </div>
+                  )}
+                </div>
+
+                {/* 同步选项复选框 */}
+                <div className="pt-1">
+                  <label className="flex items-center gap-2 text-xs text-slate-700 dark:text-gray-300 cursor-pointer select-none">
+                    <input
+                      type="checkbox"
+                      checked={switchModalState.syncToAllAgents}
+                      onChange={(e) =>
+                        setSwitchModalState((prev) => ({
+                          ...prev,
+                          syncToAllAgents: e.target.checked,
+                        }))
+                      }
+                      className="rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
+                    />
+                    <span>同时将此生效 Key 同步至全部 4 大本地 Agent (Codex, Claude, Workbuddy, Accio)</span>
+                  </label>
+                </div>
+
+                {/* 即时生效温馨提示 */}
+                <div className="p-3 rounded-xl bg-slate-50 dark:bg-white/[0.02] border border-slate-200/60 dark:border-white/5 text-[11px] text-slate-500 dark:text-gray-400 leading-relaxed flex items-start gap-2">
+                  <Sparkles size={13} className="text-amber-500 flex-shrink-0 mt-0.5" />
+                  <span>
+                    <strong>瞬时无感生效：</strong>修改由服务端 API 直接更新 Key 的路由表，无需在本地配置文件中替换 Key 字符串，下一次发起请求将自动走新分组。
+                  </span>
+                </div>
+
+                {/* 错误警告条 */}
+                {switchModalState.errorMessage && (
+                  <div className="p-3 rounded-xl bg-rose-50 dark:bg-rose-500/10 border border-rose-200 dark:border-rose-500/20 text-xs text-rose-700 dark:text-rose-300 flex items-start justify-between gap-2">
+                    <div className="flex items-start gap-1.5">
+                      <AlertCircle size={14} className="flex-shrink-0 mt-0.5 text-rose-500" />
+                      <span>{switchModalState.errorMessage}</span>
+                    </div>
+                    {switchModalState.errorMessage.includes("权限") || switchModalState.errorMessage.includes("无权") ? (
+                      <button
+                        type="button"
+                        onClick={() => void openUrl("https://bob-api.com")}
+                        className="underline text-[11px] font-semibold text-rose-700 dark:text-rose-300 flex-shrink-0 hover:text-rose-900 cursor-pointer"
+                      >
+                        前往官网开通
+                      </button>
+                    ) : null}
+                  </div>
+                )}
+              </div>
+
+              {/* 弹窗底部操作 */}
+              <div className="px-6 py-3.5 border-t border-slate-100 dark:border-white/10 flex items-center justify-end gap-2.5 bg-slate-50/50 dark:bg-white/[0.02]">
+                <button
+                  type="button"
+                  disabled={switchModalState.isSubmitting}
+                  onClick={() => setSwitchModalState((prev) => ({ ...prev, open: false }))}
+                  className="px-4 py-2 rounded-xl text-xs font-medium text-slate-600 hover:text-slate-900 dark:text-gray-300 dark:hover:text-white bg-slate-100 hover:bg-slate-200 dark:bg-white/5 dark:hover:bg-white/10 transition-colors cursor-pointer disabled:opacity-50"
+                >
+                  取消
+                </button>
+
+                <button
+                  type="button"
+                  disabled={switchModalState.isSubmitting || switchModalState.tokensList.length === 0}
+                  onClick={handleConfirmSwitchGroup}
+                  className="px-5 py-2 rounded-xl text-xs font-semibold bg-blue-600 hover:bg-blue-700 text-white flex items-center gap-1.5 shadow-xs transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {switchModalState.isSubmitting ? (
+                    <>
+                      <Loader2 size={13} className="animate-spin" />
+                      <span>正在切换分组...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Zap size={13} className="fill-current" />
+                      <span>确认切换并即时生效</span>
+                    </>
+                  )}
+                </button>
               </div>
             </div>
           </div>,

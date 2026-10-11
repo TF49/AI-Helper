@@ -150,6 +150,20 @@ fn default_neg_one() -> i64 {
     -1
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct UserWalletInfo {
+    pub quota: i64,
+    pub used_quota: i64,
+    pub quota_usd: f64,
+    pub quota_cny: f64,
+    pub used_quota_usd: f64,
+    pub used_quota_cny: f64,
+    pub request_count: i64,
+    pub group: Option<String>,
+    pub quota_per_unit: i64,
+    pub rmb_to_usd_rate: f64,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct AuthSessionStorage {
     pub user: Option<UserInfo>,
@@ -954,11 +968,12 @@ pub async fn get_token_key(token_id: i64) -> Result<String, String> {
     Ok(key)
 }
 
-/// 快速在 bob-api 创建一个新的普通令牌（可选快捷操作）
-pub async fn create_user_token(name: String) -> Result<TokenItem, String> {
+/// 快速在 bob-api 创建一个新的普通令牌（可选指定分组）
+pub async fn create_user_token(name: String, group: Option<String>) -> Result<TokenItem, String> {
     let token = ensure_access_token().await?;
     let mgr = AUTH_MGR.lock().await;
 
+    let target_group = group.unwrap_or_default().trim().to_string();
     let url = format!("{}/api/token/", BASE_URL);
     let body = serde_json::json!({
         "name": name.trim(),
@@ -968,7 +983,7 @@ pub async fn create_user_token(name: String) -> Result<TokenItem, String> {
         "model_limits_enabled": false,
         "model_limits": "",
         "allow_ips": "",
-        "group": "",
+        "group": target_group,
         "auto_groups": [],
         "cross_group_retry": false,
         "fallback_groups": []
@@ -1008,6 +1023,111 @@ pub async fn create_user_token(name: String) -> Result<TokenItem, String> {
         .into_iter()
         .find(|t| t.name == name)
         .ok_or_else(|| "令牌创建成功，但刷新列表时未找到刚创建的记录".to_string())
+}
+
+/// 更新已有 API Key 的所属分组 (调用 PUT /api/token/)
+pub async fn update_user_token_group(
+    token_id: i64,
+    new_group: String,
+) -> Result<TokenItem, String> {
+    let clean_group = new_group.trim().to_string();
+    if clean_group.is_empty() {
+        return Err("分组名称不能为空".to_string());
+    }
+
+    let token = ensure_access_token().await?;
+    let client = {
+        let mgr = AUTH_MGR.lock().await;
+        mgr.client.clone()
+    };
+
+    // 1. 尝试通过 GET /api/token/:id 获取完整原有 Token 信息，确保保留原参数
+    let get_url = format!("{}/api/token/{}", BASE_URL, token_id);
+    let mut put_body = None;
+
+    if let Ok(resp) = client
+        .get(&get_url)
+        .header(AUTHORIZATION, format!("Bearer {}", token))
+        .send()
+        .await
+    {
+        let status = resp.status();
+        if let Ok(text) = resp.text().await {
+            if let Ok(parsed) =
+                parse_api_response_body::<serde_json::Value>(status, &text, "读取原令牌信息")
+            {
+                if parsed.success {
+                    if let Some(mut data_obj) = parsed.data {
+                        if data_obj.is_object() {
+                            data_obj["group"] = serde_json::json!(clean_group);
+                            put_body = Some(data_obj);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // 2. 如果 GET /api/token/:id 未取到，回退从 get_user_tokens 检索原有基础信息
+    let body = if let Some(b) = put_body {
+        b
+    } else {
+        let tokens = get_user_tokens().await?;
+        let orig = tokens
+            .into_iter()
+            .find(|t| t.id == token_id)
+            .ok_or_else(|| format!("未找到 ID 为 {} 的 API Key", token_id))?;
+
+        serde_json::json!({
+            "id": orig.id,
+            "name": orig.name,
+            "expired_time": orig.expired_time,
+            "remain_quota": orig.remain_quota,
+            "unlimited_quota": orig.unlimited_quota,
+            "model_limits_enabled": false,
+            "model_limits": "",
+            "allow_ips": "",
+            "group": clean_group,
+            "auto_groups": [],
+            "cross_group_retry": false,
+            "fallback_groups": []
+        })
+    };
+
+    let put_url = format!("{}/api/token/", BASE_URL);
+    let resp = client
+        .put(&put_url)
+        .header(AUTHORIZATION, format!("Bearer {}", token))
+        .json(&body)
+        .send()
+        .await
+        .map_err(|e| format!("更新令牌分组网络异常: {e}"))?;
+
+    let status = resp.status();
+    let text = resp
+        .text()
+        .await
+        .map_err(|e| format!("读取更新令牌响应失败: {e}"))?;
+
+    let parsed: ApiResponse<serde_json::Value> =
+        parse_api_response_body(status, &text, "更新令牌分组")?;
+
+    if !parsed.success {
+        return Err(if parsed.message.is_empty() {
+            "更新分组失败，可能您的账号无权使用该分组".to_string()
+        } else {
+            parsed.message
+        });
+    }
+
+    // 重新检索更新后的令牌列表并返回
+    let tokens = get_user_tokens().await?;
+    let updated = tokens
+        .into_iter()
+        .find(|t| t.id == token_id)
+        .ok_or_else(|| "分组更新成功，但刷新列表时未找到该令牌".to_string())?;
+
+    Ok(updated)
 }
 
 /// 一键将 API Key 批量写入指定的 Agent 配置文件中
@@ -1169,4 +1289,92 @@ pub async fn get_channel_group_overview(
         serde_json::from_value(data_val).map_err(|e| format!("反序列化分组监控列表失败: {e}"))?;
 
     Ok(items)
+}
+
+/// 获取用户在 bob-api 的钱包与额度余额信息 (调用 GET /api/user/self)
+pub async fn get_user_wallet() -> Result<UserWalletInfo, String> {
+    let mut token = ensure_access_token().await?;
+    let url = format!("{}/api/user/self", BASE_URL);
+
+    let mut resp = {
+        let mgr = AUTH_MGR.lock().await;
+        mgr.client
+            .get(&url)
+            .header(AUTHORIZATION, format!("Bearer {}", token))
+            .send()
+            .await
+            .map_err(|e| format!("获取账号额度网络异常: {e}"))?
+    };
+
+    // 若 access_token 在服务端已失效 (401)，自动刷新一次会话凭据重试
+    if resp.status() == reqwest::StatusCode::UNAUTHORIZED {
+        if let Ok(refreshed) = refresh_session().await {
+            token = refreshed.access_token;
+            let mgr = AUTH_MGR.lock().await;
+            if let Ok(retry_resp) = mgr
+                .client
+                .get(&url)
+                .header(AUTHORIZATION, format!("Bearer {}", token))
+                .send()
+                .await
+            {
+                resp = retry_resp;
+            }
+        }
+    }
+
+    let status = resp.status();
+    let text = resp
+        .text()
+        .await
+        .map_err(|e| format!("读取账号额度响应失败: {e}"))?;
+
+    let parsed: ApiResponse<serde_json::Value> =
+        parse_api_response_body(status, &text, "获取账号额度")?;
+
+    if !parsed.success {
+        let msg = if parsed.message.is_empty() {
+            "获取账号额度失败".to_string()
+        } else {
+            parsed.message
+        };
+        return Err(msg);
+    }
+
+    let data = parsed
+        .data
+        .ok_or_else(|| "响应数据中缺少 data 字段".to_string())?;
+
+    let quota = data.get("quota").and_then(|v| v.as_i64()).unwrap_or(0);
+    let used_quota = data.get("used_quota").and_then(|v| v.as_i64()).unwrap_or(0);
+    let request_count = data
+        .get("request_count")
+        .and_then(|v| v.as_i64())
+        .unwrap_or(0);
+    let group = data
+        .get("group")
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string());
+
+    let quota_per_unit: i64 = 500000;
+    let rmb_to_usd_rate: f64 = 4.0; // 充值比例 1￥ = 4$
+
+    let quota_usd = quota as f64 / quota_per_unit as f64;
+    let quota_cny = quota_usd / rmb_to_usd_rate;
+
+    let used_quota_usd = used_quota as f64 / quota_per_unit as f64;
+    let used_quota_cny = used_quota_usd / rmb_to_usd_rate;
+
+    Ok(UserWalletInfo {
+        quota,
+        used_quota,
+        quota_usd,
+        quota_cny,
+        used_quota_usd,
+        used_quota_cny,
+        request_count,
+        group,
+        quota_per_unit,
+        rmb_to_usd_rate,
+    })
 }

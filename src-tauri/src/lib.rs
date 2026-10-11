@@ -385,8 +385,16 @@ async fn get_token_key(token_id: i64) -> Result<String, String> {
 }
 
 #[tauri::command]
-async fn create_user_token(name: String) -> Result<auth::TokenItem, String> {
-    auth::create_user_token(name).await
+async fn create_user_token(name: String, group: Option<String>) -> Result<auth::TokenItem, String> {
+    auth::create_user_token(name, group).await
+}
+
+#[tauri::command]
+async fn update_user_token_group(
+    token_id: i64,
+    new_group: String,
+) -> Result<auth::TokenItem, String> {
+    auth::update_user_token_group(token_id, new_group).await
 }
 
 #[tauri::command]
@@ -407,6 +415,11 @@ async fn get_channel_group_overview(
     hours: Option<u32>,
 ) -> Result<Vec<auth::ChannelGroupOverview>, String> {
     auth::get_channel_group_overview(hours).await
+}
+
+#[tauri::command]
+async fn get_user_wallet() -> Result<auth::UserWalletInfo, String> {
+    auth::get_user_wallet().await
 }
 
 fn setup_tray(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
@@ -559,9 +572,11 @@ pub fn run() {
             get_user_tokens,
             get_token_key,
             create_user_token,
+            update_user_token_group,
             set_selected_token,
             apply_api_key_to_agents,
             get_channel_group_overview,
+            get_user_wallet,
         ])
         .build(tauri::generate_context!())
         .expect("error while building ai-helper")

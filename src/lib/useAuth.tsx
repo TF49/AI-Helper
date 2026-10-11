@@ -10,13 +10,18 @@ import {
   getAuthState,
   logoutAccount,
   setSelectedToken as apiSetSelectedToken,
+  getUserWallet,
 } from "./api";
-import type { CurrentAuthState, UserInfo, TokenItem } from "../types";
+import type { CurrentAuthState, UserInfo, TokenItem, UserWalletInfo } from "../types";
 
 interface AuthContextType {
   authState: CurrentAuthState;
   isAuthReady: boolean;
   refreshState: () => Promise<void>;
+  wallet: UserWalletInfo | null;
+  isLoadingWallet: boolean;
+  walletError: string | null;
+  refreshWallet: () => Promise<void>;
   loginModalOpen: boolean;
   setLoginModalOpen: (open: boolean) => void;
   tokenModalOpen: boolean;
@@ -38,6 +43,10 @@ const AuthContext = createContext<AuthContextType>({
   authState: defaultState,
   isAuthReady: false,
   refreshState: async () => {},
+  wallet: null,
+  isLoadingWallet: false,
+  walletError: null,
+  refreshWallet: async () => {},
   loginModalOpen: false,
   setLoginModalOpen: () => {},
   tokenModalOpen: false,
@@ -52,6 +61,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [isAuthReady, setIsAuthReady] = useState(false);
   const [loginModalOpen, setLoginModalOpen] = useState(false);
   const [tokenModalOpen, setTokenModalOpen] = useState(false);
+  const [wallet, setWallet] = useState<UserWalletInfo | null>(null);
+  const [isLoadingWallet, setIsLoadingWallet] = useState(false);
+  const [walletError, setWalletError] = useState<string | null>(null);
 
   const refreshState = useCallback(async () => {
     try {
@@ -64,13 +76,44 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
+  const refreshWallet = useCallback(async () => {
+    if (!authState.is_logged_in) {
+      setWallet(null);
+      setWalletError(null);
+      return;
+    }
+    setIsLoadingWallet(true);
+    setWalletError(null);
+    try {
+      const data = await getUserWallet();
+      setWallet(data);
+    } catch (err: unknown) {
+      const msg = typeof err === "string" ? err : (err as Error)?.message || "获取账号余额失败";
+      setWalletError(msg);
+      console.warn("Failed to get wallet balance:", err);
+    } finally {
+      setIsLoadingWallet(false);
+    }
+  }, [authState.is_logged_in]);
+
   useEffect(() => {
     void refreshState();
   }, [refreshState]);
 
+  useEffect(() => {
+    if (authState.is_logged_in) {
+      void refreshWallet();
+    } else {
+      setWallet(null);
+      setWalletError(null);
+    }
+  }, [authState.is_logged_in, authState.user?.id, refreshWallet]);
+
   const logout = async () => {
     try {
       await logoutAccount();
+      setWallet(null);
+      setWalletError(null);
       await refreshState();
       toast.info("已退出 bob-api.com 登录");
     } catch {
@@ -80,6 +123,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const onLoginSuccess = (_user: UserInfo) => {
     void refreshState();
+    void refreshWallet();
   };
 
   const onTokenSelected = (_key: string, token: TokenItem) => {
@@ -97,6 +141,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         authState,
         isAuthReady,
         refreshState,
+        wallet,
+        isLoadingWallet,
+        walletError,
+        refreshWallet,
         loginModalOpen,
         setLoginModalOpen,
         tokenModalOpen,

@@ -20,6 +20,7 @@ import {
   User,
   KeyRound,
   Radio,
+  Wallet,
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
@@ -40,6 +41,7 @@ import { QuickToolsModal } from "./components/QuickToolsModal";
 import { InitializationModal } from "./components/InitializationModal";
 import { LoginModal } from "./components/auth/LoginModal";
 import { TokenSelectModal } from "./components/auth/TokenSelectModal";
+import { AccountBalanceCard } from "./components/AccountBalanceCard";
 import { AuthProvider, useAuth } from "./lib/useAuth";
 import { ThemeToggle } from "./components/ThemeToggle";
 import { useTheme } from "./components/theme-provider";
@@ -89,6 +91,8 @@ function AppContent() {
   const {
     authState,
     isAuthReady,
+    wallet,
+    refreshWallet,
     loginModalOpen,
     setLoginModalOpen,
     tokenModalOpen,
@@ -197,6 +201,9 @@ function AppContent() {
     try {
       const { reachable } = await checkBobApiNetwork();
       setNetworkState(reachable ? "reachable" : "unreachable");
+      if (reachable && authState.is_logged_in && !wallet) {
+        void refreshWallet();
+      }
     } catch {
       setNetworkState("unreachable");
     }
@@ -744,6 +751,22 @@ function AppContent() {
                   </button>
                 )}
 
+                {/* 账号额度余额指示 (Compact Rail 模式) */}
+                {authState.is_logged_in && (
+                  <button
+                    type="button"
+                    onClick={() => void openUrl("https://bob-api.com/wallet")}
+                    className="w-9 h-9 rounded-xl bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-100 dark:hover:bg-indigo-500/20 flex items-center justify-center transition-colors cursor-pointer relative shadow-2xs"
+                    title={
+                      wallet
+                        ? `账号额度: $${wallet.quota_usd.toFixed(2)} (≈ ¥${wallet.quota_cny.toFixed(2)}) - 点击前往钱包充值`
+                        : "账号额度与钱包 - 点击前往钱包"
+                    }
+                  >
+                    <Wallet size={15} />
+                  </button>
+                )}
+
                 {/* 网络状态指示灯 */}
                 <button
                   type="button"
@@ -1184,6 +1207,9 @@ function AppContent() {
                     </button>
                   )}
                 </div>
+
+                {/* ── 账号额度余额卡片 (Bob API 钱包余额) ── */}
+                <AccountBalanceCard />
 
                 {/* 网络状态卡片 */}
                 <div

@@ -22,6 +22,7 @@ import type {
   TokenItem,
   CurrentAuthState,
   ChannelGroupOverview,
+  UserWalletInfo,
 } from "../types";
 
 export const isTauri =
@@ -156,6 +157,20 @@ function getMockResponse<T>(cmd: string, _args?: Record<string, unknown>): T {
       ] as unknown as T;
     case "get_token_key":
       return "sk-mock-plain-key-for-preview" as unknown as T;
+    case "update_user_token_group": {
+      const tokenId = (_args?.tokenId as number) || 101;
+      const newGroup = (_args?.newGroup as string) || "default";
+      return {
+        id: tokenId,
+        name: "Mock Key",
+        key: "sk-mock***" + tokenId,
+        status: 1,
+        expired_time: -1,
+        unlimited_quota: true,
+        remain_quota: 0,
+        group: newGroup,
+      } as unknown as T;
+    }
     case "get_channel_group_overview":
       return [
         {
@@ -191,6 +206,19 @@ function getMockResponse<T>(cmd: string, _args?: Record<string, unknown>): T {
           })),
         },
       ] as unknown as T;
+    case "get_user_wallet":
+      return {
+        quota: 227002749,
+        used_quota: 302207438,
+        quota_usd: 454.01,
+        quota_cny: 113.50,
+        used_quota_usd: 604.41,
+        used_quota_cny: 151.10,
+        request_count: 20540,
+        group: "svip",
+        quota_per_unit: 500000,
+        rmb_to_usd_rate: 4.0,
+      } as unknown as T;
     case "open_url":
       if (_args && typeof _args.url === "string") {
         window.open(_args.url, "_blank");
@@ -630,8 +658,24 @@ export async function getTokenKey(tokenId: number): Promise<string> {
   return invoke<string>("get_token_key", { tokenId });
 }
 
-export async function createUserToken(name: string): Promise<TokenItem> {
-  return invoke<TokenItem>("create_user_token", { name });
+export async function createUserToken(
+  name: string,
+  group?: string,
+): Promise<TokenItem> {
+  return invoke<TokenItem>("create_user_token", {
+    name,
+    group: group ?? null,
+  });
+}
+
+export async function updateUserTokenGroup(
+  tokenId: number,
+  newGroup: string,
+): Promise<TokenItem> {
+  return invoke<TokenItem>("update_user_token_group", {
+    tokenId,
+    newGroup,
+  });
 }
 
 export async function setSelectedToken(
@@ -658,6 +702,10 @@ export async function getChannelGroupOverview(
   hours: number = 1,
 ): Promise<ChannelGroupOverview[]> {
   return invoke<ChannelGroupOverview[]>("get_channel_group_overview", { hours });
+}
+
+export async function getUserWallet(): Promise<UserWalletInfo> {
+  return invoke<UserWalletInfo>("get_user_wallet");
 }
 
 

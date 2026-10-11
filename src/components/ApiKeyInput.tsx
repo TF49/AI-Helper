@@ -92,23 +92,20 @@ export function ApiKeyInput({
     }
   }, [value, boundToken, storageKey]);
 
-  // 当处于已登录状态且 boundToken 缺少 group 或尚未绑定时，尝试通过 API 补充匹配关联
+  // 当处于已登录状态且 boundToken 存在时，通过 API 校验并同步最新 group；或未绑定时尝试自动匹配
   useEffect(() => {
     if (!authState.is_logged_in || !value.trim()) return;
-
-    // 如果 boundToken 已经完整（有 id 也有 group），无需重复匹配
-    if (boundToken && boundToken.group) return;
 
     let isMounted = true;
     getUserTokens()
       .then((tokens) => {
         if (!isMounted || !tokens || tokens.length === 0) return;
 
-        // 1. 如果已有 boundToken 但缺少 group 字段，通过 id 查找
-        if (boundToken && !boundToken.group) {
+        // 1. 如果已有 boundToken，核对云端最新 group（兼容在网站或其他设备修改后的同步）
+        if (boundToken) {
           const match = tokens.find((t) => t.id === boundToken.id);
-          if (match && match.group) {
-            const updated = { ...boundToken, group: match.group };
+          if (match && match.group !== boundToken.group) {
+            const updated = { ...boundToken, group: match.group ?? undefined };
             setBoundToken(updated);
             try {
               localStorage.setItem(storageKey, JSON.stringify(updated));
@@ -163,16 +160,19 @@ export function ApiKeyInput({
     };
   }, [authState.is_logged_in, value, boundToken, storageKey]);
 
-  // 监听全套同步事件 (仅在明确点击全套同步时联动)
+  // 监听全套同步与分组变更事件
   useEffect(() => {
     const handleSyncEvent = (e: Event) => {
       const customEvent = e as CustomEvent<{
         id: number;
         name: string;
-        key: string;
+        key?: string;
         group?: string | null;
       }>;
       if (customEvent.detail) {
+        if (customEvent.detail.key) {
+          onChange(customEvent.detail.key);
+        }
         const info = {
           id: customEvent.detail.id,
           name: customEvent.detail.name,
@@ -184,11 +184,40 @@ export function ApiKeyInput({
         } catch {}
       }
     };
+
+    const handleGroupUpdated = (e: Event) => {
+      const customEvent = e as CustomEvent<{
+        toolId?: string;
+        tokenId?: number;
+        group: string;
+      }>;
+      if (customEvent.detail) {
+        setBoundToken((prev) => {
+          if (!prev) return prev;
+          // 若指定了 tokenId 且当前绑定不匹配，则不更新
+          if (customEvent.detail.tokenId && prev.id && prev.id !== customEvent.detail.tokenId) {
+            return prev;
+          }
+          // 若指定了 toolId 且与当前工具不匹配，则不更新
+          if (customEvent.detail.toolId && customEvent.detail.toolId !== effectiveToolId) {
+            return prev;
+          }
+          const updated = { ...prev, group: customEvent.detail.group };
+          try {
+            localStorage.setItem(storageKey, JSON.stringify(updated));
+          } catch {}
+          return updated;
+        });
+      }
+    };
+
     window.addEventListener("ai_helper_sync_all_tokens", handleSyncEvent);
+    window.addEventListener("ai_helper_group_updated", handleGroupUpdated);
     return () => {
       window.removeEventListener("ai_helper_sync_all_tokens", handleSyncEvent);
+      window.removeEventListener("ai_helper_group_updated", handleGroupUpdated);
     };
-  }, [storageKey]);
+  }, [storageKey, effectiveToolId, onChange]);
 
   const handlePaste = async () => {
     try {
