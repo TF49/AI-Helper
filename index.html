@@ -255,18 +255,18 @@
         </div>
 
         <!-- 平台快速选择通道胶囊 -->
-        <div class="hero-platform-pills" role="group" aria-label="快捷下载架构选择">
-          <a class="hero-pill-btn active" href="#downloads" data-target-tab="windows">
+        <div class="hero-platform-pills" role="tablist" aria-label="快捷下载架构选择">
+          <a class="hero-pill-btn active" href="#downloads" role="tab" aria-selected="true" data-target-tab="windows">
             <svg class="pill-os-symbol" viewBox="0 0 256 256" aria-hidden="true">
               <use href="#icon-windows" xlink:href="#icon-windows" />
             </svg>
             <span>Windows x64 安装包</span>
           </a>
-          <a class="hero-pill-btn" href="#downloads" data-target-tab="macos">
+          <a class="hero-pill-btn" href="#downloads" role="tab" aria-selected="false" data-target-tab="macos">
             <svg class="pill-os-symbol" viewBox="0 0 256 256" aria-hidden="true">
               <use href="#icon-apple" xlink:href="#icon-apple" />
             </svg>
-            <span>macOS DMG (Apple Silicon &amp; Intel)</span><small class="pill-badge">v1.0.57 原生</small>
+            <span>macOS DMG (Apple Silicon &amp; Intel)</span><small class="pill-badge"><span class="current-version-tag">v1.0.60</span> 原生</small>
           </a>
         </div>
 

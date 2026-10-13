@@ -557,6 +557,9 @@ main,
   flex-wrap: wrap;
   gap: 14px;
   margin-top: 34px;
+  margin-bottom: 20px;
+  position: relative;
+  z-index: 2;
 }
 
 .hero-trust {
@@ -594,7 +597,7 @@ main,
   width: 20px;
   height: 20px;
   flex-shrink: 0;
-  color: var(--text);
+  color: currentColor;
 }
 
 .trust-check {
@@ -3886,33 +3889,50 @@ svg {
 .hero-platform-pills {
   display: inline-flex;
   align-items: center;
-  gap: 12px;
-  margin-top: 18px;
-  margin-bottom: 24px;
-  padding: 6px;
+  justify-content: center;
+  gap: 8px;
+  margin: 0 auto 28px;
+  padding: 5px;
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.75);
+  background: rgba(255, 255, 255, 0.85);
   border: 1px solid var(--line);
-  backdrop-filter: blur(12px);
-  box-shadow: var(--shadow-sm);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  box-shadow: 0 4px 18px rgba(15, 23, 42, 0.06);
+  position: relative;
+  z-index: 2;
+  user-select: none;
 }
 
 .hero-pill-btn {
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  padding: 8px 16px;
+  padding: 8px 18px;
   border-radius: 999px;
   font-size: 13px;
   font-weight: 600;
   color: var(--text-soft);
   text-decoration: none;
-  transition: all 0.2s ease;
+  cursor: pointer;
+  transition: all 0.22s cubic-bezier(0.22, 1, 0.36, 1);
 }
 
-.hero-pill-btn:hover {
+.hero-pill-btn .pill-os-symbol {
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+  color: inherit;
+  transition: transform 0.2s ease, color 0.2s ease;
+}
+
+.hero-pill-btn:hover:not(.active) {
   color: var(--text);
   background: rgba(8, 119, 249, 0.08);
+}
+
+.hero-pill-btn:hover .pill-os-symbol {
+  transform: scale(1.08);
 }
 
 .hero-pill-btn.active {
@@ -3921,14 +3941,24 @@ svg {
   box-shadow: 0 4px 14px rgba(8, 119, 249, 0.35);
 }
 
+.hero-pill-btn.active .pill-os-symbol {
+  color: #fff;
+}
+
 .hero-pill-btn .pill-badge {
   display: inline-block;
-  padding: 2px 6px;
+  padding: 2px 7px;
   border-radius: 999px;
   font-size: 10px;
-  background: rgba(255, 255, 255, 0.25);
+  background: rgba(255, 255, 255, 0.22);
   color: inherit;
   font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.hero-pill-btn:not(.active) .pill-badge {
+  background: rgba(8, 119, 249, 0.1);
+  color: var(--blue-deep);
 }
 
 /* 4. Story Window Bar macOS Traffic Lights & Mode Toggle */
@@ -4904,12 +4934,14 @@ input:focus-visible {
     flex-direction: column;
     width: 100%;
     max-width: 400px;
-    margin: 0 auto;
+    margin: 16px auto 24px;
+    padding: 6px;
+    gap: 6px;
   }
 
   .hero-pill-btn {
     width: 100%;
-    justify-content: flex-start;
+    justify-content: center;
   }
 
   .story-stage {
