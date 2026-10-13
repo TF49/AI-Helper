@@ -152,7 +152,7 @@ export function StepIndicator({
                 </button>
 
                 {/* 显示微摘要 */}
-                {(isDone || canClick) && step.summary && (
+                {(isDone || canClick || isActive) && step.summary && (
                   <div
                     className={cn(
                       "text-[10px] font-mono truncate mt-0.5 max-w-full px-0.5",

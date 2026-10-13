@@ -21,6 +21,7 @@ import { ApiKeyInput } from "./ApiKeyInput";
 import { ChannelGroupMonitor } from "./ChannelGroupMonitor";
 import { ModelInput } from "./ModelInput";
 import { Label } from "./ui/label";
+import { cn } from "../lib/utils";
 import { PRESET_URLS } from "../types";
 import { useModelFetch } from "../lib/useModelFetch";
 import { useBoundTokenGroup } from "../lib/useBoundTokenGroup";
@@ -66,8 +67,10 @@ export function ChatGPTPanel() {
     apiKey,
     fetchCodexModels,
   );
-  const { group: apiKeyGroup, onBoundTokenChange } =
-    useBoundTokenGroup("chatgpt", apiKey);
+  const { group: apiKeyGroup, onBoundTokenChange } = useBoundTokenGroup(
+    "chatgpt",
+    apiKey,
+  );
 
   const load = async () => {
     setLoading(true);
@@ -335,7 +338,8 @@ export function ChatGPTPanel() {
                 <div className="flex items-center gap-2 p-2.5 rounded-xl bg-slate-50/70 border border-slate-200/80 dark:bg-white/[0.03] dark:border-white/5 text-xs text-slate-500 dark:text-gray-400">
                   <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 flex-shrink-0" />
                   <span className="leading-relaxed">
-                    Codex 会在每次启动时自动加载此配置文件。如需调整参数可点击下方「重新配置」。
+                    Codex
+                    会在每次启动时自动加载此配置文件。如需调整参数可点击下方「重新配置」。
                   </span>
                 </div>
               </div>
@@ -481,7 +485,10 @@ export function ChatGPTPanel() {
                 className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-medium border border-white/80 dark:border-white/10 bg-white/60 hover:bg-white/90 text-slate-700 dark:bg-white/5 dark:hover:bg-white/10 dark:text-gray-300 transition-all shadow-2xs backdrop-blur-xs cursor-pointer"
                 title="重新启动分步配置向导"
               >
-                <RefreshCw size={13} className="text-slate-500 dark:text-gray-400" />
+                <RefreshCw
+                  size={13}
+                  className="text-slate-500 dark:text-gray-400"
+                />
                 <span>重新配置向导</span>
               </button>
               <div className="hidden sm:flex items-center gap-1.5 text-[11px] text-slate-500 dark:text-gray-400 font-medium">
@@ -547,8 +554,13 @@ export function ChatGPTPanel() {
                 <button
                   type="button"
                   onClick={handleSave}
-                  disabled={testModalOpen || !configConfirmed}
-                  className="flex items-center justify-center gap-1.5 px-6 py-2 min-w-[190px] rounded-xl text-xs font-semibold bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white transition-colors shadow-xs cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                  disabled={testModalOpen}
+                  className={cn(
+                    "flex items-center justify-center gap-1.5 px-6 py-2 min-w-[190px] rounded-xl text-xs font-semibold text-white transition-colors shadow-xs cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed",
+                    configConfirmed
+                      ? "bg-blue-600 hover:bg-blue-700 active:bg-blue-800"
+                      : "bg-blue-600/80 hover:bg-blue-600",
+                  )}
                 >
                   <Save size={14} />
                   <span>确认并保存 Codex 配置</span>

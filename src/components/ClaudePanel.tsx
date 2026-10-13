@@ -21,6 +21,7 @@ import { ApiKeyInput } from "./ApiKeyInput";
 import { ChannelGroupMonitor } from "./ChannelGroupMonitor";
 import { ModelInput } from "./ModelInput";
 import { Label } from "./ui/label";
+import { cn } from "../lib/utils";
 import { PRESET_URLS } from "../types";
 import { useModelFetch } from "../lib/useModelFetch";
 import { useBoundTokenGroup } from "../lib/useBoundTokenGroup";
@@ -66,8 +67,10 @@ export function ClaudePanel() {
     apiKey,
     fetchClaudeModels,
   );
-  const { group: apiKeyGroup, onBoundTokenChange } =
-    useBoundTokenGroup("claude", apiKey);
+  const { group: apiKeyGroup, onBoundTokenChange } = useBoundTokenGroup(
+    "claude",
+    apiKey,
+  );
 
   const load = async () => {
     setLoading(true);
@@ -484,7 +487,10 @@ export function ClaudePanel() {
                 className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-medium border border-white/80 dark:border-white/10 bg-white/60 hover:bg-white/90 text-slate-700 dark:bg-white/5 dark:hover:bg-white/10 dark:text-gray-300 transition-all shadow-2xs backdrop-blur-xs cursor-pointer"
                 title="重新启动分步配置向导"
               >
-                <RefreshCw size={13} className="text-slate-500 dark:text-gray-400" />
+                <RefreshCw
+                  size={13}
+                  className="text-slate-500 dark:text-gray-400"
+                />
                 <span>重新配置向导</span>
               </button>
               <div className="hidden sm:flex items-center gap-1.5 text-[11px] text-slate-500 dark:text-gray-400 font-medium">
@@ -550,8 +556,13 @@ export function ClaudePanel() {
                 <button
                   type="button"
                   onClick={handleSave}
-                  disabled={testModalOpen || !configConfirmed}
-                  className="flex items-center justify-center gap-1.5 px-6 py-2 min-w-[210px] rounded-xl text-xs font-semibold bg-purple-600 hover:bg-purple-700 active:bg-purple-800 text-white transition-colors shadow-xs cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                  disabled={testModalOpen}
+                  className={cn(
+                    "flex items-center justify-center gap-1.5 px-6 py-2 min-w-[210px] rounded-xl text-xs font-semibold text-white transition-colors shadow-xs cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed",
+                    configConfirmed
+                      ? "bg-purple-600 hover:bg-purple-700 active:bg-purple-800"
+                      : "bg-purple-600/80 hover:bg-purple-600",
+                  )}
                 >
                   <Save size={14} />
                   <span>确认并保存 Claude Code 配置</span>

@@ -136,8 +136,10 @@ export function ConfigConfirmStep({
               ) : null}
               <div
                 className={cn(
-                  "text-xs font-mono font-medium truncate",
-                  c.value,
+                  "text-xs font-mono truncate",
+                  item.value && item.value !== "未配置"
+                    ? cn("font-medium", c.value)
+                    : "text-slate-400 dark:text-gray-500 font-normal",
                 )}
                 title={item.detail || item.value}
               >

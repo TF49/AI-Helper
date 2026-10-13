@@ -112,21 +112,42 @@ export function ApiKeyInput({
       .then((tokens) => {
         if (!isMounted || !tokens || tokens.length === 0) return;
 
-        // 1. 如果已有 boundToken，核对云端最新 group（兼容在网站或其他设备修改后的同步）
+        const val = value.trim();
+
+        // 1. 如果已有 boundToken，核对该绑定是否依然与当前输入框的 Key 匹配
         if (boundToken) {
           const match = tokens.find((t) => t.id === boundToken.id);
-          if (match && match.group !== boundToken.group) {
-            const updated = { ...boundToken, group: match.group ?? undefined };
-            setBoundToken(updated);
-            try {
-              localStorage.setItem(storageKey, JSON.stringify(updated));
-            } catch {}
+          const isStillMatch = match
+            ? !match.key ||
+              match.key === val ||
+              (val.length >= 12 &&
+                match.key.length >= 12 &&
+                match.key.startsWith(val.slice(0, 7)) &&
+                match.key.endsWith(val.slice(-4)))
+            : false;
+
+          if (match && isStillMatch) {
+            if (match.group !== boundToken.group) {
+              const updated = {
+                ...boundToken,
+                group: match.group ?? undefined,
+              };
+              setBoundToken(updated);
+              try {
+                localStorage.setItem(storageKey, JSON.stringify(updated));
+              } catch {}
+            }
+            return;
           }
-          return;
+
+          // 已不匹配当前输入的 Key（或已在云端被删除），解除旧绑定并重新向下比对
+          setBoundToken(null);
+          try {
+            localStorage.removeItem(storageKey);
+          } catch {}
         }
 
-        // 2. 如果 boundToken 为 null，通过当前输入框中的 Key 明文比对匹配
-        const val = value.trim();
+        // 2. 如果 boundToken 为 null 或已解绑，通过当前输入框中的 Key 明文比对匹配
         const exactMatch = tokens.find((t) => t.key && t.key === val);
         if (exactMatch) {
           const info = {
@@ -146,10 +167,7 @@ export function ApiKeyInput({
           const prefix = val.slice(0, 7);
           const suffix = val.slice(-4);
           const partialMatch = tokens.find(
-            (t) =>
-              t.key &&
-              t.key.startsWith(prefix) &&
-              t.key.endsWith(suffix),
+            (t) => t.key && t.key.startsWith(prefix) && t.key.endsWith(suffix),
           );
           if (partialMatch) {
             const info = {
@@ -206,11 +224,18 @@ export function ApiKeyInput({
         setBoundToken((prev) => {
           if (!prev) return prev;
           // 若指定了 tokenId 且当前绑定不匹配，则不更新
-          if (customEvent.detail.tokenId && prev.id && prev.id !== customEvent.detail.tokenId) {
+          if (
+            customEvent.detail.tokenId &&
+            prev.id &&
+            prev.id !== customEvent.detail.tokenId
+          ) {
             return prev;
           }
           // 若指定了 toolId 且与当前工具不匹配，则不更新
-          if (customEvent.detail.toolId && customEvent.detail.toolId !== effectiveToolId) {
+          if (
+            customEvent.detail.toolId &&
+            customEvent.detail.toolId !== effectiveToolId
+          ) {
             return prev;
           }
           const updated = { ...prev, group: customEvent.detail.group };
@@ -266,7 +291,11 @@ export function ApiKeyInput({
 
   const handleKeySelected = (plainKey: string, token: TokenItem) => {
     onChange(plainKey);
-    const info = { id: token.id, name: token.name, group: token.group ?? undefined };
+    const info = {
+      id: token.id,
+      name: token.name,
+      group: token.group ?? undefined,
+    };
     setBoundToken(info);
     try {
       localStorage.setItem(storageKey, JSON.stringify(info));
@@ -274,7 +303,12 @@ export function ApiKeyInput({
   };
 
   return (
-    <div className={cn("flex flex-col justify-between h-full space-y-2.5", className)}>
+    <div
+      className={cn(
+        "flex flex-col justify-between h-full space-y-2.5",
+        className,
+      )}
+    >
       <div className="space-y-2.5">
         {/* 顶部标题与快捷操作栏 */}
         {title ? (
@@ -376,7 +410,9 @@ export function ApiKeyInput({
                       size={11}
                       className={cn(
                         "opacity-60 transition-transform duration-300",
-                        localTokenModalOpen ? "rotate-180" : "group-hover:translate-y-0.5",
+                        localTokenModalOpen
+                          ? "rotate-180"
+                          : "group-hover:translate-y-0.5",
                       )}
                     />
                   </button>
@@ -386,7 +422,9 @@ export function ApiKeyInput({
                     title={`当前已登录账号: ${authState.user?.username}`}
                   >
                     <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse flex-shrink-0" />
-                    <span className="max-w-[80px] truncate">{authState.user?.username}</span>
+                    <span className="max-w-[80px] truncate">
+                      {authState.user?.username}
+                    </span>
                   </div>
                 </>
               ) : (
@@ -472,7 +510,9 @@ export function ApiKeyInput({
                     size={11}
                     className={cn(
                       "opacity-60 transition-transform duration-300",
-                      localTokenModalOpen ? "rotate-180" : "group-hover:translate-y-0.5",
+                      localTokenModalOpen
+                        ? "rotate-180"
+                        : "group-hover:translate-y-0.5",
                     )}
                   />
                 </button>
@@ -622,10 +662,14 @@ export function ApiKeyInput({
                   <code
                     className={cn(
                       "px-1 py-0.5 rounded font-mono text-[11px] font-medium",
-                      isPurple && "bg-purple-500/10 text-purple-700 dark:text-purple-300",
-                      isEmerald && "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300",
-                      isOrange && "bg-orange-500/10 text-orange-700 dark:text-orange-300",
-                      isBlue && "bg-blue-500/10 text-blue-700 dark:text-blue-300",
+                      isPurple &&
+                        "bg-purple-500/10 text-purple-700 dark:text-purple-300",
+                      isEmerald &&
+                        "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300",
+                      isOrange &&
+                        "bg-orange-500/10 text-orange-700 dark:text-orange-300",
+                      isBlue &&
+                        "bg-blue-500/10 text-blue-700 dark:text-blue-300",
                     )}
                   >
                     {storageLocation}
@@ -642,15 +686,21 @@ export function ApiKeyInput({
                   <code
                     className={cn(
                       "px-1 py-0.5 rounded font-mono text-[11px] font-medium",
-                      isPurple && "bg-purple-500/10 text-purple-700 dark:text-purple-300",
-                      isEmerald && "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300",
-                      isOrange && "bg-orange-500/10 text-orange-700 dark:text-orange-300",
-                      isBlue && "bg-blue-500/10 text-blue-700 dark:text-blue-300",
+                      isPurple &&
+                        "bg-purple-500/10 text-purple-700 dark:text-purple-300",
+                      isEmerald &&
+                        "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300",
+                      isOrange &&
+                        "bg-orange-500/10 text-orange-700 dark:text-orange-300",
+                      isBlue &&
+                        "bg-blue-500/10 text-blue-700 dark:text-blue-300",
                     )}
                   >
                     {storageLocation}
                   </code>
-                  {hintText ? `，${hintText}` : "，直连服务商网关，绝不上报云端。"}
+                  {hintText
+                    ? `，${hintText}`
+                    : "，直连服务商网关，绝不上报云端。"}
                 </span>
               ) : envVarName ? (
                 <span>
@@ -658,10 +708,14 @@ export function ApiKeyInput({
                   <code
                     className={cn(
                       "px-1 py-0.5 rounded font-mono text-[11px] font-medium",
-                      isPurple && "bg-purple-500/10 text-purple-700 dark:text-purple-300",
-                      isEmerald && "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300",
-                      isOrange && "bg-orange-500/10 text-orange-700 dark:text-orange-300",
-                      isBlue && "bg-blue-500/10 text-blue-700 dark:text-blue-300",
+                      isPurple &&
+                        "bg-purple-500/10 text-purple-700 dark:text-purple-300",
+                      isEmerald &&
+                        "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300",
+                      isOrange &&
+                        "bg-orange-500/10 text-orange-700 dark:text-orange-300",
+                      isBlue &&
+                        "bg-blue-500/10 text-blue-700 dark:text-blue-300",
                     )}
                   >
                     {envVarName}
@@ -671,7 +725,9 @@ export function ApiKeyInput({
               ) : hintText ? (
                 <span>{hintText}</span>
               ) : (
-                <span>凭据仅储存于本地配置与当前环境，直接与所选专线通信，绝不上报云端。</span>
+                <span>
+                  凭据仅储存于本地配置与当前环境，直接与所选专线通信，绝不上报云端。
+                </span>
               )}
             </div>
           </div>

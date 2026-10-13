@@ -31,6 +31,7 @@ import { ApiKeyInput } from "./ApiKeyInput";
 import { ChannelGroupMonitor } from "./ChannelGroupMonitor";
 import { ModelInput } from "./ModelInput";
 import { Label } from "./ui/label";
+import { cn } from "../lib/utils";
 import {
   PRESET_URLS,
   type WorkbuddyModelItem,
@@ -124,8 +125,10 @@ export function WorkbuddyPanel() {
     apiKey,
     fetchCodexModels,
   );
-  const { group: apiKeyGroup, onBoundTokenChange } =
-    useBoundTokenGroup("workbuddy", apiKey);
+  const { group: apiKeyGroup, onBoundTokenChange } = useBoundTokenGroup(
+    "workbuddy",
+    apiKey,
+  );
 
   const applyModelConfig = (item: WorkbuddyModelItem) => {
     setModel(item.id);
@@ -371,13 +374,14 @@ export function WorkbuddyPanel() {
         ? "已填写"
         : undefined;
 
-  const advancedSummary = [
-    supportsToolCall ? "工具" : null,
-    supportsImages ? "图片" : null,
-    supportsReasoning ? "思考" : null,
-  ]
-    .filter(Boolean)
-    .join(" · ") || "标准模式";
+  const advancedSummary =
+    [
+      supportsToolCall ? "工具" : null,
+      supportsImages ? "图片" : null,
+      supportsReasoning ? "思考" : null,
+    ]
+      .filter(Boolean)
+      .join(" · ") || "标准模式";
 
   const STEPS: StepDef[] = [
     { label: "接入节点", summary: urlSummary },
@@ -1080,9 +1084,7 @@ export function WorkbuddyPanel() {
                       value: advancedSummary,
                       detail: [
                         `输入 ${maxInputTokens || "默认"} / 输出 ${maxOutputTokens || "默认"} Token`,
-                        defaultEffort
-                          ? `默认思考 ${defaultEffort}`
-                          : null,
+                        defaultEffort ? `默认思考 ${defaultEffort}` : null,
                         useCustomProtocol ? "自定义协议" : null,
                       ]
                         .filter(Boolean)
@@ -1110,7 +1112,10 @@ export function WorkbuddyPanel() {
                 className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-medium border border-white/80 dark:border-white/10 bg-white/60 hover:bg-white/90 text-slate-700 dark:bg-white/5 dark:hover:bg-white/10 dark:text-gray-300 transition-all shadow-2xs backdrop-blur-xs cursor-pointer"
                 title="重新启动分步配置向导"
               >
-                <RefreshCw size={13} className="text-slate-500 dark:text-gray-400" />
+                <RefreshCw
+                  size={13}
+                  className="text-slate-500 dark:text-gray-400"
+                />
                 <span>重新配置向导</span>
               </button>
               <div className="hidden sm:flex items-center gap-1.5 text-[11px] text-slate-500 dark:text-gray-400 font-medium">
@@ -1180,14 +1185,15 @@ export function WorkbuddyPanel() {
                 <button
                   type="button"
                   onClick={handleSave}
-                  disabled={testModalOpen || !configConfirmed}
-                  className="flex items-center justify-center gap-1.5 px-6 py-2 min-w-[210px] rounded-xl text-xs font-semibold bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white transition-colors shadow-xs cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  {isExistingModel ? (
-                    <Save size={14} />
-                  ) : (
-                    <Plus size={14} />
+                  disabled={testModalOpen}
+                  className={cn(
+                    "flex items-center justify-center gap-1.5 px-6 py-2 min-w-[210px] rounded-xl text-xs font-semibold text-white transition-colors shadow-xs cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed",
+                    configConfirmed
+                      ? "bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800"
+                      : "bg-emerald-600/80 hover:bg-emerald-600",
                   )}
+                >
+                  {isExistingModel ? <Save size={14} /> : <Plus size={14} />}
                   <span>
                     {isExistingModel
                       ? `确认并保存 (${model})`
