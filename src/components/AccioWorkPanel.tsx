@@ -41,9 +41,11 @@ import {
   type AccioBridgeStatus,
 } from "../types";
 import { useModelFetch } from "../lib/useModelFetch";
+import { useBoundTokenGroup } from "../lib/useBoundTokenGroup";
 import { SpotlightCard } from "./react-bits/SpotlightCard";
 import { TerminalTestModal } from "./TerminalTestModal";
 import { StepIndicator, type StepDef } from "./StepIndicator";
+import { ConfigConfirmStep } from "./ConfigConfirmStep";
 
 const stepVariants = {
   enter: (dir: number) => ({ x: dir * 32, opacity: 0 }),
@@ -59,7 +61,7 @@ const stepVariants = {
   }),
 };
 
-const TOTAL_STEPS = 4;
+const TOTAL_STEPS = 5;
 
 export function AccioWorkPanel() {
   const [url, setUrl] = useState<string>(PRESET_URLS[0]);
@@ -95,12 +97,15 @@ export function AccioWorkPanel() {
   const [showSummary, setShowSummary] = useState(false);
   const [direction, setDirection] = useState<1 | -1>(1);
   const [maxStepReached, setMaxStepReached] = useState(0);
+  const [configConfirmed, setConfigConfirmed] = useState(false);
 
   const { models, refreshingModels, refreshModels } = useModelFetch(
     url,
     apiKey,
     fetchCodexModels,
   );
+  const { group: apiKeyGroup, onBoundTokenChange } =
+    useBoundTokenGroup("acciowork", apiKey);
 
   const load = async (silent = false) => {
     if (!silent) {
@@ -154,6 +159,19 @@ export function AccioWorkPanel() {
       }
     }
   };
+
+  useEffect(() => {
+    setConfigConfirmed(false);
+  }, [
+    url,
+    apiKey,
+    model,
+    bridgePort,
+    officialGateway,
+    fallbackOfficial,
+    preventOfficialLeak,
+    autoStartBridge,
+  ]);
 
   useEffect(() => {
     void load();
@@ -249,6 +267,13 @@ export function AccioWorkPanel() {
       toast.warning("请选择或输入测试模型");
       return;
     }
+    if (!showSummary && (currentStep !== TOTAL_STEPS - 1 || !configConfirmed)) {
+      toast.warning("请先勾选确认配置无误");
+      if (currentStep !== TOTAL_STEPS - 1) {
+        goToStep(TOTAL_STEPS - 1);
+      }
+      return;
+    }
     setTestModalOpen(true);
   };
 
@@ -259,6 +284,7 @@ export function AccioWorkPanel() {
       setDirection(1 > currentStep ? 1 : -1);
       setCurrentStep(1);
       setShowSummary(false);
+      setConfigConfirmed(false);
       return;
     }
     if (step > 2 && !model.trim()) {
@@ -266,12 +292,16 @@ export function AccioWorkPanel() {
       setDirection(2 > currentStep ? 1 : -1);
       setCurrentStep(2);
       setShowSummary(false);
+      setConfigConfirmed(false);
       return;
     }
     setDirection(step > currentStep ? 1 : -1);
     setCurrentStep(step);
     setMaxStepReached((prev) => Math.max(prev, step));
     setShowSummary(false);
+    if (step !== TOTAL_STEPS - 1) {
+      setConfigConfirmed(false);
+    }
   };
   const goNext = () => {
     if (currentStep === 1 && !apiKey.trim()) {
@@ -312,6 +342,7 @@ export function AccioWorkPanel() {
         ? `在线 :${bridgeStatus.port || bridgePort}`
         : "未启动",
     },
+    { label: "确认配置", summary: configConfirmed ? "已确认" : undefined },
   ];
 
   // ── 各步骤内容渲染 ──
@@ -364,6 +395,7 @@ export function AccioWorkPanel() {
                 accentColor="orange"
                 toolName="Accio Work"
                 toolId="acciowork"
+                onBoundTokenChange={onBoundTokenChange}
               />
             </SpotlightCard>
           </div>
@@ -543,6 +575,54 @@ export function AccioWorkPanel() {
           </div>
         );
 
+      case 4:
+        return (
+          <div className="p-4 flex flex-col gap-4">
+            <ConfigConfirmStep
+              accentColor="orange"
+              spotlightColor="rgba(255, 106, 0, 0.12)"
+              totalSteps={TOTAL_STEPS}
+              confirmed={configConfirmed}
+              onConfirmedChange={setConfigConfirmed}
+              onEditStep={goToStep}
+              items={[
+                {
+                  label: "接入节点",
+                  value: urlSummary || url,
+                  detail: url,
+                  icon: <Server size={14} />,
+                  stepIndex: 0,
+                },
+                {
+                  label: "API Key",
+                  value: keySummary || "未配置",
+                  badge: apiKeyGroup || undefined,
+                  icon: <KeyRound size={14} />,
+                  stepIndex: 1,
+                },
+                {
+                  label: "选择模型",
+                  value: model || "未配置",
+                  icon: <Cpu size={14} />,
+                  stepIndex: 2,
+                },
+                {
+                  label: "Bridge 网关",
+                  value: `端口 :${bridgePort} · ${autoStartBridge ? "自动拉起" : "手动启动"}`,
+                  detail: [
+                    preventOfficialLeak
+                      ? "已开启防官方直连熔断"
+                      : "未开启防泄漏熔断",
+                    fallbackOfficial ? "官方接口透传" : "关闭官方透传",
+                  ].join(" · "),
+                  icon: <Radio size={14} />,
+                  stepIndex: 3,
+                },
+              ]}
+            />
+          </div>
+        );
+
       default:
         return null;
     }
@@ -581,11 +661,21 @@ export function AccioWorkPanel() {
             </div>
           </div>
 
-          <div className="p-3 rounded-xl bg-slate-50/80 dark:bg-white/[0.02] border border-slate-200/60 dark:border-white/5">
+          <div className="p-3 rounded-xl bg-slate-50/80 dark:bg-white/[0.02] border border-slate-200/60 dark:border-white/5 min-w-0">
             <div className="flex items-center gap-1.5 text-slate-400 dark:text-gray-500 text-[11px] mb-1">
-              <KeyRound size={13} className="text-orange-500" />
+              <KeyRound size={13} className="text-orange-500 shrink-0" />
               <span>API Key 凭据</span>
             </div>
+            {apiKeyGroup ? (
+              <div className="mb-1 min-w-0">
+                <span
+                  className="inline-block max-w-full px-1.5 py-0.5 rounded-md border text-[10px] font-medium leading-snug break-words bg-orange-50 text-orange-600 border-orange-200/80 dark:bg-orange-500/15 dark:text-orange-300 dark:border-orange-500/25"
+                  title={`所属分组：${apiKeyGroup}`}
+                >
+                  {apiKeyGroup}
+                </span>
+              </div>
+            ) : null}
             <div className="text-xs font-mono font-medium text-slate-800 dark:text-gray-200 truncate">
               {keySummary || "未配置"}
             </div>
@@ -718,12 +808,9 @@ export function AccioWorkPanel() {
           {showSummary && (
             <button
               type="button"
-              onClick={() => {
-                setShowSummary(false);
-                setCurrentStep(0);
-              }}
+              onClick={() => goToStep(0)}
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-medium transition-colors bg-orange-50 hover:bg-orange-100 border-orange-200 text-orange-700 dark:bg-orange-500/10 dark:hover:bg-orange-500/20 dark:border-orange-500/30 dark:text-orange-300 shadow-2xs cursor-pointer"
-              title="切换到 4 步配置向导引导模式"
+              title="切换到分步配置向导引导模式"
             >
               <Sparkles size={12} />
               <span>分步向导</span>
@@ -790,12 +877,9 @@ export function AccioWorkPanel() {
             <div className="flex items-center gap-3">
               <button
                 type="button"
-                onClick={() => {
-                  setShowSummary(false);
-                  setCurrentStep(0);
-                }}
+                onClick={() => goToStep(0)}
                 className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-medium border border-white/80 dark:border-white/10 bg-white/60 hover:bg-white/90 text-slate-700 dark:bg-white/5 dark:hover:bg-white/10 dark:text-gray-300 transition-all shadow-2xs backdrop-blur-xs cursor-pointer"
-                title="重新启动 3 步分步配置向导"
+                title="重新启动分步配置向导"
               >
                 <RefreshCw size={13} className="text-slate-500 dark:text-gray-400" />
                 <span>重新配置向导</span>
@@ -863,11 +947,11 @@ export function AccioWorkPanel() {
                 <button
                   type="button"
                   onClick={handleSave}
-                  disabled={testModalOpen}
+                  disabled={testModalOpen || !configConfirmed}
                   className="flex items-center justify-center gap-1.5 px-6 py-2 min-w-[190px] rounded-xl text-xs font-semibold bg-orange-600 hover:bg-orange-700 active:bg-orange-800 text-white transition-colors shadow-xs cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   <Save size={14} />
-                  <span>保存并应用 Accio 配置</span>
+                  <span>确认并保存 Accio 配置</span>
                 </button>
               )}
             </div>
@@ -961,6 +1045,7 @@ export function AccioWorkPanel() {
           setConfigExists(true);
           setShowSummary(true);
           setMaxStepReached(TOTAL_STEPS - 1);
+          setConfigConfirmed(false);
           void load(true);
         }}
       />

@@ -81,7 +81,7 @@ export function StepIndicator({
     maxStepReached !== undefined ? maxStepReached : currentStep;
 
   return (
-    <div className="flex items-start w-full">
+    <div className="flex items-start w-full overflow-x-auto">
       {steps.map((step, i) => {
         const isActive = i === currentStep;
         const isDone = i < currentStep;
@@ -91,7 +91,7 @@ export function StepIndicator({
         return (
           <React.Fragment key={i}>
             {/* ── 步骤节点 ── */}
-            <div className="flex flex-col items-center flex-shrink-0 w-[72px] sm:w-[84px]">
+            <div className="flex flex-col items-center flex-shrink-0 w-[64px] sm:w-[76px] lg:w-[84px]">
               <button
                 type="button"
                 onClick={() => canClick && onStepClick(i)}

@@ -18,6 +18,7 @@ import { TokenSelectModal } from "./auth/TokenSelectModal";
 import { ChannelGroupMonitor } from "./ChannelGroupMonitor";
 import { getUserTokens } from "../lib/api";
 import type { TokenItem } from "../types";
+import type { BoundTokenInfo } from "../lib/useBoundTokenGroup";
 
 export interface ApiKeyInputProps {
   value: string;
@@ -38,6 +39,8 @@ export interface ApiKeyInputProps {
   hideGroupMonitor?: boolean;
   compact?: boolean;
   className?: string;
+  /** 绑定 Token（含分组）变更时回传，供确认页等展示 */
+  onBoundTokenChange?: (info: BoundTokenInfo | null) => void;
 }
 
 export function ApiKeyInput({
@@ -59,6 +62,7 @@ export function ApiKeyInput({
   hideGroupMonitor = false,
   compact = false,
   className,
+  onBoundTokenChange,
 }: ApiKeyInputProps) {
   const [show, setShow] = useState(false);
   const [localTokenModalOpen, setLocalTokenModalOpen] = useState(false);
@@ -91,6 +95,13 @@ export function ApiKeyInput({
       } catch {}
     }
   }, [value, boundToken, storageKey]);
+
+  // 向父组件同步绑定信息（含分组）；仅在有绑定时回传，避免挂载时 null 清空已解析分组
+  useEffect(() => {
+    if (boundToken) {
+      onBoundTokenChange?.(boundToken);
+    }
+  }, [boundToken, onBoundTokenChange]);
 
   // 当处于已登录状态且 boundToken 存在时，通过 API 校验并同步最新 group；或未绑定时尝试自动匹配
   useEffect(() => {

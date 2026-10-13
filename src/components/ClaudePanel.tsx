@@ -23,9 +23,11 @@ import { ModelInput } from "./ModelInput";
 import { Label } from "./ui/label";
 import { PRESET_URLS } from "../types";
 import { useModelFetch } from "../lib/useModelFetch";
+import { useBoundTokenGroup } from "../lib/useBoundTokenGroup";
 import { SpotlightCard } from "./react-bits/SpotlightCard";
 import { TerminalTestModal } from "./TerminalTestModal";
 import { StepIndicator, type StepDef } from "./StepIndicator";
+import { ConfigConfirmStep } from "./ConfigConfirmStep";
 
 const stepVariants = {
   enter: (dir: number) => ({ x: dir * 32, opacity: 0 }),
@@ -41,7 +43,7 @@ const stepVariants = {
   }),
 };
 
-const TOTAL_STEPS = 3;
+const TOTAL_STEPS = 4;
 
 export function ClaudePanel() {
   const [url, setUrl] = useState<string>(PRESET_URLS[0]);
@@ -57,12 +59,15 @@ export function ClaudePanel() {
   const [showSummary, setShowSummary] = useState(false);
   const [direction, setDirection] = useState<1 | -1>(1);
   const [maxStepReached, setMaxStepReached] = useState(0);
+  const [configConfirmed, setConfigConfirmed] = useState(false);
 
   const { models, refreshingModels, refreshModels } = useModelFetch(
     url,
     apiKey,
     fetchClaudeModels,
   );
+  const { group: apiKeyGroup, onBoundTokenChange } =
+    useBoundTokenGroup("claude", apiKey);
 
   const load = async () => {
     setLoading(true);
@@ -94,23 +99,43 @@ export function ClaudePanel() {
     void load();
   }, []);
 
+  useEffect(() => {
+    setConfigConfirmed(false);
+  }, [url, apiKey, model]);
+
   const goToStep = (step: number) => {
     if (step > 1 && !apiKey.trim()) {
       toast.warning("请先在第 2 步输入 Auth Token / API Key");
       setDirection(1 > currentStep ? 1 : -1);
       setCurrentStep(1);
       setShowSummary(false);
+      setConfigConfirmed(false);
+      return;
+    }
+    if (step > 2 && !model.trim()) {
+      toast.warning("请先在第 3 步选择或输入测试模型");
+      setDirection(2 > currentStep ? 1 : -1);
+      setCurrentStep(2);
+      setShowSummary(false);
+      setConfigConfirmed(false);
       return;
     }
     setDirection(step > currentStep ? 1 : -1);
     setCurrentStep(step);
     setMaxStepReached((prev) => Math.max(prev, step));
     setShowSummary(false);
+    if (step !== TOTAL_STEPS - 1) {
+      setConfigConfirmed(false);
+    }
   };
 
   const handleNext = () => {
     if (currentStep === 1 && !apiKey.trim()) {
       toast.warning("请输入 Auth Token / API Key");
+      return;
+    }
+    if (currentStep === 2 && !model.trim()) {
+      toast.warning("请选择或输入测试模型");
       return;
     }
     if (currentStep < TOTAL_STEPS - 1) {
@@ -133,6 +158,13 @@ export function ClaudePanel() {
       toast.warning("请选择或输入测试模型");
       return;
     }
+    if (!showSummary && (currentStep !== TOTAL_STEPS - 1 || !configConfirmed)) {
+      toast.warning("请先勾选确认配置无误");
+      if (currentStep !== TOTAL_STEPS - 1) {
+        goToStep(TOTAL_STEPS - 1);
+      }
+      return;
+    }
     setTestModalOpen(true);
   };
 
@@ -153,6 +185,7 @@ export function ClaudePanel() {
     { label: "接入节点", summary: urlSummary },
     { label: "API Key", summary: keySummary },
     { label: "选择模型", summary: model || undefined },
+    { label: "确认配置", summary: configConfirmed ? "已确认" : undefined },
   ];
 
   if (loading) {
@@ -194,12 +227,9 @@ export function ClaudePanel() {
           {showSummary && (
             <button
               type="button"
-              onClick={() => {
-                setShowSummary(false);
-                setCurrentStep(0);
-              }}
+              onClick={() => goToStep(0)}
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-medium transition-colors bg-purple-50 hover:bg-purple-100 border-purple-200 text-purple-700 dark:bg-purple-500/10 dark:hover:bg-purple-500/20 dark:border-purple-500/30 dark:text-purple-300 shadow-2xs cursor-pointer"
-              title="切换到 3 步配置向导引导模式"
+              title="切换到分步配置向导引导模式"
             >
               <Sparkles size={12} />
               <span>分步向导</span>
@@ -271,11 +301,21 @@ export function ClaudePanel() {
                   </div>
                 </div>
 
-                <div className="p-3 rounded-xl bg-slate-50/80 dark:bg-white/[0.02] border border-slate-200/60 dark:border-white/5">
+                <div className="p-3 rounded-xl bg-slate-50/80 dark:bg-white/[0.02] border border-slate-200/60 dark:border-white/5 min-w-0">
                   <div className="flex items-center gap-1.5 text-slate-400 dark:text-gray-500 text-[11px] mb-1">
-                    <KeyRound size={13} className="text-purple-500" />
+                    <KeyRound size={13} className="text-purple-500 shrink-0" />
                     <span>Auth Token / Key</span>
                   </div>
+                  {apiKeyGroup ? (
+                    <div className="mb-1 min-w-0">
+                      <span
+                        className="inline-block max-w-full px-1.5 py-0.5 rounded-md border text-[10px] font-medium leading-snug break-words bg-purple-50 text-purple-600 border-purple-200/80 dark:bg-purple-500/15 dark:text-purple-300 dark:border-purple-500/25"
+                        title={`所属分组：${apiKeyGroup}`}
+                      >
+                        {apiKeyGroup}
+                      </span>
+                    </div>
+                  ) : null}
                   <div className="text-xs font-mono font-medium text-slate-800 dark:text-gray-200 truncate">
                     {keySummary || "未配置"}
                   </div>
@@ -333,7 +373,7 @@ export function ClaudePanel() {
                       API 服务网关节点
                     </Label>
                     <span className="text-[11px] text-slate-400 dark:text-gray-500">
-                      第 1 步 / 共 3 步
+                      第 1 步 / 共 {TOTAL_STEPS} 步
                     </span>
                   </div>
                   <NodeCardSelector
@@ -364,6 +404,7 @@ export function ClaudePanel() {
                     accentColor="purple"
                     toolName="Claude Code"
                     toolId="claude"
+                    onBoundTokenChange={onBoundTokenChange}
                   />
                 </SpotlightCard>
               )}
@@ -388,10 +429,43 @@ export function ClaudePanel() {
                     <Sparkles size={14} className="flex-shrink-0 mt-0.5" />
                     <span>
                       选定的模型将配置为 Claude Code CLI 默认调用的 Anthropic
-                      协议模型，即刻生效。
+                      协议模型，确认后才会写入配置。
                     </span>
                   </div>
                 </SpotlightCard>
+              )}
+
+              {currentStep === 3 && (
+                <ConfigConfirmStep
+                  accentColor="purple"
+                  spotlightColor="rgba(168, 85, 247, 0.12)"
+                  totalSteps={TOTAL_STEPS}
+                  confirmed={configConfirmed}
+                  onConfirmedChange={setConfigConfirmed}
+                  onEditStep={goToStep}
+                  items={[
+                    {
+                      label: "接入节点",
+                      value: urlSummary || url,
+                      detail: url,
+                      icon: <Server size={14} />,
+                      stepIndex: 0,
+                    },
+                    {
+                      label: "API Key",
+                      value: keySummary || "未配置",
+                      badge: apiKeyGroup || undefined,
+                      icon: <KeyRound size={14} />,
+                      stepIndex: 1,
+                    },
+                    {
+                      label: "选择模型",
+                      value: model || "未配置",
+                      icon: <Cpu size={14} />,
+                      stepIndex: 2,
+                    },
+                  ]}
+                />
               )}
             </motion.div>
           </AnimatePresence>
@@ -406,12 +480,9 @@ export function ClaudePanel() {
             <div className="flex items-center gap-3">
               <button
                 type="button"
-                onClick={() => {
-                  setShowSummary(false);
-                  setCurrentStep(0);
-                }}
+                onClick={() => goToStep(0)}
                 className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-medium border border-white/80 dark:border-white/10 bg-white/60 hover:bg-white/90 text-slate-700 dark:bg-white/5 dark:hover:bg-white/10 dark:text-gray-300 transition-all shadow-2xs backdrop-blur-xs cursor-pointer"
-                title="重新启动 3 步分步配置向导"
+                title="重新启动分步配置向导"
               >
                 <RefreshCw size={13} className="text-slate-500 dark:text-gray-400" />
                 <span>重新配置向导</span>
@@ -479,11 +550,11 @@ export function ClaudePanel() {
                 <button
                   type="button"
                   onClick={handleSave}
-                  disabled={testModalOpen}
+                  disabled={testModalOpen || !configConfirmed}
                   className="flex items-center justify-center gap-1.5 px-6 py-2 min-w-[210px] rounded-xl text-xs font-semibold bg-purple-600 hover:bg-purple-700 active:bg-purple-800 text-white transition-colors shadow-xs cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   <Save size={14} />
-                  <span>保存并应用 Claude Code 配置</span>
+                  <span>确认并保存 Claude Code 配置</span>
                 </button>
               )}
             </div>
@@ -502,6 +573,7 @@ export function ClaudePanel() {
           setConfigExists(true);
           setShowSummary(true);
           setMaxStepReached(TOTAL_STEPS - 1);
+          setConfigConfirmed(false);
         }}
       />
     </div>

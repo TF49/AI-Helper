@@ -37,9 +37,11 @@ import {
   type WorkbuddySavePayload,
 } from "../types";
 import { useModelFetch } from "../lib/useModelFetch";
+import { useBoundTokenGroup } from "../lib/useBoundTokenGroup";
 import { SpotlightCard } from "./react-bits/SpotlightCard";
 import { TerminalTestModal } from "./TerminalTestModal";
 import { StepIndicator, type StepDef } from "./StepIndicator";
+import { ConfigConfirmStep } from "./ConfigConfirmStep";
 
 const EFFORT_OPTIONS = [
   { id: "low", label: "低 (low)" },
@@ -77,7 +79,7 @@ const stepVariants = {
   }),
 };
 
-const TOTAL_STEPS = 4;
+const TOTAL_STEPS = 5;
 
 export function WorkbuddyPanel() {
   const [url, setUrl] = useState<string>(PRESET_URLS[0]);
@@ -97,6 +99,7 @@ export function WorkbuddyPanel() {
   const [showSummary, setShowSummary] = useState(false);
   const [direction, setDirection] = useState<1 | -1>(1);
   const [maxStepReached, setMaxStepReached] = useState(0);
+  const [configConfirmed, setConfigConfirmed] = useState(false);
 
   // 高级能力开关
   const [supportsToolCall, setSupportsToolCall] = useState(true);
@@ -121,6 +124,8 @@ export function WorkbuddyPanel() {
     apiKey,
     fetchCodexModels,
   );
+  const { group: apiKeyGroup, onBoundTokenChange } =
+    useBoundTokenGroup("workbuddy", apiKey);
 
   const applyModelConfig = (item: WorkbuddyModelItem) => {
     setModel(item.id);
@@ -209,6 +214,24 @@ export function WorkbuddyPanel() {
     void load();
   }, []);
 
+  useEffect(() => {
+    setConfigConfirmed(false);
+  }, [
+    url,
+    apiKey,
+    model,
+    supportsToolCall,
+    supportsImages,
+    supportsReasoning,
+    onlyReasoning,
+    canDisableThinking,
+    useCustomProtocol,
+    defaultEffort,
+    supportedEfforts,
+    maxInputTokens,
+    maxOutputTokens,
+  ]);
+
   const handleReload = () => {
     void load(false);
   };
@@ -256,6 +279,7 @@ export function WorkbuddyPanel() {
       setDirection(1 > currentStep ? 1 : -1);
       setCurrentStep(1);
       setShowSummary(false);
+      setConfigConfirmed(false);
       return;
     }
     if (step > 2 && !model.trim()) {
@@ -263,12 +287,16 @@ export function WorkbuddyPanel() {
       setDirection(2 > currentStep ? 1 : -1);
       setCurrentStep(2);
       setShowSummary(false);
+      setConfigConfirmed(false);
       return;
     }
     setDirection(step > currentStep ? 1 : -1);
     setCurrentStep(step);
     setMaxStepReached((prev) => Math.max(prev, step));
     setShowSummary(false);
+    if (step !== TOTAL_STEPS - 1) {
+      setConfigConfirmed(false);
+    }
   };
 
   const handleNext = () => {
@@ -298,6 +326,13 @@ export function WorkbuddyPanel() {
     }
     if (!model.trim()) {
       toast.warning("请选择或输入模型名称");
+      return;
+    }
+    if (!showSummary && (currentStep !== TOTAL_STEPS - 1 || !configConfirmed)) {
+      toast.warning("请先勾选确认配置无误");
+      if (currentStep !== TOTAL_STEPS - 1) {
+        goToStep(TOTAL_STEPS - 1);
+      }
       return;
     }
     setTestModalOpen(true);
@@ -336,6 +371,14 @@ export function WorkbuddyPanel() {
         ? "已填写"
         : undefined;
 
+  const advancedSummary = [
+    supportsToolCall ? "工具" : null,
+    supportsImages ? "图片" : null,
+    supportsReasoning ? "思考" : null,
+  ]
+    .filter(Boolean)
+    .join(" · ") || "标准模式";
+
   const STEPS: StepDef[] = [
     { label: "接入节点", summary: urlSummary },
     { label: "API Key", summary: keySummary },
@@ -344,6 +387,7 @@ export function WorkbuddyPanel() {
       label: "高级参数",
       summary: supportsReasoning ? "推理已启用" : "标准模式",
     },
+    { label: "确认配置", summary: configConfirmed ? "已确认" : undefined },
   ];
 
   if (loading) {
@@ -385,12 +429,9 @@ export function WorkbuddyPanel() {
           {showSummary && (
             <button
               type="button"
-              onClick={() => {
-                setShowSummary(false);
-                setCurrentStep(0);
-              }}
+              onClick={() => goToStep(0)}
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-medium transition-colors bg-emerald-50 hover:bg-emerald-100 border-emerald-200 text-emerald-700 dark:bg-emerald-500/10 dark:hover:bg-emerald-500/20 dark:border-emerald-500/30 dark:text-emerald-300 shadow-2xs cursor-pointer"
-              title="切换到 3 步配置向导引导模式"
+              title="切换到分步配置向导引导模式"
             >
               <Sparkles size={12} />
               <span>分步向导</span>
@@ -464,11 +505,21 @@ export function WorkbuddyPanel() {
                   </div>
                 </div>
 
-                <div className="p-3 rounded-xl bg-slate-50/80 dark:bg-white/[0.02] border border-slate-200/60 dark:border-white/5">
+                <div className="p-3 rounded-xl bg-slate-50/80 dark:bg-white/[0.02] border border-slate-200/60 dark:border-white/5 min-w-0">
                   <div className="flex items-center gap-1.5 text-slate-400 dark:text-gray-500 text-[11px] mb-1">
-                    <KeyRound size={13} className="text-emerald-500" />
+                    <KeyRound size={13} className="text-emerald-500 shrink-0" />
                     <span>API Key 凭据</span>
                   </div>
+                  {apiKeyGroup ? (
+                    <div className="mb-1 min-w-0">
+                      <span
+                        className="inline-block max-w-full px-1.5 py-0.5 rounded-md border text-[10px] font-medium leading-snug break-words bg-emerald-50 text-emerald-600 border-emerald-200/80 dark:bg-emerald-500/15 dark:text-emerald-300 dark:border-emerald-500/25"
+                        title={`所属分组：${apiKeyGroup}`}
+                      >
+                        {apiKeyGroup}
+                      </span>
+                    </div>
+                  ) : null}
                   <div className="text-xs font-mono font-medium text-slate-800 dark:text-gray-200 truncate">
                     {keySummary || "未配置"}
                   </div>
@@ -586,7 +637,7 @@ export function WorkbuddyPanel() {
                       API 服务网关节点
                     </Label>
                     <span className="text-[11px] text-slate-400 dark:text-gray-500">
-                      第 1 步 / 共 4 步
+                      第 1 步 / 共 {TOTAL_STEPS} 步
                     </span>
                   </div>
                   <NodeCardSelector
@@ -616,6 +667,7 @@ export function WorkbuddyPanel() {
                     accentColor="emerald"
                     toolName="WorkBuddy"
                     toolId="workbuddy"
+                    onBoundTokenChange={onBoundTokenChange}
                   />
                 </SpotlightCard>
               )}
@@ -993,6 +1045,54 @@ export function WorkbuddyPanel() {
                   </SpotlightCard>
                 </div>
               )}
+
+              {currentStep === 4 && (
+                <ConfigConfirmStep
+                  accentColor="emerald"
+                  spotlightColor="rgba(16, 185, 129, 0.12)"
+                  totalSteps={TOTAL_STEPS}
+                  confirmed={configConfirmed}
+                  onConfirmedChange={setConfigConfirmed}
+                  onEditStep={goToStep}
+                  items={[
+                    {
+                      label: "接入节点",
+                      value: urlSummary || url,
+                      detail: url,
+                      icon: <Server size={14} />,
+                      stepIndex: 0,
+                    },
+                    {
+                      label: "API Key",
+                      value: keySummary || "未配置",
+                      badge: apiKeyGroup || undefined,
+                      icon: <KeyRound size={14} />,
+                      stepIndex: 1,
+                    },
+                    {
+                      label: "配置模型",
+                      value: model || "未配置",
+                      icon: <Cpu size={14} />,
+                      stepIndex: 2,
+                    },
+                    {
+                      label: "高级参数",
+                      value: advancedSummary,
+                      detail: [
+                        `输入 ${maxInputTokens || "默认"} / 输出 ${maxOutputTokens || "默认"} Token`,
+                        defaultEffort
+                          ? `默认思考 ${defaultEffort}`
+                          : null,
+                        useCustomProtocol ? "自定义协议" : null,
+                      ]
+                        .filter(Boolean)
+                        .join(" · "),
+                      icon: <Sliders size={14} />,
+                      stepIndex: 3,
+                    },
+                  ]}
+                />
+              )}
             </motion.div>
           </AnimatePresence>
         )}
@@ -1006,12 +1106,9 @@ export function WorkbuddyPanel() {
             <div className="flex items-center gap-3">
               <button
                 type="button"
-                onClick={() => {
-                  setShowSummary(false);
-                  setCurrentStep(0);
-                }}
+                onClick={() => goToStep(0)}
                 className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-medium border border-white/80 dark:border-white/10 bg-white/60 hover:bg-white/90 text-slate-700 dark:bg-white/5 dark:hover:bg-white/10 dark:text-gray-300 transition-all shadow-2xs backdrop-blur-xs cursor-pointer"
-                title="重新启动 3 步分步配置向导"
+                title="重新启动分步配置向导"
               >
                 <RefreshCw size={13} className="text-slate-500 dark:text-gray-400" />
                 <span>重新配置向导</span>
@@ -1083,7 +1180,7 @@ export function WorkbuddyPanel() {
                 <button
                   type="button"
                   onClick={handleSave}
-                  disabled={testModalOpen}
+                  disabled={testModalOpen || !configConfirmed}
                   className="flex items-center justify-center gap-1.5 px-6 py-2 min-w-[210px] rounded-xl text-xs font-semibold bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white transition-colors shadow-xs cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {isExistingModel ? (
@@ -1093,8 +1190,8 @@ export function WorkbuddyPanel() {
                   )}
                   <span>
                     {isExistingModel
-                      ? `保存并更新 (${model})`
-                      : `保存并新增 (${model.trim() || "新模型"})`}
+                      ? `确认并保存 (${model})`
+                      : `确认并新增 (${model.trim() || "新模型"})`}
                   </span>
                 </button>
               )}
@@ -1115,6 +1212,7 @@ export function WorkbuddyPanel() {
           setConfigExists(true);
           setShowSummary(true);
           setMaxStepReached(TOTAL_STEPS - 1);
+          setConfigConfirmed(false);
           void load(true);
         }}
       />
