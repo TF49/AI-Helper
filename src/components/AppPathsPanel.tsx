@@ -38,6 +38,7 @@ import {
 import { cn } from "../lib/utils";
 import type { AppPathsConfig, DetectedPathInfo } from "../types";
 import { SpotlightCard } from "./react-bits/SpotlightCard";
+import { ButtonToLoaderToSuccess } from "./ui/ButtonToLoaderToSuccess";
 
 export interface CliInstallOption {
   id: string;
@@ -99,7 +100,6 @@ export const NODE_CHECK_COMMANDS = [
 
 export function AppPathsPanel() {
   const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
   const [detectingAll, setDetectingAll] = useState(false);
 
   // 路径状态
@@ -318,21 +318,18 @@ export function AppPathsPanel() {
 
   // 保存所有路径配置
   const handleSaveAll = async () => {
-    setSaving(true);
+    const cfg: AppPathsConfig = {
+      claude_cli_path: claudePath.trim() || null,
+      codex_cli_path: codexPath.trim() || null,
+      chatgpt_client_path: chatgptPath.trim() || null,
+      workbuddy_client_path: workbuddyPath.trim() || null,
+      accio_client_path: accioPath.trim() || null,
+    };
     try {
-      const cfg: AppPathsConfig = {
-        claude_cli_path: claudePath.trim() || null,
-        codex_cli_path: codexPath.trim() || null,
-        chatgpt_client_path: chatgptPath.trim() || null,
-        workbuddy_client_path: workbuddyPath.trim() || null,
-        accio_client_path: accioPath.trim() || null,
-      };
       await saveAppPaths(cfg);
-      toast.success("安装路径配置已保存至 ~/.ai-helper/app_paths.json");
     } catch (err) {
       toast.error(`保存失败: ${err}`);
-    } finally {
-      setSaving(false);
+      throw err;
     }
   };
 
@@ -1737,26 +1734,25 @@ export function AppPathsPanel() {
       </div>
 
       {/* ── 底部保存栏 (苹果风毛玻璃悬浮 Dock 栏) ── */}
-      <div className="sticky bottom-0 z-20 mt-auto py-2.5 px-4 rounded-2xl bg-white/45 dark:bg-[#0c0e18]/45 backdrop-blur-xl backdrop-saturate-150 border border-white/60 dark:border-white/10 shadow-[0_4px_24px_-2px_rgba(0,0,0,0.06),inset_0_1px_1px_0_rgba(255,255,255,0.7)] dark:shadow-[0_4px_24px_-2px_rgba(0,0,0,0.3),inset_0_1px_1px_0_rgba(255,255,255,0.08)] flex-shrink-0 transition-all">
+      <div className="sticky bottom-0 z-20 mt-auto overflow-visible py-2.5 px-4 rounded-2xl bg-white/45 dark:bg-[#0c0e18]/45 backdrop-blur-xl backdrop-saturate-150 border border-white/60 dark:border-white/10 shadow-[0_4px_24px_-2px_rgba(0,0,0,0.06),inset_0_1px_1px_0_rgba(255,255,255,0.7)] dark:shadow-[0_4px_24px_-2px_rgba(0,0,0,0.3),inset_0_1px_1px_0_rgba(255,255,255,0.08)] flex-shrink-0 transition-all">
         <div className="flex items-center justify-between gap-4">
           <div className="text-[11px] text-slate-500 dark:text-gray-400 font-medium flex items-center gap-1.5">
             <span className="w-1.5 h-1.5 rounded-full bg-teal-500" />
             <span>保存后在完成模型连通性测试并应用配置时，系统将使用上述路径进行针对性拉起与环境变量注入</span>
           </div>
 
-          <button
-            type="button"
-            onClick={handleSaveAll}
-            disabled={saving}
-            className="flex items-center justify-center gap-2 px-6 py-2.5 min-w-[210px] rounded-xl text-xs font-semibold bg-teal-600 hover:bg-teal-700 active:bg-teal-800 text-white transition-colors shadow-xs cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            {saving ? (
-              <Loader2 size={14} className="animate-spin text-white" />
-            ) : (
-              <Save size={14} className="text-white" />
-            )}
-            <span>保存应用与 CLI 路径设置</span>
-          </button>
+          <ButtonToLoaderToSuccess
+            accent="teal"
+            className="min-w-[210px]"
+            idleLabel={
+              <>
+                <Save size={14} className="text-white" />
+                <span>保存应用与 CLI 路径设置</span>
+              </>
+            }
+            successLabel="路径已保存"
+            onAction={handleSaveAll}
+          />
         </div>
       </div>
     </div>

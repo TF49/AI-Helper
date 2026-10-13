@@ -33,6 +33,7 @@ import {
 import type { TokenItem } from "../../types";
 import { cn } from "../../lib/utils";
 import { SpotlightCard } from "../react-bits/SpotlightCard";
+import { ButtonToLoaderToSuccess } from "../ui/ButtonToLoaderToSuccess";
 import { ShinyText } from "../react-bits/ShinyText";
 import { DecryptedText } from "../react-bits/DecryptedText";
 
@@ -383,19 +384,19 @@ export function TokenSelectModal({
   };
 
   const handleSaveTokenGroup = async () => {
-    if (!editingGroupToken) return;
+    if (!editingGroupToken) {
+      throw new Error("未选择要修改的 API Key");
+    }
     const targetGroup = selectedNewGroup.trim();
     if (!targetGroup) {
       toast.warning("请选择目标分组");
-      return;
+      throw new Error("请选择目标分组");
     }
     if (targetGroup === (editingGroupToken.group || "default")) {
       toast.info("该 Key 当前已经是此分组，无需修改");
-      setEditingGroupToken(null);
-      return;
+      throw new Error("noop");
     }
 
-    setIsUpdatingGroup(true);
     try {
       await updateUserTokenGroup(editingGroupToken.id, targetGroup);
       toast.success(`已成功将「${editingGroupToken.name}」的分组修改为「${targetGroup}」！即时生效！`);
@@ -429,12 +430,11 @@ export function TokenSelectModal({
         }),
       );
 
-      setEditingGroupToken(null);
     } catch (err: unknown) {
+      if (err instanceof Error && err.message === "noop") throw err;
       const msg = typeof err === "string" ? err : "更新分组失败";
       toast.error(msg);
-    } finally {
-      setIsUpdatingGroup(false);
+      throw err;
     }
   };
 
@@ -1036,19 +1036,18 @@ export function TokenSelectModal({
               >
                 取消
               </button>
-              <button
-                type="button"
+              <ButtonToLoaderToSuccess
+                accent="blue"
                 disabled={isUpdatingGroup || !selectedNewGroup.trim()}
-                onClick={() => void handleSaveTokenGroup()}
-                className="px-4 py-1.5 rounded-xl text-xs font-semibold bg-blue-600 hover:bg-blue-500 text-white shadow-md shadow-blue-600/20 transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
-              >
-                {isUpdatingGroup ? (
-                  <Loader2 size={13} className="animate-spin" />
-                ) : (
-                  <Check size={13} />
-                )}
-                <span>确认修改</span>
-              </button>
+                className="px-4 py-1.5 min-w-[120px] shadow-md shadow-blue-600/20"
+                idleLabel={<span>确认修改</span>}
+                successLabel="分组已更新"
+                resetAfterMs={null}
+                holdMs={800}
+                onAction={handleSaveTokenGroup}
+                onBusyChange={setIsUpdatingGroup}
+                onComplete={() => setEditingGroupToken(null)}
+              />
             </div>
           </div>
         </div>

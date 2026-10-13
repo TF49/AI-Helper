@@ -60,6 +60,7 @@ import type {
   AccioConfig,
 } from "../types";
 import { cn } from "../lib/utils";
+import { ButtonToLoaderToSuccess } from "./ui/ButtonToLoaderToSuccess";
 
 interface InitializationModalProps {
   open: boolean;
@@ -783,9 +784,8 @@ export function InitializationModal({
   const handleSaveEdit = async () => {
     if (!editApiKey.trim()) {
       toast.warning("请输入 API Key");
-      return;
+      throw new Error("请输入 API Key");
     }
-    setSavingEdit(true);
     try {
       if (editTab === "chatgpt") {
         await setCodexConfig(
@@ -857,8 +857,7 @@ export function InitializationModal({
       );
     } catch (err) {
       toast.error(`保存修改失败: ${err}`);
-    } finally {
-      setSavingEdit(false);
+      throw err;
     }
   };
 
@@ -2525,18 +2524,20 @@ export function InitializationModal({
                           </div>
 
                           <div className="flex justify-end pt-1">
-                            <button
-                              onClick={() => void handleSaveEdit()}
+                            <ButtonToLoaderToSuccess
+                              accent="blue"
                               disabled={savingEdit}
-                              className="flex items-center gap-1.5 px-4 py-1.5 rounded-lg text-xs font-semibold bg-blue-600 text-white hover:bg-blue-700 transition disabled:opacity-50 shadow-sm cursor-pointer"
-                            >
-                              {savingEdit ? (
-                                <Loader2 size={13} className="animate-spin" />
-                              ) : (
-                                <Save size={13} />
-                              )}
-                              保存修改并确认生效
-                            </button>
+                              className="px-4 py-1.5 min-w-[180px] rounded-lg"
+                              idleLabel={
+                                <>
+                                  <Save size={13} />
+                                  <span>保存修改并确认生效</span>
+                                </>
+                              }
+                              successLabel="配置已生效"
+                              onAction={handleSaveEdit}
+                              onBusyChange={setSavingEdit}
+                            />
                           </div>
                         </motion.div>
                       )}

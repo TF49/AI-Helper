@@ -43,6 +43,7 @@ import {
 } from "../lib/api";
 import type { ChannelGroupOverview, TokenItem } from "../types";
 import { HealthTrendVisualizer } from "./HealthTrendVisualizer";
+import { ButtonToLoaderToSuccess } from "./ui/ButtonToLoaderToSuccess";
 
 export interface ChannelGroupMonitorProps {
   currentGroupName?: string | null;
@@ -406,13 +407,13 @@ export function ChannelGroupMonitor({
     const { targetGroupName, selectedTokenId, tokensList, syncToAllAgents } = switchModalState;
     if (!selectedTokenId) {
       toast.error("请选择要切换分组的 API Key");
-      return;
+      throw new Error("请选择要切换分组的 API Key");
     }
 
     const tokenToUpdate = tokensList.find((t) => t.id === selectedTokenId);
     const tokenName = tokenToUpdate?.name || "当前 API Key";
 
-    setSwitchModalState((prev) => ({ ...prev, isSubmitting: true, errorMessage: null }));
+    setSwitchModalState((prev) => ({ ...prev, errorMessage: null }));
 
     try {
       const updated = await updateUserTokenGroup(selectedTokenId, targetGroupName);
@@ -464,10 +465,10 @@ export function ChannelGroupMonitor({
       }
 
       toast.success(`已成功将「${tokenName}」切换至「${targetGroupName}」分组！即时生效！`);
-      setSwitchModalState((prev) => ({ ...prev, open: false, isSubmitting: false }));
     } catch (err: unknown) {
       const msg = typeof err === "string" ? err : "切换分组失败，请检查账号权限";
-      setSwitchModalState((prev) => ({ ...prev, isSubmitting: false, errorMessage: msg }));
+      setSwitchModalState((prev) => ({ ...prev, errorMessage: msg }));
+      throw err;
     }
   };
 
@@ -1977,7 +1978,7 @@ export function ChannelGroupMonitor({
               </div>
 
               {/* 弹窗底部操作 */}
-              <div className="px-6 py-3.5 border-t border-slate-100 dark:border-white/10 flex items-center justify-end gap-2.5 bg-slate-50/50 dark:bg-white/[0.02]">
+              <div className="overflow-visible px-6 py-3.5 border-t border-slate-100 dark:border-white/10 flex items-center justify-end gap-2.5 bg-slate-50/50 dark:bg-white/[0.02]">
                 <button
                   type="button"
                   disabled={switchModalState.isSubmitting}
@@ -1987,24 +1988,34 @@ export function ChannelGroupMonitor({
                   取消
                 </button>
 
-                <button
-                  type="button"
-                  disabled={switchModalState.isSubmitting || switchModalState.tokensList.length === 0}
-                  onClick={handleConfirmSwitchGroup}
-                  className="px-5 py-2 rounded-xl text-xs font-semibold bg-blue-600 hover:bg-blue-700 text-white flex items-center gap-1.5 shadow-xs transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  {switchModalState.isSubmitting ? (
-                    <>
-                      <Loader2 size={13} className="animate-spin" />
-                      <span>正在切换分组...</span>
-                    </>
-                  ) : (
+                <ButtonToLoaderToSuccess
+                  accent="blue"
+                  disabled={
+                    switchModalState.isSubmitting ||
+                    switchModalState.tokensList.length === 0
+                  }
+                  className="px-5 py-2 min-w-[180px]"
+                  idleLabel={
                     <>
                       <Zap size={13} className="fill-current" />
                       <span>确认切换并即时生效</span>
                     </>
-                  )}
-                </button>
+                  }
+                  successLabel="分组已切换"
+                  resetAfterMs={null}
+                  holdMs={800}
+                  onAction={handleConfirmSwitchGroup}
+                  onBusyChange={(busy) =>
+                    setSwitchModalState((prev) => ({ ...prev, isSubmitting: busy }))
+                  }
+                  onComplete={() =>
+                    setSwitchModalState((prev) => ({
+                      ...prev,
+                      open: false,
+                      isSubmitting: false,
+                    }))
+                  }
+                />
               </div>
             </div>
           </div>,
