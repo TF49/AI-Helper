@@ -385,8 +385,8 @@ function initNavigation() {
   }, { passive: true });
   updateScrollState();
 
-  // 1. 全局内部锚点平滑滚动 (避免任何原生跳跃与错位)
-  document.querySelectorAll('a[href^="#"]').forEach(function (anchor) {
+  // 1. 全局内部锚点平滑滚动 (避免任何原生跳跃与错位，排除平台选择交互胶囊)
+  document.querySelectorAll('a[href^="#"]:not(.hero-pill-btn)').forEach(function (anchor) {
     anchor.addEventListener("click", function (e) {
       const href = anchor.getAttribute("href");
       if (!href || href === "#") return;
@@ -559,8 +559,9 @@ function initHeroMotion() {
     .from(".hero-eyebrow", { opacity: 0, y: 16, duration: 0.58 }, "-=0.34")
     .from(".hero-line > span", { yPercent: 115, rotateX: -12, filter: "blur(10px)", duration: 1.05, stagger: 0.12 }, "-=0.32")
     .from(".hero-lead", { opacity: 0, y: 22, filter: "blur(5px)", duration: 0.78 }, "-=0.5")
-    .from(".hero-actions > *", { opacity: 0, y: 18, duration: 0.62, stagger: 0.08 }, "-=0.42")
-    .from(".hero-trust li", { opacity: 0, y: 12, duration: 0.45, stagger: 0.07 }, "-=0.36")
+    .from(".hero-actions", { opacity: 0, y: 18, duration: 0.62, clearProps: "transform" }, "-=0.42")
+    .from(".hero-platform-pills", { opacity: 0, y: 14, duration: 0.52, clearProps: "transform" }, "-=0.38")
+    .from(".hero-trust li", { opacity: 0, y: 12, duration: 0.45, stagger: 0.07, clearProps: "transform" }, "-=0.36")
     .from(".runway-node", { opacity: 0, y: 24, scale: 0.96, duration: 0.72, stagger: 0.12 }, "-=0.16")
     .from(".scroll-cue", { opacity: 0, duration: 0.5 }, "-=0.2");
 }
@@ -1055,6 +1056,87 @@ function initUtilityActions() {
 
 let latestReleaseData = null;
 
+/**
+ * 智能检索当前用户操作系统 ('macos' | 'windows')
+ */
+function detectUserOS() {
+  const ua = (navigator.userAgent || "").toLowerCase();
+  const platform = (navigator.platform || "").toLowerCase();
+  const uadPlatform = (navigator.userAgentData && typeof navigator.userAgentData.platform === "string")
+    ? navigator.userAgentData.platform.toLowerCase()
+    : "";
+
+  // 1. 优先检索 macOS 特征 (Macintosh, macOS, MacIntel, Mac OS X 等)
+  if (uadPlatform.includes("mac") || platform.includes("mac") || ua.includes("macintosh") || ua.includes("mac os x")) {
+    return "macos";
+  }
+
+  // 2. 检索 Windows 特征 (Windows, Win32, Win64, WOW64 等)
+  if (uadPlatform.includes("win") || platform.includes("win") || ua.includes("windows") || ua.includes("win32") || ua.includes("win64")) {
+    return "windows";
+  }
+
+  // 默认适配 Windows
+  return "windows";
+}
+
+let currentSelectedPlatform = detectUserOS();
+
+/**
+ * 切换与更新首页 Hero 立即下载按钮及平台快捷胶囊
+ * @param {'windows'|'macos'} platform - 目标平台
+ * @param {boolean} [updateDownloadTable=false] - 是否同步切换下方下载专区面板
+ */
+function updateHeroPlatformUI(platform, updateDownloadTable) {
+  currentSelectedPlatform = platform;
+  const tag = (latestReleaseData && latestReleaseData.tag)
+    ? (latestReleaseData.tag.indexOf("v") === 0 ? latestReleaseData.tag : "v" + latestReleaseData.tag)
+    : ("v" + CURRENT_VERSION);
+
+  const heroBtn = document.getElementById("btn-hero-download");
+  const heroBtnText = document.getElementById("hero-btn-text");
+
+  let downloadUrl = "";
+  let btnLabel = "";
+
+  if (platform === "macos") {
+    downloadUrl = (latestReleaseData && latestReleaseData.macArm64Url)
+      ? latestReleaseData.macArm64Url
+      : (GITHUB_RELEASES_URL + "/download/" + tag + "/AI-Helper-" + tag + "-macOS-aarch64.dmg");
+    btnLabel = "立即下载 macOS 安装包 (" + tag + ")";
+  } else {
+    downloadUrl = (latestReleaseData && latestReleaseData.setupUrl)
+      ? latestReleaseData.setupUrl
+      : (GITHUB_RELEASES_URL + "/download/" + tag + "/AI-Helper-" + tag + "-Windows-x64-Setup.exe");
+    btnLabel = "立即下载 Windows 安装包 (" + tag + ")";
+  }
+
+  if (heroBtn) {
+    heroBtn.href = downloadUrl;
+    heroBtn.setAttribute("data-current-os", platform);
+  }
+  if (heroBtnText) {
+    heroBtnText.textContent = btnLabel;
+  }
+
+  // 同步高亮快捷架构选择胶囊
+  document.querySelectorAll(".hero-pill-btn").forEach(function (pill) {
+    const isTarget = pill.getAttribute("data-target-tab") === platform;
+    pill.classList.toggle("active", isTarget);
+    pill.setAttribute("aria-selected", String(isTarget));
+  });
+
+  // 更新校验和展示文件名
+  const macArm64FileName = (latestReleaseData && latestReleaseData.macArm64FileName) || ("AI-Helper-" + tag + "-macOS-aarch64.dmg");
+  const setupFileName = (latestReleaseData && latestReleaseData.setupFileName) || ("AI-Helper-" + tag + "-Windows-x64-Setup.exe");
+  setText("checksum-setup-filename", platform === "macos" ? macArm64FileName : setupFileName);
+
+  // 同步联动下方下载专区选项卡（静默切换面板，不引发任何页面滚动或跳转）
+  if (updateDownloadTable && typeof window.switchDlTab === "function") {
+    window.switchDlTab(platform);
+  }
+}
+
 function applyReleaseData(data) {
   if (!data.tag) return;
   latestReleaseData = data;
@@ -1078,16 +1160,6 @@ function applyReleaseData(data) {
 
   document.querySelectorAll(".current-version-tag").forEach(function (element) { element.textContent = tag; });
 
-  const isMac = /Macintosh|MacIntel|MacPPC|Mac68K/.test(navigator.userAgent) || (navigator.platform && navigator.platform.toUpperCase().indexOf('MAC') >= 0);
-
-  if (isMac) {
-    setLink("btn-hero-download", macArm64Url);
-    setText("hero-btn-text", "立即下载 macOS 安装包 (" + tag + ")");
-  } else {
-    setLink("btn-hero-download", setupUrl);
-    setText("hero-btn-text", "立即下载 Windows 安装包 (" + tag + ")");
-  }
-
   // Windows 下载链接
   setLink("link-dl-setup", setupUrl);
   setLink("link-dl-fast-setup", fastSetupUrl);
@@ -1100,7 +1172,8 @@ function applyReleaseData(data) {
   setLink("link-dl-mac-x64", macX64Url);
   setLink("link-dl-mac-x64-fast", fastMacX64Url);
 
-  setText("checksum-setup-filename", isMac ? macArm64FileName : setupFileName);
+  // 根据检测到的用户平台同步更新 Hero 立即下载按钮及胶囊
+  updateHeroPlatformUI(currentSelectedPlatform, false);
 }
 
 async function initReleaseInfo() {
@@ -1956,7 +2029,7 @@ function initReactBitsComponents() {
    4. 跨平台专属交互引擎 (Cross-Platform Hub & Simulator Mode Toggle)
    ========================================================================== */
 function initCrossPlatformFeatures() {
-  const isMac = /Macintosh|MacIntel|MacPPC|Mac68K/.test(navigator.userAgent) || (navigator.platform && navigator.platform.toUpperCase().indexOf('MAC') >= 0);
+  const isMac = detectUserOS() === "macos";
 
   // 4.1 下载专区平台切换选项卡 (Windows / macOS / All)
   const dlTabs = document.querySelectorAll(".dl-tab-btn");
@@ -2001,26 +2074,23 @@ function initCrossPlatformFeatures() {
     });
   });
 
-  // 首页平台快捷下载胶囊事件
+  window.switchDlTab = switchDlTab;
+
+  // 首页平台快捷下载胶囊事件（切换目标架构与安装包，彻底阻止页面向下滚动）
   document.querySelectorAll(".hero-pill-btn").forEach(function (pill) {
-    pill.addEventListener("click", function () {
+    pill.addEventListener("click", function (e) {
+      e.preventDefault();
+      e.stopPropagation();
       const target = pill.getAttribute("data-target-tab");
       if (target) {
-        switchDlTab(target);
-        document.querySelectorAll(".hero-pill-btn").forEach(function (p) {
-          p.classList.toggle("active", p === pill);
-        });
+        updateHeroPlatformUI(target, true);
       }
     });
   });
 
-  // 若用户为 macOS 系统，自动激活 macOS 专属下载面板
-  if (isMac) {
-    switchDlTab("macos");
-    document.querySelectorAll(".hero-pill-btn").forEach(function (p) {
-      p.classList.toggle("active", p.getAttribute("data-target-tab") === "macos");
-    });
-  }
+  // 页面初次加载时：根据检索到的用户系统自动激活对应的胶囊和下载面板
+  const userOS = detectUserOS();
+  updateHeroPlatformUI(userOS, true);
 
   // 4.2 演示模拟器视界模式切换 (macOS 红绿灯 / Windows 双模)
   const simOsButtons = document.querySelectorAll(".win-os-btn");
