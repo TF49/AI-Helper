@@ -1,6 +1,6 @@
 "use strict";
 
-const CURRENT_VERSION = "v1.0.62";
+const CURRENT_VERSION = "v1.0.63";
 const GITHUB_REPO = "TF49/AI-Helper";
 const GITHUB_RELEASES_URL = "https://github.com/" + GITHUB_REPO + "/releases";
 const GHFAST_PREFIX = "https://ghfast.top/";
@@ -48,8 +48,8 @@ const SIMULATOR_DATA = {
   },
   workbuddy: {
     title: "Workbuddy AI 工作流中枢",
-    desc: "写入 ~/.workbuddy-ai/models.json，并同步进程内环境变量。",
-    configPath: "~/.workbuddy-ai/models.json",
+    desc: "写入 ~/.workbuddy/models.json，并自动双向兼容 ~/.workbuddy-ai。",
+    configPath: "~/.workbuddy/models.json",
     apiUrl: "https://api.workbuddy.cn/v1",
     model: "deepseek-coder",
     chips: ["deepseek-coder", "claude-3.5-sonnet", "gpt-4o", "kimi-latest"],
@@ -2114,7 +2114,7 @@ function initCrossPlatformFeatures() {
         const s4 = document.getElementById("strip-item-4-desc");
         if (s1) s1.textContent = "~/.codex/config.toml (Native)";
         if (s2) s2.textContent = "/usr/local/bin/claude (Homebrew)";
-        if (s3) s3.textContent = "~/.workbuddy-ai/models.json";
+        if (s3) s3.textContent = "~/.workbuddy/models.json";
         if (s4) s4.textContent = "Bridge :8787 (AppleScript Terminal)";
 
         showToast("已切换至 macOS 原生红绿灯 Overlay 视界");

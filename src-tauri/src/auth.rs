@@ -1224,10 +1224,17 @@ pub async fn apply_api_key_to_agents(
                     fallback_official: cur.fallback_official,
                     prevent_official_leak: cur.prevent_official_leak,
                     auto_start_bridge: cur.auto_start_bridge,
-                    cached_models: cur.cached_models,
+                    cached_models: Vec::new(),
+                    cached_models_fingerprint: String::new(),
                 };
+                crate::accio::invalidate_model_list_cache();
                 match crate::accio::config::save_accio_config(&config) {
                     Ok(_) => {
+                        if crate::accio::is_bridge_running() {
+                            tauri::async_runtime::spawn(async {
+                                crate::accio::refresh_model_list_cache().await;
+                            });
+                        }
                         results.insert("acciowork".to_string(), true);
                     }
                     Err(e) => {

@@ -54,7 +54,7 @@ function getMockResponse<T>(cmd: string, _args?: Record<string, unknown>): T {
     case "get_workbuddy_config":
       return {
         config_exists: true,
-        config_path: "~/.workbuddy-ai/models.json",
+        config_path: "~/.workbuddy/models.json",
         configured_models: [],
       } as unknown as T;
     case "get_accio_config":

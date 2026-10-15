@@ -227,8 +227,33 @@ fn get_accio_config() -> accio::AccioUIConfig {
 }
 
 #[tauri::command]
-fn set_accio_config(config: accio::AccioConfig) -> Result<(), error::AppError> {
-    accio::save_accio_config(&config)
+fn set_accio_config(mut config: accio::AccioConfig) -> Result<(), error::AppError> {
+    let existing = accio::load_accio_config();
+    let old_fp = accio::model_source_fingerprint(&existing.base_url, &existing.api_key);
+    let new_fp = accio::model_source_fingerprint(&config.base_url, &config.api_key);
+
+    if config.cached_models.is_empty() {
+        if old_fp == new_fp && !existing.cached_models.is_empty() {
+            // 前端更新配置通常省略了 cached_models，凭据未变时保留现存缓存
+            config.cached_models = existing.cached_models;
+            config.cached_models_fingerprint = new_fp;
+        } else {
+            // 凭据已改变，失效并清空缓存
+            config.cached_models_fingerprint.clear();
+            accio::invalidate_model_list_cache();
+        }
+    } else {
+        config.cached_models_fingerprint = new_fp;
+        accio::invalidate_model_list_cache();
+    }
+
+    accio::save_accio_config(&config)?;
+    if accio::is_bridge_running() {
+        tauri::async_runtime::spawn(async {
+            accio::refresh_model_list_cache().await;
+        });
+    }
+    Ok(())
 }
 
 #[tauri::command]

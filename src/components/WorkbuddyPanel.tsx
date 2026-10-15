@@ -452,7 +452,11 @@ export function WorkbuddyPanel() {
           </button>
           <ConfigPathBar
             path={configPath}
-            shortPath="~/.workbuddy-ai/models.json"
+            shortPath={
+              configPath.includes(".workbuddy-ai")
+                ? "~/.workbuddy-ai/models.json"
+                : "~/.workbuddy/models.json"
+            }
             exists={configExists}
             accentColor="emerald"
           />
@@ -666,7 +670,13 @@ export function WorkbuddyPanel() {
                     value={apiKey}
                     onChange={setApiKey}
                     placeholder="sk-... (填入 API Key)"
-                    storageLocation="~/.workbuddy-ai/models.json"
+                    storageLocation={
+                      configPath
+                        ? configPath.includes(".workbuddy-ai")
+                          ? "~/.workbuddy-ai/models.json (双向兼容 ~/.workbuddy)"
+                          : "~/.workbuddy/models.json (双向兼容 ~/.workbuddy-ai)"
+                        : "~/.workbuddy/models.json (双向兼容 ~/.workbuddy-ai)"
+                    }
                     hintText="无需环境变量"
                     accentColor="emerald"
                     toolName="WorkBuddy"

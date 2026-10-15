@@ -23,6 +23,9 @@ pub struct AccioConfig {
     pub auto_start_bridge: bool,
     #[serde(default)]
     pub cached_models: Vec<String>,
+    /// `base_url||api_key` 指纹，用于避免把上一把 Key 的模型缓存误用到新 Key。
+    #[serde(default)]
+    pub cached_models_fingerprint: String,
 }
 
 fn default_base_url() -> String {
@@ -45,6 +48,16 @@ fn default_true() -> bool {
     true
 }
 
+/// 规整并去除 Base URL 结尾的斜杠与重复 /v1，避免生成 /v1/v1/... 路径
+pub fn clean_base_url(url: &str) -> &str {
+    let trimmed = url.trim().trim_end_matches('/');
+    trimmed.strip_suffix("/v1").unwrap_or(trimmed)
+}
+
+pub fn model_source_fingerprint(base_url: &str, api_key: &str) -> String {
+    format!("{}||{}", clean_base_url(base_url), api_key.trim())
+}
+
 impl Default for AccioConfig {
     fn default() -> Self {
         Self {
@@ -57,6 +70,7 @@ impl Default for AccioConfig {
             prevent_official_leak: true,
             auto_start_bridge: true,
             cached_models: Vec::new(),
+            cached_models_fingerprint: String::new(),
         }
     }
 }

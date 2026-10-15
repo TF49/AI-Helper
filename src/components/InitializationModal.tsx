@@ -413,7 +413,7 @@ export function InitializationModal({
     if (!(await delay(800))) return false;
     setStepSubProgress(75);
     setStepSubPhaseText(
-      "深度检索 %USERPROFILE%/.workbuddy-ai/ 与 WorkBuddy 客户端运行入口...",
+      "深度检索 %USERPROFILE%/.workbuddy/ (及 .workbuddy-ai) 与 WorkBuddy 客户端运行入口...",
     );
     addLog(
       "FS:WORKBUDDY",
@@ -1638,7 +1638,7 @@ export function InitializationModal({
                                 : step2Status === "running"
                                   ? "正在遍历磁盘检索 WorkBuddy 路径..."
                                   : configData.workbuddy?.is_installed
-                                    ? "客户端已检测，待写入 ~/.workbuddy-ai/models.json"
+                                    ? "客户端已检测，待写入 ~/.workbuddy/models.json"
                                     : "未检测到安装环境，暂无配置文件"}
                             </code>
                             {configData.workbuddy?.config_path ? (
@@ -2464,7 +2464,11 @@ export function InitializationModal({
                                 editTab === "claude"
                                   ? "~/.claude/settings.json"
                                   : editTab === "workbuddy"
-                                    ? "~/.workbuddy-ai/models.json"
+                                    ? (configData.workbuddy?.config_path
+                                      ? (configData.workbuddy.config_path.includes(".workbuddy-ai")
+                                        ? "~/.workbuddy-ai/models.json (双向兼容 ~/.workbuddy)"
+                                        : "~/.workbuddy/models.json (双向兼容 ~/.workbuddy-ai)")
+                                      : "~/.workbuddy/models.json")
                                     : editTab === "acciowork"
                                       ? "~/.ai-helper/accio_config.json"
                                       : undefined

@@ -1,4 +1,6 @@
-use crate::accio::config::{load_accio_config, save_accio_config, AccioConfig};
+use crate::accio::config::{
+    load_accio_config, model_source_fingerprint, save_accio_config, AccioConfig,
+};
 use crate::accio::protocol::{self, accio_to_openai, format_accio_sse, ApiEndpoint, SSE_HEARTBEAT};
 use axum::{
     body::{Body, Bytes},
@@ -12,6 +14,7 @@ use flate2::read::GzDecoder;
 use futures_util::Stream;
 use reqwest::Client;
 use serde_json::{json, Value};
+use std::collections::HashSet;
 use std::io::Read;
 use std::{
     pin::Pin,
@@ -39,6 +42,215 @@ pub struct BridgeHandle {
 }
 
 static RUNNING_BRIDGE: Mutex<Option<BridgeHandle>> = Mutex::new(None);
+
+const MODEL_LIST_TTL: Duration = Duration::from_secs(300);
+
+static IS_REFRESHING: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+struct ModelListCache {
+    fingerprint: String,
+    models: Vec<String>,
+    fetched_at: Instant,
+}
+
+static MODEL_LIST_CACHE: Mutex<Option<ModelListCache>> = Mutex::new(None);
+
+/// 配置或 Key 变更后丢弃内存中的模型列表，迫使下次按新凭据实时拉取。
+pub fn invalidate_model_list_cache() {
+    *MODEL_LIST_CACHE.lock().unwrap() = None;
+}
+
+pub async fn refresh_model_list_cache() {
+    if IS_REFRESHING.swap(true, std::sync::atomic::Ordering::SeqCst) {
+        return;
+    }
+    struct RefreshGuard;
+    impl Drop for RefreshGuard {
+        fn drop(&mut self) {
+            IS_REFRESHING.store(false, std::sync::atomic::Ordering::SeqCst);
+        }
+    }
+    let _guard = RefreshGuard;
+    let config = load_accio_config();
+    let count = fetch_and_cache_model_ids(&config).await.len();
+    log::info!("Accio 已按当前 Key 刷新模型列表，共 {count} 个真实可用模型");
+}
+
+fn provider_source_label(base_url: Option<&str>) -> String {
+    if let Some(url) = base_url {
+        let trimmed = url.trim();
+        if let Ok(parsed) = reqwest::Url::parse(trimmed) {
+            if let Some(host) = parsed.host_str() {
+                if !host.is_empty() {
+                    return host.to_string();
+                }
+            }
+        }
+    }
+    "bob-api.com".to_string()
+}
+
+fn model_entry(id: &str, is_default: bool, source_label: &str) -> Value {
+    json!({
+        "modelCode": id,
+        "modelName": id,
+        "modelDisplayName": id,
+        "modelDesc": format!("{id} via {source_label}"),
+        "visible": true,
+        "isDefault": is_default,
+        "freeUse": true,
+        "multimodal": true,
+        "contextWindow": get_model_context_window(id),
+        "reasoningEfforts": ["low", "medium", "high"],
+        "defaultReasoningEffort": "medium"
+    })
+}
+
+/// 仅用当前 Key 真实可用的模型组装 Accio `/api/llm/config/v2` 载荷，不注入写死预设。
+pub fn build_provider_payload_with_source(
+    selected_model: &str,
+    model_ids: &[String],
+    base_url: Option<&str>,
+) -> Value {
+    let source_label = provider_source_label(base_url);
+    let selected = selected_model.trim();
+    let mut seen = HashSet::new();
+    let mut ordered = Vec::new();
+
+    if !selected.is_empty() && model_ids.iter().any(|id| id.trim() == selected) {
+        ordered.push(selected.to_string());
+        seen.insert(selected.to_string());
+    }
+
+    for id in model_ids {
+        let trimmed = id.trim();
+        if trimmed.is_empty() || !seen.insert(trimmed.to_string()) {
+            continue;
+        }
+        ordered.push(trimmed.to_string());
+    }
+
+    let model_list: Vec<Value> = ordered
+        .iter()
+        .map(|id| model_entry(id, id == selected, &source_label))
+        .collect();
+
+    json!([{
+        "provider": "ai-helper",
+        "providerDisplayName": format!("AI-Helper ({source_label})"),
+        "modelList": model_list
+    }])
+}
+
+#[cfg(test)]
+fn build_provider_payload(selected_model: &str, model_ids: &[String]) -> Value {
+    build_provider_payload_with_source(selected_model, model_ids, None)
+}
+
+fn remember_model_list(fingerprint: String, models: Vec<String>) {
+    *MODEL_LIST_CACHE.lock().unwrap() = Some(ModelListCache {
+        fingerprint,
+        models,
+        fetched_at: Instant::now(),
+    });
+}
+
+fn cached_model_list(fingerprint: &str, allow_stale: bool) -> Option<Vec<String>> {
+    let guard = MODEL_LIST_CACHE.lock().unwrap();
+    let cache = guard.as_ref()?;
+    if cache.fingerprint != fingerprint {
+        return None;
+    }
+    if !allow_stale && cache.fetched_at.elapsed() >= MODEL_LIST_TTL {
+        return None;
+    }
+    Some(cache.models.clone())
+}
+
+async fn fetch_and_cache_model_ids(config: &AccioConfig) -> Vec<String> {
+    let fingerprint = model_source_fingerprint(&config.base_url, &config.api_key);
+    if config.api_key.trim().is_empty() || config.base_url.trim().is_empty() {
+        return Vec::new();
+    }
+
+    match crate::model_fetch::fetch_models(&config.base_url, &config.api_key).await {
+        Ok(models) => {
+            let ids: Vec<String> = models
+                .into_iter()
+                .map(|m| m.id.trim().to_string())
+                .filter(|id| !id.is_empty())
+                .collect();
+            remember_model_list(fingerprint.clone(), ids.clone());
+
+            // 安全写盘：重新从磁盘加载当前最新的配置，防止覆盖网络请求期间用户的新修改
+            let mut latest = load_accio_config();
+            let latest_fp = model_source_fingerprint(&latest.base_url, &latest.api_key);
+            if latest_fp == fingerprint {
+                if latest.cached_models != ids || latest.cached_models_fingerprint != fingerprint {
+                    latest.cached_models = ids.clone();
+                    latest.cached_models_fingerprint = fingerprint;
+                    if let Err(e) = save_accio_config(&latest) {
+                        log::warn!("回写 Accio 模型缓存失败: {e}");
+                    }
+                }
+            } else {
+                log::debug!("用户在拉取模型期间切换了凭据，丢弃向磁盘写回旧 Key 缓存");
+            }
+            ids
+        }
+        Err(e) => {
+            log::warn!("按当前 Key 拉取 Accio 可用模型失败，尝试回退缓存: {e}");
+            Vec::new()
+        }
+    }
+}
+
+/// 按当前配置的 Base URL + API Key 拉取真实可用模型；支持 SWR (Stale-While-Revalidate)
+async fn load_key_model_ids(config: &AccioConfig) -> Vec<String> {
+    let fingerprint = model_source_fingerprint(&config.base_url, &config.api_key);
+
+    // 1. 命中有效内存缓存
+    if let Some(fresh) = cached_model_list(&fingerprint, false) {
+        return fresh;
+    }
+
+    // 2. 检查是否有陈旧内存缓存或匹配的磁盘缓存
+    let disk_models: Option<Vec<String>> =
+        if config.cached_models_fingerprint == fingerprint && !config.cached_models.is_empty() {
+            Some(
+                config
+                    .cached_models
+                    .iter()
+                    .map(|id| id.trim().to_string())
+                    .filter(|id| !id.is_empty())
+                    .collect(),
+            )
+        } else {
+            None
+        };
+
+    if let Some(cached) = cached_model_list(&fingerprint, true).or(disk_models) {
+        // 先用已有模型预热内存并立即返回，后台触发异步刷新避免阻塞
+        remember_model_list(fingerprint.clone(), cached.clone());
+        tokio::spawn(async {
+            refresh_model_list_cache().await;
+        });
+        return cached;
+    }
+
+    // 3. 无任何缓存（首次拉取），同步拉取一次
+    let fetched = fetch_and_cache_model_ids(config).await;
+    if !fetched.is_empty() {
+        return fetched;
+    }
+
+    // 4. 拉取失败时最后尝试内存陈旧缓存
+    if let Some(stale) = cached_model_list(&fingerprint, true) {
+        return stale;
+    }
+
+    Vec::new()
+}
 
 /// 判断当前 Bridge 是否正在运行 (严格校验协程存活状态，防止僵尸句柄假在线)
 pub fn is_bridge_running() -> bool {
@@ -68,10 +280,7 @@ pub fn get_bridge_port() -> Option<u16> {
 }
 
 /// 规整并去除 Base URL 结尾的斜杠与重复 /v1，避免生成 /v1/v1/... 路径
-pub fn clean_base_url(url: &str) -> &str {
-    let trimmed = url.trim_end_matches('/');
-    trimmed.strip_suffix("/v1").unwrap_or(trimmed)
-}
+pub use crate::accio::config::clean_base_url;
 
 /// 尝试直接异步绑定空闲端口并返回已成功绑定的 TcpListener 和端口号
 /// 避免先 bind 再 drop 造成的 Windows TIME_WAIT 10048 端口冲突
@@ -121,6 +330,9 @@ pub async fn start_bridge(preferred_port: Option<u16>) -> Result<u16, String> {
                         "Accio Local Bridge 已经在端口 {} 上稳定运行，直接复用",
                         handle.port
                     );
+                    tokio::spawn(async {
+                        refresh_model_list_cache().await;
+                    });
                     return Ok(handle.port);
                 }
             } else {
@@ -171,6 +383,10 @@ pub async fn start_bridge(preferred_port: Option<u16>) -> Result<u16, String> {
         .with_state(client);
 
     let (shutdown_tx, shutdown_rx) = oneshot::channel::<()>();
+
+    tokio::spawn(async {
+        refresh_model_list_cache().await;
+    });
 
     let join_handle = tokio::spawn(async move {
         log::info!(
@@ -230,85 +446,19 @@ async fn handle_health() -> Json<Value> {
     }))
 }
 
-/// GET /api/llm/config/v2: 注入模型列表，使 Accio Work 下拉框识别并选中当前配置的模型及 bob-api.com 丰富模型
+/// GET /api/llm/config/v2: 按当前 Key 动态注入该凭据真实可用的模型列表
 async fn custom_model_list() -> Json<Value> {
     let config = load_accio_config();
-    let mut model_list = Vec::new();
-    let mut seen = std::collections::HashSet::new();
-
-    // 1. 首选当前配置的模型
-    if !config.model.trim().is_empty() {
-        seen.insert(config.model.clone());
-        model_list.push(json!({
-            "modelCode": config.model,
-            "modelName": config.model,
-            "modelDisplayName": config.model,
-            "modelDesc": format!("{} via bob-api.com", config.model),
-            "visible": true,
-            "isDefault": true,
-            "freeUse": true,
-            "multimodal": true,
-            "contextWindow": get_model_context_window(&config.model),
-            "reasoningEfforts": ["low", "medium", "high"],
-            "defaultReasoningEffort": "medium"
-        }));
+    let mut ids = load_key_model_ids(&config).await;
+    // 容灾保底：当上游无法拉取可用模型（如未实现 /v1/models 或网络离线），保底注入当前配置模型，防止客户端下拉框彻底空白
+    if ids.is_empty() && !config.model.trim().is_empty() {
+        ids.push(config.model.trim().to_string());
     }
-
-    // 2. 加入缓存探测的模型列表 (来自 bob-api.com 模型拉取)
-    for m in &config.cached_models {
-        let trimmed = m.trim();
-        if !trimmed.is_empty() && !seen.contains(trimmed) {
-            seen.insert(trimmed.to_string());
-            model_list.push(json!({
-                "modelCode": trimmed,
-                "modelName": trimmed,
-                "modelDisplayName": trimmed,
-                "modelDesc": format!("{} via bob-api.com", trimmed),
-                "visible": true,
-                "isDefault": trimmed == config.model,
-                "freeUse": true,
-                "multimodal": true,
-                "contextWindow": get_model_context_window(trimmed),
-                "reasoningEfforts": ["low", "medium", "high"],
-                "defaultReasoningEffort": "medium"
-            }));
-        }
-    }
-
-    // 3. 预设常用推荐模型，确保 Accio 下拉框丰富可选
-    let presets = [
-        "claude-3-7-sonnet",
-        "claude-3-5-sonnet",
-        "gpt-4o",
-        "gpt-4.1-mini",
-        "deepseek-chat",
-        "deepseek-reasoner",
-        "qwen-2.5-max",
-    ];
-    for p in presets {
-        if !seen.contains(p) {
-            seen.insert(p.to_string());
-            model_list.push(json!({
-                "modelCode": p,
-                "modelName": p,
-                "modelDisplayName": p,
-                "modelDesc": format!("{} via bob-api.com", p),
-                "visible": true,
-                "isDefault": p == config.model,
-                "freeUse": true,
-                "multimodal": true,
-                "contextWindow": get_model_context_window(p),
-                "reasoningEfforts": ["low", "medium", "high"],
-                "defaultReasoningEffort": "medium"
-            }));
-        }
-    }
-
-    Json(json!([{
-        "provider": "ai-helper",
-        "providerDisplayName": "AI-Helper (bob-api.com)",
-        "modelList": model_list
-    }]))
+    Json(build_provider_payload_with_source(
+        &config.model,
+        &ids,
+        Some(&config.base_url),
+    ))
 }
 
 /// 根据模型名称返回对应的上下文窗口大小
@@ -2186,6 +2336,78 @@ mod tests {
         assert_eq!(
             clean_base_url("https://api.example.com"),
             "https://api.example.com"
+        );
+    }
+
+    fn payload_model_ids(payload: &Value) -> Vec<&str> {
+        payload[0]["modelList"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|item| item["modelCode"].as_str().unwrap())
+            .collect()
+    }
+
+    #[test]
+    fn model_list_payload_only_includes_key_available_models() {
+        let payload = build_provider_payload(
+            "gpt-6-sol",
+            &[
+                "gpt-6-sol".to_string(),
+                "gpt-6.1-sol".to_string(),
+                "codex-auto-review".to_string(),
+            ],
+        );
+        let ids = payload_model_ids(&payload);
+        assert_eq!(ids, vec!["gpt-6-sol", "gpt-6.1-sol", "codex-auto-review"]);
+        assert!(!ids.contains(&"gpt-4o"));
+        assert!(!ids.contains(&"claude-3-7-sonnet"));
+        assert!(!ids.contains(&"qwen-2.5-max"));
+        assert!(!ids.contains(&"deepseek-reasoner"));
+        assert_eq!(payload[0]["modelList"][0]["isDefault"], true);
+        assert_eq!(payload[0]["modelList"][1]["isDefault"], false);
+    }
+
+    #[test]
+    fn model_list_payload_does_not_inject_unavailable_selected_model() {
+        let payload = build_provider_payload("secret-model", &["gpt-6-sol".to_string()]);
+        let ids = payload_model_ids(&payload);
+        assert_eq!(ids, vec!["gpt-6-sol"]);
+        assert_eq!(payload[0]["modelList"][0]["isDefault"], false);
+    }
+
+    #[test]
+    fn model_list_payload_is_empty_when_key_has_no_models() {
+        let payload = build_provider_payload("gpt-4o", &[]);
+        assert!(payload[0]["modelList"].as_array().unwrap().is_empty());
+    }
+
+    #[test]
+    fn model_source_fingerprint_normalizes_base_url() {
+        let fp1 = model_source_fingerprint("https://api.example.com/", "sk-123");
+        let fp2 = model_source_fingerprint("https://api.example.com/v1", "sk-123");
+        let fp3 = model_source_fingerprint("https://api.example.com/v1/", "sk-123");
+        let fp4 = model_source_fingerprint(" https://api.example.com ", "sk-123 ");
+        assert_eq!(fp1, "https://api.example.com||sk-123");
+        assert_eq!(fp1, fp2);
+        assert_eq!(fp2, fp3);
+        assert_eq!(fp3, fp4);
+    }
+
+    #[test]
+    fn build_provider_payload_supports_custom_source_label() {
+        let payload = build_provider_payload_with_source(
+            "deepseek-chat",
+            &["deepseek-chat".to_string()],
+            Some("https://api.deepseek.com/v1/"),
+        );
+        assert_eq!(
+            payload[0]["providerDisplayName"],
+            "AI-Helper (api.deepseek.com)"
+        );
+        assert_eq!(
+            payload[0]["modelList"][0]["modelDesc"],
+            "deepseek-chat via api.deepseek.com"
         );
     }
 

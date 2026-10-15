@@ -82,7 +82,7 @@ export const TOOL_EXCLUSIVE_GUIDES: Record<string, ToolExclusiveGuide> = {
     title: "WorkBuddy 专属分组与密钥规则",
     tag: "多模型聚合通道",
     desc: "WorkBuddy 本地注册管理多种异构模型（如 DeepSeek、Claude、GPT-4o 等）。绑定的 Key 所属分组必须完整覆盖 models.json 中所配置目标模型的路由与额度权限。",
-    technicalNote: "建议关联全模型覆盖或高权限多渠道分组，确保切换不同助手模型时通道持续可用。配置将直接持久化于 ~/.workbuddy-ai/models.json。",
+    technicalNote: "建议关联全模型覆盖或高权限多渠道分组，确保切换不同助手模型时通道持续可用。配置将直接持久化于 ~/.workbuddy/models.json (并自动兼容 ~/.workbuddy-ai/models.json)。",
     recommendedKeywords: ["workbuddy", "all", "svip", "default"],
   },
   acciowork: {

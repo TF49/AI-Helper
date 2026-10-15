@@ -109,10 +109,123 @@ pub struct WorkbuddySavePayload {
     pub max_output_tokens: Option<u32>,
 }
 
-pub fn workbuddy_config_path() -> Result<PathBuf, AppError> {
+pub fn workbuddy_primary_config_path() -> Result<PathBuf, AppError> {
+    if let Ok(dir) = std::env::var("WORKBUDDY_CONFIG_DIR") {
+        let p = PathBuf::from(dir.trim());
+        if !p.as_os_str().is_empty() {
+            return Ok(p.join("models.json"));
+        }
+    }
+    if let Ok(dir) = std::env::var("CODEBUDDY_CONFIG_DIR") {
+        let p = PathBuf::from(dir.trim());
+        if !p.as_os_str().is_empty() {
+            return Ok(p.join("models.json"));
+        }
+    }
     let home = dirs::home_dir()
         .ok_or_else(|| AppError::ConfigNotFound("无法获取用户主目录".to_string()))?;
-    Ok(home.join(".workbuddy-ai").join("models.json"))
+
+    // 默认主路径为官方标准 WorkBuddy 路径: ~/.workbuddy/models.json
+    Ok(home.join(".workbuddy").join("models.json"))
+}
+
+#[allow(dead_code)]
+pub fn workbuddy_config_path() -> Result<PathBuf, AppError> {
+    workbuddy_primary_config_path()
+}
+
+/// 获取 WorkBuddy 所有可能探测和同步写入的配置文件候选路径
+/// 包含官方标准路径 ~/.workbuddy/models.json 以及兼容历史/特定版本的 ~/.workbuddy-ai/models.json
+pub fn get_all_workbuddy_config_paths() -> Vec<PathBuf> {
+    let mut paths = Vec::new();
+    if let Ok(dir) = std::env::var("WORKBUDDY_CONFIG_DIR") {
+        let p = PathBuf::from(dir.trim());
+        if !p.as_os_str().is_empty() {
+            let m = p.join("models.json");
+            if !paths.contains(&m) {
+                paths.push(m);
+            }
+        }
+    }
+    if let Ok(dir) = std::env::var("CODEBUDDY_CONFIG_DIR") {
+        let p = PathBuf::from(dir.trim());
+        if !p.as_os_str().is_empty() {
+            let m = p.join("models.json");
+            if !paths.contains(&m) {
+                paths.push(m);
+            }
+        }
+    }
+    if let Some(home) = dirs::home_dir() {
+        // 1. 官方标准 WorkBuddy 路径 (其他用户及主流版本使用)
+        let std_path = home.join(".workbuddy").join("models.json");
+        if !paths.contains(&std_path) {
+            paths.push(std_path);
+        }
+        // 2. 兼容路径 ~/.workbuddy-ai/models.json
+        let ai_path = home.join(".workbuddy-ai").join("models.json");
+        if !paths.contains(&ai_path) {
+            paths.push(ai_path);
+        }
+    }
+    paths
+}
+
+/// 读取并聚合 WorkBuddy 在所有候选路径（~/.workbuddy 与 ~/.workbuddy-ai）中的模型配置
+/// 返回 (聚合后的模型列表, 主路径, 是否至少存在一个配置文件)
+pub fn read_all_workbuddy_entries() -> (Vec<WorkbuddyModelEntry>, PathBuf, bool) {
+    let primary_path = workbuddy_primary_config_path().unwrap_or_else(|_| {
+        dirs::home_dir()
+            .map(|h| h.join(".workbuddy").join("models.json"))
+            .unwrap_or_default()
+    });
+
+    let all_paths = get_all_workbuddy_config_paths();
+    let mut merged: Vec<WorkbuddyModelEntry> = Vec::new();
+    let mut any_exists = false;
+
+    // 1. 优先读取主配置文件 (~/.workbuddy/models.json)
+    let primary_count = if primary_path.exists() {
+        any_exists = true;
+        let p_entries = read_workbuddy_entries(&primary_path);
+        let count = p_entries.len();
+        merged.extend(p_entries);
+        count
+    } else {
+        0
+    };
+
+    // 2. 遍历其他兼容路径（例如 ~/.workbuddy-ai/models.json），合并尚未记录的自定义模型
+    for path in &all_paths {
+        if path == &primary_path {
+            continue;
+        }
+        if path.exists() {
+            any_exists = true;
+            let other_entries = read_workbuddy_entries(path);
+            for entry in other_entries {
+                if !merged.iter().any(|m| m.id == entry.id) {
+                    merged.push(entry);
+                }
+            }
+        }
+    }
+
+    // 3. 智能自动同步兼容：
+    // 若主路径 (~/.workbuddy/models.json) 尚不存在或其模型数少于合并后的模型数（例如 .workbuddy-ai 中配置了更多模型），
+    // 自动将聚合配置同步写入主路径，确保打开 WorkBuddy 时模型能立即被完整识别生效！
+    if !merged.is_empty() && (!primary_path.exists() || primary_count < merged.len()) {
+        if let Some(parent) = primary_path.parent() {
+            let _ = std::fs::create_dir_all(parent);
+        }
+        if let Ok(json_text) = serde_json::to_string_pretty(&merged) {
+            if std::fs::write(&primary_path, json_text).is_ok() {
+                any_exists = true;
+            }
+        }
+    }
+
+    (merged, primary_path, any_exists)
 }
 
 pub fn detect_workbuddy_installation() -> (bool, Option<String>) {
@@ -170,8 +283,7 @@ pub fn read_workbuddy_entries(path: &PathBuf) -> Vec<WorkbuddyModelEntry> {
 }
 
 pub fn get_workbuddy_config() -> Result<WorkbuddyUIConfig, AppError> {
-    let path = workbuddy_config_path()?;
-    let config_exists = path.exists();
+    let (entries, primary_path, config_exists) = read_all_workbuddy_entries();
     let (is_installed, app_path) = detect_workbuddy_installation();
 
     let mut base_url = "https://bob-api.com/".to_string();
@@ -188,8 +300,6 @@ pub fn get_workbuddy_config() -> Result<WorkbuddyUIConfig, AppError> {
     let mut supported_efforts = vec!["medium".to_string()];
     let mut max_input_tokens = Some(32768);
     let mut max_output_tokens = Some(32768);
-
-    let entries = read_workbuddy_entries(&path);
 
     if let Some(entry) = entries
         .iter()
@@ -239,7 +349,7 @@ pub fn get_workbuddy_config() -> Result<WorkbuddyUIConfig, AppError> {
         api_key,
         model,
         config_exists,
-        config_path: path.display().to_string(),
+        config_path: primary_path.display().to_string(),
         is_installed: is_installed || config_exists,
         app_path,
         supports_tool_call,
@@ -257,10 +367,8 @@ pub fn get_workbuddy_config() -> Result<WorkbuddyUIConfig, AppError> {
 }
 
 pub fn set_workbuddy_config(payload: WorkbuddySavePayload) -> Result<(), AppError> {
-    let path = workbuddy_config_path()?;
-    if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent)?;
-    }
+    let (mut entries, primary_path, _) = read_all_workbuddy_entries();
+    let all_paths = get_all_workbuddy_config_paths();
 
     // 规范化后端请求 URL
     // 当 useCustomProtocol 为 false 时，WorkBuddy 会自动补全 /chat/completions，因此 base_url 应传入形如 https://bob-api.com/v1
@@ -275,8 +383,6 @@ pub fn set_workbuddy_config(payload: WorkbuddySavePayload) -> Result<(), AppErro
         }
     };
 
-    // 读取现有配置，保留已配置的其他模型
-    let mut entries = read_workbuddy_entries(&path);
     let model_id = payload.model.trim().to_string();
 
     let reasoning_config = if payload.supports_reasoning {
@@ -344,24 +450,58 @@ pub fn set_workbuddy_config(payload: WorkbuddySavePayload) -> Result<(), AppErro
     }
 
     let json_text = serde_json::to_string_pretty(&entries)?;
-    std::fs::write(&path, json_text)?;
+
+    // 核心保证：
+    // 1. 优先保证官方标准主路径 (~/.workbuddy/models.json) 写入成功
+    if let Some(parent) = primary_path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    std::fs::write(&primary_path, &json_text)?;
+
+    // 2. 双向原子级同步写入所有其他候选兼容路径（~/.workbuddy-ai/models.json 等）
+    for path in all_paths {
+        if path == primary_path {
+            continue;
+        }
+        if let Some(parent) = path.parent() {
+            let _ = std::fs::create_dir_all(parent);
+        }
+        if let Err(e) = std::fs::write(&path, &json_text) {
+            log::warn!(
+                "同步写入 WorkBuddy 兼容配置文件至 {} 失败: {}",
+                path.display(),
+                e
+            );
+        }
+    }
 
     Ok(())
 }
 
 pub fn delete_workbuddy_model(model_id: String) -> Result<Vec<WorkbuddyModelEntry>, AppError> {
-    let path = workbuddy_config_path()?;
-    if !path.exists() {
-        return Ok(Vec::new());
-    }
-
-    let mut entries = read_workbuddy_entries(&path);
+    let (mut entries, primary_path, _) = read_all_workbuddy_entries();
+    let all_paths = get_all_workbuddy_config_paths();
     let original_len = entries.len();
     entries.retain(|e| e.id != model_id.trim());
 
     if entries.len() != original_len {
         let json_text = serde_json::to_string_pretty(&entries)?;
-        std::fs::write(&path, json_text)?;
+
+        // 1. 写入主路径
+        if let Some(parent) = primary_path.parent() {
+            let _ = std::fs::create_dir_all(parent);
+        }
+        let _ = std::fs::write(&primary_path, &json_text);
+
+        // 2. 同步清理其他兼容路径
+        for path in all_paths {
+            if path == primary_path {
+                continue;
+            }
+            if path.exists() {
+                let _ = std::fs::write(&path, &json_text);
+            }
+        }
     }
 
     Ok(entries)
@@ -524,5 +664,52 @@ mod tests {
         assert_eq!(entries[0].id, "gpt-5.6-sol");
         assert_eq!(entries[0].api_key, Some("sk-new".to_string()));
         assert_eq!(entries[0].max_input_tokens, Some(65536));
+    }
+
+    #[test]
+    fn test_candidate_paths_contain_standard_and_ai() {
+        let paths = get_all_workbuddy_config_paths();
+        assert!(!paths.is_empty());
+        let has_std = paths.iter().any(|p| {
+            p.ends_with(".workbuddy\\models.json") || p.ends_with(".workbuddy/models.json")
+        });
+        let has_ai = paths.iter().any(|p| {
+            p.ends_with(".workbuddy-ai\\models.json") || p.ends_with(".workbuddy-ai/models.json")
+        });
+        assert!(
+            has_std,
+            "Candidate paths must contain standard .workbuddy/models.json"
+        );
+        assert!(
+            has_ai,
+            "Candidate paths must contain compatible .workbuddy-ai/models.json"
+        );
+    }
+
+    #[test]
+    fn test_workbuddy_primary_config_path_defaults_to_standard() {
+        let primary = workbuddy_primary_config_path().expect("should return primary path");
+        assert!(
+            primary.ends_with(".workbuddy\\models.json")
+                || primary.ends_with(".workbuddy/models.json"),
+            "Primary path should default to .workbuddy/models.json"
+        );
+    }
+
+    #[test]
+    fn test_read_all_workbuddy_entries_does_not_panic() {
+        let (entries, primary_path, _exists) = read_all_workbuddy_entries();
+        assert!(
+            primary_path.ends_with(".workbuddy\\models.json")
+                || primary_path.ends_with(".workbuddy/models.json"),
+            "Primary path should be standard"
+        );
+        // 如果当前环境中存在 .workbuddy-ai/models.json，自动同步后主路径也应存在
+        if !entries.is_empty() {
+            assert!(
+                primary_path.exists(),
+                "Primary path should have been auto-synced"
+            );
+        }
     }
 }

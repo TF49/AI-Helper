@@ -315,7 +315,7 @@ export function TerminalTestModal({
             });
           }
           addLog(
-            `✓ 配置文件 ~/.workbuddy-ai/models.json 已成功写入 (支持多模型共存，自动拼接追加)`,
+            `✓ 配置文件 ~/.workbuddy/models.json 已成功写入 (支持多模型共存，自动双向兼容 ~/.workbuddy-ai)`,
             "success",
           );
           addLog(`💡 WorkBuddy 已通过内部热重载机制自动感知新模型`, "info");

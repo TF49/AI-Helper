@@ -227,9 +227,13 @@ export function QuickToolsModal({
                 </strong>
                 : 自定义服务商模型配置保存在用户目录下的{" "}
                 <code className="text-emerald-600 dark:text-emerald-300 font-mono font-medium">
+                  ~/.workbuddy/models.json
+                </code>{" "}
+                (同时自动双向兼容{" "}
+                <code className="text-emerald-600 dark:text-emerald-300 font-mono font-medium">
                   ~/.workbuddy-ai/models.json
                 </code>
-                ，API Key
+                )，API Key
                 仅以明文形式直接保存在配置文件中（无需注入系统环境变量），支持客户端内部实时热重载。
               </p>
               <p className="text-slate-400 dark:text-gray-500 text-[11px]">
