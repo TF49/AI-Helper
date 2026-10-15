@@ -335,4 +335,26 @@ export interface UserWalletInfo {
   rmb_to_usd_rate: number;    // 充值比例 (默认 4，即 1￥ = 4$)
 }
 
+// ── 意见反馈相关类型定义 ──
 
+export type FeedbackType = "bug" | "feature" | "other";
+
+export interface FeishuFeedbackPayload {
+  feedback_type: FeedbackType;
+  content: string;
+  email: string;
+  app_version: string;
+  os_info: string;
+  active_target: string;
+  network_status: string;
+  logged_in_user?: string;
+  webhook_url?: string;
+  app_id?: string;
+  app_secret?: string;
+  chat_id?: string;
+}
+
+export interface FeedbackSubmitResult {
+  success: boolean;
+  message: string;
+}

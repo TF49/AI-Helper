@@ -7,6 +7,7 @@ mod auth;
 mod claude;
 mod codex;
 mod error;
+mod feedback;
 mod installer_download;
 mod model_fetch;
 mod network;
@@ -644,6 +645,8 @@ pub fn run() {
             apply_api_key_to_agents,
             get_channel_group_overview,
             get_user_wallet,
+            feedback::get_system_diagnostic_info,
+            feedback::submit_feishu_feedback,
         ])
         .build(tauri::generate_context!())
         .expect("error while building ai-helper")

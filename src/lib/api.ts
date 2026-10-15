@@ -25,6 +25,8 @@ import type {
   UserWalletInfo,
   AppInstallerInfo,
   AppDownloadEvent,
+  FeishuFeedbackPayload,
+  FeedbackSubmitResult,
 } from "../types";
 
 export const isTauri =
@@ -272,6 +274,13 @@ function getMockResponse<T>(cmd: string, _args?: Record<string, unknown>): T {
     case "show_file_in_folder":
     case "open_system_uri":
       return undefined as unknown as T;
+    case "get_system_diagnostic_info":
+      return (typeof navigator !== "undefined" ? `${navigator.platform} (Web Preview)` : "Windows 10 x64") as unknown as T;
+    case "submit_feishu_feedback":
+      return {
+        success: true,
+        message: "【Web 预览模式】模拟已向飞书发送反馈卡片",
+      } as unknown as T;
     default:
       return undefined as unknown as T;
   }
@@ -797,6 +806,12 @@ export async function openSystemUri(uri: string): Promise<void> {
   return invoke("open_system_uri", { uri });
 }
 
+export async function getSystemDiagnosticInfo(): Promise<string> {
+  return invoke<string>("get_system_diagnostic_info");
+}
 
-
-
+export async function submitFeishuFeedback(
+  payload: FeishuFeedbackPayload,
+): Promise<FeedbackSubmitResult> {
+  return invoke<FeedbackSubmitResult>("submit_feishu_feedback", { payload });
+}

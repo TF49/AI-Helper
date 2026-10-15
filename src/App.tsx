@@ -21,6 +21,7 @@ import {
   KeyRound,
   Radio,
   Wallet,
+  MessageSquare,
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
@@ -38,6 +39,7 @@ import { WorkbuddyPanel } from "./components/WorkbuddyPanel";
 import { AccioWorkPanel } from "./components/AccioWorkPanel";
 import { AppPathsPanel } from "./components/AppPathsPanel";
 import { QuickToolsModal } from "./components/QuickToolsModal";
+import { FeedbackModal } from "./components/FeedbackModal";
 import { InitializationModal } from "./components/InitializationModal";
 import { LoginModal } from "./components/auth/LoginModal";
 import { TokenSelectModal } from "./components/auth/TokenSelectModal";
@@ -84,6 +86,7 @@ function AppContent() {
   const [networkState, setNetworkState] = useState<NetworkState>("checking");
   const [toolsOpen, setToolsOpen] = useState(false);
   const [initModalOpen, setInitModalOpen] = useState(false);
+  const [feedbackModalOpen, setFeedbackModalOpen] = useState(false);
   const [appVersion, setAppVersion] = useState("...");
   const { resolvedTheme } = useTheme();
   const win = appWindow;
@@ -442,6 +445,17 @@ function AppContent() {
         <div className="flex items-center gap-1.5">
           <ThemeToggle />
 
+          {/* 意见反馈按钮 */}
+          <button
+            type="button"
+            onClick={() => setFeedbackModalOpen(true)}
+            className="h-7 px-2 flex items-center gap-1.5 rounded-lg text-xs font-medium border border-transparent hover:border-slate-200 dark:hover:border-white/10 bg-slate-100/60 hover:bg-slate-200/80 text-slate-600 hover:text-slate-900 dark:bg-white/5 dark:hover:bg-white/10 dark:text-gray-300 dark:hover:text-white transition-colors cursor-pointer"
+            title="意见反馈 (BUG反馈、功能建议与工单)"
+          >
+            <MessageSquare size={12} className="text-cyan-500" />
+            <span className="text-[11px] font-normal">反馈</span>
+          </button>
+
           <div className="h-3.5 w-[1px] bg-slate-200 dark:bg-white/10 mx-1" />
 
           {/* 明确的“后台运行”按钮 (转入系统托盘常驻守护，无需快捷键) */}
@@ -717,6 +731,16 @@ function AppContent() {
                       <span className="absolute -left-1 top-2.5 bottom-2.5 w-1 rounded-r-full bg-teal-500" />
                     )}
                     <FolderGit2 size={16} />
+                  </button>
+
+                  {/* 意见反馈 */}
+                  <button
+                    type="button"
+                    onClick={() => setFeedbackModalOpen(true)}
+                    className="w-10 h-10 rounded-xl flex items-center justify-center bg-cyan-50/80 hover:bg-cyan-100 text-cyan-600 dark:bg-cyan-500/10 dark:hover:bg-cyan-500/20 dark:text-cyan-400 transition-colors cursor-pointer"
+                    title="意见反馈 (BUG反馈 · 功能建议 · 其他)"
+                  >
+                    <MessageSquare size={15} />
                   </button>
                 </div>
               </div>
@@ -1128,6 +1152,25 @@ function AppContent() {
                             />
                           )}
                         </button>
+
+                        {/* 意见反馈选项 */}
+                        <button
+                          type="button"
+                          onClick={() => setFeedbackModalOpen(true)}
+                          className="w-full flex items-center justify-between px-2.5 py-2 rounded-xl border border-transparent text-left text-xs font-medium text-slate-700 dark:text-gray-300 hover:bg-slate-100 dark:hover:bg-white/5 transition-colors cursor-pointer group"
+                        >
+                          <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                            <div className="w-6 h-6 rounded-md flex items-center justify-center flex-shrink-0 bg-cyan-50 dark:bg-cyan-500/10 text-cyan-600 dark:text-cyan-400">
+                              <MessageSquare size={13} />
+                            </div>
+                            <div className="min-w-0 flex-1">
+                              <div className="leading-tight">意见反馈</div>
+                              <div className="text-[10px] text-slate-400 dark:text-gray-500 mt-0.5">
+                                BUG反馈与功能建议
+                              </div>
+                            </div>
+                          </div>
+                        </button>
                       </motion.div>
                     )}
                   </AnimatePresence>
@@ -1387,6 +1430,15 @@ function AppContent() {
                 ? "claude-3-7-sonnet"
                 : "gpt-4o"
         }
+      />
+
+      <FeedbackModal
+        open={feedbackModalOpen}
+        onClose={() => setFeedbackModalOpen(false)}
+        appVersion={appVersion}
+        activeTab={tab}
+        networkState={networkState}
+        currentUser={authState.user}
       />
 
       <ForceUpdateModal
