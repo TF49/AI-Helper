@@ -1,9 +1,11 @@
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
 
-pub const COMPILE_TIME_APP_ID: Option<&str> = option_env!("FEISHU_APP_ID");
-pub const COMPILE_TIME_APP_SECRET: Option<&str> = option_env!("FEISHU_APP_SECRET");
-pub const COMPILE_TIME_CHAT_ID: Option<&str> = option_env!("FEISHU_CHAT_ID");
+/// 官方内置默认飞书群 Webhook 地址（免用户配置，开箱即用直接推送至开发团队飞书群）
+pub const DEFAULT_FEISHU_WEBHOOK_URL: &str =
+    "https://open.feishu.cn/open-apis/bot/v2/hook/89f0dca7-8073-4dfc-be74-9379c3d08e1e";
+
+/// 编译期通过 .env 或 CI 注入的环境变量（可选，若配置则优先覆盖默认地址）
 pub const COMPILE_TIME_WEBHOOK_URL: Option<&str> = option_env!("FEISHU_WEBHOOK_URL");
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
@@ -17,8 +19,11 @@ pub struct FeishuFeedbackPayload {
     pub network_status: String,
     pub logged_in_user: Option<String>,
     pub webhook_url: Option<String>,
+    #[serde(default)]
     pub app_id: Option<String>,
+    #[serde(default)]
     pub app_secret: Option<String>,
+    #[serde(default)]
     pub chat_id: Option<String>,
 }
 
@@ -28,12 +33,13 @@ pub struct FeedbackSubmitResult {
     pub message: String,
 }
 
-/// 解析环境变量与编译期注入的凭据 (优先级: 参数传参 -> 运行期环境变量 -> 编译期环境变量)
-fn resolve_credential(
+/// 解析 Webhook 凭据 (优先级: 参数传参 -> 运行期环境变量 -> 编译期环境变量 -> 内置默认值)
+fn resolve_webhook_url(
     payload_val: Option<&str>,
     runtime_env_key: &str,
     compile_time_val: Option<&str>,
-) -> Option<String> {
+    fallback_val: &str,
+) -> String {
     payload_val
         .map(str::trim)
         .filter(|s| !s.is_empty())
@@ -50,6 +56,7 @@ fn resolve_credential(
                 .filter(|s| !s.is_empty())
                 .map(str::to_string)
         })
+        .unwrap_or_else(|| fallback_val.to_string())
 }
 
 /// 获取当前系统的详细操作系统信息 (e.g. "Windows 11 Pro (x86_64)")
@@ -155,7 +162,7 @@ fn build_feishu_card(payload: &FeishuFeedbackPayload) -> serde_json::Value {
     })
 }
 
-/// 向飞书提交意见反馈（优先采用环境变量配置的自建应用机器人与 Webhook 机器人）
+/// 向飞书 Webhook 提交意见反馈互动卡片（直接向开发团队飞书群推送，终端用户无需任何配置）
 #[tauri::command]
 pub async fn submit_feishu_feedback(
     payload: FeishuFeedbackPayload,
@@ -167,172 +174,119 @@ pub async fn submit_feishu_feedback(
 
     let card_obj = build_feishu_card(&payload);
 
-    let app_id = resolve_credential(
-        payload.app_id.as_deref(),
-        "FEISHU_APP_ID",
-        COMPILE_TIME_APP_ID,
-    );
-    let app_secret = resolve_credential(
-        payload.app_secret.as_deref(),
-        "FEISHU_APP_SECRET",
-        COMPILE_TIME_APP_SECRET,
-    );
-    let chat_id = resolve_credential(
-        payload.chat_id.as_deref(),
-        "FEISHU_CHAT_ID",
-        COMPILE_TIME_CHAT_ID,
+    let webhook_url = resolve_webhook_url(
+        payload.webhook_url.as_deref(),
+        "FEISHU_WEBHOOK_URL",
+        COMPILE_TIME_WEBHOOK_URL,
+        DEFAULT_FEISHU_WEBHOOK_URL,
     );
 
-    // 模式 1：飞书开放平台自建应用机器人 (App ID + App Secret + Chat ID)
-    if let (Some(valid_app_id), Some(valid_secret), Some(valid_chat)) =
-        (app_id, app_secret, chat_id)
-    {
-        // 1. 获取 tenant_access_token
-        let token_resp = client
-            .post("https://open.feishu.cn/open-apis/auth/v3/tenant_access_token/internal")
-            .json(&serde_json::json!({
-                "app_id": valid_app_id,
-                "app_secret": valid_secret,
-            }))
+    if webhook_url.starts_with("http://") || webhook_url.starts_with("https://") {
+        let webhook_payload = serde_json::json!({
+            "msg_type": "interactive",
+            "card": card_obj,
+        });
+
+        let response = client
+            .post(&webhook_url)
+            .json(&webhook_payload)
             .send()
             .await
-            .map_err(|e| format!("请求飞书开放平台 Token 失败: {}", e))?;
+            .map_err(|e| format!("向飞书 Webhook 发送请求失败: {}", e))?;
 
-        let token_status = token_resp.status();
-        let token_body: serde_json::Value = token_resp
-            .json()
+        let status = response.status();
+        let body_text = response
+            .text()
             .await
-            .map_err(|e| format!("解析飞书 Token 响应异常: {}", e))?;
+            .unwrap_or_else(|_| "<读取响应体失败>".to_string());
 
-        if !token_status.is_success() || token_body.get("code").and_then(|v| v.as_i64()) != Some(0)
-        {
-            let msg = token_body
-                .get("msg")
-                .and_then(|v| v.as_str())
-                .unwrap_or("未知凭证错误");
+        if !status.is_success() {
             return Ok(FeedbackSubmitResult {
                 success: false,
                 message: format!(
-                    "飞书开放平台认证失败 ({}): 请检查环境变量中的 App ID 与 App Secret 是否匹配",
-                    msg
+                    "飞书 Webhook 返回 HTTP 状态异常 ({}): {}",
+                    status, body_text
                 ),
             });
         }
 
-        let access_token = token_body
-            .get("tenant_access_token")
-            .and_then(|v| v.as_str())
-            .ok_or_else(|| "未能从飞书响应中获取 tenant_access_token".to_string())?;
+        if let Ok(res_json) = serde_json::from_str::<serde_json::Value>(&body_text) {
+            let code = res_json
+                .get("code")
+                .and_then(|v| v.as_i64())
+                .or_else(|| res_json.get("StatusCode").and_then(|v| v.as_i64()))
+                .unwrap_or(0);
 
-        // 2. 发送互动卡片到指定会话
-        let card_content_str =
-            serde_json::to_string(&card_obj).map_err(|e| format!("序列化卡片内容失败: {}", e))?;
-
-        let send_resp = client
-            .post("https://open.feishu.cn/open-apis/im/v1/messages?receive_id_type=chat_id")
-            .header("Authorization", format!("Bearer {}", access_token))
-            .json(&serde_json::json!({
-                "receive_id": valid_chat,
-                "msg_type": "interactive",
-                "content": card_content_str,
-            }))
-            .send()
-            .await
-            .map_err(|e| format!("向飞书群推送消息失败: {}", e))?;
-
-        let send_status = send_resp.status();
-        let send_body: serde_json::Value = send_resp
-            .json()
-            .await
-            .map_err(|e| format!("解析飞书发送响应异常: {}", e))?;
-
-        if send_status.is_success() && send_body.get("code").and_then(|v| v.as_i64()) == Some(0) {
-            return Ok(FeedbackSubmitResult {
-                success: true,
-                message: "感谢您的反馈！内容已成功推送到开发团队飞书群。".to_string(),
-            });
-        }
-
-        let err_code = send_body.get("code").and_then(|v| v.as_i64()).unwrap_or(-1);
-        let err_msg = send_body
-            .get("msg")
-            .and_then(|v| v.as_str())
-            .unwrap_or("推送失败");
-        return Ok(FeedbackSubmitResult {
-            success: false,
-            message: format!(
-                "飞书消息推送失败 (代码 {}): {} (请确认机器人已加入该群且开通发消息权限)",
-                err_code, err_msg
-            ),
-        });
-    }
-
-    // 模式 2：群自定义机器人 Webhook
-    let webhook_url = resolve_credential(
-        payload.webhook_url.as_deref(),
-        "FEISHU_WEBHOOK_URL",
-        COMPILE_TIME_WEBHOOK_URL,
-    );
-
-    if let Some(valid_webhook) = webhook_url {
-        if valid_webhook.starts_with("http://") || valid_webhook.starts_with("https://") {
-            let webhook_payload = serde_json::json!({
-                "msg_type": "interactive",
-                "card": card_obj,
-            });
-
-            let response = client
-                .post(&valid_webhook)
-                .json(&webhook_payload)
-                .send()
-                .await
-                .map_err(|e| format!("向飞书 Webhook 发送请求失败: {}", e))?;
-
-            let status = response.status();
-            let body_text = response
-                .text()
-                .await
-                .unwrap_or_else(|_| "<读取响应体失败>".to_string());
-
-            if !status.is_success() {
+            if code != 0 {
+                let msg = res_json
+                    .get("msg")
+                    .and_then(|v| v.as_str())
+                    .or_else(|| res_json.get("StatusMessage").and_then(|v| v.as_str()))
+                    .unwrap_or("未知错误");
                 return Ok(FeedbackSubmitResult {
                     success: false,
-                    message: format!(
-                        "飞书 Webhook 返回 HTTP 状态异常 ({}): {}",
-                        status, body_text
-                    ),
+                    message: format!("飞书机器人返回错误 (代码 {}): {}", code, msg),
                 });
             }
-
-            if let Ok(res_json) = serde_json::from_str::<serde_json::Value>(&body_text) {
-                let code = res_json
-                    .get("code")
-                    .and_then(|v| v.as_i64())
-                    .or_else(|| res_json.get("StatusCode").and_then(|v| v.as_i64()))
-                    .unwrap_or(0);
-
-                if code != 0 {
-                    let msg = res_json
-                        .get("msg")
-                        .and_then(|v| v.as_str())
-                        .or_else(|| res_json.get("StatusMessage").and_then(|v| v.as_str()))
-                        .unwrap_or("未知错误");
-                    return Ok(FeedbackSubmitResult {
-                        success: false,
-                        message: format!("飞书机器人返回错误 (代码 {}): {}", code, msg),
-                    });
-                }
-            }
-
-            return Ok(FeedbackSubmitResult {
-                success: true,
-                message: "感谢您的反馈！内容已成功推送到开发团队飞书群。".to_string(),
-            });
         }
+
+        return Ok(FeedbackSubmitResult {
+            success: true,
+            message: "感谢您的反馈！内容已成功推送到开发团队飞书群。".to_string(),
+        });
     }
 
     Ok(FeedbackSubmitResult {
         success: false,
-        message: "未检测到飞书机器人环境变量 (FEISHU_APP_ID / FEISHU_WEBHOOK_URL)，已为您将反馈文本复制到剪贴板。".to_string(),
+        message: "飞书 Webhook 地址无效，已为您将反馈文本复制到剪贴板。".to_string(),
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_resolve_webhook_url_fallback() {
+        let res = resolve_webhook_url(
+            None,
+            "NON_EXISTENT_VAR_XYZ",
+            None,
+            DEFAULT_FEISHU_WEBHOOK_URL,
+        );
+        assert_eq!(res, DEFAULT_FEISHU_WEBHOOK_URL);
+    }
+
+    #[test]
+    fn test_resolve_webhook_url_payload_precedence() {
+        let res = resolve_webhook_url(
+            Some("https://custom.webhook.url"),
+            "NON_EXISTENT_VAR_XYZ",
+            Some("https://compile.url"),
+            DEFAULT_FEISHU_WEBHOOK_URL,
+        );
+        assert_eq!(res, "https://custom.webhook.url");
+    }
+
+    #[test]
+    fn test_build_feishu_card() {
+        let payload = FeishuFeedbackPayload {
+            feedback_type: "bug".to_string(),
+            content: "测试Bug".to_string(),
+            email: "test@example.com".to_string(),
+            app_version: "1.0.64".to_string(),
+            os_info: "Windows 11".to_string(),
+            active_target: "Claude Code".to_string(),
+            network_status: "正常".to_string(),
+            logged_in_user: Some("test_user".to_string()),
+            webhook_url: None,
+            app_id: None,
+            app_secret: None,
+            chat_id: None,
+        };
+
+        let card = build_feishu_card(&payload);
+        assert_eq!(card["header"]["template"], "carmine");
+        assert!(card["elements"].as_array().unwrap().len() >= 3);
+    }
 }

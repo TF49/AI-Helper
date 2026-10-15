@@ -349,9 +349,6 @@ export interface FeishuFeedbackPayload {
   network_status: string;
   logged_in_user?: string;
   webhook_url?: string;
-  app_id?: string;
-  app_secret?: string;
-  chat_id?: string;
 }
 
 export interface FeedbackSubmitResult {

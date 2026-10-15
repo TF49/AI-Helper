@@ -35,16 +35,9 @@ fn main() {
     load_env_file(&manifest_dir.join("../.env"));
     load_env_file(&manifest_dir.join(".env"));
 
-    for key in [
-        "FEISHU_APP_ID",
-        "FEISHU_APP_SECRET",
-        "FEISHU_CHAT_ID",
-        "FEISHU_WEBHOOK_URL",
-    ] {
-        println!("cargo:rerun-if-env-changed={}", key);
-        if let Ok(val) = std::env::var(key) {
-            println!("cargo:rustc-env={}={}", key, val);
-        }
+    println!("cargo:rerun-if-env-changed=FEISHU_WEBHOOK_URL");
+    if let Ok(val) = std::env::var("FEISHU_WEBHOOK_URL") {
+        println!("cargo:rustc-env=FEISHU_WEBHOOK_URL={}", val);
     }
 
     // Windows: Embed Common Controls v6 manifest for test binaries
