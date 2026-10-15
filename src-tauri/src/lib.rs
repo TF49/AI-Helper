@@ -7,6 +7,7 @@ mod auth;
 mod claude;
 mod codex;
 mod error;
+mod installer_download;
 mod model_fetch;
 mod network;
 mod process_manager;
@@ -67,6 +68,42 @@ async fn execute_in_terminal(command: String) -> Result<String, String> {
     tokio::task::spawn_blocking(move || process_manager::execute_in_terminal(&command))
         .await
         .map_err(|e| format!("终端启动异常: {}", e))?
+}
+
+#[tauri::command]
+async fn fetch_latest_installer_info(
+    app_type: String,
+) -> Result<installer_download::AppInstallerInfo, String> {
+    installer_download::fetch_latest_installer_info(&app_type).await
+}
+
+#[tauri::command]
+async fn download_installer_file(
+    app_type: String,
+    on_event: tauri::ipc::Channel<installer_download::AppDownloadEvent>,
+) -> Result<String, String> {
+    installer_download::download_installer_file(app_type, on_event).await
+}
+
+#[tauri::command]
+async fn run_installer_file(file_path: String) -> Result<(), String> {
+    tokio::task::spawn_blocking(move || installer_download::run_installer_file(file_path))
+        .await
+        .map_err(|e| format!("执行安装程序异常: {}", e))?
+}
+
+#[tauri::command]
+async fn show_file_in_folder(file_path: String) -> Result<(), String> {
+    tokio::task::spawn_blocking(move || installer_download::show_file_in_folder(file_path))
+        .await
+        .map_err(|e| format!("定位文件异常: {}", e))?
+}
+
+#[tauri::command]
+async fn open_system_uri(uri: String) -> Result<(), String> {
+    tokio::task::spawn_blocking(move || installer_download::open_system_uri(uri))
+        .await
+        .map_err(|e| format!("调起系统协议异常: {}", e))?
 }
 
 #[tauri::command]
@@ -560,6 +597,11 @@ pub fn run() {
             check_app_process_status,
             restart_target_app,
             execute_in_terminal,
+            fetch_latest_installer_info,
+            download_installer_file,
+            run_installer_file,
+            show_file_in_folder,
+            open_system_uri,
             get_site_status,
             get_encryption_key,
             generate_captcha,

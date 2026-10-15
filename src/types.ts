@@ -33,6 +33,25 @@ export interface DetectedPathInfo {
   extra_info?: string | null;
 }
 
+export interface AppInstallerInfo {
+  app_type: "chatgpt" | "workbuddy" | "acciowork";
+  app_name: string;
+  version: string;
+  download_url: string;
+  file_name: string;
+  size_bytes?: number | null;
+  is_external_store: boolean;
+  store_uri?: string | null;
+  winget_command?: string | null;
+  official_web_url?: string | null;
+}
+
+export type AppDownloadEvent =
+  | { event: "Started"; data: { totalBytes?: number; fileName: string } }
+  | { event: "Progress"; data: { downloaded: number; totalBytes: number; percent: number } }
+  | { event: "Finished"; data: { filePath: string } }
+  | { event: "Error"; data: { message: string } };
+
 export type InitStepId = "network" | "paths" | "config" | "confirm";
 export type StepStatus = "pending" | "running" | "success" | "error";
 

@@ -241,10 +241,11 @@ pub fn get_cached_upstream_proxy_url() -> Option<String> {
     fresh
 }
 
-/// 创建带安全策略的 HTTP 客户端
+/// 创建带安全策略的 HTTP 客户端（用于常规 API 交互与配置嗅探）
 pub fn create_client(timeout: Duration) -> Result<reqwest::Client, String> {
     let mut builder = reqwest::Client::builder()
         .user_agent(format!("AI-Helper/{}", CURRENT_VERSION))
+        .connect_timeout(timeout.min(Duration::from_secs(15)))
         .timeout(timeout);
 
     if let Some(proxy_url) = get_upstream_proxy_url() {
@@ -261,6 +262,42 @@ pub fn create_client(timeout: Duration) -> Result<reqwest::Client, String> {
     builder
         .build()
         .map_err(|e| format!("Failed to create HTTP client: {}", e))
+}
+
+/// 创建专用于大文件流式下载的 HTTP 客户端
+/// 配置连接超时与 TCP Keepalive，并给予最长 30 分钟生命周期，避免大文件在低带宽下被全局超时掐断
+pub fn create_download_client(connect_timeout: Duration) -> Result<reqwest::Client, String> {
+    let mut builder = reqwest::Client::builder()
+        .user_agent(format!("AI-Helper/{}", CURRENT_VERSION))
+        .connect_timeout(connect_timeout)
+        .tcp_keepalive(Duration::from_secs(15))
+        .timeout(Duration::from_secs(1800));
+
+    if let Some(proxy_url) = get_upstream_proxy_url() {
+        if let Ok(proxy) = reqwest::Proxy::all(&proxy_url) {
+            builder = builder.proxy(proxy);
+            return builder
+                .build()
+                .map_err(|e| format!("Failed to create HTTP download client with proxy: {}", e));
+        }
+    }
+
+    builder = builder.no_proxy();
+    builder
+        .build()
+        .map_err(|e| format!("Failed to create HTTP download client: {}", e))
+}
+
+/// 创建强制直连（绕过系统/环境代理）的下载客户端，专门用于国内 CDN 节点在代理环境下故障时的容灾重试
+pub fn create_direct_download_client(connect_timeout: Duration) -> Result<reqwest::Client, String> {
+    reqwest::Client::builder()
+        .user_agent(format!("AI-Helper/{}", CURRENT_VERSION))
+        .connect_timeout(connect_timeout)
+        .tcp_keepalive(Duration::from_secs(15))
+        .timeout(Duration::from_secs(1800))
+        .no_proxy()
+        .build()
+        .map_err(|e| format!("Failed to create direct HTTP download client: {}", e))
 }
 
 /// 语义化版本比对（如 "1.0.8" vs "1.0.1"）
@@ -638,8 +675,8 @@ pub async fn download_and_install_update(
     #[cfg(not(target_os = "macos"))]
     let temp_file_path = temp_dir.join(format!("AI-Helper-v{}-Windows-x64-Setup.exe", clean_ver));
 
-    // 使用 60 秒单次超时，适配大安装包下载
-    let client = create_client(Duration::from_secs(60))?;
+    // 使用大文件流式下载客户端，避免全局超时掐断下载
+    let client = create_download_client(Duration::from_secs(30))?;
     let mut last_error = String::new();
 
     for (idx, mirror) in candidate_mirrors.iter().enumerate() {
@@ -703,9 +740,20 @@ pub async fn download_and_install_update(
         let mut stream_failed = false;
 
         use std::io::Write;
-        while let Some(chunk_res) = response.chunk().await.transpose() {
-            match chunk_res {
-                Ok(chunk) => {
+        loop {
+            let chunk_opt =
+                match tokio::time::timeout(Duration::from_secs(45), response.chunk()).await {
+                    Ok(res) => res,
+                    Err(_) => {
+                        last_error = "下载传输超时停滞（45秒未收到新数据）".to_string();
+                        log::warn!("Stream chunk timed out from {}", mirror.name);
+                        stream_failed = true;
+                        break;
+                    }
+                };
+
+            match chunk_opt {
+                Ok(Some(chunk)) => {
                     let chunk_len = chunk.len();
                     if let Err(e) = file.write_all(&chunk) {
                         log::error!("Failed to write chunk to disk: {}", e);
@@ -720,6 +768,7 @@ pub async fn download_and_install_update(
                         total_bytes: content_length.unwrap_or(downloaded),
                     });
                 }
+                Ok(None) => break,
                 Err(e) => {
                     last_error = format!("流式传输中断: {}", e);
                     log::warn!("Stream chunk error from {}: {}", mirror.name, e);

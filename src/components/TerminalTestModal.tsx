@@ -286,9 +286,9 @@ export function TerminalTestModal({
       if (testSuccess) {
         // 保存配置
         if (type === "codex") {
-          addLog(`💾 正在将配置写入本地配置文件与系统环境变量...`, "info");
+          addLog(`💾 正在备份旧配置并纯净写入 ~/.codex/config.toml...`, "info");
           await setCodexConfig(url, apiKey.trim(), model.trim());
-          addLog(`✓ 配置文件 ~/.codex/config.toml 已成功写入`, "success");
+          addLog(`✓ 配置文件 ~/.codex/config.toml 已清除旧内容并纯净写入 (旧配置已备份至 .bak)`, "success");
           addLog(`✓ 系统环境变量 CUSTOM_OPENAI_API_KEY 已更新`, "success");
         } else if (type === "workbuddy") {
           addLog(
@@ -340,11 +340,11 @@ export function TerminalTestModal({
             addLog(`⚠️ Bridge 启动告警: ${bridgeErr}`, "warn");
           }
         } else {
-          addLog(`💾 正在将配置写入本地配置文件与系统环境变量...`, "info");
+          addLog(`💾 正在备份旧配置并纯净写入 ~/.claude/settings.json...`, "info");
           await setClaudeConfig(url, apiKey.trim(), model.trim());
-          addLog(`✓ 配置文件 ~/.claude/settings.json 已成功写入`, "success");
+          addLog(`✓ 配置文件 ~/.claude/settings.json 已清除旧内容并纯净写入 (旧配置已备份至 .bak)`, "success");
           addLog(
-            `✓ 系统环境变量 ANTHROPIC_BASE_URL 与 Token 已更新`,
+            `✓ Claude 代理环境变量与 Token 已更新`,
             "success",
           );
         }

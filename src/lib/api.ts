@@ -23,6 +23,8 @@ import type {
   CurrentAuthState,
   ChannelGroupOverview,
   UserWalletInfo,
+  AppInstallerInfo,
+  AppDownloadEvent,
 } from "../types";
 
 export const isTauri =
@@ -224,6 +226,52 @@ function getMockResponse<T>(cmd: string, _args?: Record<string, unknown>): T {
         window.open(_args.url, "_blank");
       }
       return true as unknown as T;
+    case "fetch_latest_installer_info": {
+      const appType = (_args?.appType as string) || "acciowork";
+      if (appType === "chatgpt") {
+        return {
+          app_type: "chatgpt",
+          app_name: "ChatGPT",
+          version: "Microsoft Store 官方最新版",
+          download_url: "https://apps.microsoft.com/detail/9NT1R1C2HH7J",
+          file_name: "ChatGPT (Microsoft Store)",
+          size_bytes: null,
+          is_external_store: true,
+          store_uri: "ms-windows-store://pdp/?productid=9NT1R1C2HH7J",
+          winget_command:
+            "winget install --id=9NT1R1C2HH7J --source=msstore --accept-package-agreements --accept-source-agreements",
+          official_web_url: "https://chatgpt.com/download",
+        } as unknown as T;
+      } else if (appType === "workbuddy") {
+        return {
+          app_type: "workbuddy",
+          app_name: "WorkBuddy",
+          version: "v5.7.6",
+          download_url:
+            "https://download.codebuddy.cn/workbuddy/saas/win32-x64-user/WorkBuddy-win32-x64-user-5.7.6.40409493-306add2a.exe",
+          file_name: "WorkBuddy-win32-x64-user-5.7.6.exe",
+          size_bytes: 125000000,
+          is_external_store: false,
+          official_web_url: "https://www.workbuddy.cn",
+        } as unknown as T;
+      } else {
+        return {
+          app_type: "acciowork",
+          app_name: "Accio Work",
+          version: "v0.34.5",
+          download_url:
+            "https://work-download.accio.com/package/v0.34.5/Accio-0.34.5-20261013-0010-win.exe?dl_name=Accio-0.34.5-20261013-0010-win_ec130b61.exe",
+          file_name: "Accio-0.34.5-Setup.exe",
+          size_bytes: 156000000,
+          is_external_store: false,
+          official_web_url: "https://www.accio.com/work",
+        } as unknown as T;
+      }
+    }
+    case "run_installer_file":
+    case "show_file_in_folder":
+    case "open_system_uri":
+      return undefined as unknown as T;
     default:
       return undefined as unknown as T;
   }
@@ -707,6 +755,48 @@ export async function getChannelGroupOverview(
 export async function getUserWallet(): Promise<UserWalletInfo> {
   return invoke<UserWalletInfo>("get_user_wallet");
 }
+
+export async function fetchLatestInstallerInfo(appType: string): Promise<AppInstallerInfo> {
+  return invoke<AppInstallerInfo>("fetch_latest_installer_info", { appType });
+}
+
+export async function downloadInstallerFile(
+  appType: string,
+  onEvent: (event: AppDownloadEvent) => void,
+): Promise<string> {
+  if (!isTauri) {
+    onEvent({ event: "Started", data: { totalBytes: 156000000, fileName: `${appType}-setup.exe` } });
+    for (let i = 1; i <= 5; i++) {
+      await new Promise((r) => setTimeout(r, 400));
+      onEvent({
+        event: "Progress",
+        data: { downloaded: i * 31200000, totalBytes: 156000000, percent: i * 20 },
+      });
+    }
+    const mockPath = `C:\\Users\\User\\Downloads\\${appType}-setup.exe`;
+    onEvent({ event: "Finished", data: { filePath: mockPath } });
+    return mockPath;
+  }
+
+  const channel = new Channel<AppDownloadEvent>();
+  channel.onmessage = (event) => {
+    onEvent(event);
+  };
+  return tauriInvoke<string>("download_installer_file", { appType, onEvent: channel });
+}
+
+export async function runInstallerFile(filePath: string): Promise<void> {
+  return invoke("run_installer_file", { filePath });
+}
+
+export async function showFileInFolder(filePath: string): Promise<void> {
+  return invoke("show_file_in_folder", { filePath });
+}
+
+export async function openSystemUri(uri: string): Promise<void> {
+  return invoke("open_system_uri", { uri });
+}
+
 
 
 

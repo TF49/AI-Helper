@@ -1,0 +1,6 @@
+﻿fn test_context() {
+    println!("claude-3-5-sonnet: {}", get_model_context_window("claude-3-5-sonnet"));
+    println!("claude-3.5-sonnet: {}", get_model_context_window("claude-3.5-sonnet"));
+    println!("gpt-4o: {}", get_model_context_window("gpt-4o"));
+    println!("gpt-4.1: {}", get_model_context_window("gpt-4.1"));
+}

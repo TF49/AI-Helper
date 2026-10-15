@@ -17,6 +17,8 @@ import {
   ChevronUp,
   ExternalLink,
   DownloadCloud,
+  Store,
+  Globe,
 } from "lucide-react";
 import {
   ClaudeIcon,
@@ -34,9 +36,13 @@ import {
   openUrl,
   restartTargetApp,
   saveAppPaths,
+  downloadInstallerFile,
+  runInstallerFile,
+  showFileInFolder,
+  openSystemUri,
 } from "../lib/api";
 import { cn } from "../lib/utils";
-import type { AppPathsConfig, DetectedPathInfo } from "../types";
+import type { AppPathsConfig, DetectedPathInfo, AppDownloadEvent } from "../types";
 import { SpotlightCard } from "./react-bits/SpotlightCard";
 import { ButtonToLoaderToSuccess } from "./ui/ButtonToLoaderToSuccess";
 
@@ -133,7 +139,7 @@ export function AppPathsPanel() {
     "claude" | "codex" | "nodejs"
   >("claude");
   const [expandedCardInstall, setExpandedCardInstall] = useState<
-    "claude" | "codex" | null
+    "claude" | "codex" | "chatgpt" | null
   >(null);
   const [claudeSelectedInstallOption, setClaudeSelectedInstallOption] =
     useState("npm_latest");
@@ -142,10 +148,30 @@ export function AppPathsPanel() {
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [runningCmd, setRunningCmd] = useState<string | null>(null);
 
+  // 客户端安装包下载与安装向导状态（按应用类型独立维护，支持并发下载）
+  const [downloadingApps, setDownloadingApps] = useState<
+    Record<string, boolean>
+  >({});
+  const [downloadProgress, setDownloadProgress] = useState<
+    Record<
+      string,
+      {
+        percent: number;
+        downloaded: number;
+        totalBytes: number;
+        fileName: string;
+      }
+    >
+  >({});
+  const [downloadedFiles, setDownloadedFiles] = useState<
+    Record<string, string>
+  >({});
+
   const refreshTimersRef = useRef<Record<string, number>>({});
   const topGuideRef = useRef<HTMLDivElement>(null);
   const claudeDrawerRef = useRef<HTMLDivElement>(null);
   const codexDrawerRef = useRef<HTMLDivElement>(null);
+  const chatgptDrawerRef = useRef<HTMLDivElement>(null);
 
   // 展开抽屉时自动平滑滚动以确保完整命令面板可见，避免被视口截断
   useEffect(() => {
@@ -159,6 +185,13 @@ export function AppPathsPanel() {
     } else if (expandedCardInstall === "codex") {
       requestAnimationFrame(() => {
         codexDrawerRef.current?.scrollIntoView({
+          behavior: "smooth",
+          block: "nearest",
+        });
+      });
+    } else if (expandedCardInstall === "chatgpt") {
+      requestAnimationFrame(() => {
+        chatgptDrawerRef.current?.scrollIntoView({
           behavior: "smooth",
           block: "nearest",
         });
@@ -246,9 +279,15 @@ export function AppPathsPanel() {
       }
 
       if (info.exists && info.path) {
-        toast.success(
-          `成功探测到 ${type.toUpperCase()} 路径: ${info.extra_info || "已就绪"}`,
-        );
+        if (downloadedFiles[type]) {
+          toast.success(
+            `🎉 成功探测并绑定最新安装的 ${type.toUpperCase()} 客户端路径！`,
+          );
+        } else {
+          toast.success(
+            `成功探测到 ${type.toUpperCase()} 路径: ${info.extra_info || "已就绪"}`,
+          );
+        }
       } else {
         toast.warning(
           `未在标准路径或环境变量中自动检测到 ${type.toUpperCase()}`,
@@ -399,6 +438,104 @@ export function AppPathsPanel() {
       toast.error(`终端执行失败: ${err}`);
     } finally {
       setRunningCmd(null);
+    }
+  };
+
+  // 格式化文件字节大小
+  const formatBytes = (bytes: number) => {
+    if (!bytes || bytes <= 0) return "0 MB";
+    const mb = bytes / (1024 * 1024);
+    return `${mb.toFixed(1)} MB`;
+  };
+
+  // 下载客户端官方最新安装包
+  const handleDownloadPackage = async (type: "workbuddy" | "acciowork") => {
+    if (downloadingApps[type]) return;
+    setDownloadingApps((prev) => ({ ...prev, [type]: true }));
+    const label = type === "workbuddy" ? "WorkBuddy" : "Accio Work";
+    toast.info(`正在解析并获取 ${label} 官方最新安装包...`);
+
+    try {
+      const savedPath = await downloadInstallerFile(type, (event: AppDownloadEvent) => {
+        if (event.event === "Started") {
+          setDownloadProgress((prev) => ({
+            ...prev,
+            [type]: {
+              percent: 0,
+              downloaded: 0,
+              totalBytes: event.data.totalBytes || 0,
+              fileName: event.data.fileName,
+            },
+          }));
+        } else if (event.event === "Progress") {
+          setDownloadProgress((prev) => ({
+            ...prev,
+            [type]: {
+              percent: event.data.percent,
+              downloaded: event.data.downloaded,
+              totalBytes: event.data.totalBytes,
+              fileName: prev[type]?.fileName || `${type}-setup.exe`,
+            },
+          }));
+        } else if (event.event === "Finished") {
+          setDownloadedFiles((prev) => ({
+            ...prev,
+            [type]: event.data.filePath,
+          }));
+          toast.success(`${label} 官方安装包已成功下载至系统 Downloads 目录！`);
+        } else if (event.event === "Error") {
+          // 仅记录控制台日志，界面错误通知统一由外层 catch 显示，避免双重弹窗
+          console.error(`${label} 下载异常:`, event.data.message);
+        }
+      });
+
+      setDownloadedFiles((prev) => ({
+        ...prev,
+        [type]: savedPath,
+      }));
+    } catch (err) {
+      toast.error(`${label} 安装包下载失败: ${err}`);
+    } finally {
+      setDownloadingApps((prev) => ({ ...prev, [type]: false }));
+    }
+  };
+
+  // 运行已下载的安装程序
+  const handleRunInstaller = async (filePath: string, appName: string) => {
+    try {
+      await runInstallerFile(filePath);
+      toast.success(`已调起 ${appName} 安装程序。安装完成后，请点击【探测】按钮自动绑定路径！`);
+    } catch (err) {
+      toast.error(`启动安装程序失败: ${err}`);
+    }
+  };
+
+  // 在资源管理器中定位高亮安装包
+  const handleShowInFolder = async (filePath: string) => {
+    try {
+      await showFileInFolder(filePath);
+    } catch (err) {
+      toast.error(`打开所在文件夹失败: ${err}`);
+    }
+  };
+
+  // ChatGPT 官方分发方式处理
+  const handleChatgptInstall = async (method: "store" | "winget" | "web") => {
+    if (method === "store") {
+      try {
+        toast.info("正在唤起微软应用商店安装 ChatGPT 官方客户端...");
+        await openSystemUri("ms-windows-store://pdp/?productid=9NT1R1C2HH7J");
+      } catch (err) {
+        toast.error(`唤起微软商店失败: ${err}，已为您切换为浏览器打开`);
+        void openUrl("https://apps.microsoft.com/detail/9NT1R1C2HH7J");
+      }
+    } else if (method === "winget") {
+      void handleRunInTerminal(
+        "winget install --id=9NT1R1C2HH7J --source=msstore --accept-package-agreements --accept-source-agreements",
+        "ChatGPT 官方安装命令",
+      );
+    } else {
+      void openUrl("https://chatgpt.com/download");
     }
   };
 
@@ -1455,6 +1592,31 @@ export function AppPathsPanel() {
               </div>
 
               <div className="flex items-center gap-1.5 w-full sm:w-auto justify-end">
+                {/* ChatGPT 官方安装方式选择 */}
+                <button
+                  type="button"
+                  onClick={() =>
+                    setExpandedCardInstall((v) =>
+                      v === "chatgpt" ? null : "chatgpt",
+                    )
+                  }
+                  className={cn(
+                    "px-2.5 py-1.5 rounded-lg border text-xs font-medium flex items-center gap-1 cursor-pointer transition-colors",
+                    expandedCardInstall === "chatgpt"
+                      ? "bg-emerald-600 text-white border-emerald-600 shadow-2xs"
+                      : "border-emerald-200 text-emerald-700 bg-emerald-50 hover:bg-emerald-100 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-300",
+                  )}
+                  title="获取与安装 ChatGPT 桌面客户端 (微软应用商店 / WinGet / 官网)"
+                >
+                  <DownloadCloud size={12} />
+                  <span>安装客户端</span>
+                  {expandedCardInstall === "chatgpt" ? (
+                    <ChevronUp size={11} />
+                  ) : (
+                    <ChevronDown size={11} />
+                  )}
+                </button>
+
                 <button
                   type="button"
                   onClick={() => void handleDetectSingle("chatgpt")}
@@ -1498,6 +1660,167 @@ export function AppPathsPanel() {
                 </button>
               </div>
             </div>
+
+            {/* ChatGPT 卡片专属官方安装渠道抽屉 */}
+            {expandedCardInstall === "chatgpt" && (
+              <div
+                ref={chatgptDrawerRef}
+                className="p-3.5 rounded-xl border border-emerald-200/80 dark:border-emerald-500/20 bg-emerald-50/40 dark:bg-emerald-950/20 space-y-3 animate-fade-in"
+              >
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div className="flex items-center gap-1.5 text-xs font-semibold text-emerald-900 dark:text-emerald-300">
+                    <DownloadCloud
+                      size={13}
+                      className="text-emerald-600 dark:text-emerald-400"
+                    />
+                    <span>ChatGPT 官方客户端安装渠道 (Windows x64)</span>
+                  </div>
+                  <span className="text-[10px] text-slate-400 dark:text-gray-500 font-mono">
+                    推荐首选微软商店直装
+                  </span>
+                </div>
+
+                {/* 3 大官方安装渠道展示网格 */}
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-2.5">
+                  {/* 方式 1: 微软应用商店 (推荐) */}
+                  <div className="p-3 rounded-xl bg-white/90 dark:bg-[#151928] border border-emerald-200/80 dark:border-emerald-500/20 flex flex-col justify-between gap-3 shadow-2xs">
+                    <div>
+                      <div className="flex items-center justify-between gap-1 mb-1.5">
+                        <span className="font-semibold text-xs text-slate-800 dark:text-gray-100 flex items-center gap-1.5">
+                          <Store
+                            size={13}
+                            className="text-emerald-600 dark:text-emerald-400 flex-shrink-0"
+                          />
+                          微软应用商店
+                        </span>
+                        <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-300 font-semibold">
+                          推荐
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-slate-500 dark:text-gray-400 leading-relaxed">
+                        官方一键安装部署，后台自动增量升级，省心免维护。
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => void handleChatgptInstall("store")}
+                      className="w-full py-1.5 px-2.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-medium flex items-center justify-center gap-1.5 transition-colors cursor-pointer shadow-2xs"
+                    >
+                      <ExternalLink size={12} />
+                      <span>打开微软应用商店</span>
+                    </button>
+                  </div>
+
+                  {/* 方式 2: WinGet 终端静默安装 */}
+                  <div className="p-3 rounded-xl bg-white/90 dark:bg-[#151928] border border-blue-200/80 dark:border-blue-500/20 flex flex-col justify-between gap-3 shadow-2xs">
+                    <div>
+                      <div className="flex items-center justify-between gap-1 mb-1.5">
+                        <span className="font-semibold text-xs text-slate-800 dark:text-gray-100 flex items-center gap-1.5">
+                          <Terminal
+                            size={13}
+                            className="text-blue-600 dark:text-blue-400 flex-shrink-0"
+                          />
+                          WinGet 静默安装
+                        </span>
+                        <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-blue-100 text-blue-700 dark:bg-blue-500/20 dark:text-blue-300 font-medium font-mono">
+                          CLI
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-slate-500 dark:text-gray-400 leading-relaxed">
+                        适用于命令行环境，在独立控制台自动执行官方安装命令。
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => void handleChatgptInstall("winget")}
+                        disabled={
+                          runningCmd ===
+                          "winget install --id=9NT1R1C2HH7J --source=msstore --accept-package-agreements --accept-source-agreements"
+                        }
+                        className="flex-1 py-1.5 px-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs font-medium flex items-center justify-center gap-1 transition-colors cursor-pointer disabled:opacity-60"
+                      >
+                        <Play
+                          size={11}
+                          className={
+                            runningCmd ===
+                            "winget install --id=9NT1R1C2HH7J --source=msstore --accept-package-agreements --accept-source-agreements"
+                              ? "animate-spin"
+                              : ""
+                          }
+                        />
+                        <span>在终端运行</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          void handleCopyCommand(
+                            "winget install --id=9NT1R1C2HH7J --source=msstore --accept-package-agreements --accept-source-agreements",
+                            "chatgpt_winget",
+                            "ChatGPT WinGet 安装命令",
+                          )
+                        }
+                        className="py-1.5 px-2 rounded-lg border border-slate-200 dark:border-white/10 hover:bg-slate-100 dark:hover:bg-white/5 text-slate-700 dark:text-gray-300 text-xs flex items-center gap-1 transition-colors cursor-pointer"
+                        title="复制 WinGet 命令"
+                      >
+                        {copiedId === "chatgpt_winget" ? (
+                          <Check size={12} className="text-emerald-500" />
+                        ) : (
+                          <Copy size={12} />
+                        )}
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* 方式 3: OpenAI 官方下载站 */}
+                  <div className="p-3 rounded-xl bg-white/90 dark:bg-[#151928] border border-slate-200/90 dark:border-white/10 flex flex-col justify-between gap-3 shadow-2xs">
+                    <div>
+                      <div className="flex items-center justify-between gap-1 mb-1.5">
+                        <span className="font-semibold text-xs text-slate-800 dark:text-gray-100 flex items-center gap-1.5">
+                          <Globe
+                            size={13}
+                            className="text-slate-600 dark:text-gray-400 flex-shrink-0"
+                          />
+                          OpenAI 官方下载站
+                        </span>
+                        <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-slate-100 text-slate-600 dark:bg-white/10 dark:text-gray-300 font-medium">
+                          Web
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-slate-500 dark:text-gray-400 leading-relaxed">
+                        打开浏览器访问 chatgpt.com/download 查看官方发布说明。
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => void handleChatgptInstall("web")}
+                      className="w-full py-1.5 px-2.5 rounded-lg border border-slate-200 dark:border-white/10 hover:bg-slate-100 dark:hover:bg-white/5 text-slate-800 dark:text-gray-200 text-xs font-medium flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+                    >
+                      <ExternalLink size={12} />
+                      <span>访问官网下载页</span>
+                    </button>
+                  </div>
+                </div>
+
+                <div className="flex flex-wrap items-center justify-between gap-2 pt-1 border-t border-emerald-200/40 dark:border-white/5 text-[11px] text-slate-500 dark:text-gray-400">
+                  <span>
+                    提示：安装完成后，点击上方【探测】按钮即可自动绑定 ChatGPT 启动程序。
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => void handleDetectSingle("chatgpt")}
+                    disabled={detectingType === "chatgpt"}
+                    className="text-emerald-600 dark:text-emerald-400 hover:underline flex items-center gap-1 font-medium cursor-pointer"
+                  >
+                    <Search
+                      size={11}
+                      className={detectingType === "chatgpt" ? "animate-spin" : ""}
+                    />
+                    <span>探测已安装路径</span>
+                  </button>
+                </div>
+              </div>
+            )}
 
             {chatgptInfo?.extra_info && (
               <div className="text-[11px] text-emerald-600 dark:text-emerald-400 bg-emerald-50/50 dark:bg-emerald-500/10 px-2.5 py-1 rounded-lg border border-emerald-100 dark:border-emerald-500/20">
@@ -1563,6 +1886,59 @@ export function AppPathsPanel() {
               </div>
 
               <div className="flex items-center gap-1.5 w-full sm:w-auto justify-end">
+                {/* 下载安装包 / 运行安装 */}
+                {downloadedFiles["workbuddy"] ? (
+                  <div className="flex items-center gap-1">
+                    <button
+                      type="button"
+                      onClick={() =>
+                        void handleRunInstaller(
+                          downloadedFiles["workbuddy"],
+                          "WorkBuddy",
+                        )
+                      }
+                      className="px-2.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-medium flex items-center gap-1 cursor-pointer transition-colors shadow-2xs"
+                      title="立即运行已下载的 WorkBuddy 安装向导"
+                    >
+                      <Play size={12} />
+                      <span>运行安装</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        void handleShowInFolder(downloadedFiles["workbuddy"])
+                      }
+                      className="px-2 py-1.5 rounded-lg border border-slate-200 dark:border-white/10 hover:bg-slate-100 dark:hover:bg-white/5 text-xs text-slate-700 dark:text-gray-300 flex items-center cursor-pointer transition-colors"
+                      title="在文件资源管理器中定位安装包"
+                    >
+                      <FolderOpen size={12} />
+                    </button>
+                  </div>
+                ) : downloadingApps["workbuddy"] ? (
+                  <button
+                    type="button"
+                    disabled
+                    className="px-2.5 py-1.5 rounded-lg border border-emerald-400 text-emerald-700 bg-emerald-50 dark:border-emerald-500/40 dark:bg-emerald-500/10 dark:text-emerald-300 text-xs font-medium flex items-center gap-1.5 cursor-wait"
+                  >
+                    <Loader2 size={12} className="animate-spin text-emerald-500" />
+                    <span>
+                      下载中{" "}
+                      {Math.round(downloadProgress["workbuddy"]?.percent || 0)}%
+                    </span>
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => void handleDownloadPackage("workbuddy")}
+                    disabled={Boolean(downloadingApps["workbuddy"])}
+                    className="px-2.5 py-1.5 rounded-lg border border-emerald-200 text-emerald-700 bg-emerald-50 hover:bg-emerald-100 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-300 text-xs font-medium flex items-center gap-1 cursor-pointer transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+                    title="自动嗅探并下载 WorkBuddy 官方最新 Windows 安装包"
+                  >
+                    <DownloadCloud size={12} />
+                    <span>下载安装包</span>
+                  </button>
+                )}
+
                 <button
                   type="button"
                   onClick={() => void handleDetectSingle("workbuddy")}
@@ -1606,6 +1982,41 @@ export function AppPathsPanel() {
                 </button>
               </div>
             </div>
+
+            {/* WorkBuddy 下载进度展示条 */}
+            {downloadingApps["workbuddy"] && downloadProgress["workbuddy"] && (
+              <div className="p-2.5 rounded-xl border border-emerald-200/80 dark:border-emerald-500/20 bg-emerald-50/50 dark:bg-emerald-950/20 space-y-1.5 animate-fade-in">
+                <div className="flex items-center justify-between text-[11px]">
+                  <span className="font-mono text-emerald-800 dark:text-emerald-300 truncate max-w-[260px]">
+                    {downloadProgress["workbuddy"].fileName}
+                  </span>
+                  <span className="font-mono text-emerald-700 dark:text-emerald-400 font-semibold">
+                    {formatBytes(downloadProgress["workbuddy"].downloaded)} /{" "}
+                    {formatBytes(downloadProgress["workbuddy"].totalBytes)} (
+                    {Math.round(downloadProgress["workbuddy"].percent)}%)
+                  </span>
+                </div>
+                <div className="w-full h-1.5 rounded-full bg-slate-200 dark:bg-white/10 overflow-hidden">
+                  <div
+                    className="h-full bg-emerald-500 rounded-full transition-all duration-200 ease-out"
+                    style={{
+                      width: `${Math.max(5, downloadProgress["workbuddy"].percent)}%`,
+                    }}
+                  />
+                </div>
+              </div>
+            )}
+
+            {downloadedFiles["workbuddy"] && (
+              <div className="text-[11px] text-emerald-700 dark:text-emerald-300 bg-emerald-50/80 dark:bg-emerald-500/10 px-2.5 py-1.5 rounded-lg border border-emerald-200/80 dark:border-emerald-500/20 flex items-center justify-between animate-fade-in">
+                <div className="flex items-center gap-1.5">
+                  <span>🎉</span>
+                  <span>
+                    WorkBuddy 安装包已就绪！点击【运行安装】完成安装后，请点击上方【探测】按钮自动绑定路径。
+                  </span>
+                </div>
+              </div>
+            )}
 
             {workbuddyInfo?.extra_info && (
               <div className="text-[11px] text-emerald-600 dark:text-emerald-400 bg-emerald-50/50 dark:bg-emerald-500/10 px-2.5 py-1 rounded-lg border border-emerald-100 dark:border-emerald-500/20">
@@ -1672,6 +2083,59 @@ export function AppPathsPanel() {
               </div>
 
               <div className="flex items-center gap-1.5 w-full sm:w-auto justify-end">
+                {/* 下载安装包 / 运行安装 */}
+                {downloadedFiles["acciowork"] ? (
+                  <div className="flex items-center gap-1">
+                    <button
+                      type="button"
+                      onClick={() =>
+                        void handleRunInstaller(
+                          downloadedFiles["acciowork"],
+                          "Accio Work",
+                        )
+                      }
+                      className="px-2.5 py-1.5 rounded-lg bg-orange-600 hover:bg-orange-700 text-white text-xs font-medium flex items-center gap-1 cursor-pointer transition-colors shadow-2xs"
+                      title="立即运行已下载的 Accio Work 安装向导"
+                    >
+                      <Play size={12} />
+                      <span>运行安装</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        void handleShowInFolder(downloadedFiles["acciowork"])
+                      }
+                      className="px-2 py-1.5 rounded-lg border border-slate-200 dark:border-white/10 hover:bg-slate-100 dark:hover:bg-white/5 text-xs text-slate-700 dark:text-gray-300 flex items-center cursor-pointer transition-colors"
+                      title="在文件资源管理器中定位安装包"
+                    >
+                      <FolderOpen size={12} />
+                    </button>
+                  </div>
+                ) : downloadingApps["acciowork"] ? (
+                  <button
+                    type="button"
+                    disabled
+                    className="px-2.5 py-1.5 rounded-lg border border-orange-400 text-orange-700 bg-orange-50 dark:border-orange-500/40 dark:bg-orange-500/10 dark:text-orange-300 text-xs font-medium flex items-center gap-1.5 cursor-wait"
+                  >
+                    <Loader2 size={12} className="animate-spin text-orange-500" />
+                    <span>
+                      下载中{" "}
+                      {Math.round(downloadProgress["acciowork"]?.percent || 0)}%
+                    </span>
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => void handleDownloadPackage("acciowork")}
+                    disabled={Boolean(downloadingApps["acciowork"])}
+                    className="px-2.5 py-1.5 rounded-lg border border-orange-200 text-orange-700 bg-orange-50 hover:bg-orange-100 dark:border-orange-500/30 dark:bg-orange-500/10 dark:text-orange-300 text-xs font-medium flex items-center gap-1 cursor-pointer transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+                    title="自动嗅探并下载 Accio Work 官方最新 Windows 安装包"
+                  >
+                    <DownloadCloud size={12} />
+                    <span>下载安装包</span>
+                  </button>
+                )}
+
                 <button
                   type="button"
                   onClick={() => void handleDetectSingle("acciowork")}
@@ -1715,6 +2179,41 @@ export function AppPathsPanel() {
                 </button>
               </div>
             </div>
+
+            {/* Accio Work 下载进度展示条 */}
+            {downloadingApps["acciowork"] && downloadProgress["acciowork"] && (
+              <div className="p-2.5 rounded-xl border border-orange-200/80 dark:border-orange-500/20 bg-orange-50/50 dark:bg-orange-950/20 space-y-1.5 animate-fade-in">
+                <div className="flex items-center justify-between text-[11px]">
+                  <span className="font-mono text-orange-800 dark:text-orange-300 truncate max-w-[260px]">
+                    {downloadProgress["acciowork"].fileName}
+                  </span>
+                  <span className="font-mono text-orange-700 dark:text-orange-400 font-semibold">
+                    {formatBytes(downloadProgress["acciowork"].downloaded)} /{" "}
+                    {formatBytes(downloadProgress["acciowork"].totalBytes)} (
+                    {Math.round(downloadProgress["acciowork"].percent)}%)
+                  </span>
+                </div>
+                <div className="w-full h-1.5 rounded-full bg-slate-200 dark:bg-white/10 overflow-hidden">
+                  <div
+                    className="h-full bg-orange-500 rounded-full transition-all duration-200 ease-out"
+                    style={{
+                      width: `${Math.max(5, downloadProgress["acciowork"].percent)}%`,
+                    }}
+                  />
+                </div>
+              </div>
+            )}
+
+            {downloadedFiles["acciowork"] && (
+              <div className="text-[11px] text-orange-700 dark:text-orange-300 bg-orange-50/80 dark:bg-orange-500/10 px-2.5 py-1.5 rounded-lg border border-orange-200/80 dark:border-orange-500/20 flex items-center justify-between animate-fade-in">
+                <div className="flex items-center gap-1.5">
+                  <span>🎉</span>
+                  <span>
+                    Accio Work 安装包已就绪！点击【运行安装】完成安装后，请点击上方【探测】按钮自动绑定路径。
+                  </span>
+                </div>
+              </div>
+            )}
 
             {accioInfo?.extra_info && (
               <div className="text-[11px] text-orange-600 dark:text-orange-400 bg-orange-50/50 dark:bg-orange-500/10 px-2.5 py-1 rounded-lg border border-orange-100 dark:border-orange-500/20">

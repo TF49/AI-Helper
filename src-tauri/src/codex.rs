@@ -134,61 +134,26 @@ pub fn get_codex_config() -> Result<CodexConfig, AppError> {
     ))
 }
 
-fn prepare_codex_doc(
-    existing_content: Option<&str>,
-    base_url: &str,
-    model: Option<&str>,
-) -> DocumentMut {
-    let mut doc = if let Some(content) = existing_content {
-        let trimmed = content.trim();
-        if trimmed.is_empty() {
-            DocumentMut::new()
-        } else {
-            trimmed
-                .parse::<DocumentMut>()
-                .unwrap_or_else(|_| DocumentMut::new())
-        }
-    } else {
-        DocumentMut::new()
-    };
+pub fn prepare_codex_doc(base_url: &str, model: Option<&str>) -> DocumentMut {
+    let mut doc = DocumentMut::new();
 
-    // 如果指定了 model，则更新顶层 model 与 profile model
-    if let Some(m) = model {
-        if !m.is_empty() {
-            doc["model"] = toml_edit::value(m);
-            if let Some(profiles) = doc.get_mut("profiles") {
-                if let Some(thirdparty) = profiles.get_mut("thirdparty") {
-                    thirdparty["model"] = toml_edit::value(m);
-                }
-            }
-        }
+    let model_str = model.unwrap_or("").trim();
+    if !model_str.is_empty() {
+        doc["model"] = toml_edit::value(model_str);
     }
 
-    // 确保默认 provider 指向 custom
-    if doc.get("model_provider").is_none() {
-        doc["model_provider"] = toml_edit::value("custom");
-    }
+    doc["model_provider"] = toml_edit::value("custom");
 
-    // 确保 [model_providers] 存在
-    if doc.get("model_providers").is_none() {
-        doc["model_providers"] = toml_edit::Item::Table(toml_edit::Table::new());
-    }
+    let mut custom_table = toml_edit::Table::new();
+    custom_table["name"] = toml_edit::value("Custom");
+    custom_table["base_url"] = toml_edit::value(base_url);
+    custom_table["api"] = toml_edit::value("openai-responses");
+    custom_table["env_key"] = toml_edit::value("CUSTOM_OPENAI_API_KEY");
 
-    // 确保 [model_providers.custom] 存在
-    if doc["model_providers"].get("custom").is_none() {
-        doc["model_providers"]["custom"] = toml_edit::Item::Table(toml_edit::Table::new());
-    }
+    let mut providers_table = toml_edit::Table::new();
+    providers_table["custom"] = toml_edit::Item::Table(custom_table);
 
-    if doc["model_providers"]["custom"].get("name").is_none() {
-        doc["model_providers"]["custom"]["name"] = toml_edit::value("Custom");
-    }
-    if doc["model_providers"]["custom"].get("api").is_none() {
-        doc["model_providers"]["custom"]["api"] = toml_edit::value("openai-responses");
-    }
-    doc["model_providers"]["custom"]["base_url"] = toml_edit::value(base_url);
-    if doc["model_providers"]["custom"].get("env_key").is_none() {
-        doc["model_providers"]["custom"]["env_key"] = toml_edit::value("CUSTOM_OPENAI_API_KEY");
-    }
+    doc["model_providers"] = toml_edit::Item::Table(providers_table);
 
     doc
 }
@@ -206,13 +171,14 @@ pub fn set_codex_config(
         std::fs::create_dir_all(parent)?;
     }
 
-    let existing_content = if path.exists() {
-        Some(std::fs::read_to_string(&path)?)
-    } else {
-        None
-    };
+    // 写入前自动将旧配置文件归档备份至 .bak，然后彻底清除旧内容重新写入纯净配置
+    if path.exists() {
+        let bak_path = path.with_extension("toml.bak");
+        let _ = std::fs::copy(&path, &bak_path);
+        let _ = std::fs::remove_file(&path);
+    }
 
-    let doc = prepare_codex_doc(existing_content.as_deref(), &base_url, model.as_deref());
+    let doc = prepare_codex_doc(&base_url, model.as_deref());
 
     std::fs::write(&path, doc.to_string())?;
     write_registry_env("CUSTOM_OPENAI_API_KEY", &api_key)?;
@@ -331,23 +297,29 @@ base_url = "https://api.openai.com/v1"
     }
 
     #[test]
-    fn test_prepare_codex_doc_empty_existing() {
-        let doc = prepare_codex_doc(Some(""), "https://api.example.com/v1", Some("o1"));
+    fn test_prepare_codex_doc_with_model() {
+        let doc = prepare_codex_doc("https://api.example.com/v1", Some("o1"));
         assert_eq!(doc["model"].as_str(), Some("o1"));
+        assert_eq!(doc["model_provider"].as_str(), Some("custom"));
         assert_eq!(
             doc["model_providers"]["custom"]["base_url"].as_str(),
             Some("https://api.example.com/v1")
         );
+        assert_eq!(
+            doc["model_providers"]["custom"]["api"].as_str(),
+            Some("openai-responses")
+        );
+        assert_eq!(
+            doc["model_providers"]["custom"]["env_key"].as_str(),
+            Some("CUSTOM_OPENAI_API_KEY")
+        );
     }
 
     #[test]
-    fn test_prepare_codex_doc_malformed_existing() {
-        let doc = prepare_codex_doc(
-            Some("[broken toml"),
-            "https://api.example.com/v1",
-            Some("gpt-4o"),
-        );
-        assert_eq!(doc["model"].as_str(), Some("gpt-4o"));
+    fn test_prepare_codex_doc_without_model() {
+        let doc = prepare_codex_doc("https://api.example.com/v1", None);
+        assert!(doc.get("model").is_none());
+        assert_eq!(doc["model_provider"].as_str(), Some("custom"));
         assert_eq!(
             doc["model_providers"]["custom"]["base_url"].as_str(),
             Some("https://api.example.com/v1")

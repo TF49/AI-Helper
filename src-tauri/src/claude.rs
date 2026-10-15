@@ -116,38 +116,32 @@ pub fn get_claude_config() -> Result<ClaudeConfig, AppError> {
     ))
 }
 
-fn prepare_claude_json(
-    existing_content: Option<&str>,
-    url: &str,
-    api_key: &str,
-    model: Option<&str>,
-) -> Value {
-    let mut json: Value = if let Some(content) = existing_content {
-        let trimmed = content.trim();
-        if trimmed.is_empty() {
-            serde_json::json!({})
-        } else {
-            serde_json::from_str(trimmed).unwrap_or_else(|_| serde_json::json!({}))
-        }
-    } else {
-        serde_json::json!({})
-    };
+pub fn prepare_claude_json(url: &str, api_key: &str, model: Option<&str>) -> Value {
+    let mut env = serde_json::Map::new();
+    env.insert(
+        "ANTHROPIC_BASE_URL".to_string(),
+        Value::String(url.to_string()),
+    );
+    env.insert(
+        "ANTHROPIC_AUTH_TOKEN".to_string(),
+        Value::String(api_key.to_string()),
+    );
 
-    if !json.get("env").is_some_and(|v| v.is_object()) {
-        json["env"] = serde_json::json!({});
+    let model_str = model.unwrap_or("").trim();
+    if !model_str.is_empty() {
+        env.insert(
+            "ANTHROPIC_MODEL".to_string(),
+            Value::String(model_str.to_string()),
+        );
     }
 
-    json["env"]["ANTHROPIC_BASE_URL"] = Value::String(url.to_string());
-    json["env"]["ANTHROPIC_AUTH_TOKEN"] = Value::String(api_key.to_string());
-
-    if let Some(m) = model {
-        if !m.is_empty() {
-            json["model"] = Value::String(m.to_string());
-            json["env"]["ANTHROPIC_MODEL"] = Value::String(m.to_string());
-        }
+    let mut root = serde_json::Map::new();
+    if !model_str.is_empty() {
+        root.insert("model".to_string(), Value::String(model_str.to_string()));
     }
+    root.insert("env".to_string(), Value::Object(env));
 
-    json
+    Value::Object(root)
 }
 
 pub fn set_claude_config(
@@ -157,22 +151,18 @@ pub fn set_claude_config(
 ) -> Result<(), AppError> {
     let path = claude_config_path()?;
 
-    let existing_content = if path.exists() {
-        Some(std::fs::read_to_string(&path)?)
-    } else {
-        None
-    };
-
-    let json = prepare_claude_json(
-        existing_content.as_deref(),
-        &url,
-        &api_key,
-        model.as_deref(),
-    );
-
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)?;
     }
+
+    // 写入前自动将旧配置文件归档备份至 .bak，然后彻底清除旧内容重新写入纯净配置
+    if path.exists() {
+        let bak_path = path.with_extension("json.bak");
+        let _ = std::fs::copy(&path, &bak_path);
+        let _ = std::fs::remove_file(&path);
+    }
+
+    let json = prepare_claude_json(&url, &api_key, model.as_deref());
 
     std::fs::write(&path, serde_json::to_string_pretty(&json)?)?;
     Ok(())
@@ -230,27 +220,20 @@ mod tests {
     }
 
     #[test]
-    fn test_prepare_claude_json_empty_existing() {
-        let json = prepare_claude_json(
-            Some(""),
-            "https://api.example.com",
-            "sk-test",
-            Some("claude-test"),
-        );
+    fn test_prepare_claude_json_with_model() {
+        let json = prepare_claude_json("https://api.example.com", "sk-test", Some("claude-test"));
         assert_eq!(json["env"]["ANTHROPIC_BASE_URL"], "https://api.example.com");
         assert_eq!(json["env"]["ANTHROPIC_AUTH_TOKEN"], "sk-test");
+        assert_eq!(json["env"]["ANTHROPIC_MODEL"], "claude-test");
         assert_eq!(json["model"], "claude-test");
     }
 
     #[test]
-    fn test_prepare_claude_json_malformed_existing() {
-        let json = prepare_claude_json(
-            Some("corrupted{"),
-            "https://api.example.com",
-            "sk-test",
-            None,
-        );
+    fn test_prepare_claude_json_without_model() {
+        let json = prepare_claude_json("https://api.example.com", "sk-test", None);
         assert_eq!(json["env"]["ANTHROPIC_BASE_URL"], "https://api.example.com");
         assert_eq!(json["env"]["ANTHROPIC_AUTH_TOKEN"], "sk-test");
+        assert!(json.get("model").is_none());
+        assert!(json["env"].get("ANTHROPIC_MODEL").is_none());
     }
 }

@@ -335,7 +335,12 @@ pub fn accio_to_openai(input: &Value, default_model: &str) -> Value {
 
     if !tools.is_empty() {
         output["tools"] = Value::Array(tools);
-        output["tool_choice"] = json!("auto");
+        // 优先使用客户端指定的 tool_choice，否则默认为 "auto"
+        if let Some(tool_choice) = input.get("tool_choice") {
+            output["tool_choice"] = tool_choice.clone();
+        } else {
+            output["tool_choice"] = json!("auto");
+        }
     }
 
     output
@@ -904,6 +909,10 @@ pub fn merge_anthropic_sse(text: &str, default_model: &str) -> Value {
     let mut input_tokens = 0u64;
     let mut output_tokens = 0u64;
     let mut stop_reason = "end_turn".to_string();
+    let mut event_count = 0usize;
+    let mut has_message_stop = false;
+
+    log::debug!("🔍 开始解析 Anthropic SSE 流，总长度: {} 字符", text.len());
 
     for line in text.lines() {
         let trimmed = line.trim();
@@ -916,8 +925,11 @@ pub fn merge_anthropic_sse(text: &str, default_model: &str) -> Value {
             continue;
         }
         let Ok(chunk) = serde_json::from_str::<Value>(data) else {
+            log::warn!("⚠️ Anthropic SSE 解析失败: {}", data);
             continue;
         };
+
+        event_count += 1;
 
         // 检查是否为完整的非流式消息对象 (某些中转站在 SSE 中包裹完整响应)
         if chunk.get("type").and_then(Value::as_str) == Some("message")
@@ -988,6 +1000,7 @@ pub fn merge_anthropic_sse(text: &str, default_model: &str) -> Value {
                 if let Some(delta) = chunk.get("delta") {
                     if let Some(sr) = delta.get("stop_reason").and_then(Value::as_str) {
                         stop_reason = sr.to_string();
+                        log::debug!("📋 Anthropic SSE: message_delta stop_reason={}", sr);
                     }
                 }
                 if let Some(usage) = chunk.get("usage") {
@@ -996,9 +1009,22 @@ pub fn merge_anthropic_sse(text: &str, default_model: &str) -> Value {
                     }
                 }
             }
+            Some("message_stop") => {
+                has_message_stop = true;
+                log::debug!("🏁 Anthropic SSE: 收到 message_stop 事件");
+            }
             _ => {}
         }
     }
+
+    log::debug!(
+        "✅ Anthropic SSE 解析完成: 事件数={}, 文本长度={}, 工具调用数={}, stop_reason={}, has_message_stop={}",
+        event_count,
+        full_text.len(),
+        tool_uses.len(),
+        stop_reason,
+        has_message_stop
+    );
 
     let mut parts = Vec::new();
     if !full_text.is_empty() {
