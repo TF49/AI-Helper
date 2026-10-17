@@ -12,7 +12,6 @@ import {
   Wrench,
   ShieldCheck,
   ChevronRight,
-  ChevronDown,
   PanelLeftClose,
   PanelLeftOpen,
   User,

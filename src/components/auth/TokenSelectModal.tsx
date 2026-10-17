@@ -12,7 +12,6 @@ import {
   Clock,
   Coins,
   Sparkles,
-  Search,
   Copy,
   CheckCheck,
   Eye,
@@ -20,7 +19,6 @@ import {
   ShieldCheck,
 } from "lucide-react";
 import { toast } from "sonner";
-import { Input } from "../ui/input";
 import {
   getUserTokens,
   getTokenKey,

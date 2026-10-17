@@ -13,7 +13,6 @@ import {
   ChevronDown,
   ChevronUp,
   Layers,
-  Search,
   Info,
   ShieldCheck,
   Check,

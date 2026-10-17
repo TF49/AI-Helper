@@ -5,7 +5,6 @@ import {
   BookOpen,
   Key,
   Copy,
-  Check,
   ExternalLink,
   Palette,
 } from "lucide-react";
@@ -32,7 +31,6 @@ export function QuickToolsModal({
   currentKey,
   currentModel,
 }: QuickToolsModalProps) {
-  const [copiedCurl, setCopiedCurl] = useState(false);
   const [selectedProtocol, setSelectedProtocol] = useState<
     "chatgpt" | "claude" | "workbuddy" | "acciowork"
   >(activeTab);
@@ -61,17 +59,6 @@ export function QuickToolsModal({
       : selectedProtocol === "acciowork"
         ? `# 1. 测试上游服务商 OpenAI 兼容接口\ncurl ${base}v1/chat/completions \\\n  -H "Content-Type: application/json" \\\n  -H "Authorization: Bearer ${effectiveKey}" \\\n  -d '{\n    "model": "${effectiveModel}",\n    "messages": [{"role": "user", "content": "Hi!"}]\n  }'\n\n# 2. 测试本地 Accio Work Bridge 伪造模型列表 (Bridge 运行状态下)\ncurl http://127.0.0.1:8787/api/llm/config/v2`
         : `curl ${base}v1/chat/completions \\\n  -H "Content-Type: application/json" \\\n  -H "Authorization: Bearer ${effectiveKey}" \\\n  -d '{\n    "model": "${effectiveModel}",\n    "messages": [{"role": "user", "content": "Hi!"}]\n  }'`;
-
-  const handleCopyCurl = async () => {
-    try {
-      await navigator.clipboard.writeText(curlCommand);
-      setCopiedCurl(true);
-      toast.success("已复制 cURL 测试脚本");
-      setTimeout(() => setCopiedCurl(false), 2000);
-    } catch {
-      toast.error("复制失败");
-    }
-  };
 
   return (
     <div className="fixed inset-0 top-11 z-50 flex items-center justify-center p-4 bg-black/50 dark:bg-black/75 backdrop-blur-sm animate-fade-in">
