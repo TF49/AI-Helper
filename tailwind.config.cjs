@@ -4,6 +4,11 @@ module.exports = {
   darkMode: ["selector", ".dark"],
   theme: {
     extend: {
+      spacing: {
+        4.5: "1.125rem",
+        5.5: "1.375rem",
+        8.5: "2.125rem",
+      },
       colors: {
         background: "hsl(var(--background))",
         foreground: "hsl(var(--foreground))",
@@ -70,6 +75,8 @@ module.exports = {
         },
       },
       boxShadow: {
+        "2xs": "0 1px 2px 0 rgb(0 0 0 / 0.04)",
+        xs: "0 1px 2px 0 rgb(0 0 0 / 0.05)",
         sm: "0 1px 2px 0 rgb(0 0 0 / 0.05)",
         md: "0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1)",
         lg: "0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1)",

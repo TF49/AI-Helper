@@ -50,6 +50,10 @@ pub struct UserInfo {
     pub id: i64,
     pub username: String,
     pub display_name: Option<String>,
+    #[serde(default)]
+    pub role: Option<i32>,
+    #[serde(default)]
+    pub email: Option<String>,
 }
 
 #[allow(dead_code)]
@@ -108,6 +112,8 @@ pub struct TokenItem {
     pub remain_quota: i64,
     #[serde(default)]
     pub group: Option<String>,
+    #[serde(default)]
+    pub user_id: Option<i64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -180,6 +186,141 @@ pub struct CurrentAuthState {
     pub selected_token_id: Option<i64>,
     pub selected_token_name: Option<String>,
     pub access_token_expires_at: Option<i64>,
+}
+
+// ── 使用日志模型 ──
+
+#[allow(dead_code)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct UsageLogItem {
+    pub id: i64,
+    #[serde(default)]
+    pub created_at: i64,
+    #[serde(default)]
+    pub user_id: i64,
+    #[serde(default)]
+    pub username: String,
+    #[serde(default)]
+    pub token_name: String,
+    #[serde(default)]
+    pub model_name: String,
+    #[serde(default)]
+    pub quota: i64,
+    #[serde(default)]
+    pub prompt_tokens: i64,
+    #[serde(default)]
+    pub completion_tokens: i64,
+    #[serde(default)]
+    pub use_time: i64,
+    #[serde(default)]
+    pub is_stream: bool,
+    #[serde(default)]
+    pub group: String,
+    #[serde(default)]
+    pub channel_id: Option<i64>,
+    #[serde(default)]
+    pub content: Option<String>,
+    #[serde(default)]
+    pub log_type: Option<i32>,
+}
+
+#[allow(dead_code)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct UsageLogsResponse {
+    pub items: Vec<UsageLogItem>,
+    pub total: i64,
+    pub page: i64,
+    pub page_size: i64,
+}
+
+#[allow(dead_code)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct UsageLogQueryParams {
+    pub p: Option<i64>,
+    pub page_size: Option<i64>,
+    pub token_name: Option<String>,
+    pub model_name: Option<String>,
+    pub start_timestamp: Option<i64>,
+    pub end_timestamp: Option<i64>,
+    pub log_type: Option<i32>,
+    pub username: Option<String>,
+    pub all: Option<bool>,
+}
+
+#[allow(dead_code)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct UsageStatData {
+    pub quota: i64,
+    pub prompt_tokens: i64,
+    pub completion_tokens: i64,
+    pub request_count: i64,
+    pub avg_use_time: f64,
+}
+
+// ── 模型与定价模型 ──
+
+#[allow(dead_code)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct PricingModelItem {
+    pub model_name: String,
+    #[serde(default)]
+    pub vendor_id: Option<i64>,
+    #[serde(default)]
+    pub quota_type: i32,
+    #[serde(default)]
+    pub model_ratio: f64,
+    #[serde(default)]
+    pub model_price: f64,
+    #[serde(default)]
+    pub owner_by: String,
+    #[serde(default)]
+    pub completion_ratio: f64,
+    #[serde(default)]
+    pub cache_ratio: Option<f64>,
+    #[serde(default)]
+    pub create_cache_ratio: Option<f64>,
+    #[serde(default)]
+    pub enable_groups: Vec<String>,
+    #[serde(default)]
+    pub supported_endpoint_types: Vec<String>,
+    #[serde(default)]
+    pub billing_mode: Option<String>,
+    #[serde(default)]
+    pub billing_expr: Option<String>,
+}
+
+#[allow(dead_code)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct VendorInfo {
+    pub id: i64,
+    pub name: String,
+    #[serde(default)]
+    pub icon: String,
+}
+
+#[allow(dead_code)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct PricingResponse {
+    #[serde(default)]
+    pub success: bool,
+    #[serde(default)]
+    pub pricing_version: String,
+    #[serde(default)]
+    pub svip_group_ratio: HashMap<String, f64>,
+    #[serde(default)]
+    pub data: Vec<PricingModelItem>,
+    #[serde(default)]
+    pub group_ratio: HashMap<String, f64>,
+    #[serde(default)]
+    pub usable_group: HashMap<String, String>,
+    #[serde(default)]
+    pub vendors: Vec<VendorInfo>,
+    #[serde(default)]
+    pub auto_groups: Vec<String>,
+    #[serde(default)]
+    pub user_group: Option<String>,
+    #[serde(default)]
+    pub user_available_groups: Vec<String>,
 }
 
 // ── 服务端通用响应包装 ──
@@ -352,8 +493,7 @@ impl AuthManager {
             .duration_since(UNIX_EPOCH)
             .unwrap_or_default()
             .as_secs() as i64;
-        let is_logged_in = self.current_user.is_some()
-            && (self.access_token.is_some() || self.has_persisted_refresh_cookie());
+        let is_logged_in = self.current_user.is_some() && self.access_token.is_some();
 
         CurrentAuthState {
             is_logged_in,
@@ -368,6 +508,7 @@ impl AuthManager {
         }
     }
 
+    #[allow(dead_code)]
     fn has_persisted_refresh_cookie(&self) -> bool {
         let path = Self::storage_path();
         if let Ok(data) = fs::read_to_string(path) {
@@ -713,6 +854,20 @@ fn parse_login_success_data(data: &serde_json::Value) -> Result<LoginSuccessData
         .get("user")
         .ok_or_else(|| "未返回 user 字段".to_string())?;
 
+    let role = user_val
+        .get("role")
+        .and_then(|v| v.as_i64())
+        .map(|r| r as i32);
+
+    let email = user_val
+        .get("email")
+        .or_else(|| user_val.get("mail"))
+        .or_else(|| data.get("email"))
+        .or_else(|| data.get("mail"))
+        .and_then(|v| v.as_str())
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty());
+
     let user = UserInfo {
         id: user_val
             .get("id")
@@ -727,6 +882,8 @@ fn parse_login_success_data(data: &serde_json::Value) -> Result<LoginSuccessData
             .get("display_name")
             .and_then(|v| v.as_str())
             .map(|s| s.to_string()),
+        role,
+        email,
     };
 
     let session_sid = data
@@ -758,12 +915,19 @@ pub async fn refresh_session() -> Result<LoginSuccessData, String> {
         req = req.header("X-Auth-Session", sid);
     }
 
-    let resp = req
-        .send()
-        .await
-        .map_err(|e| format!("刷新会话网络请求异常: {e}"))?;
+    let resp = match req.send().await {
+        Ok(r) => r,
+        Err(e) => {
+            return Err(format!("刷新会话网络请求异常: {e}"));
+        }
+    };
 
     let status = resp.status();
+    if status == reqwest::StatusCode::UNAUTHORIZED || status == reqwest::StatusCode::FORBIDDEN {
+        mgr.clear_persisted_session();
+        return Err("登录状态已过期，请重新登录".to_string());
+    }
+
     let mut extracted_refresh_cookie: Option<String> = None;
     for cookie in resp.cookies() {
         if cookie.name() == "new_api_refresh" {
@@ -775,29 +939,44 @@ pub async fn refresh_session() -> Result<LoginSuccessData, String> {
         }
     }
 
-    let text = resp
-        .text()
-        .await
-        .map_err(|e| format!("读取会话刷新响应失败: {e}"))?;
+    let text = match resp.text().await {
+        Ok(t) => t,
+        Err(e) => {
+            mgr.clear_persisted_session();
+            return Err(format!("读取会话刷新响应失败: {e}"));
+        }
+    };
 
     let parsed: ApiResponse<serde_json::Value> =
-        parse_api_response_body(status, &text, "刷新会话")?;
+        match parse_api_response_body(status, &text, "刷新会话") {
+            Ok(p) => p,
+            Err(e) => {
+                mgr.clear_persisted_session();
+                return Err(e);
+            }
+        };
 
     if !status.is_success() || !parsed.success {
-        let msg = if parsed.message.is_empty() {
-            "刷新凭据失效，请重新登录".to_string()
-        } else {
-            parsed.message
-        };
         mgr.clear_persisted_session();
-        return Err(msg);
+        return Err("登录状态已失效，请重新登录".to_string());
     }
 
-    let data = parsed
-        .data
-        .ok_or_else(|| "刷新成功但缺少 data 字段".to_string())?;
+    let data = match parsed.data {
+        Some(d) => d,
+        None => {
+            mgr.clear_persisted_session();
+            return Err("刷新会话返回数据为空".to_string());
+        }
+    };
 
-    let success_data = parse_login_success_data(&data)?;
+    let success_data = match parse_login_success_data(&data) {
+        Ok(d) => d,
+        Err(e) => {
+            mgr.clear_persisted_session();
+            return Err(e);
+        }
+    };
+
     mgr.access_token = Some(success_data.access_token.clone());
     mgr.access_expires_at = success_data.access_expires_at;
     mgr.current_user = Some(success_data.user.clone());
@@ -825,7 +1004,9 @@ async fn ensure_access_token() -> Result<String, String> {
     }
 
     // 需要刷新
-    let refreshed = refresh_session().await?;
+    let refreshed = refresh_session()
+        .await
+        .map_err(|_| "登录状态已失效，请重新登录".to_string())?;
     Ok(refreshed.access_token)
 }
 
@@ -856,11 +1037,16 @@ pub async fn get_auth_state() -> CurrentAuthState {
         .unwrap_or_default()
         .as_secs() as i64;
 
+    let token_expired = mgr.access_token.is_none() || mgr.access_expires_at <= now;
+
     // 如果 access_token 已经过期但有 refresh cookie，尝试在后台恢复一次
-    if mgr.current_user.is_some() && (mgr.access_token.is_none() || mgr.access_expires_at <= now) {
+    if mgr.current_user.is_some() && token_expired && mgr.has_persisted_refresh_cookie() {
         drop(mgr);
-        let _ = refresh_session().await;
-        let mgr = AUTH_MGR.lock().await;
+        let res = refresh_session().await;
+        let mut mgr = AUTH_MGR.lock().await;
+        if res.is_err() {
+            mgr.clear_persisted_session();
+        }
         return mgr.get_state();
     }
 
@@ -876,12 +1062,20 @@ pub async fn set_selected_token(token_id: Option<i64>, token_name: Option<String
 // ── 令牌管理接口（关键：获取用户在 bob-api 创建的 API Key 列表） ──
 
 /// 获取用户在 https://bob-api.com 创建的 API Key 列表
-pub async fn get_user_tokens() -> Result<Vec<TokenItem>, String> {
+pub async fn get_user_tokens(all: Option<bool>) -> Result<Vec<TokenItem>, String> {
     let token = ensure_access_token().await?;
     let mgr = AUTH_MGR.lock().await;
 
-    // 优先调用 search 接口获取完整列表
-    let url = format!("{}/api/token/search?keyword=&p=1&size=100", BASE_URL);
+    let is_all = all.unwrap_or(false);
+    // 优先调用 search 接口获取完整列表，若为全部则追加 all=true
+    let url = if is_all {
+        format!(
+            "{}/api/token/search?keyword=&p=1&size=100&all=true",
+            BASE_URL
+        )
+    } else {
+        format!("{}/api/token/search?keyword=&p=1&size=100", BASE_URL)
+    };
     let resp = mgr
         .client
         .get(&url)
@@ -1018,7 +1212,7 @@ pub async fn create_user_token(name: String, group: Option<String>) -> Result<To
     drop(mgr);
 
     // 重新检索该名称的令牌
-    let tokens = get_user_tokens().await?;
+    let tokens = get_user_tokens(None).await?;
     tokens
         .into_iter()
         .find(|t| t.name == name)
@@ -1072,7 +1266,7 @@ pub async fn update_user_token_group(
     let body = if let Some(b) = put_body {
         b
     } else {
-        let tokens = get_user_tokens().await?;
+        let tokens = get_user_tokens(None).await?;
         let orig = tokens
             .into_iter()
             .find(|t| t.id == token_id)
@@ -1121,7 +1315,7 @@ pub async fn update_user_token_group(
     }
 
     // 重新检索更新后的令牌列表并返回
-    let tokens = get_user_tokens().await?;
+    let tokens = get_user_tokens(None).await?;
     let updated = tokens
         .into_iter()
         .find(|t| t.id == token_id)
@@ -1327,6 +1521,10 @@ pub async fn get_user_wallet() -> Result<UserWalletInfo, String> {
             {
                 resp = retry_resp;
             }
+        } else {
+            let mut mgr = AUTH_MGR.lock().await;
+            mgr.clear_persisted_session();
+            return Err("登录状态已过期，请重新登录".to_string());
         }
     }
 
@@ -1363,6 +1561,28 @@ pub async fn get_user_wallet() -> Result<UserWalletInfo, String> {
         .and_then(|v| v.as_str())
         .map(|s| s.to_string());
 
+    // 同步提取并更新当前用户的 role 角色（管理员 role >= 10）以及 email 邮箱
+    let role = data.get("role").and_then(|v| v.as_i64()).map(|r| r as i32);
+    let email = data
+        .get("email")
+        .or_else(|| data.get("mail"))
+        .and_then(|v| v.as_str())
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty());
+
+    if role.is_some() || email.is_some() {
+        let mut mgr = AUTH_MGR.lock().await;
+        if let Some(ref mut u) = mgr.current_user {
+            if let Some(r) = role {
+                u.role = Some(r);
+            }
+            if let Some(em) = email {
+                u.email = Some(em);
+            }
+        }
+        mgr.persist_session(None);
+    }
+
     let quota_per_unit: i64 = 500000;
     let rmb_to_usd_rate: f64 = 4.0; // 充值比例 1￥ = 4$
 
@@ -1384,4 +1604,413 @@ pub async fn get_user_wallet() -> Result<UserWalletInfo, String> {
         quota_per_unit,
         rmb_to_usd_rate,
     })
+}
+
+/// 删除指定 API Key (调用 DELETE /api/token/:id)
+#[allow(dead_code)]
+pub async fn delete_user_token(token_id: i64) -> Result<(), String> {
+    let token = ensure_access_token().await?;
+    let mgr = AUTH_MGR.lock().await;
+
+    let url = format!("{}/api/token/{}", BASE_URL, token_id);
+    let resp = mgr
+        .client
+        .delete(&url)
+        .header(AUTHORIZATION, format!("Bearer {}", token))
+        .send()
+        .await
+        .map_err(|e| format!("删除令牌网络异常: {e}"))?;
+
+    let status = resp.status();
+    let text = resp
+        .text()
+        .await
+        .map_err(|e| format!("读取删除令牌响应失败: {e}"))?;
+
+    let parsed: ApiResponse<serde_json::Value> =
+        parse_api_response_body(status, &text, "删除令牌")?;
+
+    if !parsed.success {
+        return Err(if parsed.message.is_empty() {
+            "删除令牌失败".to_string()
+        } else {
+            parsed.message
+        });
+    }
+
+    Ok(())
+}
+
+/// 快速更新指定 API Key 状态 (1: 启用, 2: 禁用 - 调用 PUT /api/token/?status_only=true)
+#[allow(dead_code)]
+pub async fn update_user_token_status(token_id: i64, status: i32) -> Result<(), String> {
+    let token = ensure_access_token().await?;
+    let mgr = AUTH_MGR.lock().await;
+
+    let url = format!("{}/api/token/?status_only=true", BASE_URL);
+    let body = serde_json::json!({
+        "id": token_id,
+        "status": status,
+    });
+
+    let resp = mgr
+        .client
+        .put(&url)
+        .header(AUTHORIZATION, format!("Bearer {}", token))
+        .json(&body)
+        .send()
+        .await
+        .map_err(|e| format!("更新令牌状态网络异常: {e}"))?;
+
+    let status_code = resp.status();
+    let text = resp
+        .text()
+        .await
+        .map_err(|e| format!("读取更新状态响应失败: {e}"))?;
+
+    let parsed: ApiResponse<serde_json::Value> =
+        parse_api_response_body(status_code, &text, "更新令牌状态")?;
+
+    if !parsed.success {
+        return Err(if parsed.message.is_empty() {
+            "更新令牌状态失败".to_string()
+        } else {
+            parsed.message
+        });
+    }
+
+    Ok(())
+}
+
+/// 获取令牌可选的自动分组列表 (GET /api/token/auto-groups)
+#[allow(dead_code)]
+pub async fn get_token_auto_groups() -> Result<Vec<String>, String> {
+    let token = ensure_access_token().await?;
+    let mgr = AUTH_MGR.lock().await;
+
+    let url = format!("{}/api/token/auto-groups", BASE_URL);
+    let resp = mgr
+        .client
+        .get(&url)
+        .header(AUTHORIZATION, format!("Bearer {}", token))
+        .send()
+        .await
+        .map_err(|e| format!("获取分组信息失败: {e}"))?;
+
+    let status = resp.status();
+    let text = resp
+        .text()
+        .await
+        .map_err(|e| format!("读取分组信息失败: {e}"))?;
+
+    let parsed: ApiResponse<serde_json::Value> =
+        parse_api_response_body(status, &text, "获取令牌可选分组")?;
+
+    if !parsed.success {
+        return Ok(vec![]);
+    }
+
+    let data = parsed.data.unwrap_or_default();
+    if let Some(arr) = data.as_array() {
+        let groups: Vec<String> = arr
+            .iter()
+            .filter_map(|v| v.as_str().map(|s| s.to_string()))
+            .collect();
+        return Ok(groups);
+    }
+
+    Ok(vec![])
+}
+
+/// 获取已登录用户拥有的可用渠道分组列表 (GET /api/user/self/groups)
+#[allow(dead_code)]
+pub async fn get_user_available_groups() -> Result<Vec<String>, String> {
+    let token = match ensure_access_token().await {
+        Ok(t) => t,
+        Err(_) => return Ok(vec![]),
+    };
+    let mgr = AUTH_MGR.lock().await;
+
+    let url = format!("{}/api/user/self/groups", BASE_URL);
+    let resp = match mgr
+        .client
+        .get(&url)
+        .header(AUTHORIZATION, format!("Bearer {}", token))
+        .send()
+        .await
+    {
+        Ok(r) => r,
+        Err(_) => return Ok(vec![]),
+    };
+
+    let status = resp.status();
+    let text = match resp.text().await {
+        Ok(t) => t,
+        Err(_) => return Ok(vec![]),
+    };
+
+    let parsed: ApiResponse<serde_json::Value> =
+        match parse_api_response_body(status, &text, "获取用户可用分组") {
+            Ok(p) => p,
+            Err(_) => return Ok(vec![]),
+        };
+
+    if !parsed.success {
+        return Ok(vec![]);
+    }
+
+    let data = parsed.data.unwrap_or_default();
+    if let Some(arr) = data.as_array() {
+        let groups: Vec<String> = arr
+            .iter()
+            .filter_map(|v| v.as_str().map(|s| s.to_string()))
+            .collect();
+        return Ok(groups);
+    } else if let Some(obj) = data.as_object() {
+        let groups: Vec<String> = obj.keys().cloned().collect();
+        return Ok(groups);
+    }
+
+    Ok(vec![])
+}
+
+/// 获取用户个人调用与消费日志明细 (GET /api/log/self)
+#[allow(dead_code)]
+pub async fn get_user_usage_logs(params: UsageLogQueryParams) -> Result<UsageLogsResponse, String> {
+    let token = ensure_access_token().await?;
+    let mgr = AUTH_MGR.lock().await;
+
+    let p = params.p.unwrap_or(1);
+    let size = params.page_size.unwrap_or(20);
+
+    let mut query_params: Vec<(String, String)> = vec![
+        ("p".to_string(), p.to_string()),
+        ("page_size".to_string(), size.to_string()),
+    ];
+
+    if let Some(tn) = &params.token_name {
+        if !tn.trim().is_empty() {
+            query_params.push(("token_name".to_string(), tn.trim().to_string()));
+        }
+    }
+    if let Some(mn) = &params.model_name {
+        if !mn.trim().is_empty() {
+            query_params.push(("model_name".to_string(), mn.trim().to_string()));
+        }
+    }
+    if let Some(start) = params.start_timestamp {
+        if start > 0 {
+            query_params.push(("start_timestamp".to_string(), start.to_string()));
+        }
+    }
+    if let Some(end) = params.end_timestamp {
+        if end > 0 {
+            query_params.push(("end_timestamp".to_string(), end.to_string()));
+        }
+    }
+    if let Some(lt) = params.log_type {
+        query_params.push(("type".to_string(), lt.to_string()));
+    }
+    if let Some(un) = &params.username {
+        if !un.trim().is_empty() {
+            query_params.push(("username".to_string(), un.trim().to_string()));
+        }
+    }
+
+    let is_all = params.all.unwrap_or(false);
+    let url = if is_all {
+        format!("{}/api/log/", BASE_URL)
+    } else {
+        format!("{}/api/log/self", BASE_URL)
+    };
+    let resp = mgr
+        .client
+        .get(&url)
+        .header(AUTHORIZATION, format!("Bearer {}", token))
+        .query(&query_params)
+        .send()
+        .await
+        .map_err(|e| format!("请求使用日志网络失败: {e}"))?;
+
+    let status = resp.status();
+    let text = resp
+        .text()
+        .await
+        .map_err(|e| format!("读取使用日志响应失败: {e}"))?;
+
+    let parsed: ApiResponse<serde_json::Value> =
+        parse_api_response_body(status, &text, "获取使用日志")?;
+
+    if !parsed.success {
+        let msg = if parsed.message.is_empty() {
+            "获取使用日志失败".to_string()
+        } else {
+            parsed.message
+        };
+        return Err(msg);
+    }
+
+    let data = parsed
+        .data
+        .ok_or_else(|| "使用日志响应中无 data".to_string())?;
+
+    let mut items: Vec<UsageLogItem> = Vec::new();
+    let mut total: i64 = 0;
+
+    if let Some(arr) = data.as_array() {
+        items = serde_json::from_value(serde_json::Value::Array(arr.clone())).unwrap_or_default();
+        total = items.len() as i64;
+    } else if let Some(items_val) = data.get("items").or_else(|| data.get("data")) {
+        if let Some(arr) = items_val.as_array() {
+            items =
+                serde_json::from_value(serde_json::Value::Array(arr.clone())).unwrap_or_default();
+        }
+        total = data
+            .get("total")
+            .and_then(|v| v.as_i64())
+            .unwrap_or(items.len() as i64);
+    }
+
+    Ok(UsageLogsResponse {
+        items,
+        total,
+        page: p,
+        page_size: size,
+    })
+}
+
+/// 获取用户调用与消费统计数据 (GET /api/log/self/stat 或管理员 GET /api/log/stat)
+#[allow(dead_code)]
+pub async fn get_user_usage_stat(params: UsageLogQueryParams) -> Result<UsageStatData, String> {
+    let token = ensure_access_token().await?;
+    let mgr = AUTH_MGR.lock().await;
+
+    let mut query_params: Vec<(String, String)> = Vec::new();
+
+    if let Some(tn) = &params.token_name {
+        if !tn.trim().is_empty() {
+            query_params.push(("token_name".to_string(), tn.trim().to_string()));
+        }
+    }
+    if let Some(mn) = &params.model_name {
+        if !mn.trim().is_empty() {
+            query_params.push(("model_name".to_string(), mn.trim().to_string()));
+        }
+    }
+    if let Some(start) = params.start_timestamp {
+        if start > 0 {
+            query_params.push(("start_timestamp".to_string(), start.to_string()));
+        }
+    }
+    if let Some(end) = params.end_timestamp {
+        if end > 0 {
+            query_params.push(("end_timestamp".to_string(), end.to_string()));
+        }
+    }
+    if let Some(lt) = params.log_type {
+        query_params.push(("type".to_string(), lt.to_string()));
+    }
+    if let Some(un) = &params.username {
+        if !un.trim().is_empty() {
+            query_params.push(("username".to_string(), un.trim().to_string()));
+        }
+    }
+
+    let is_all = params.all.unwrap_or(false);
+    let url = if is_all {
+        format!("{}/api/log/stat", BASE_URL)
+    } else {
+        format!("{}/api/log/self/stat", BASE_URL)
+    };
+    let resp = mgr
+        .client
+        .get(&url)
+        .header(AUTHORIZATION, format!("Bearer {}", token))
+        .query(&query_params)
+        .send()
+        .await
+        .map_err(|e| format!("请求日志统计数据网络失败: {e}"))?;
+
+    let status = resp.status();
+    let text = resp
+        .text()
+        .await
+        .map_err(|e| format!("读取日志统计响应失败: {e}"))?;
+
+    let parsed: ApiResponse<serde_json::Value> =
+        parse_api_response_body(status, &text, "获取日志统计")?;
+
+    if !parsed.success {
+        return Ok(UsageStatData::default());
+    }
+
+    let data = parsed.data.unwrap_or_default();
+    let quota = data.get("quota").and_then(|v| v.as_i64()).unwrap_or(0);
+    let prompt_tokens = data
+        .get("prompt_tokens")
+        .and_then(|v| v.as_i64())
+        .unwrap_or(0);
+    let completion_tokens = data
+        .get("completion_tokens")
+        .and_then(|v| v.as_i64())
+        .unwrap_or(0);
+    let request_count = data
+        .get("request_count")
+        .and_then(|v| v.as_i64())
+        .unwrap_or(0);
+    let avg_use_time = data
+        .get("avg_use_time")
+        .and_then(|v| v.as_f64())
+        .unwrap_or(0.0);
+
+    Ok(UsageStatData {
+        quota,
+        prompt_tokens,
+        completion_tokens,
+        request_count,
+        avg_use_time,
+    })
+}
+
+/// 获取模型与价格数据（支持包含分组倍率、厂商列表等，已登录时附带当前用户的实际分组）
+#[allow(dead_code)]
+pub async fn get_pricing_data() -> Result<PricingResponse, String> {
+    let user_token = ensure_access_token().await.ok();
+    let client = {
+        let mgr = AUTH_MGR.lock().await;
+        mgr.client.clone()
+    };
+
+    let url = format!("{}/api/pricing", BASE_URL);
+    let mut req = client
+        .get(&url)
+        .header(reqwest::header::ACCEPT, "application/json");
+    if let Some(token) = &user_token {
+        req = req.header(AUTHORIZATION, format!("Bearer {}", token));
+    }
+
+    let resp = req
+        .send()
+        .await
+        .map_err(|e| format!("请求模型与价格数据失败: {e}"))?;
+
+    let text = resp
+        .text()
+        .await
+        .map_err(|e| format!("读取模型与价格响应失败: {e}"))?;
+
+    let mut parsed: PricingResponse =
+        serde_json::from_str(&text).map_err(|e| format!("解析模型与价格响应数据失败: {e}"))?;
+
+    // 如果用户已登录，获取当前用户主分组与可用分组
+    if user_token.is_some() {
+        if let Ok(wallet) = get_user_wallet().await {
+            parsed.user_group = wallet.group;
+        }
+        if let Ok(groups) = get_user_available_groups().await {
+            parsed.user_available_groups = groups;
+        }
+    }
+
+    Ok(parsed)
 }

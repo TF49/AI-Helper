@@ -43,6 +43,7 @@ import {
 } from "../lib/api";
 import type { ChannelGroupOverview, TokenItem } from "../types";
 import { HealthTrendVisualizer } from "./HealthTrendVisualizer";
+import { CircleToSearchBar } from "./ui/CircleToSearchBar";
 import { ButtonToLoaderToSuccess } from "./ui/ButtonToLoaderToSuccess";
 
 export interface ChannelGroupMonitorProps {
@@ -301,8 +302,11 @@ export function ChannelGroupMonitor({
           }),
         );
       } catch (err: unknown) {
-        const msg =
+        const rawMsg =
           typeof err === "string" ? err : "加载分组监控数据失败，请确认网络或登录态";
+        const msg = rawMsg.includes("Unauthorized") || rawMsg.includes("登录")
+          ? "登录状态已过期，请重新登录"
+          : rawMsg;
         setErrorMsg(msg);
       } finally {
         if (!silent) setLoading(false);
@@ -789,13 +793,23 @@ export function ChannelGroupMonitor({
               <AlertCircle size={15} className="flex-shrink-0 text-rose-500" />
               <span>{errorMsg}</span>
             </div>
-            <button
-              type="button"
-              onClick={() => void loadData()}
-              className="px-2.5 py-1 rounded-lg bg-rose-600 text-white font-medium hover:bg-rose-700 active:scale-95 transition-all cursor-pointer"
-            >
-              重试
-            </button>
+            {errorMsg.includes("登录") || errorMsg.includes("Unauthorized") ? (
+              <button
+                type="button"
+                onClick={() => setLoginModalOpen(true)}
+                className="px-3 py-1 rounded-lg bg-blue-600 text-white font-medium hover:bg-blue-700 active:scale-95 transition-all cursor-pointer"
+              >
+                去登录
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={() => void loadData()}
+                className="px-2.5 py-1 rounded-lg bg-rose-600 text-white font-medium hover:bg-rose-700 active:scale-95 transition-all cursor-pointer"
+              >
+                重试
+              </button>
+            )}
           </div>
         ) : activeGroup ? (
           /* 活跃分组指标展示 */
@@ -1025,29 +1039,16 @@ export function ChannelGroupMonitor({
               <div className="mt-2 space-y-2.5 pt-2.5 border-t border-slate-100/80 dark:border-white/5">
                 {/* 搜索与过滤控制条 */}
                 <div className="flex items-center justify-between gap-2 flex-wrap">
-                  {/* 搜索框 */}
-                  <div className="relative flex-1 min-w-[180px]">
-                    <Search size={12} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
-                    <input
-                      type="text"
-                      value={groupSearch}
-                      onChange={(e) => setGroupSearch(e.target.value)}
-                      placeholder="过滤分组名称 (如 SVIP, Claude, Codex)..."
-                      className={cn(
-                        "w-full h-7 pl-7 pr-7 text-xs rounded-lg bg-slate-50 dark:bg-black/30 border border-slate-200/80 dark:border-white/10 text-slate-800 dark:text-gray-200 placeholder:text-slate-400 focus:outline-none focus:ring-1",
-                        theme.focusRing,
-                      )}
-                    />
-                    {groupSearch && (
-                      <button
-                        type="button"
-                        onClick={() => setGroupSearch("")}
-                        className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-gray-200 cursor-pointer"
-                      >
-                        <X size={11} />
-                      </button>
-                    )}
-                  </div>
+                  {/* 搜索框：圆形图标按钮 -> 搜索框 (CircleToSearchBar) */}
+                  <CircleToSearchBar
+                    value={groupSearch}
+                    onChange={setGroupSearch}
+                    placeholder="过滤分组名称 (如 SVIP, Claude, Codex)..."
+                    title="过滤分组 (点击展开)"
+                    size={28}
+                    expandedWidth="full"
+                    className="flex-1 min-w-[28px]"
+                  />
 
                   {/* 过滤分类标签 */}
                   <div className="flex items-center p-0.5 rounded-lg bg-slate-100 dark:bg-white/5 border border-slate-200/60 dark:border-white/5 text-[10px]">
@@ -1642,19 +1643,15 @@ export function ChannelGroupMonitor({
 
               {/* 弹窗检索与排序控制栏 */}
               <div className="px-6 py-3 border-b border-slate-100 dark:border-white/5 flex items-center justify-between gap-3 flex-wrap bg-white/40 dark:bg-white/[0.01]">
-                <div className="relative flex-1 min-w-[220px]">
-                  <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-                  <input
-                    type="text"
-                    value={groupSearch}
-                    onChange={(e) => setGroupSearch(e.target.value)}
-                    placeholder="过滤通道名称 (如 SVIP, Claude, Codex)..."
-                    className={cn(
-                      "w-full h-8 pl-8 pr-3 text-xs rounded-xl bg-slate-50 dark:bg-black/30 border border-slate-200 dark:border-white/10 text-slate-800 dark:text-gray-200 placeholder:text-slate-400 focus:outline-none focus:ring-1",
-                      theme.focusRing,
-                    )}
-                  />
-                </div>
+                <CircleToSearchBar
+                  value={groupSearch}
+                  onChange={setGroupSearch}
+                  placeholder="过滤通道名称 (如 SVIP, Claude, Codex)..."
+                  title="过滤通道 (点击展开)"
+                  size={32}
+                  expandedWidth="full"
+                  className="flex-1 min-w-[32px]"
+                />
 
                 {/* 排序器 */}
                 <div className="flex items-center gap-1.5 text-xs text-slate-500 dark:text-gray-400">

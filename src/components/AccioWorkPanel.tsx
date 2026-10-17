@@ -953,7 +953,7 @@ export function AccioWorkPanel() {
                 <button
                   type="button"
                   onClick={handleSave}
-                  disabled={testModalOpen}
+                  disabled={testModalOpen || !configConfirmed}
                   className={cn(
                     "flex items-center justify-center gap-1.5 px-6 py-2 min-w-[190px] rounded-xl text-xs font-semibold text-white transition-colors shadow-xs cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed",
                     configConfirmed

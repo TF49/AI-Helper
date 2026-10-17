@@ -36,6 +36,7 @@ import type {
   WorkbuddySavePayload,
   AccioConfig,
 } from "../types";
+import { ButtonToLoaderToSuccess } from "./ui/ButtonToLoaderToSuccess";
 
 export interface TerminalTestModalProps {
   open: boolean;
@@ -173,6 +174,7 @@ export function TerminalTestModal({
     } catch (err) {
       addLog(`❌ 重启失败: ${err}`, "error");
       toast.error(`重启失败: ${err}`);
+      throw err;
     } finally {
       setRestartingTarget(null);
     }
@@ -634,101 +636,106 @@ export function TerminalTestModal({
               <div className="flex items-center gap-2 flex-wrap">
                 {type === "codex" ? (
                   <>
-                    <button
-                      type="button"
-                      onClick={() => void handleRestart("chatgpt")}
+                    <ButtonToLoaderToSuccess
+                      accent="emerald"
                       disabled={restartingTarget !== null}
-                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-medium transition-colors shadow-xs cursor-pointer disabled:opacity-60"
-                      title="安全终止并重新拉起 ChatGPT 客户端"
-                    >
-                      {restartingTarget === "chatgpt" ? (
-                        <Loader2 size={13} className="animate-spin" />
-                      ) : (
-                        <OpenAIIcon size={13} />
-                      )}
-                      <span>
-                        {chatgptRunning
-                          ? "重启 ChatGPT 客户端"
-                          : "启动 ChatGPT 客户端"}
-                      </span>
-                    </button>
+                      className="px-3 py-1.5 rounded-lg text-xs font-medium min-w-[155px]"
+                      idleLabel={
+                        <>
+                          <OpenAIIcon size={13} />
+                          <span>
+                            {chatgptRunning
+                              ? "重启 ChatGPT 客户端"
+                              : "启动 ChatGPT 客户端"}
+                          </span>
+                        </>
+                      }
+                      successLabel="ChatGPT 已拉起"
+                      resetAfterMs={3000}
+                      holdMs={800}
+                      onAction={() => handleRestart("chatgpt")}
+                    />
 
-                    <button
-                      type="button"
-                      onClick={() => void handleRestart("codex")}
+                    <ButtonToLoaderToSuccess
+                      accent="blue"
                       disabled={restartingTarget !== null}
-                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs font-medium transition-colors shadow-xs cursor-pointer disabled:opacity-60"
-                      title="在独立终端窗口启动/重启 Codex CLI"
-                    >
-                      {restartingTarget === "codex" ? (
-                        <Loader2 size={13} className="animate-spin" />
-                      ) : (
-                        <Terminal size={13} />
-                      )}
-                      <span>
-                        {codexRunning
-                          ? "重启 Codex CLI 终端"
-                          : "启动 Codex CLI 终端"}
-                      </span>
-                    </button>
+                      className="px-3 py-1.5 rounded-lg text-xs font-medium min-w-[155px]"
+                      idleLabel={
+                        <>
+                          <Terminal size={13} />
+                          <span>
+                            {codexRunning
+                              ? "重启 Codex CLI 终端"
+                              : "启动 Codex CLI 终端"}
+                          </span>
+                        </>
+                      }
+                      successLabel="Codex CLI 已拉起"
+                      resetAfterMs={3000}
+                      holdMs={800}
+                      onAction={() => handleRestart("codex")}
+                    />
                   </>
                 ) : type === "workbuddy" ? (
-                  <button
-                    type="button"
-                    onClick={() => void handleRestart("workbuddy")}
+                  <ButtonToLoaderToSuccess
+                    accent="emerald"
                     disabled={restartingTarget !== null}
-                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-medium transition-colors shadow-xs cursor-pointer disabled:opacity-60"
-                    title="重启 WorkBuddy 客户端"
-                  >
-                    {restartingTarget === "workbuddy" ? (
-                      <Loader2 size={13} className="animate-spin" />
-                    ) : (
-                      <WorkbuddyIcon size={13} />
-                    )}
-                    <span>
-                      {workbuddyRunning
-                        ? "重启 WorkBuddy 客户端"
-                        : "启动 WorkBuddy 客户端"}
-                    </span>
-                  </button>
+                    className="px-3 py-1.5 rounded-lg text-xs font-medium min-w-[165px]"
+                    idleLabel={
+                      <>
+                        <WorkbuddyIcon size={13} />
+                        <span>
+                          {workbuddyRunning
+                            ? "重启 WorkBuddy 客户端"
+                            : "启动 WorkBuddy 客户端"}
+                        </span>
+                      </>
+                    }
+                    successLabel="WorkBuddy 已拉起"
+                    resetAfterMs={3000}
+                    holdMs={800}
+                    onAction={() => handleRestart("workbuddy")}
+                  />
                 ) : type === "acciowork" ? (
-                  <button
-                    type="button"
-                    onClick={() => void handleRestart("acciowork")}
+                  <ButtonToLoaderToSuccess
+                    accent="orange"
                     disabled={restartingTarget !== null}
-                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-orange-600 hover:bg-orange-700 text-white text-xs font-medium transition-colors shadow-xs cursor-pointer disabled:opacity-60"
-                    title="安全终止并重新拉起 Accio Work 客户端 (自动注入本地网关)"
-                  >
-                    {restartingTarget === "acciowork" ? (
-                      <Loader2 size={13} className="animate-spin" />
-                    ) : (
-                      <AccioWorkIcon size={13} />
-                    )}
-                    <span>
-                      {accioRunning
-                        ? "重启 Accio Work 客户端"
-                        : "启动 Accio Work 客户端"}
-                    </span>
-                  </button>
+                    className="px-3 py-1.5 rounded-lg text-xs font-medium min-w-[165px]"
+                    idleLabel={
+                      <>
+                        <AccioWorkIcon size={13} />
+                        <span>
+                          {accioRunning
+                            ? "重启 Accio Work 客户端"
+                            : "启动 Accio Work 客户端"}
+                        </span>
+                      </>
+                    }
+                    successLabel="Accio Work 已拉起"
+                    resetAfterMs={3000}
+                    holdMs={800}
+                    onAction={() => handleRestart("acciowork")}
+                  />
                 ) : (
-                  <button
-                    type="button"
-                    onClick={() => void handleRestart("claude")}
+                  <ButtonToLoaderToSuccess
+                    accent="purple"
                     disabled={restartingTarget !== null}
-                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-purple-600 hover:bg-purple-700 text-white text-xs font-medium transition-colors shadow-xs cursor-pointer disabled:opacity-60"
-                    title="在独立终端窗口启动/重启 Claude Code"
-                  >
-                    {restartingTarget === "claude" ? (
-                      <Loader2 size={13} className="animate-spin" />
-                    ) : (
-                      <ClaudeIcon size={13} />
-                    )}
-                    <span>
-                      {claudeRunning
-                        ? "重启 Claude Code 终端"
-                        : "启动 Claude Code 终端"}
-                    </span>
-                  </button>
+                    className="px-3 py-1.5 rounded-lg text-xs font-medium min-w-[165px]"
+                    idleLabel={
+                      <>
+                        <ClaudeIcon size={13} />
+                        <span>
+                          {claudeRunning
+                            ? "重启 Claude Code 终端"
+                            : "启动 Claude Code 终端"}
+                        </span>
+                      </>
+                    }
+                    successLabel="Claude Code 已拉起"
+                    resetAfterMs={3000}
+                    holdMs={800}
+                    onAction={() => handleRestart("claude")}
+                  />
                 )}
               </div>
 
@@ -780,7 +787,7 @@ export function TerminalTestModal({
               <button
                 type="button"
                 onClick={runTestAndSave}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs font-medium transition-colors shadow-sm"
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white transition-colors cursor-pointer shadow-xs"
               >
                 <RefreshCw size={13} />
                 <span>重新测试</span>

@@ -19,11 +19,31 @@ const ACCENT = {
     idle: "#0d9488",
     hover: "#0f766e",
     success: "#059669",
+    className: "bg-teal-600 hover:bg-teal-700 active:bg-teal-800",
   },
   blue: {
     idle: "#2563eb",
     hover: "#1d4ed8",
     success: "#059669",
+    className: "bg-blue-600 hover:bg-blue-700 active:bg-blue-800",
+  },
+  purple: {
+    idle: "#9333ea",
+    hover: "#7e22ce",
+    success: "#059669",
+    className: "bg-purple-600 hover:bg-purple-700 active:bg-purple-800",
+  },
+  emerald: {
+    idle: "#059669",
+    hover: "#047857",
+    success: "#059669",
+    className: "bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800",
+  },
+  orange: {
+    idle: "#ea580c",
+    hover: "#c2410c",
+    success: "#059669",
+    className: "bg-orange-600 hover:bg-orange-700 active:bg-orange-800",
   },
 } as const;
 
@@ -34,6 +54,8 @@ export interface ButtonToLoaderToSuccessProps {
   disabled?: boolean;
   accent?: keyof typeof ACCENT;
   className?: string;
+  type?: "button" | "submit";
+  title?: string;
   /** 成功条停留后是否复原；弹窗关闭场景传 null */
   resetAfterMs?: number | null;
   holdMs?: number;
@@ -48,6 +70,8 @@ export function ButtonToLoaderToSuccess({
   disabled = false,
   accent = "blue",
   className,
+  type = "button",
+  title,
   resetAfterMs = 2200,
   holdMs = 900,
   onComplete,
@@ -70,17 +94,20 @@ export function ButtonToLoaderToSuccess({
     const slot = slotRef.current;
     if (!btn || !slot) return;
     const rect = btn.getBoundingClientRect();
-    slotSizeRef.current = { width: rect.width, height: rect.height };
-    slot.style.width = `${rect.width}px`;
-    slot.style.height = `${rect.height}px`;
-    gsap.set(btn, { width: rect.width, height: rect.height });
-    gsap.set(idleRef.current, { position: "absolute", inset: 0 });
+    if (rect.width > 0 && rect.height > 0) {
+      slotSizeRef.current = { width: rect.width, height: rect.height };
+      slot.style.width = `${rect.width}px`;
+      slot.style.height = `${rect.height}px`;
+      gsap.set(btn, { width: rect.width, height: rect.height });
+      gsap.set(idleRef.current, { position: "absolute", inset: 0 });
+    }
   }, []);
 
   useEffect(() => {
     return () => {
       gsap.killTweensOf([
         btnRef.current,
+        slotRef.current,
         idleRef.current,
         ringRef.current,
         ringWrapRef.current,
@@ -93,11 +120,13 @@ export function ButtonToLoaderToSuccess({
 
   const revertToIdle = useCallback(() => {
     const btn = btnRef.current;
+    const slot = slotRef.current;
     const { width, height } = slotSizeRef.current;
     if (!btn) return;
 
     gsap.killTweensOf([
       btn,
+      slot,
       idleRef.current,
       ringRef.current,
       ringWrapRef.current,
@@ -116,6 +145,9 @@ export function ButtonToLoaderToSuccess({
     });
     gsap.set(successRef.current, { opacity: 0 });
     gsap.set(ringRef.current, { strokeDashoffset: RING_CIRCUMFERENCE });
+    if (slot && width > 0) {
+      gsap.to(slot, { width, height, duration: 0.35, ease: "power2.inOut" });
+    }
     gsap.to(btn, {
       width,
       height,
@@ -128,6 +160,7 @@ export function ButtonToLoaderToSuccess({
         if (btnRef.current) {
           btnRef.current.style.backgroundColor = "";
           btnRef.current.style.minWidth = "";
+          btnRef.current.style.borderRadius = "";
         }
       },
     });
@@ -211,6 +244,14 @@ export function ButtonToLoaderToSuccess({
     const [ok] = await Promise.all([runAction, ringTween.then()]);
 
     if (!ok) {
+      await gsap.to(btn, {
+        x: -4,
+        duration: 0.05,
+        repeat: 3,
+        yoyo: true,
+        ease: "power1.inOut",
+      });
+      gsap.set(btn, { x: 0 });
       revertToIdle();
       return;
     }
@@ -251,10 +292,21 @@ export function ButtonToLoaderToSuccess({
       delay: 0.16,
       ease: "power2.out",
     });
+    const neededWidth = (successRef.current?.scrollWidth || 0) + 36;
+    const targetWidth = Math.max(slotSizeRef.current.width, neededWidth);
+
+    if (slot && targetWidth !== slotSizeRef.current.width) {
+      gsap.to(slot, {
+        width: targetWidth,
+        duration: 0.5,
+        ease: "power2.inOut",
+      });
+    }
+
     await gsap.to(btn, {
-      width: slotSizeRef.current.width,
+      width: targetWidth,
       height: slotSizeRef.current.height,
-      minWidth: slotSizeRef.current.width,
+      minWidth: targetWidth,
       borderRadius: 12,
       backgroundColor: colors.success,
       duration: 0.5,
@@ -280,17 +332,15 @@ export function ButtonToLoaderToSuccess({
     >
       <button
         ref={btnRef}
-        type="button"
+        type={type}
+        title={title}
         disabled={disabled}
         onClick={() => void handleClick()}
         className={cn(
           "relative z-10 flex items-center justify-center gap-2 overflow-hidden px-6 py-2.5",
           "rounded-xl text-xs font-semibold text-white shadow-xs cursor-pointer",
           "disabled:opacity-50 disabled:cursor-not-allowed",
-          accent === "teal" &&
-            "bg-teal-600 hover:bg-teal-700 active:bg-teal-800",
-          accent === "blue" &&
-            "bg-blue-600 hover:bg-blue-700 active:bg-blue-800",
+          colors.className,
           className,
         )}
       >

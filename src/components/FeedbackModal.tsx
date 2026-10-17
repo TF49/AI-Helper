@@ -5,15 +5,19 @@ import {
   Lightbulb,
   HelpCircle,
   Send,
-  Loader2,
   Copy,
   Check,
   MessageSquare,
 } from "lucide-react";
 import { toast } from "sonner";
-import { getSystemDiagnosticInfo, submitFeishuFeedback } from "../lib/api";
-import type { FeedbackType } from "../types";
+import {
+  getSystemDiagnosticInfo,
+  submitFeishuFeedback,
+  refreshAuthSession,
+} from "../lib/api";
+import type { FeedbackType, UserInfo } from "../types";
 import { cn } from "../lib/utils";
+import { ButtonToLoaderToSuccess } from "./ui/ButtonToLoaderToSuccess";
 
 interface FeedbackModalProps {
   open: boolean;
@@ -21,7 +25,8 @@ interface FeedbackModalProps {
   appVersion: string;
   activeTab: "chatgpt" | "claude" | "workbuddy" | "acciowork" | "paths";
   networkState: "checking" | "reachable" | "unreachable";
-  currentUser?: { username?: string; display_name?: string | null } | null;
+  currentUser?: UserInfo | null;
+  onRefreshAuth?: () => Promise<void>;
 }
 
 export function FeedbackModal({
@@ -31,12 +36,18 @@ export function FeedbackModal({
   activeTab,
   networkState,
   currentUser,
+  onRefreshAuth,
 }: FeedbackModalProps) {
   const [feedbackType, setFeedbackType] = useState<FeedbackType>("feature");
   const [content, setContent] = useState("");
   const [email, setEmail] = useState(() => {
-    return localStorage.getItem("ai_helper_feedback_email") || "";
+    return currentUser?.email || localStorage.getItem("ai_helper_feedback_email") || "";
   });
+  const [autoFilledEmail, setAutoFilledEmail] = useState<string | null>(
+    () => currentUser?.email || null,
+  );
+  const [isFetchingEmail, setIsFetchingEmail] = useState(false);
+  const [isEmailModifiedByUser, setIsEmailModifiedByUser] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [copied, setCopied] = useState(false);
   const [osInfo, setOsInfo] = useState("Windows 10");
@@ -83,6 +94,51 @@ export function FeedbackModal({
     }
   }, [open, feedbackType, osInfo]);
 
+  // 打开弹窗时自动获取并预填用户登录邮箱 (支持 bob-api refresh 接口获取)，同时允许用户后续按需修改
+  useEffect(() => {
+    if (!open) return;
+
+    setIsEmailModifiedByUser(false);
+
+    // 1. 若当前登录用户已有 email，优先自动预填
+    if (currentUser?.email) {
+      setEmail(currentUser.email);
+      setAutoFilledEmail(currentUser.email);
+      setIsFetchingEmail(false);
+      return;
+    }
+
+    // 2. 若用户已登录但当前对象尚未同步到 email，调用 refreshAuthSession (https://bob-api.com/api/user/auth/refresh)
+    if (currentUser?.username) {
+      setIsFetchingEmail(true);
+      void refreshAuthSession()
+        .then((res) => {
+          if (res?.user?.email) {
+            setEmail((prev) => (isEmailModifiedByUser ? prev : res.user.email || ""));
+            setAutoFilledEmail(res.user.email);
+            void onRefreshAuth?.();
+          } else {
+            const saved = localStorage.getItem("ai_helper_feedback_email");
+            if (saved) setEmail((prev) => (prev ? prev : saved));
+          }
+        })
+        .catch(() => {
+          const saved = localStorage.getItem("ai_helper_feedback_email");
+          if (saved) setEmail((prev) => (prev ? prev : saved));
+        })
+        .finally(() => {
+          setIsFetchingEmail(false);
+        });
+      return;
+    }
+
+    // 3. 未登录用户，读取本地历史保存的邮箱
+    setAutoFilledEmail(null);
+    setIsFetchingEmail(false);
+    const saved = localStorage.getItem("ai_helper_feedback_email");
+    if (saved) setEmail(saved);
+  }, [open, currentUser?.email, currentUser?.username]);
+
   if (!open) return null;
 
   const handleTypeChange = (newType: FeedbackType) => {
@@ -123,31 +179,26 @@ ${content.trim()}
     }
   };
 
-  // 直接提交到开发者的飞书机器人
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-
+  const handleFeedbackAction = async () => {
     const trimmedEmail = email.trim();
     if (!trimmedEmail) {
       toast.error("请输入联系邮箱，方便我们与您跟进处理结果");
-      return;
+      throw new Error("Missing email");
     }
 
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailRegex.test(trimmedEmail)) {
       toast.error("请输入有效格式的邮箱地址");
-      return;
+      throw new Error("Invalid email");
     }
 
     if (!content.trim()) {
       toast.error("请输入反馈内容");
-      return;
+      throw new Error("Missing content");
     }
 
-    // 本地持久化记住用户邮箱
     localStorage.setItem("ai_helper_feedback_email", trimmedEmail);
 
-    setSubmitting(true);
     try {
       const res = await submitFeishuFeedback({
         feedback_type: feedbackType,
@@ -162,14 +213,13 @@ ${content.trim()}
 
       if (res.success) {
         toast.success(res.message || "反馈提交成功，感谢您的支持！");
-        onClose();
       } else {
-        // 提交失败时，自动复制文本兜底，确保反馈永不丢失
         await navigator.clipboard.writeText(formatFullFeedbackText());
         toast.warning(
           res.message || "飞书发送未成功，已自动将反馈内容复制到剪贴板！",
           { duration: 6000 },
         );
+        throw new Error(res.message);
       }
     } catch (err: unknown) {
       console.error("提交反馈异常:", err);
@@ -177,9 +227,13 @@ ${content.trim()}
         await navigator.clipboard.writeText(formatFullFeedbackText());
       } catch {}
       toast.error("提交异常，已将反馈内容复制到剪贴板备用", { duration: 4000 });
-    } finally {
-      setSubmitting(false);
+      throw err;
     }
+  };
+
+  // 直接提交到开发者的飞书机器人
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
   };
 
   return (
@@ -303,17 +357,43 @@ ${content.trim()}
 
           {/* 3. 联系邮箱输入区 */}
           <div>
-            <label className="block text-xs font-semibold text-slate-600 dark:text-gray-300 mb-1.5">
-              邮箱{" "}
-              <span className="text-rose-500 dark:text-rose-400 font-normal">
-                (必填)
-              </span>
-            </label>
+            <div className="flex items-center justify-between mb-1.5">
+              <label className="text-xs font-semibold text-slate-600 dark:text-gray-300">
+                邮箱{" "}
+                <span className="text-rose-500 dark:text-rose-400 font-normal">
+                  (必填)
+                </span>
+              </label>
+              {autoFilledEmail ? (
+                <div className="flex items-center gap-1.5 text-[10px] text-slate-400 dark:text-gray-500">
+                  <span>已自动填入登录邮箱，可按需修改</span>
+                  {autoFilledEmail !== email.trim() && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setEmail(autoFilledEmail);
+                        setIsEmailModifiedByUser(false);
+                      }}
+                      className="text-cyan-600 dark:text-cyan-400 hover:underline cursor-pointer"
+                    >
+                      恢复原邮箱
+                    </button>
+                  )}
+                </div>
+              ) : null}
+            </div>
             <input
               type="email"
               value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="请输入邮箱（必填，方便回复）"
+              onChange={(e) => {
+                setEmail(e.target.value);
+                setIsEmailModifiedByUser(true);
+              }}
+              placeholder={
+                isFetchingEmail
+                  ? "正在获取登录账号邮箱..."
+                  : "请输入邮箱（必填，方便回复）"
+              }
               className="w-full px-3.5 py-2.5 rounded-xl text-xs border border-slate-300 dark:border-white/10 bg-white dark:bg-[#0c0e18]/80 text-slate-800 dark:text-gray-200 placeholder:text-slate-400 dark:placeholder:text-gray-500 focus:outline-none focus:border-cyan-400 focus:ring-1 focus:ring-cyan-400 transition-all shadow-inner"
             />
           </div>
@@ -349,19 +429,24 @@ ${content.trim()}
                 取消
               </button>
 
-              {/* 提交按钮 */}
-              <button
-                type="submit"
-                disabled={submitting}
-                className="h-8 px-4 rounded-xl text-xs font-semibold text-white bg-blue-600 hover:bg-blue-700 active:bg-blue-800 disabled:opacity-60 transition-all shadow-xs flex items-center gap-1.5 cursor-pointer"
-              >
-                {submitting ? (
-                  <Loader2 size={13} className="animate-spin" />
-                ) : (
-                  <Send size={13} />
-                )}
-                <span>{submitting ? "提交中..." : "提交"}</span>
-              </button>
+              {/* 提交按钮（状态形变链） */}
+              <ButtonToLoaderToSuccess
+                accent="blue"
+                disabled={submitting || !content.trim()}
+                className="h-8 px-4 rounded-xl text-xs font-semibold min-w-[110px]"
+                idleLabel={
+                  <>
+                    <Send size={13} />
+                    <span>提交反馈</span>
+                  </>
+                }
+                successLabel="反馈已送达"
+                resetAfterMs={null}
+                holdMs={800}
+                onAction={handleFeedbackAction}
+                onBusyChange={setSubmitting}
+                onComplete={onClose}
+              />
             </div>
           </div>
         </form>

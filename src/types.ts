@@ -7,7 +7,6 @@ export interface AgentConfig {
   is_installed: boolean;
   app_path?: string | null;
 }
-
 export interface NetworkStatus {
   reachable: boolean;
   target_url?: string;
@@ -121,6 +120,7 @@ export const CLAUDE_MODEL_SUGGESTIONS = [
 ] as const;
 
 export const WORKBUDDY_MODEL_SUGGESTIONS = [
+  "gpt-6.1-sol",
   "gpt-5.6-sol",
   "gpt-4o",
   "gpt-4o-mini",
@@ -130,6 +130,7 @@ export const WORKBUDDY_MODEL_SUGGESTIONS = [
 ] as const;
 
 export const ACCIO_MODEL_SUGGESTIONS = [
+  "gpt-6.1-sol",
   "claude-3-7-sonnet",
   "claude-3-5-sonnet",
   "gpt-4o",
@@ -247,6 +248,12 @@ export interface UserInfo {
   id: number;
   username: string;
   display_name?: string | null;
+  role?: number;
+  email?: string | null;
+}
+
+export function isUserAdmin(user?: UserInfo | null): boolean {
+  return Boolean(user && typeof user.role === "number" && user.role >= 10);
 }
 
 export interface LoginPayload {
@@ -293,6 +300,7 @@ export interface TokenItem {
   unlimited_quota: boolean;
   remain_quota: number;
   group?: string | null;
+  user_id?: number | null;
 }
 
 export interface CurrentAuthState {
@@ -354,4 +362,108 @@ export interface FeishuFeedbackPayload {
 export interface FeedbackSubmitResult {
   success: boolean;
   message: string;
+}
+
+// ── 全新一级导航与应用偏好设置类型定义 ──
+
+export type MainNav =
+  | "workspace"
+  | "logs"
+  | "account"
+  | "tools"
+  | "settings";
+
+export type AgentTool = "chatgpt" | "claude" | "workbuddy" | "acciowork";
+
+export interface AppSettings {
+  autoStart: boolean;
+  minimizeToTray: boolean;
+  startupPage: MainNav;
+  showAnnouncementModal: boolean;
+  language: string;
+  enableAurora: boolean;
+}
+
+// ── 使用日志模型 ──
+
+export interface UsageLogItem {
+  id: number;
+  created_at: number;
+  user_id: number;
+  username: string;
+  token_name: string;
+  model_name: string;
+  quota: number;
+  prompt_tokens: number;
+  completion_tokens: number;
+  use_time: number;
+  is_stream: boolean;
+  group: string;
+  channel_id?: number | null;
+  content?: string | null;
+  log_type?: number | null;
+}
+
+export interface UsageLogsResponse {
+  items: UsageLogItem[];
+  total: number;
+  page: number;
+  page_size: number;
+}
+
+export interface UsageLogQueryParams {
+  p?: number;
+  page_size?: number;
+  token_name?: string;
+  model_name?: string;
+  start_timestamp?: number;
+  end_timestamp?: number;
+  log_type?: number;
+  username?: string;
+  all?: boolean;
+}
+
+export interface UsageStatData {
+  quota: number;
+  prompt_tokens: number;
+  completion_tokens: number;
+  request_count: number;
+  avg_use_time: number;
+}
+
+// ── 模型与定价模型 ──
+
+export interface PricingModelItem {
+  model_name: string;
+  vendor_id?: number | null;
+  quota_type: number;
+  model_ratio: number;
+  model_price: number;
+  owner_by: string;
+  completion_ratio: number;
+  cache_ratio?: number | null;
+  create_cache_ratio?: number | null;
+  enable_groups: string[];
+  supported_endpoint_types: string[];
+  billing_mode?: string;
+  billing_expr?: string;
+}
+
+export interface VendorInfo {
+  id: number;
+  name: string;
+  icon: string;
+}
+
+export interface PricingResponse {
+  success: boolean;
+  pricing_version: string;
+  svip_group_ratio?: Record<string, number>;
+  data: PricingModelItem[];
+  group_ratio: Record<string, number>;
+  usable_group: Record<string, string>;
+  vendors: VendorInfo[];
+  auto_groups: string[];
+  user_group?: string | null;
+  user_available_groups?: string[];
 }

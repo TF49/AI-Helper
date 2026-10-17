@@ -27,6 +27,10 @@ import type {
   AppDownloadEvent,
   FeishuFeedbackPayload,
   FeedbackSubmitResult,
+  UsageLogsResponse,
+  UsageLogQueryParams,
+  UsageStatData,
+  PricingResponse,
 } from "../types";
 
 export const isTauri =
@@ -126,6 +130,19 @@ function getMockResponse<T>(cmd: string, _args?: Record<string, unknown>): T {
           id: 1,
           username: (_args?.payload as LoginPayload)?.username || "mock_user",
           display_name: "Mock User",
+          email: "mock_user@example.com",
+        },
+        access_token: "mock-token",
+        access_expires_at: Math.floor(Date.now() / 1000) + 86400,
+        session_sid: "mock-sid",
+      } as unknown as T;
+    case "refresh_auth_session":
+      return {
+        user: {
+          id: 1,
+          username: "mock_user",
+          display_name: "Mock User",
+          email: "mock_user@example.com",
         },
         access_token: "mock-token",
         access_expires_at: Math.floor(Date.now() / 1000) + 86400,
@@ -281,11 +298,162 @@ function getMockResponse<T>(cmd: string, _args?: Record<string, unknown>): T {
         success: true,
         message: "【Web 预览模式】模拟已向飞书发送反馈卡片",
       } as unknown as T;
+    case "get_auto_start_status":
+      return false as unknown as T;
+    case "set_auto_start_status":
+    case "exit_app":
+    case "delete_user_token":
+    case "update_user_token_status":
+      return undefined as unknown as T;
+    case "get_token_auto_groups":
+    case "get_user_available_groups":
+      return ["default", "svip", "SVIP-codex", "ClaudeCode Kiro-1", "Azure Gpt"] as unknown as T;
+    case "get_user_usage_logs":
+      return {
+        items: [
+          {
+            id: 1,
+            created_at: Math.floor(Date.now() / 1000) - 360,
+            user_id: 1,
+            username: "current_user",
+            token_name: "默认全功能 Key",
+            model_name: "gpt-5.6-sol",
+            quota: 2500,
+            prompt_tokens: 380,
+            completion_tokens: 120,
+            use_time: 850,
+            is_stream: true,
+            group: "svip",
+            channel_id: 1,
+            content: "生成代码架构设计",
+            log_type: 1,
+          },
+          {
+            id: 2,
+            created_at: Math.floor(Date.now() / 1000) - 1800,
+            user_id: 1,
+            username: "current_user",
+            token_name: "项目专用 Key",
+            model_name: "claude-3-7-sonnet",
+            quota: 4800,
+            prompt_tokens: 650,
+            completion_tokens: 240,
+            use_time: 1420,
+            is_stream: true,
+            group: "ClaudeCode Kiro-1",
+            channel_id: 2,
+            content: "重构前端组件样式",
+            log_type: 1,
+          },
+        ],
+        total: 2,
+        page: 1,
+        page_size: 20,
+      } as unknown as T;
+    case "get_user_usage_stat":
+      return {
+        quota: 7300,
+        prompt_tokens: 1030,
+        completion_tokens: 360,
+        request_count: 2,
+        avg_use_time: 1135,
+      } as unknown as T;
+    case "get_pricing_data":
+      return {
+        success: true,
+        pricing_version: "mock-local-v1",
+        data: [
+          {
+            model_name: "gpt-5.6-sol",
+            vendor_id: 8,
+            quota_type: 0,
+            model_ratio: 1.0,
+            model_price: 0,
+            owner_by: "OpenAI",
+            completion_ratio: 3.0,
+            cache_ratio: 0.1,
+            enable_groups: ["default", "svip", "SVIP-codex"],
+            supported_endpoint_types: ["openai"],
+          },
+          {
+            model_name: "claude-3-7-sonnet",
+            vendor_id: 4,
+            quota_type: 0,
+            model_ratio: 1.5,
+            model_price: 0,
+            owner_by: "Anthropic",
+            completion_ratio: 5.0,
+            cache_ratio: 0.1,
+            enable_groups: ["default", "svip", "ClaudeCode Kiro-1"],
+            supported_endpoint_types: ["anthropic", "openai"],
+          },
+          {
+            model_name: "deepseek-v3",
+            vendor_id: 1,
+            quota_type: 0,
+            model_ratio: 0.2,
+            model_price: 0,
+            owner_by: "DeepSeek",
+            completion_ratio: 4.0,
+            cache_ratio: 0.05,
+            enable_groups: ["default", "svip", "SVIP专属国产福利"],
+            supported_endpoint_types: ["openai"],
+          },
+          {
+            model_name: "deepseek-r1",
+            vendor_id: 1,
+            quota_type: 0,
+            model_ratio: 0.4,
+            model_price: 0,
+            owner_by: "DeepSeek",
+            completion_ratio: 4.0,
+            cache_ratio: 0.05,
+            enable_groups: ["default", "svip", "SVIP专属国产福利"],
+            supported_endpoint_types: ["openai"],
+          },
+          {
+            model_name: "gpt-4o",
+            vendor_id: 8,
+            quota_type: 0,
+            model_ratio: 1.25,
+            model_price: 0,
+            owner_by: "OpenAI",
+            completion_ratio: 4.0,
+            cache_ratio: 0.5,
+            enable_groups: ["default", "Azure Gpt", "svip"],
+            supported_endpoint_types: ["openai"],
+          },
+        ],
+        group_ratio: {
+          default: 1.0,
+          svip: 0.8,
+          "SVIP-codex": 0.8,
+          "SVIP专属GPT": 0.5,
+          "ClaudeCode Kiro-1": 0.8,
+          "Azure Gpt": 8.0,
+        },
+        usable_group: {
+          default: "默认基础分组 (1.0倍率)",
+          svip: "SVIP 专属活动全功能分组 (0.8倍率)",
+          "SVIP-codex": "Codex 专属高可用通道 (0.8倍率)",
+          "SVIP专属GPT": "SVIP 限时活动低价号池 (0.5倍率)",
+          "ClaudeCode Kiro-1": "Kiro 逆向限时福利分组 (0.8倍率)",
+          "Azure Gpt": "微软独立高可用资源 (8.0倍率)",
+        },
+        vendors: [
+          { id: 8, name: "OpenAI", icon: "OpenAI" },
+          { id: 4, name: "Anthropic", icon: "Claude.Color" },
+          { id: 1, name: "DeepSeek", icon: "DeepSeek.Color" },
+          { id: 5, name: "Google", icon: "Gemini.Color" },
+        ],
+        auto_groups: ["default", "svip", "SVIP-codex", "ClaudeCode Kiro-1", "Azure Gpt"],
+        user_group: "svip",
+        user_available_groups: ["default", "svip", "SVIP-codex", "ClaudeCode Kiro-1"],
+      } as unknown as T;
     default:
       return undefined as unknown as T;
   }
 }
-
 async function invoke<T>(cmd: string, args?: Record<string, unknown>): Promise<T> {
   if (!isTauri) {
     return getMockResponse<T>(cmd, args);
@@ -707,8 +875,8 @@ export async function logoutAccount(): Promise<void> {
   return invoke<void>("logout_account");
 }
 
-export async function getUserTokens(): Promise<TokenItem[]> {
-  return invoke<TokenItem[]>("get_user_tokens");
+export async function getUserTokens(all?: boolean): Promise<TokenItem[]> {
+  return invoke<TokenItem[]>("get_user_tokens", { all });
 }
 
 export async function getTokenKey(tokenId: number): Promise<string> {
@@ -814,4 +982,51 @@ export async function submitFeishuFeedback(
   payload: FeishuFeedbackPayload,
 ): Promise<FeedbackSubmitResult> {
   return invoke<FeedbackSubmitResult>("submit_feishu_feedback", { payload });
+}
+
+export async function getAutoStartStatus(): Promise<boolean> {
+  return invoke<boolean>("get_auto_start_status");
+}
+
+export async function setAutoStartStatus(enabled: boolean): Promise<void> {
+  return invoke<void>("set_auto_start_status", { enabled });
+}
+
+export async function exitApp(): Promise<void> {
+  return invoke<void>("exit_app");
+}
+
+export async function deleteUserToken(tokenId: number): Promise<void> {
+  return invoke("delete_user_token", { tokenId });
+}
+
+export async function updateUserTokenStatus(
+  tokenId: number,
+  status: number,
+): Promise<void> {
+  return invoke("update_user_token_status", { tokenId, status });
+}
+
+export async function getTokenAutoGroups(): Promise<string[]> {
+  return invoke<string[]>("get_token_auto_groups");
+}
+
+export async function getUserAvailableGroups(): Promise<string[]> {
+  return invoke<string[]>("get_user_available_groups");
+}
+
+export async function getUserUsageLogs(
+  params: UsageLogQueryParams,
+): Promise<UsageLogsResponse> {
+  return invoke<UsageLogsResponse>("get_user_usage_logs", { params });
+}
+
+export async function getUserUsageStat(
+  params: UsageLogQueryParams,
+): Promise<UsageStatData> {
+  return invoke<UsageStatData>("get_user_usage_stat", { params });
+}
+
+export async function getPricingData(): Promise<PricingResponse> {
+  return invoke<PricingResponse>("get_pricing_data");
 }

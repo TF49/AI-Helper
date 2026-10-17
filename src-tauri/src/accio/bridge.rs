@@ -479,7 +479,15 @@ fn get_model_context_window(model: &str) -> u64 {
         return 100000;
     }
 
-    // GPT 系列 - 更具体的型号优先
+    // GPT 系列 - 更具体的型号优先（新型号在前）
+    // GPT-6 系列: gpt-6-sol, gpt-6.1-sol, gpt-6-luna 等，官方上下文窗口: 1,050,000 tokens
+    if lower.contains("gpt-6") {
+        return 1050000;
+    }
+    // GPT-5 系列: 官方上下文窗口: 400,000 tokens
+    if lower.contains("gpt-5") {
+        return 400000;
+    }
     if lower.contains("gpt-4.1-mini") {
         return 128000;
     }
@@ -1204,6 +1212,7 @@ fn chat_to_responses_body(chat_body: &Value) -> Value {
         || model.starts_with("o3")
         || model.starts_with("o4")
         || model.starts_with("gpt-5")
+        || model.starts_with("gpt-6")
         || model.contains("reasoning")
         || model.contains("reasoner");
 
@@ -1496,10 +1505,12 @@ async fn execute_single_llm_call(
             let mut body = chat_body.clone();
             body["stream"] = json!(false);
 
-            // 如果原始模型是推理模型（o1/o3 系列），转换参数以兼容 Chat Completions
+            // 如果原始模型是推理模型（o1/o3/o4/gpt-5/gpt-6 系列），转换参数以兼容 Chat Completions
             if actual_model.starts_with("o1")
                 || actual_model.starts_with("o3")
                 || actual_model.starts_with("o4")
+                || actual_model.starts_with("gpt-5")
+                || actual_model.starts_with("gpt-6")
             {
                 // max_tokens → max_completion_tokens
                 if let Some(max_tokens) = body.get("max_tokens").cloned() {
@@ -2413,7 +2424,17 @@ mod tests {
 
     #[test]
     fn test_get_model_context_window() {
-        // GPT 系列 - 测试更具体型号优先
+        // GPT-6 系列 - 1,050,000 tokens
+        assert_eq!(get_model_context_window("gpt-6.1-sol"), 1050000);
+        assert_eq!(get_model_context_window("gpt-6-sol"), 1050000);
+        assert_eq!(get_model_context_window("gpt-6-luna"), 1050000);
+        assert_eq!(get_model_context_window("gpt-6"), 1050000);
+
+        // GPT-5 系列 - 400,000 tokens
+        assert_eq!(get_model_context_window("gpt-5"), 400000);
+        assert_eq!(get_model_context_window("gpt-5.6-sol"), 400000);
+
+        // GPT-4 系列 - 测试更具体型号优先
         assert_eq!(get_model_context_window("gpt-4.1"), 1047576); // 官方规格
         assert_eq!(get_model_context_window("gpt-4.1-mini"), 128000);
         assert_eq!(get_model_context_window("gpt-4"), 8192); // 不应该匹配 gpt-4.1

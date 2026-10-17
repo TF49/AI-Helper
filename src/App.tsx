@@ -15,14 +15,16 @@ import {
   ChevronDown,
   PanelLeftClose,
   PanelLeftOpen,
-  Layers,
-  FolderGit2,
   User,
-  KeyRound,
   Radio,
   Wallet,
   MessageSquare,
+  LayoutGrid,
+  SlidersHorizontal,
+  Bell,
+  Clock,
 } from "lucide-react";
+import * as Popover from "@radix-ui/react-popover";
 import { motion, AnimatePresence } from "motion/react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { getVersion } from "@tauri-apps/api/app";
@@ -33,11 +35,12 @@ import {
   WorkbuddyIcon,
   AccioWorkIcon,
 } from "./components/BrandIcons";
-import { ChatGPTPanel } from "./components/ChatGPTPanel";
-import { ClaudePanel } from "./components/ClaudePanel";
-import { WorkbuddyPanel } from "./components/WorkbuddyPanel";
-import { AccioWorkPanel } from "./components/AccioWorkPanel";
-import { AppPathsPanel } from "./components/AppPathsPanel";
+import { WorkspaceView } from "./components/views/WorkspaceView";
+import { UsageLogsView } from "./components/views/UsageLogsView";
+import { UserCenterView } from "./components/views/UserCenterView";
+import { ToolsEnvironmentView } from "./components/views/ToolsEnvironmentView";
+import { SettingsView } from "./components/views/SettingsView";
+import { AnnouncementModal, LATEST_ANNOUNCEMENT_ID } from "./components/AnnouncementModal";
 import { QuickToolsModal } from "./components/QuickToolsModal";
 import { FeedbackModal } from "./components/FeedbackModal";
 import { InitializationModal } from "./components/InitializationModal";
@@ -49,12 +52,12 @@ import { ThemeToggle } from "./components/ThemeToggle";
 import { useTheme } from "./components/theme-provider";
 import { AuroraBackground } from "./components/react-bits/AuroraBackground";
 import { cn } from "./lib/utils";
-import { checkBobApiNetwork, openUrl, isTauri } from "./lib/api";
+import { checkBobApiNetwork, openUrl, isTauri, exitApp } from "./lib/api";
 import { isMac, modifierKey } from "./lib/platform";
 import { ForceUpdateModal, useAppUpdater } from "./components/ForceUpdateModal";
-import type { UserInfo } from "./types";
+import { useSettings } from "./lib/useSettings";
+import type { MainNav, AgentTool, UserInfo } from "./types";
 
-type Tab = "chatgpt" | "claude" | "workbuddy" | "acciowork" | "paths";
 type NetworkState = "checking" | "reachable" | "unreachable";
 
 const mockWindow = {
@@ -70,6 +73,76 @@ const mockWindow = {
 
 const appWindow = isTauri ? getCurrentWindow() : mockWindow;
 
+const NAV_ITEMS: {
+  id: MainNav;
+  title: string;
+  subtitle: string;
+  icon: React.ElementType;
+}[] = [
+  {
+    id: "workspace",
+    title: "工作台",
+    subtitle: "连接与配置 AI 工具",
+    icon: LayoutGrid,
+  },
+  {
+    id: "logs",
+    title: "使用日志",
+    subtitle: "调用记录与额度统计",
+    icon: Clock,
+  },
+  {
+    id: "account",
+    title: "个人中心",
+    subtitle: "账号概览与钱包资产",
+    icon: User,
+  },
+  {
+    id: "tools",
+    title: "工具与环境",
+    subtitle: "环境检测与应用管理",
+    icon: Wrench,
+  },
+  {
+    id: "settings",
+    title: "设置",
+    subtitle: "外观与使用偏好",
+    icon: SlidersHorizontal,
+  },
+];
+
+const WORKBENCH_TOOLS: {
+  id: AgentTool;
+  name: string;
+  icon: React.ElementType;
+  activeColor: string;
+}[] = [
+  {
+    id: "chatgpt",
+    name: "Codex",
+    icon: OpenAIIcon,
+    activeColor: "text-blue-600 dark:text-blue-400",
+  },
+  {
+    id: "claude",
+    name: "Claude Code",
+    icon: ClaudeIcon,
+    activeColor: "text-purple-600 dark:text-purple-400",
+  },
+  {
+    id: "workbuddy",
+    name: "WorkBuddy",
+    icon: WorkbuddyIcon,
+    activeColor: "text-emerald-600 dark:text-emerald-400",
+  },
+  {
+    id: "acciowork",
+    name: "Accio Work",
+    icon: AccioWorkIcon,
+    activeColor: "text-orange-600 dark:text-orange-400",
+  },
+];
+
 export default function App() {
   return (
     <AuthProvider>
@@ -79,14 +152,57 @@ export default function App() {
 }
 
 function AppContent() {
-  const [tab, setTab] = useState<Tab>("chatgpt");
-  const [lastAgentTab, setLastAgentTab] = useState<
-    "chatgpt" | "claude" | "workbuddy" | "acciowork"
-  >("chatgpt");
+  const { settings } = useSettings();
+
+  const [mainNav, setMainNav] = useState<MainNav>(() => {
+    const startup = settings.startupPage;
+    if (startup === ("models" as unknown) || startup === ("keys" as unknown)) {
+      return "workspace";
+    }
+    return startup || "workspace";
+  });
+
+  const [activeTool, setActiveTool] = useState<AgentTool>(() => {
+    const saved = localStorage.getItem("ai_helper_active_agent_tool");
+    return (saved as AgentTool) || "chatgpt";
+  });
+
+  // 工作台下拉二级菜单展开状态
+  const [workspaceMenuOpen, setWorkspaceMenuOpen] = useState<boolean>(() => {
+    const saved = localStorage.getItem("ai_helper_workspace_menu_open");
+    return saved !== null ? saved === "true" : true;
+  });
+
+  const [compactWorkspaceOpen, setCompactWorkspaceOpen] = useState(false);
+
+  const toggleWorkspaceMenu = () => {
+    setWorkspaceMenuOpen((prev) => {
+      const next = !prev;
+      localStorage.setItem("ai_helper_workspace_menu_open", String(next));
+      return next;
+    });
+  };
+
   const [networkState, setNetworkState] = useState<NetworkState>("checking");
   const [toolsOpen, setToolsOpen] = useState(false);
   const [initModalOpen, setInitModalOpen] = useState(false);
   const [feedbackModalOpen, setFeedbackModalOpen] = useState(false);
+  const [announcementModalOpen, setAnnouncementModalOpen] = useState(false);
+  const [hasUnreadAnnouncement, setHasUnreadAnnouncement] = useState<boolean>(() => {
+    return localStorage.getItem("ai_helper_read_announcement_id") !== LATEST_ANNOUNCEMENT_ID;
+  });
+
+  const handleOpenAnnouncement = () => {
+    setAnnouncementModalOpen(true);
+    localStorage.setItem("ai_helper_read_announcement_id", LATEST_ANNOUNCEMENT_ID);
+    setHasUnreadAnnouncement(false);
+  };
+
+  const handleCloseAnnouncement = () => {
+    setAnnouncementModalOpen(false);
+    localStorage.setItem("ai_helper_read_announcement_id", LATEST_ANNOUNCEMENT_ID);
+    setHasUnreadAnnouncement(false);
+  };
   const [appVersion, setAppVersion] = useState("...");
   const { resolvedTheme } = useTheme();
   const win = appWindow;
@@ -96,11 +212,11 @@ function AppContent() {
     isAuthReady,
     wallet,
     refreshWallet,
+    refreshState,
     loginModalOpen,
     setLoginModalOpen,
     tokenModalOpen,
     setTokenModalOpen,
-    logout,
     onLoginSuccess,
   } = useAuth();
 
@@ -111,53 +227,24 @@ function AppContent() {
     );
   });
 
-  const switchTab = (newTab: Tab) => {
-    setTab(newTab);
-    if (
-      newTab === "chatgpt" ||
-      newTab === "claude" ||
-      newTab === "workbuddy" ||
-      newTab === "acciowork"
-    ) {
-      setLastAgentTab(newTab);
-    }
+  const handleSelectNav = (nav: MainNav) => {
+    setMainNav(nav);
   };
 
-  // ── 侧边栏整体折叠与分组折叠状态持久化 ──
+  const handleSelectTool = (tool: AgentTool) => {
+    setActiveTool(tool);
+    localStorage.setItem("ai_helper_active_agent_tool", tool);
+  };
+
+  // ── 侧边栏整体折叠状态持久化 ──
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState<boolean>(() => {
     return localStorage.getItem("ai_helper_sidebar_collapsed") === "true";
-  });
-
-  const [targetsExpanded, setTargetsExpanded] = useState<boolean>(() => {
-    const saved = localStorage.getItem("ai_helper_targets_expanded");
-    return saved === null ? true : saved === "true";
-  });
-
-  const [toolsExpanded, setToolsExpanded] = useState<boolean>(() => {
-    const saved = localStorage.getItem("ai_helper_tools_expanded");
-    return saved === null ? true : saved === "true";
   });
 
   const toggleSidebarCollapsed = () => {
     setIsSidebarCollapsed((prev) => {
       const next = !prev;
       localStorage.setItem("ai_helper_sidebar_collapsed", String(next));
-      return next;
-    });
-  };
-
-  const toggleTargetsExpanded = () => {
-    setTargetsExpanded((prev) => {
-      const next = !prev;
-      localStorage.setItem("ai_helper_targets_expanded", String(next));
-      return next;
-    });
-  };
-
-  const toggleToolsExpanded = () => {
-    setToolsExpanded((prev) => {
-      const next = !prev;
-      localStorage.setItem("ai_helper_tools_expanded", String(next));
       return next;
     });
   };
@@ -251,15 +338,14 @@ function AppContent() {
     if (isTauri) {
       void getVersion()
         .then((v) => setAppVersion(v))
-        .catch(() => setAppVersion("1.0.32"));
+        .catch(() => setAppVersion("1.0.65"));
     } else {
-      setAppVersion("1.0.32 (Web Preview)");
+      setAppVersion("1.0.65 (Web Preview)");
     }
   }, []);
 
   // ── 严格按序执行启动流水线：1. 检查更新 ➔ 2. 强制登录 ➔ 3. 环境初始化 ➔ 4. 就绪 ──
   useEffect(() => {
-    // 阶段 1：启动检查更新尚未结束，或正处于更新流程（下载中、安装中、就绪重启），严禁进入后续阶段
     if (!isBootCheckComplete) return;
     if (
       updatePhase === "downloading" ||
@@ -272,27 +358,13 @@ function AppContent() {
       return;
     }
 
-    // 阶段 1 已完成，若本地身份凭据校验尚未完成（如正在读取本地 session），等待其就绪以防界面闪烁
     if (!isAuthReady) return;
 
-    // 阶段 2：强制登录判定（必须登录才能使用客户端）
-    if (!authState.is_logged_in) {
-      setLoginModalOpen(true);
-      setInitModalOpen(false);
-      setTokenModalOpen(false);
-      return;
-    }
-
-    // 已登录：关闭强制登录弹窗
-    setLoginModalOpen(false);
-
-    // 阶段 3：环境初始化向导（仅在已成功登录后，且属于首次使用未初始化时唤起）
-    if (!isInitialized) {
+    // 阶段 2：环境初始化向导 (已登录且未完成初始化时引导)
+    if (authState.is_logged_in && !isInitialized) {
       setInitModalOpen(true);
       return;
     }
-
-    // 阶段 4：已更新、已登录、已初始化，主工作区就绪
   }, [
     isBootCheckComplete,
     updatePhase,
@@ -324,7 +396,6 @@ function AppContent() {
   };
 
   const handleInitClose = () => {
-    // 关闭时无论是否走完全部向导，都持久化标记已处理，防止后续重启重复弹窗打扰
     localStorage.setItem("ai_helper_init_completed", "true");
     setIsInitialized(true);
     setInitModalOpen(false);
@@ -376,13 +447,11 @@ function AppContent() {
   return (
     <AuroraBackground
       theme={
-        tab === "claude"
-          ? "claude"
-          : tab === "workbuddy"
-            ? "workbuddy"
-            : tab === "acciowork"
-              ? "acciowork"
-              : "chatgpt"
+        !settings.enableAurora
+          ? "chatgpt"
+          : mainNav === "workspace"
+            ? activeTool
+            : "chatgpt"
       }
       className="text-slate-800 dark:text-gray-200 transition-colors duration-200 h-screen w-screen overflow-hidden flex flex-col"
     >
@@ -441,8 +510,21 @@ function AppContent() {
         {/* 中间留白可拖动区域 */}
         <div className="flex-1 h-full" data-tauri-drag-region />
 
-        {/* 右侧：主题切换与窗口控制按钮 (包含明确的后台运行按钮) */}
+        {/* 右侧：功能按钮与窗口控制按钮 (包含公告铃铛、主题切换与后台运行按钮) */}
         <div className="flex items-center gap-1.5">
+          {/* 小铃铛公告通知按钮 (对应图一、图二公告历史入口) */}
+          <button
+            type="button"
+            onClick={handleOpenAnnouncement}
+            className="w-7 h-7 flex items-center justify-center rounded-lg transition-colors hover:bg-slate-200/80 text-slate-500 hover:text-slate-800 dark:hover:bg-white/10 dark:text-gray-400 dark:hover:text-gray-200 cursor-pointer relative"
+            title="查看公告历史与版本更新"
+          >
+            <Bell size={13} />
+            {hasUnreadAnnouncement && (
+              <span className="absolute top-1.5 right-1.5 w-1.5 h-1.5 rounded-full bg-blue-500 ring-2 ring-white dark:ring-[#0b0e1b]" />
+            )}
+          </button>
+
           <ThemeToggle />
 
           {/* 意见反馈按钮 */}
@@ -514,12 +596,16 @@ function AppContent() {
                   <Maximize2 size={13} />
                 )}
               </button>
-              {/* 关闭/转入后台托盘守护 */}
+              {/* 关闭/转入后台托盘守护 (响应设置中的 minimizeToTray) */}
               <button
                 type="button"
                 onClick={async () => {
                   try {
                     if (isTauri) {
+                      if (!settings.minimizeToTray) {
+                        await exitApp();
+                        return;
+                      }
                       toast.info("已最小化至后台托盘，Bridge 网关持续为您守护", {
                         duration: 3500,
                       });
@@ -540,7 +626,11 @@ function AppContent() {
                   }
                 }}
                 className="w-7 h-7 flex items-center justify-center rounded-lg transition-colors hover:bg-red-500 hover:text-white text-slate-500 dark:hover:bg-red-500/90 dark:text-gray-400 dark:hover:text-white cursor-pointer"
-                title="关闭窗口 (转入系统托盘保持后台常驻守护)"
+                title={
+                  settings.minimizeToTray
+                    ? "关闭窗口 (转入系统托盘保持后台常驻守护)"
+                    : "关闭并彻底退出 AI Helper"
+                }
               >
                 <X size={13} />
               </button>
@@ -549,15 +639,9 @@ function AppContent() {
         </div>
       </div>
 
-      {/* ── 桌面主工作区双栏布局 (左侧边栏导航 + 右侧宽阔配置展台) ── */}
-      <div
-        className={cn(
-          "flex-1 min-h-0 flex flex-row overflow-hidden relative z-10 transition-all duration-300",
-          !authState.is_logged_in &&
-            "pointer-events-none select-none filter blur-[1.5px] opacity-40",
-        )}
-      >
-        {/* ── 左侧边栏导航 (支持紧凑收起 rail 与完整展开双模式，以及分组手风琴折叠) ── */}
+      {/* ── 桌面主工作区双栏布局 (左侧全新导航 + 右侧主内容展台) ── */}
+      <div className="flex-1 min-h-0 flex flex-row overflow-hidden relative z-10 transition-all duration-300">
+        {/* ── 全新左侧边栏导航 (严格复刻图一 6 大板块，保留底部资产卡片不动) ── */}
         <aside
           className={cn(
             "flex-shrink-0 flex flex-col justify-between border-r border-slate-200/90 dark:border-white/10 bg-white/70 dark:bg-[#0c0e18]/70 backdrop-blur-xl transition-all duration-300 select-none overflow-y-auto overflow-x-hidden scrollbar-none",
@@ -578,182 +662,146 @@ function AppContent() {
                   <PanelLeftOpen size={16} />
                 </button>
 
-                {/* 配置目标图标导航 */}
+                {/* 6 大一级导航图标 */}
                 <div className="space-y-1.5 w-full flex flex-col items-center">
-                  {/* ChatGPT (Codex) */}
-                  <button
-                    type="button"
-                    onClick={() => switchTab("chatgpt")}
-                    className={cn(
-                      "w-10 h-10 rounded-xl flex items-center justify-center transition-all cursor-pointer relative",
-                      tab === "chatgpt"
-                        ? "border border-blue-500/70 bg-blue-500/15 text-blue-600 dark:text-blue-400 shadow-2xs ring-1 ring-blue-500/30"
-                        : "border border-transparent text-slate-600 dark:text-gray-400 hover:bg-slate-100/80 dark:hover:bg-white/5 hover:text-slate-900 dark:hover:text-gray-200",
-                    )}
-                    title="ChatGPT (Codex) · config.toml"
-                  >
-                    {tab === "chatgpt" && (
-                      <span className="absolute -left-1 top-2.5 bottom-2.5 w-1 rounded-r-full bg-blue-500" />
-                    )}
-                    <div
-                      className={cn(
-                        "w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0 transition-colors",
-                        tab === "chatgpt"
-                          ? "bg-blue-600 text-white dark:bg-blue-500 dark:text-white"
-                          : "bg-slate-100 text-slate-500 dark:bg-white/5 dark:text-gray-400",
-                      )}
-                    >
-                      <OpenAIIcon size={15} />
-                    </div>
-                  </button>
+                  {NAV_ITEMS.map((item) => {
+                    const Icon = item.icon;
+                    const isActive = mainNav === item.id;
+                    const isWorkspace = item.id === "workspace";
 
-                  {/* Claude Code */}
-                  <button
-                    type="button"
-                    onClick={() => switchTab("claude")}
-                    className={cn(
-                      "w-10 h-10 rounded-xl flex items-center justify-center transition-all cursor-pointer relative",
-                      tab === "claude"
-                        ? "border border-purple-500/70 bg-purple-500/15 text-purple-600 dark:text-purple-400 shadow-2xs ring-1 ring-purple-500/30"
-                        : "border border-transparent text-slate-600 dark:text-gray-400 hover:bg-slate-100/80 dark:hover:bg-white/5 hover:text-slate-900 dark:hover:text-gray-200",
-                    )}
-                    title="Claude Code · settings.json"
-                  >
-                    {tab === "claude" && (
-                      <span className="absolute -left-1 top-2.5 bottom-2.5 w-1 rounded-r-full bg-purple-500" />
-                    )}
-                    <div
-                      className={cn(
-                        "w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0 transition-colors",
-                        tab === "claude"
-                          ? "bg-purple-600 text-white dark:bg-purple-500 dark:text-white"
-                          : "bg-slate-100 text-slate-500 dark:bg-white/5 dark:text-gray-400",
-                      )}
-                    >
-                      <ClaudeIcon size={15} />
-                    </div>
-                  </button>
+                    if (isWorkspace) {
+                      return (
+                        <Popover.Root
+                          key={item.id}
+                          open={compactWorkspaceOpen}
+                          onOpenChange={setCompactWorkspaceOpen}
+                        >
+                          <Popover.Trigger asChild>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                handleSelectNav("workspace");
+                                setCompactWorkspaceOpen((prev) => !prev);
+                              }}
+                              className={cn(
+                                "w-10 h-10 rounded-xl flex items-center justify-center transition-all cursor-pointer relative",
+                                isActive
+                                  ? "border border-blue-500/70 bg-blue-500/15 text-blue-600 dark:text-blue-400 shadow-2xs ring-1 ring-blue-500/30"
+                                  : "border border-transparent text-slate-600 dark:text-gray-400 hover:bg-slate-100/80 dark:hover:bg-white/5 hover:text-slate-900 dark:hover:text-gray-200",
+                              )}
+                              title={`${item.title} (点击展开工具二级菜单)`}
+                            >
+                              {isActive && (
+                                <span className="absolute -left-1 top-2.5 bottom-2.5 w-1 rounded-r-full bg-blue-500" />
+                              )}
+                              <div
+                                className={cn(
+                                  "w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0 transition-colors",
+                                  isActive
+                                    ? "bg-blue-600 text-white dark:bg-blue-500 dark:text-white"
+                                    : "bg-slate-100 text-slate-500 dark:bg-white/5 dark:text-gray-400",
+                                )}
+                              >
+                                <Icon size={15} />
+                              </div>
+                            </button>
+                          </Popover.Trigger>
+                          <Popover.Portal>
+                            <Popover.Content
+                              side="right"
+                              sideOffset={12}
+                              align="start"
+                              className="z-[110] w-48 p-1.5 rounded-2xl bg-white/95 dark:bg-[#121626]/95 backdrop-blur-xl border border-slate-200/90 dark:border-white/10 shadow-xl animate-in fade-in-0 zoom-in-95 select-none"
+                            >
+                              <div className="px-2.5 py-1 text-[10px] font-bold text-slate-400 dark:text-gray-500 uppercase tracking-wider border-b border-slate-100 dark:border-white/5 mb-1">
+                                工作台工具
+                              </div>
+                              <div className="space-y-0.5">
+                                {WORKBENCH_TOOLS.map((tool) => {
+                                  const isToolActive =
+                                    mainNav === "workspace" &&
+                                    activeTool === tool.id;
+                                  const ToolIcon = tool.icon;
+                                  return (
+                                    <button
+                                      key={tool.id}
+                                      type="button"
+                                      onClick={() => {
+                                        handleSelectNav("workspace");
+                                        handleSelectTool(tool.id);
+                                        setCompactWorkspaceOpen(false);
+                                      }}
+                                      className={cn(
+                                        "w-full flex items-center justify-between px-2.5 py-2 rounded-xl text-xs font-medium transition-colors cursor-pointer text-left",
+                                        isToolActive
+                                          ? "bg-blue-500/15 text-blue-600 dark:text-blue-400 font-semibold"
+                                          : "text-slate-600 dark:text-gray-400 hover:text-slate-900 dark:hover:text-gray-200 hover:bg-slate-100 dark:hover:bg-white/5",
+                                      )}
+                                    >
+                                      <div className="flex items-center gap-2">
+                                        <ToolIcon
+                                          size={14}
+                                          className={
+                                            isToolActive
+                                              ? tool.activeColor
+                                              : "opacity-75"
+                                          }
+                                        />
+                                        <span>{tool.name}</span>
+                                      </div>
+                                      {isToolActive && (
+                                        <span className="w-1.5 h-1.5 rounded-full bg-blue-500" />
+                                      )}
+                                    </button>
+                                  );
+                                })}
+                              </div>
+                            </Popover.Content>
+                          </Popover.Portal>
+                        </Popover.Root>
+                      );
+                    }
 
-                  {/* WorkBuddy */}
-                  <button
-                    type="button"
-                    onClick={() => switchTab("workbuddy")}
-                    className={cn(
-                      "w-10 h-10 rounded-xl flex items-center justify-center transition-all cursor-pointer relative",
-                      tab === "workbuddy"
-                        ? "border border-emerald-500/70 bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 shadow-2xs ring-1 ring-emerald-500/30"
-                        : "border border-transparent text-slate-600 dark:text-gray-400 hover:bg-slate-100/80 dark:hover:bg-white/5 hover:text-slate-900 dark:hover:text-gray-200",
-                    )}
-                    title="WorkBuddy · models.json"
-                  >
-                    {tab === "workbuddy" && (
-                      <span className="absolute -left-1 top-2.5 bottom-2.5 w-1 rounded-r-full bg-emerald-500" />
-                    )}
-                    <div
-                      className={cn(
-                        "w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0 transition-colors",
-                        tab === "workbuddy"
-                          ? "bg-emerald-600 text-white dark:bg-emerald-500 dark:text-white"
-                          : "bg-slate-100 text-slate-500 dark:bg-white/5 dark:text-gray-400",
-                      )}
-                    >
-                      <WorkbuddyIcon size={15} />
-                    </div>
-                  </button>
-
-                  {/* Accio Work */}
-                  <button
-                    type="button"
-                    onClick={() => switchTab("acciowork")}
-                    className={cn(
-                      "w-10 h-10 rounded-xl flex items-center justify-center transition-all cursor-pointer relative",
-                      tab === "acciowork"
-                        ? "border border-orange-500/70 bg-orange-500/15 text-orange-600 dark:text-orange-400 shadow-2xs ring-1 ring-orange-500/30"
-                        : "border border-transparent text-slate-600 dark:text-gray-400 hover:bg-slate-100/80 dark:hover:bg-white/5 hover:text-slate-900 dark:hover:text-gray-200",
-                    )}
-                    title="Accio Work · accio_config.json"
-                  >
-                    {tab === "acciowork" && (
-                      <span className="absolute -left-1 top-2.5 bottom-2.5 w-1 rounded-r-full bg-orange-500" />
-                    )}
-                    <div
-                      className={cn(
-                        "w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0 transition-colors",
-                        tab === "acciowork"
-                          ? "bg-orange-600 text-white dark:bg-orange-500 dark:text-white"
-                          : "bg-slate-100 text-slate-500 dark:bg-white/5 dark:text-gray-400",
-                      )}
-                    >
-                      <AccioWorkIcon size={15} />
-                    </div>
-                  </button>
-                </div>
-
-                {/* 分隔微线 */}
-                <div className="w-7 h-[1px] bg-slate-200/80 dark:bg-white/10 mx-auto" />
-
-                {/* 辅助工具图标导航 */}
-                <div className="space-y-1.5 w-full flex flex-col items-center">
-                  {/* 环境初始化向导 */}
-                  <button
-                    type="button"
-                    onClick={() => setInitModalOpen(true)}
-                    className="w-10 h-10 rounded-xl flex items-center justify-center bg-blue-50/80 hover:bg-blue-100 text-blue-600 dark:bg-blue-500/10 dark:hover:bg-blue-500/20 dark:text-blue-400 transition-colors cursor-pointer relative group"
-                    title="环境初始化向导 (新手向导 · 检测并一键修复环境)"
-                  >
-                    <ShieldCheck size={16} />
-                    <span className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-blue-500 ring-2 ring-white dark:ring-[#0c0e18]" />
-                  </button>
-
-                  {/* 快速诊断工具箱 */}
-                  <button
-                    type="button"
-                    onClick={() => setToolsOpen(true)}
-                    className="w-10 h-10 rounded-xl flex items-center justify-center bg-amber-50/80 hover:bg-amber-100 text-amber-600 dark:bg-amber-500/10 dark:hover:bg-amber-500/20 dark:text-amber-400 transition-colors cursor-pointer"
-                    title="快速诊断工具箱 (cURL 脚本与在线文档)"
-                  >
-                    <Wrench size={15} />
-                  </button>
-
-                  {/* 应用与 CLI 路径 */}
-                  <button
-                    type="button"
-                    onClick={() => switchTab("paths")}
-                    className={cn(
-                      "w-10 h-10 rounded-xl flex items-center justify-center transition-all cursor-pointer relative",
-                      tab === "paths"
-                        ? "border border-teal-500/70 bg-teal-500/15 text-teal-600 dark:text-teal-400 shadow-2xs ring-1 ring-teal-500/30"
-                        : "border border-transparent bg-teal-50/80 hover:bg-teal-100 text-teal-600 dark:bg-teal-500/10 dark:hover:bg-teal-500/20 dark:text-teal-400",
-                    )}
-                    title="应用与 CLI 路径 (app_paths.json)"
-                  >
-                    {tab === "paths" && (
-                      <span className="absolute -left-1 top-2.5 bottom-2.5 w-1 rounded-r-full bg-teal-500" />
-                    )}
-                    <FolderGit2 size={16} />
-                  </button>
-
-                  {/* 意见反馈 */}
-                  <button
-                    type="button"
-                    onClick={() => setFeedbackModalOpen(true)}
-                    className="w-10 h-10 rounded-xl flex items-center justify-center bg-cyan-50/80 hover:bg-cyan-100 text-cyan-600 dark:bg-cyan-500/10 dark:hover:bg-cyan-500/20 dark:text-cyan-400 transition-colors cursor-pointer"
-                    title="意见反馈 (BUG反馈 · 功能建议 · 其他)"
-                  >
-                    <MessageSquare size={15} />
-                  </button>
+                    return (
+                      <button
+                        key={item.id}
+                        type="button"
+                        onClick={() => handleSelectNav(item.id)}
+                        className={cn(
+                          "w-10 h-10 rounded-xl flex items-center justify-center transition-all cursor-pointer relative",
+                          isActive
+                            ? "border border-blue-500/70 bg-blue-500/15 text-blue-600 dark:text-blue-400 shadow-2xs ring-1 ring-blue-500/30"
+                            : "border border-transparent text-slate-600 dark:text-gray-400 hover:bg-slate-100/80 dark:hover:bg-white/5 hover:text-slate-900 dark:hover:text-gray-200",
+                        )}
+                        title={`${item.title} (${item.subtitle})`}
+                      >
+                        {isActive && (
+                          <span className="absolute -left-1 top-2.5 bottom-2.5 w-1 rounded-r-full bg-blue-500" />
+                        )}
+                        <div
+                          className={cn(
+                            "w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0 transition-colors",
+                            isActive
+                              ? "bg-blue-600 text-white dark:bg-blue-500 dark:text-white"
+                              : "bg-slate-100 text-slate-500 dark:bg-white/5 dark:text-gray-400",
+                          )}
+                        >
+                          <Icon size={15} />
+                        </div>
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
 
-              {/* 紧凑底部：账号与状态卡片 */}
+              {/* 紧凑底部：账号与资产 */}
               <div className="space-y-2 pt-2 border-t border-slate-200/80 dark:border-white/10 w-full flex flex-col items-center">
-                {/* 账号头像 */}
                 {authState.is_logged_in ? (
                   <button
                     type="button"
-                    onClick={() => setTokenModalOpen(true)}
+                    onClick={() => handleSelectNav("account")}
                     className="w-9 h-9 rounded-xl bg-blue-600 hover:bg-blue-700 text-white flex items-center justify-center font-bold text-xs relative transition-transform hover:scale-105 shadow-2xs cursor-pointer group"
-                    title={`${authState.user?.display_name || authState.user?.username || "用户"} (@${authState.user?.username || ""}) - 点击管理 API Key 资产`}
+                    title={`${authState.user?.display_name || authState.user?.username || "用户"} - 点击进入个人中心`}
                   >
                     <span>
                       {authState.user?.username?.slice(0, 1).toUpperCase() ||
@@ -779,12 +827,12 @@ function AppContent() {
                 {authState.is_logged_in && (
                   <button
                     type="button"
-                    onClick={() => void openUrl("https://bob-api.com/wallet")}
+                    onClick={() => handleSelectNav("account")}
                     className="w-9 h-9 rounded-xl bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-100 dark:hover:bg-indigo-500/20 flex items-center justify-center transition-colors cursor-pointer relative shadow-2xs"
                     title={
                       wallet
-                        ? `账号额度: $${wallet.quota_usd.toFixed(2)} (≈ ¥${wallet.quota_cny.toFixed(2)}) - 点击前往钱包充值`
-                        : "账号额度与钱包 - 点击前往钱包"
+                        ? `账号额度: $${wallet.quota_usd.toFixed(2)} (≈ ¥${wallet.quota_cny.toFixed(2)}) - 点击前往个人中心`
+                        : "账号额度与钱包 - 点击前往个人中心"
                     }
                   >
                     <Wallet size={15} />
@@ -822,7 +870,7 @@ function AppContent() {
                   )}
                 </button>
 
-                {/* Tauri 引擎 / 检查更新 */}
+                {/* Tauri 引擎 / 检查更新 (Compact Rail 模式) */}
                 <button
                   type="button"
                   onClick={() => void checkForUpdates(true)}
@@ -844,414 +892,225 @@ function AppContent() {
               </div>
             </div>
           ) : (
-            /* ── 完整展开模式 (Full Sidebar Mode) ── */
+            /* ── 完整展开模式 (Full Sidebar Mode，复刻图一排版) ── */
             <div className="flex flex-col h-full justify-between">
               <div className="space-y-4">
-                {/* 分组 1: Agent 配置目标 */}
-                <div>
-                  <div className="flex items-center justify-between px-2 pb-2">
-                    <button
-                      type="button"
-                      onClick={toggleTargetsExpanded}
-                      className="text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-gray-500 flex items-center gap-1.5 hover:text-slate-700 dark:hover:text-gray-300 transition-colors cursor-pointer select-none"
-                      title={targetsExpanded ? "收起配置目标" : "展开配置目标"}
-                    >
-                      <Layers size={12} />
-                      <span>配置目标 (Targets)</span>
-                      <ChevronDown
-                        size={12}
-                        className={cn(
-                          "transition-transform duration-200",
-                          !targetsExpanded && "-rotate-90 text-slate-400",
-                        )}
-                      />
-                    </button>
-                    <button
-                      type="button"
-                      onClick={toggleSidebarCollapsed}
-                      className="p-1 rounded-md text-slate-400 hover:text-slate-700 hover:bg-slate-100 dark:hover:text-gray-300 dark:hover:bg-white/5 transition-colors cursor-pointer"
-                      title="收起侧边栏 (Ctrl+B)"
-                    >
-                      <PanelLeftClose size={13} />
-                    </button>
+                {/* 顶部 Brand 标题区 (复刻图一) */}
+                <div className="px-2 pt-1 pb-1 flex items-center justify-between">
+                  <div>
+                    <div className="text-xs font-black tracking-widest text-blue-600 dark:text-blue-400 uppercase">
+                      AI HELPER
+                    </div>
+                    <div className="text-[11px] font-medium text-slate-400 dark:text-gray-500 mt-0.5">
+                      你的 AI 工作空间
+                    </div>
                   </div>
-
-                  <AnimatePresence initial={false}>
-                    {targetsExpanded && (
-                      <motion.div
-                        initial={{ height: 0, opacity: 0 }}
-                        animate={{ height: "auto", opacity: 1 }}
-                        exit={{ height: 0, opacity: 0 }}
-                        transition={{ duration: 0.2, ease: "easeInOut" }}
-                        className="space-y-1.5 overflow-hidden"
-                      >
-                        {/* ChatGPT (Codex) 选项 */}
-                        <button
-                          type="button"
-                          onClick={() => switchTab("chatgpt")}
-                          className={cn(
-                            "relative w-full flex items-center justify-between p-2.5 rounded-xl border text-left transition-all cursor-pointer",
-                            tab === "chatgpt"
-                              ? "border-blue-500/70 bg-blue-50/80 text-blue-900 dark:bg-blue-500/15 dark:border-blue-500/50 dark:text-blue-100 shadow-xs"
-                              : "border-transparent text-slate-600 dark:text-gray-400 hover:bg-slate-100/80 dark:hover:bg-white/5 hover:text-slate-900 dark:hover:text-gray-200",
-                          )}
-                        >
-                          <div className="flex items-center gap-2.5 min-w-0">
-                            <div
-                              className={cn(
-                                "w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 transition-colors",
-                                tab === "chatgpt"
-                                  ? "bg-blue-600 text-white dark:bg-blue-500 dark:text-white"
-                                  : "bg-slate-100 text-slate-500 dark:bg-white/5 dark:text-gray-400",
-                              )}
-                            >
-                              <OpenAIIcon size={16} />
-                            </div>
-                            <div className="min-w-0">
-                              <div className="text-xs font-semibold truncate leading-tight">
-                                ChatGPT (Codex)
-                              </div>
-                              <div className="text-[10px] font-mono text-slate-400 dark:text-gray-500 truncate mt-0.5">
-                                config.toml
-                              </div>
-                            </div>
-                          </div>
-                          {tab === "chatgpt" && (
-                            <ChevronRight
-                              size={14}
-                              className="text-blue-600 dark:text-blue-400 flex-shrink-0"
-                            />
-                          )}
-                        </button>
-
-                        {/* Claude Code 选项 */}
-                        <button
-                          type="button"
-                          onClick={() => switchTab("claude")}
-                          className={cn(
-                            "relative w-full flex items-center justify-between p-2.5 rounded-xl border text-left transition-all cursor-pointer",
-                            tab === "claude"
-                              ? "border-purple-500/70 bg-purple-50/80 text-purple-900 dark:bg-purple-500/15 dark:border-purple-500/50 dark:text-purple-100 shadow-xs"
-                              : "border-transparent text-slate-600 dark:text-gray-400 hover:bg-slate-100/80 dark:hover:bg-white/5 hover:text-slate-900 dark:hover:text-gray-200",
-                          )}
-                        >
-                          <div className="flex items-center gap-2.5 min-w-0">
-                            <div
-                              className={cn(
-                                "w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 transition-colors",
-                                tab === "claude"
-                                  ? "bg-purple-600 text-white dark:bg-purple-500 dark:text-white"
-                                  : "bg-slate-100 text-slate-500 dark:bg-white/5 dark:text-gray-400",
-                              )}
-                            >
-                              <ClaudeIcon size={16} />
-                            </div>
-                            <div className="min-w-0">
-                              <div className="text-xs font-semibold truncate leading-tight">
-                                Claude Code
-                              </div>
-                              <div className="text-[10px] font-mono text-slate-400 dark:text-gray-500 truncate mt-0.5">
-                                settings.json
-                              </div>
-                            </div>
-                          </div>
-                          {tab === "claude" && (
-                            <ChevronRight
-                              size={14}
-                              className="text-purple-600 dark:text-purple-400 flex-shrink-0"
-                            />
-                          )}
-                        </button>
-
-                        {/* WorkBuddy 选项 */}
-                        <button
-                          type="button"
-                          onClick={() => switchTab("workbuddy")}
-                          className={cn(
-                            "relative w-full flex items-center justify-between p-2.5 rounded-xl border text-left transition-all cursor-pointer",
-                            tab === "workbuddy"
-                              ? "border-emerald-500/70 bg-emerald-50/80 text-emerald-900 dark:bg-emerald-500/15 dark:border-emerald-500/50 dark:text-emerald-100 shadow-xs"
-                              : "border-transparent text-slate-600 dark:text-gray-400 hover:bg-slate-100/80 dark:hover:bg-white/5 hover:text-slate-900 dark:hover:text-gray-200",
-                          )}
-                        >
-                          <div className="flex items-center gap-2.5 min-w-0">
-                            <div
-                              className={cn(
-                                "w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 transition-colors",
-                                tab === "workbuddy"
-                                  ? "bg-emerald-600 text-white dark:bg-emerald-500 dark:text-white"
-                                  : "bg-slate-100 text-slate-500 dark:bg-white/5 dark:text-gray-400",
-                              )}
-                            >
-                              <WorkbuddyIcon size={16} />
-                            </div>
-                            <div className="min-w-0">
-                              <div className="text-xs font-semibold truncate leading-tight">
-                                WorkBuddy
-                              </div>
-                              <div className="text-[10px] font-mono text-slate-400 dark:text-gray-500 truncate mt-0.5">
-                                models.json
-                              </div>
-                            </div>
-                          </div>
-                          {tab === "workbuddy" && (
-                            <ChevronRight
-                              size={14}
-                              className="text-emerald-600 dark:text-emerald-400 flex-shrink-0"
-                            />
-                          )}
-                        </button>
-
-                        {/* Accio Work 选项 */}
-                        <button
-                          type="button"
-                          onClick={() => switchTab("acciowork")}
-                          className={cn(
-                            "relative w-full flex items-center justify-between p-2.5 rounded-xl border text-left transition-all cursor-pointer",
-                            tab === "acciowork"
-                              ? "border-orange-500/70 bg-orange-50/80 text-orange-900 dark:bg-orange-500/15 dark:border-orange-500/50 dark:text-orange-100 shadow-xs"
-                              : "border-transparent text-slate-600 dark:text-gray-400 hover:bg-slate-100/80 dark:hover:bg-white/5 hover:text-slate-900 dark:hover:text-gray-200",
-                          )}
-                        >
-                          <div className="flex items-center gap-2.5 min-w-0">
-                            <div
-                              className={cn(
-                                "w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 transition-colors",
-                                tab === "acciowork"
-                                  ? "bg-orange-600 text-white dark:bg-orange-500 dark:text-white"
-                                  : "bg-slate-100 text-slate-500 dark:bg-white/5 dark:text-gray-400",
-                              )}
-                            >
-                              <AccioWorkIcon size={16} />
-                            </div>
-                            <div className="min-w-0">
-                              <div className="text-xs font-semibold truncate leading-tight">
-                                Accio Work
-                              </div>
-                              <div className="text-[10px] font-mono text-slate-400 dark:text-gray-500 truncate mt-0.5">
-                                accio_config.json
-                              </div>
-                            </div>
-                          </div>
-                          {tab === "acciowork" && (
-                            <ChevronRight
-                              size={14}
-                              className="text-orange-600 dark:text-orange-400 flex-shrink-0"
-                            />
-                          )}
-                        </button>
-                      </motion.div>
-                    )}
-                  </AnimatePresence>
-                </div>
-
-                {/* 分组 2: 辅助与诊断工具 */}
-                <div>
                   <button
                     type="button"
-                    onClick={toggleToolsExpanded}
-                    className="w-full flex items-center justify-between px-2 pb-2 text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-gray-500 hover:text-slate-700 dark:hover:text-gray-300 transition-colors cursor-pointer select-none"
-                    title={toolsExpanded ? "收起辅助与诊断" : "展开辅助与诊断"}
+                    onClick={toggleSidebarCollapsed}
+                    className="p-1 rounded-md text-slate-400 hover:text-slate-700 hover:bg-slate-100 dark:hover:text-gray-300 dark:hover:bg-white/5 transition-colors cursor-pointer"
+                    title="收起侧边栏 (Ctrl+B)"
                   >
-                    <div className="flex items-center gap-1.5">
-                      <Wrench size={12} />
-                      <span>辅助与诊断 (Tools)</span>
-                    </div>
-                    <ChevronDown
-                      size={12}
-                      className={cn(
-                        "transition-transform duration-200",
-                        !toolsExpanded && "-rotate-90 text-slate-400",
-                      )}
-                    />
+                    <PanelLeftClose size={13} />
                   </button>
+                </div>
 
-                  <AnimatePresence initial={false}>
-                    {toolsExpanded && (
-                      <motion.div
-                        initial={{ height: 0, opacity: 0 }}
-                        animate={{ height: "auto", opacity: 1 }}
-                        exit={{ height: 0, opacity: 0 }}
-                        transition={{ duration: 0.2, ease: "easeInOut" }}
-                        className="space-y-1 overflow-hidden"
+                {/* 6 大一级导航列表 */}
+                <div className="space-y-1.5">
+                  {NAV_ITEMS.map((item) => {
+                    const Icon = item.icon;
+                    const isActive = mainNav === item.id;
+                    const isWorkspace = item.id === "workspace";
+
+                    if (isWorkspace) {
+                      return (
+                        <div key={item.id} className="space-y-1">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (mainNav !== "workspace") {
+                                handleSelectNav("workspace");
+                                setWorkspaceMenuOpen(true);
+                                localStorage.setItem("ai_helper_workspace_menu_open", "true");
+                              } else {
+                                toggleWorkspaceMenu();
+                              }
+                            }}
+                            className={cn(
+                              "relative w-full flex items-center justify-between p-2.5 rounded-2xl border text-left transition-all cursor-pointer select-none",
+                              isActive
+                                ? "border-blue-500/60 bg-blue-50/90 text-blue-900 dark:bg-blue-500/15 dark:border-blue-500/40 dark:text-blue-100 shadow-xs ring-1 ring-blue-500/10"
+                                : "border-transparent text-slate-600 dark:text-gray-400 hover:bg-slate-100/80 dark:hover:bg-white/5 hover:text-slate-900 dark:hover:text-gray-200",
+                            )}
+                          >
+                            <div className="flex items-center gap-3 min-w-0">
+                              <div
+                                className={cn(
+                                  "w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0 transition-colors",
+                                  isActive
+                                    ? "bg-blue-600 text-white dark:bg-blue-500 dark:text-white shadow-xs"
+                                    : "bg-slate-100 text-slate-500 dark:bg-white/5 dark:text-gray-400",
+                                )}
+                              >
+                                <Icon size={16} />
+                              </div>
+                              <div className="min-w-0">
+                                <div
+                                  className={cn(
+                                    "text-xs font-bold truncate leading-tight",
+                                    isActive
+                                      ? "text-blue-900 dark:text-blue-100"
+                                      : "text-slate-800 dark:text-gray-200",
+                                  )}
+                                >
+                                  {item.title}
+                                </div>
+                                <div className="text-[10px] text-slate-400 dark:text-gray-500 truncate mt-0.5">
+                                  {item.subtitle}
+                                </div>
+                              </div>
+                            </div>
+
+                            <div
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                toggleWorkspaceMenu();
+                              }}
+                              className="p-1 rounded-lg hover:bg-black/5 dark:hover:bg-white/10 transition-colors"
+                              title={workspaceMenuOpen ? "收起工作台二级菜单" : "展开工作台二级菜单"}
+                            >
+                              <ChevronRight
+                                size={14}
+                                className={cn(
+                                  "transition-transform duration-200 flex-shrink-0",
+                                  workspaceMenuOpen ? "rotate-90" : "rotate-0",
+                                  isActive
+                                    ? "text-blue-600 dark:text-blue-400"
+                                    : "text-slate-400 dark:text-gray-500",
+                                )}
+                              />
+                            </div>
+                          </button>
+
+                          {/* ── 工作台下拉二级菜单 ── */}
+                          <AnimatePresence initial={false}>
+                            {workspaceMenuOpen && (
+                              <motion.div
+                                key="workspace-submenu"
+                                initial={{ height: 0, opacity: 0 }}
+                                animate={{ height: "auto", opacity: 1 }}
+                                exit={{ height: 0, opacity: 0 }}
+                                transition={{ duration: 0.2, ease: "easeInOut" }}
+                                className="overflow-hidden"
+                              >
+                                <div className="ml-4 pl-3 py-1 space-y-1 border-l-2 border-slate-200/80 dark:border-white/10">
+                                  {WORKBENCH_TOOLS.map((tool) => {
+                                    const isToolActive =
+                                      mainNav === "workspace" &&
+                                      activeTool === tool.id;
+                                    const ToolIcon = tool.icon;
+
+                                    return (
+                                      <button
+                                        key={tool.id}
+                                        type="button"
+                                        onClick={() => {
+                                          handleSelectNav("workspace");
+                                          handleSelectTool(tool.id);
+                                        }}
+                                        className={cn(
+                                          "relative w-full flex items-center justify-between px-2.5 py-2 rounded-xl text-xs font-medium transition-all cursor-pointer group text-left select-none",
+                                          isToolActive
+                                            ? "bg-blue-500/15 text-blue-900 dark:text-blue-100 font-semibold border border-blue-500/30 shadow-2xs"
+                                            : "text-slate-600 dark:text-gray-400 hover:text-slate-900 dark:hover:text-gray-200 hover:bg-slate-100/80 dark:hover:bg-white/5 border border-transparent",
+                                        )}
+                                      >
+                                        <div className="flex items-center gap-2.5 min-w-0">
+                                          <div
+                                            className={cn(
+                                              "w-6 h-6 rounded-lg flex items-center justify-center flex-shrink-0 transition-colors",
+                                              isToolActive
+                                                ? "bg-white/80 dark:bg-white/10 " +
+                                                    tool.activeColor
+                                                : "text-slate-400 group-hover:text-slate-600 dark:text-gray-500 dark:group-hover:text-gray-300",
+                                            )}
+                                          >
+                                            <ToolIcon size={14} />
+                                          </div>
+                                          <span className="truncate">
+                                            {tool.name}
+                                          </span>
+                                        </div>
+
+                                        {isToolActive && (
+                                          <span className="w-1.5 h-1.5 rounded-full bg-blue-500 flex-shrink-0 ml-1 shadow-2xs" />
+                                        )}
+                                      </button>
+                                    );
+                                  })}
+                                </div>
+                              </motion.div>
+                            )}
+                          </AnimatePresence>
+                        </div>
+                      );
+                    }
+
+                    return (
+                      <button
+                        key={item.id}
+                        type="button"
+                        onClick={() => handleSelectNav(item.id)}
+                        className={cn(
+                          "relative w-full flex items-center justify-between p-2.5 rounded-2xl border text-left transition-all cursor-pointer select-none",
+                          isActive
+                            ? "border-blue-500/60 bg-blue-50/90 text-blue-900 dark:bg-blue-500/15 dark:border-blue-500/40 dark:text-blue-100 shadow-xs ring-1 ring-blue-500/10"
+                            : "border-transparent text-slate-600 dark:text-gray-400 hover:bg-slate-100/80 dark:hover:bg-white/5 hover:text-slate-900 dark:hover:text-gray-200",
+                        )}
                       >
-                        {/* 环境初始化向导 */}
-                        <button
-                          type="button"
-                          onClick={() => setInitModalOpen(true)}
-                          className="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-xl border border-transparent text-left text-xs font-medium text-slate-700 dark:text-gray-300 hover:bg-slate-100 dark:hover:bg-white/5 transition-colors cursor-pointer group"
-                        >
-                          <div className="w-6 h-6 rounded-md bg-blue-50 dark:bg-blue-500/10 text-blue-600 dark:text-blue-400 flex items-center justify-center flex-shrink-0">
-                            <ShieldCheck size={14} />
+                        <div className="flex items-center gap-3 min-w-0">
+                          <div
+                            className={cn(
+                              "w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0 transition-colors",
+                              isActive
+                                ? "bg-blue-600 text-white dark:bg-blue-500 dark:text-white shadow-xs"
+                                : "bg-slate-100 text-slate-500 dark:bg-white/5 dark:text-gray-400",
+                            )}
+                          >
+                            <Icon size={16} />
                           </div>
-                          <div className="min-w-0 flex-1">
-                            <div className="flex items-center justify-between gap-1 leading-tight">
-                              <span>环境初始化向导</span>
-                              <span className="text-[9px] font-medium px-1.5 py-0.2 rounded bg-blue-100 text-blue-700 dark:bg-blue-500/20 dark:text-blue-300">
-                                新手向导
-                              </span>
-                            </div>
-                            <div className="text-[10px] text-slate-400 dark:text-gray-500 mt-0.5">
-                              检测并一键修复环境
-                            </div>
-                          </div>
-                        </button>
-
-                        {/* 快速诊断工具箱 */}
-                        <button
-                          type="button"
-                          onClick={() => setToolsOpen(true)}
-                          className="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-xl border border-transparent text-left text-xs font-medium text-slate-700 dark:text-gray-300 hover:bg-slate-100 dark:hover:bg-white/5 transition-colors cursor-pointer group"
-                        >
-                          <div className="w-6 h-6 rounded-md bg-amber-50 dark:bg-amber-500/10 text-amber-600 dark:text-amber-400 flex items-center justify-center flex-shrink-0">
-                            <Wrench size={13} />
-                          </div>
-                          <div className="min-w-0 flex-1">
-                            <div className="leading-tight">快速诊断工具箱</div>
-                            <div className="text-[10px] text-slate-400 dark:text-gray-500 mt-0.5">
-                              cURL 脚本与在线文档
-                            </div>
-                          </div>
-                        </button>
-
-                        {/* 应用与 CLI 路径选项 */}
-                        <button
-                          type="button"
-                          onClick={() => switchTab("paths")}
-                          className={cn(
-                            "w-full flex items-center justify-between px-2.5 py-2 rounded-xl border text-left text-xs font-medium transition-all cursor-pointer group",
-                            tab === "paths"
-                              ? "border-teal-500/70 bg-teal-50/80 text-teal-900 dark:bg-teal-500/15 dark:border-teal-500/50 dark:text-teal-100 shadow-xs"
-                              : "border-transparent text-slate-700 dark:text-gray-300 hover:bg-slate-100 dark:hover:bg-white/5",
-                          )}
-                        >
-                          <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                          <div className="min-w-0">
                             <div
                               className={cn(
-                                "w-6 h-6 rounded-md flex items-center justify-center flex-shrink-0 transition-colors",
-                                tab === "paths"
-                                  ? "bg-teal-600 text-white dark:bg-teal-500 dark:text-white"
-                                  : "bg-teal-50 dark:bg-teal-500/10 text-teal-600 dark:text-teal-400",
+                                "text-xs font-bold truncate leading-tight",
+                                isActive
+                                  ? "text-blue-900 dark:text-blue-100"
+                                  : "text-slate-800 dark:text-gray-200",
                               )}
                             >
-                              <FolderGit2 size={13} />
+                              {item.title}
                             </div>
-                            <div className="min-w-0 flex-1">
-                              <div className="leading-tight">
-                                应用与 CLI 路径
-                              </div>
-                              <div className="text-[10px] font-mono text-slate-400 dark:text-gray-500 truncate mt-0.5">
-                                app_paths.json
-                              </div>
+                            <div className="text-[10px] text-slate-400 dark:text-gray-500 truncate mt-0.5">
+                              {item.subtitle}
                             </div>
                           </div>
-                          {tab === "paths" && (
-                            <ChevronRight
-                              size={14}
-                              className="text-teal-600 dark:text-teal-400 flex-shrink-0"
-                            />
-                          )}
-                        </button>
+                        </div>
 
-                        {/* 意见反馈选项 */}
-                        <button
-                          type="button"
-                          onClick={() => setFeedbackModalOpen(true)}
-                          className="w-full flex items-center justify-between px-2.5 py-2 rounded-xl border border-transparent text-left text-xs font-medium text-slate-700 dark:text-gray-300 hover:bg-slate-100 dark:hover:bg-white/5 transition-colors cursor-pointer group"
-                        >
-                          <div className="flex items-center gap-2.5 min-w-0 flex-1">
-                            <div className="w-6 h-6 rounded-md flex items-center justify-center flex-shrink-0 bg-cyan-50 dark:bg-cyan-500/10 text-cyan-600 dark:text-cyan-400">
-                              <MessageSquare size={13} />
-                            </div>
-                            <div className="min-w-0 flex-1">
-                              <div className="leading-tight">意见反馈</div>
-                              <div className="text-[10px] text-slate-400 dark:text-gray-500 mt-0.5">
-                                BUG反馈与功能建议
-                              </div>
-                            </div>
-                          </div>
-                        </button>
-                      </motion.div>
-                    )}
-                  </AnimatePresence>
+                        {isActive && (
+                          <ChevronRight
+                            size={14}
+                            className="text-blue-600 dark:text-blue-400 flex-shrink-0 ml-1"
+                          />
+                        )}
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
 
-              {/* 侧边栏底部：账号凭据与网络健康 */}
+              {/* 侧边栏底部：保持不变的资产卡片 + 网络状态 */}
               <div className="space-y-2.5 pt-3 border-t border-slate-200/80 dark:border-white/10">
-                {/* ── bob-api.com 账号与 API Key 管理 ── */}
-                <div>
-                  <div className="px-1 pb-1 text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-gray-500 flex items-center justify-between">
-                    <span>bob-api 账号</span>
-                    {authState.is_logged_in && (
-                      <button
-                        type="button"
-                        onClick={() => void logout()}
-                        className="text-[10px] text-slate-400 hover:text-red-500 dark:hover:text-red-400 transition-colors cursor-pointer"
-                      >
-                        退出
-                      </button>
-                    )}
-                  </div>
-
-                  {authState.is_logged_in ? (
-                    <div className="p-2.5 rounded-xl border border-blue-500/20 bg-blue-50/50 dark:bg-blue-500/5 space-y-2">
-                      <div className="flex items-center justify-between gap-2">
-                        <div className="flex items-center gap-2 min-w-0">
-                          <div className="w-7 h-7 rounded-lg bg-blue-600 text-white flex items-center justify-center font-bold text-xs flex-shrink-0">
-                            {authState.user?.username
-                              ?.slice(0, 1)
-                              .toUpperCase() || "U"}
-                          </div>
-                          <div className="min-w-0">
-                            <div className="text-xs font-semibold truncate text-slate-900 dark:text-white leading-tight">
-                              {authState.user?.display_name ||
-                                authState.user?.username}
-                            </div>
-                            <div className="text-[10px] text-slate-400 dark:text-gray-500 truncate font-mono">
-                              @{authState.user?.username}
-                            </div>
-                          </div>
-                        </div>
-                        <span className="text-[10px] px-1.5 py-0.2 rounded font-medium bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-400">
-                          已就绪
-                        </span>
-                      </div>
-
-                      <button
-                        type="button"
-                        onClick={() => setTokenModalOpen(true)}
-                        className="w-full flex items-center justify-center gap-1.5 py-1 px-2 rounded-lg text-xs font-medium bg-white dark:bg-white/10 hover:bg-slate-50 dark:hover:bg-white/15 text-blue-700 dark:text-blue-300 border border-blue-200/80 dark:border-white/10 transition-colors shadow-2xs cursor-pointer"
-                        title="查看并管理云端 API Key 资产"
-                      >
-                        <KeyRound size={12} />
-                        <span className="truncate">管理 API Key 资产</span>
-                      </button>
-                    </div>
-                  ) : (
-                    <button
-                      type="button"
-                      onClick={() => setLoginModalOpen(true)}
-                      className="w-full p-2.5 rounded-xl border border-blue-200/90 dark:border-blue-500/30 bg-blue-50/70 dark:bg-blue-500/10 hover:bg-blue-100/80 dark:hover:bg-blue-500/20 text-left transition-all cursor-pointer group shadow-2xs"
-                    >
-                      <div className="flex items-center gap-2">
-                        <div className="w-7 h-7 rounded-lg bg-blue-600 text-white flex items-center justify-center font-bold text-xs flex-shrink-0">
-                          <User size={13} />
-                        </div>
-                        <div className="min-w-0 flex-1">
-                          <div className="text-xs font-semibold text-blue-900 dark:text-blue-200 leading-tight">
-                            登录 bob-api.com
-                          </div>
-                          <div className="text-[10px] text-blue-600/70 dark:text-blue-400/70 truncate mt-0.5">
-                            同步并挑选 API Key
-                          </div>
-                        </div>
-                      </div>
-                    </button>
-                  )}
-                </div>
-
-                {/* ── 账号额度余额卡片 (Bob API 钱包余额) ── */}
+                {/* 底部资产卡片不动，保持原有组件不变 */}
                 <AccountBalanceCard />
 
                 {/* 网络状态卡片 */}
@@ -1341,64 +1200,77 @@ function AppContent() {
           )}
         </aside>
 
-        {/* ── 右侧主工作台内容区 (占满右侧全部屏幕，作为唯一全局滚动条容器) ── */}
+        {/* ── 右侧主展台内容区 (根据 6 大主导航动态渲染) ── */}
         <main className="flex-1 min-w-0 h-full overflow-y-auto p-5 lg:p-6 xl:p-8 flex flex-col">
           <div className="w-full min-h-full flex flex-col">
             <AnimatePresence mode="wait">
-              {tab === "chatgpt" ? (
+              {mainNav === "workspace" ? (
                 <motion.div
-                  key="chatgpt"
+                  key="workspace"
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
                   exit={{ opacity: 0 }}
-                  transition={{ duration: 0.18, ease: "easeOut" }}
-                  className="w-full min-h-full flex flex-col"
+                  transition={{ duration: 0.16 }}
+                  className="w-full flex-1 flex flex-col min-h-0"
                 >
-                  <ChatGPTPanel />
+                  <WorkspaceView
+                    activeTool={activeTool}
+                    onSelectTool={handleSelectTool}
+                  />
                 </motion.div>
-              ) : tab === "claude" ? (
+              ) : mainNav === "logs" ? (
                 <motion.div
-                  key="claude"
+                  key="logs"
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
                   exit={{ opacity: 0 }}
-                  transition={{ duration: 0.18, ease: "easeOut" }}
-                  className="w-full min-h-full flex flex-col"
+                  transition={{ duration: 0.16 }}
+                  className="w-full flex-1 flex flex-col min-h-0"
                 >
-                  <ClaudePanel />
+                  <UsageLogsView />
                 </motion.div>
-              ) : tab === "workbuddy" ? (
+              ) : mainNav === "account" ? (
                 <motion.div
-                  key="workbuddy"
+                  key="account"
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
                   exit={{ opacity: 0 }}
-                  transition={{ duration: 0.18, ease: "easeOut" }}
-                  className="w-full min-h-full flex flex-col"
+                  transition={{ duration: 0.16 }}
+                  className="w-full flex-1 flex flex-col min-h-0"
                 >
-                  <WorkbuddyPanel />
+                  <UserCenterView
+                    onNavigate={(targetNav) => handleSelectNav(targetNav)}
+                  />
                 </motion.div>
-              ) : tab === "acciowork" ? (
+              ) : mainNav === "tools" ? (
                 <motion.div
-                  key="acciowork"
+                  key="tools"
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
                   exit={{ opacity: 0 }}
-                  transition={{ duration: 0.18, ease: "easeOut" }}
-                  className="w-full min-h-full flex flex-col"
+                  transition={{ duration: 0.16 }}
+                  className="w-full flex-1 flex flex-col min-h-0"
                 >
-                  <AccioWorkPanel />
+                  <ToolsEnvironmentView
+                    onOpenInitModal={() => setInitModalOpen(true)}
+                    onOpenToolsModal={() => setToolsOpen(true)}
+                  />
                 </motion.div>
               ) : (
                 <motion.div
-                  key="paths"
+                  key="settings"
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
                   exit={{ opacity: 0 }}
-                  transition={{ duration: 0.18, ease: "easeOut" }}
-                  className="w-full min-h-full flex flex-col"
+                  transition={{ duration: 0.16 }}
+                  className="w-full flex-1 flex flex-col min-h-0"
                 >
-                  <AppPathsPanel />
+                  <SettingsView
+                    appVersion={appVersion}
+                    onOpenFeedback={() => setFeedbackModalOpen(true)}
+                    onCheckUpdates={() => void checkForUpdates(true)}
+                    isCheckingUpdates={isManualChecking}
+                  />
                 </motion.div>
               )}
             </AnimatePresence>
@@ -1410,23 +1282,15 @@ function AppContent() {
       <QuickToolsModal
         open={toolsOpen}
         onClose={() => setToolsOpen(false)}
-        activeTab={
-          lastAgentTab === "claude"
-            ? "claude"
-            : lastAgentTab === "workbuddy"
-              ? "workbuddy"
-              : lastAgentTab === "acciowork"
-                ? "acciowork"
-                : "chatgpt"
-        }
+        activeTab={activeTool}
         currentUrl="https://bob-api.com/"
         currentKey=""
         currentModel={
-          lastAgentTab === "claude"
+          activeTool === "claude"
             ? "claude-3-7-sonnet-20250219"
-            : lastAgentTab === "workbuddy"
+            : activeTool === "workbuddy"
               ? "gpt-5.6-sol"
-              : lastAgentTab === "acciowork"
+              : activeTool === "acciowork"
                 ? "claude-3-7-sonnet"
                 : "gpt-4o"
         }
@@ -1436,9 +1300,16 @@ function AppContent() {
         open={feedbackModalOpen}
         onClose={() => setFeedbackModalOpen(false)}
         appVersion={appVersion}
-        activeTab={tab}
+        activeTab={activeTool}
         networkState={networkState}
         currentUser={authState.user}
+        onRefreshAuth={refreshState}
+      />
+
+      <AnnouncementModal
+        open={announcementModalOpen}
+        onClose={handleCloseAnnouncement}
+        appVersion={appVersion}
       />
 
       <ForceUpdateModal
@@ -1461,23 +1332,19 @@ function AppContent() {
         onFinish={handleInitFinish}
       />
 
-      {/* ── bob-api.com 登录弹窗 (未登录时启用强制锁定模式) ── */}
+      {/* ── bob-api.com 登录弹窗 (非强制模式，允许自由关闭) ── */}
       <LoginModal
         open={loginModalOpen}
-        mandatory={!authState.is_logged_in}
+        mandatory={false}
         onSuccess={handleLoginSuccess}
-        onClose={() => {
-          if (authState.is_logged_in) {
-            setLoginModalOpen(false);
-          }
-        }}
+        onClose={() => setLoginModalOpen(false)}
       />
 
       {/* ── API Key 资产与关联弹窗 ── */}
       <TokenSelectModal
         open={tokenModalOpen}
         onSelectKey={(_plainKey, token) => {
-          const tid = lastAgentTab;
+          const tid = activeTool;
           try {
             localStorage.setItem(
               `bound_token_${tid}`,
@@ -1485,12 +1352,12 @@ function AppContent() {
             );
           } catch {}
           toast.success(
-            `已为当前目标「${
-              lastAgentTab === "claude"
+            `已为当前工具「${
+              activeTool === "claude"
                 ? "Claude Code"
-                : lastAgentTab === "workbuddy"
+                : activeTool === "workbuddy"
                   ? "WorkBuddy"
-                  : lastAgentTab === "acciowork"
+                  : activeTool === "acciowork"
                     ? "Accio Work"
                     : "ChatGPT (Codex)"
             }」成功关联 API Key：${token.name}`,
@@ -1498,26 +1365,26 @@ function AppContent() {
         }}
         onClose={() => setTokenModalOpen(false)}
         toolName={
-          lastAgentTab === "claude"
+          activeTool === "claude"
             ? "Claude Code"
-            : lastAgentTab === "workbuddy"
+            : activeTool === "workbuddy"
               ? "WorkBuddy"
-              : lastAgentTab === "acciowork"
+              : activeTool === "acciowork"
                 ? "Accio Work"
                 : "ChatGPT (Codex)"
         }
         accentColor={
-          lastAgentTab === "claude"
+          activeTool === "claude"
             ? "purple"
-            : lastAgentTab === "workbuddy"
+            : activeTool === "workbuddy"
               ? "emerald"
-              : lastAgentTab === "acciowork"
+              : activeTool === "acciowork"
                 ? "orange"
                 : "blue"
         }
       />
 
-      {/* ── 阶段 1：启动检查更新阶段过渡层 (置于标题栏下方，保留窗口控制并提供引导入口) ── */}
+      {/* ── 阶段 1：启动检查更新阶段过渡层 ── */}
       {!isBootCheckComplete && updatePhase === "idle" && (
         <div className="fixed inset-0 top-11 z-50 flex flex-col items-center justify-center bg-slate-950/75 backdrop-blur-md select-none p-4">
           <div className="max-w-sm w-full p-6 rounded-2xl bg-white dark:bg-[#121524] border border-slate-200 dark:border-white/10 shadow-2xl flex flex-col items-center text-center">

@@ -34,6 +34,7 @@ import type { TokenItem } from "../../types";
 import { cn } from "../../lib/utils";
 import { SpotlightCard } from "../react-bits/SpotlightCard";
 import { ButtonToLoaderToSuccess } from "../ui/ButtonToLoaderToSuccess";
+import { CircleToSearchBar } from "../ui/CircleToSearchBar";
 import { ShinyText } from "../react-bits/ShinyText";
 import { DecryptedText } from "../react-bits/DecryptedText";
 
@@ -583,28 +584,15 @@ export function TokenSelectModal({
         <div className="relative z-10 px-5 sm:px-6 py-3 bg-slate-50/85 dark:bg-black/25 border-b border-slate-100 dark:border-white/[0.06] flex flex-wrap items-center justify-between gap-2.5 text-xs">
           {/* 搜索框与标签选项卡 */}
           <div className="flex items-center gap-2 flex-1 min-w-[240px]">
-            <div className="relative flex-1">
-              <Search
-                size={13}
-                className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 dark:text-gray-500 pointer-events-none"
-              />
-              <Input
-                type="text"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="搜索 Key 名称或特征码..."
-                className="h-9 pl-8 pr-7 text-xs bg-white dark:bg-black/40 border-slate-200/80 dark:border-white/10 rounded-xl shadow-sm focus-visible:ring-2"
-              />
-              {searchQuery && (
-                <button
-                  type="button"
-                  onClick={() => setSearchQuery("")}
-                  className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-gray-300"
-                >
-                  <X size={12} />
-                </button>
-              )}
-            </div>
+            <CircleToSearchBar
+              value={searchQuery}
+              onChange={setSearchQuery}
+              placeholder="搜索 Key 名称或特征码..."
+              title="搜索 Key (点击展开)"
+              size={36}
+              expandedWidth="full"
+              className="flex-1"
+            />
 
             <div className="flex items-center p-0.5 rounded-lg bg-slate-200/60 dark:bg-white/5 border border-slate-200/50 dark:border-white/5 text-[11px]">
               <button

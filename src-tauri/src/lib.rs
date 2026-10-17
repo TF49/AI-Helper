@@ -4,6 +4,7 @@ mod accio;
 mod api_test;
 mod app_paths;
 mod auth;
+mod autostart;
 mod claude;
 mod codex;
 mod error;
@@ -14,6 +15,21 @@ mod network;
 mod process_manager;
 mod updater;
 mod workbuddy;
+
+#[tauri::command]
+fn get_auto_start_status() -> Result<bool, String> {
+    autostart::get_auto_start_status()
+}
+
+#[tauri::command]
+fn set_auto_start_status(enabled: bool) -> Result<(), String> {
+    autostart::set_auto_start_status(enabled)
+}
+
+#[tauri::command]
+fn exit_app(app_handle: tauri::AppHandle) {
+    app_handle.exit(0);
+}
 
 #[tauri::command]
 fn get_app_paths() -> app_paths::AppPathsConfig {
@@ -438,8 +454,8 @@ async fn logout_account() -> Result<(), String> {
 }
 
 #[tauri::command]
-async fn get_user_tokens() -> Result<Vec<auth::TokenItem>, String> {
-    auth::get_user_tokens().await
+async fn get_user_tokens(all: Option<bool>) -> Result<Vec<auth::TokenItem>, String> {
+    auth::get_user_tokens(all).await
 }
 
 #[tauri::command]
@@ -483,6 +499,45 @@ async fn get_channel_group_overview(
 #[tauri::command]
 async fn get_user_wallet() -> Result<auth::UserWalletInfo, String> {
     auth::get_user_wallet().await
+}
+
+#[tauri::command]
+async fn delete_user_token(token_id: i64) -> Result<(), String> {
+    auth::delete_user_token(token_id).await
+}
+
+#[tauri::command]
+async fn update_user_token_status(token_id: i64, status: i32) -> Result<(), String> {
+    auth::update_user_token_status(token_id, status).await
+}
+
+#[tauri::command]
+async fn get_token_auto_groups() -> Result<Vec<String>, String> {
+    auth::get_token_auto_groups().await
+}
+
+#[tauri::command]
+async fn get_user_available_groups() -> Result<Vec<String>, String> {
+    auth::get_user_available_groups().await
+}
+
+#[tauri::command]
+async fn get_user_usage_logs(
+    params: auth::UsageLogQueryParams,
+) -> Result<auth::UsageLogsResponse, String> {
+    auth::get_user_usage_logs(params).await
+}
+
+#[tauri::command]
+async fn get_user_usage_stat(
+    params: auth::UsageLogQueryParams,
+) -> Result<auth::UsageStatData, String> {
+    auth::get_user_usage_stat(params).await
+}
+
+#[tauri::command]
+async fn get_pricing_data() -> Result<auth::PricingResponse, String> {
+    auth::get_pricing_data().await
 }
 
 fn setup_tray(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
@@ -641,10 +696,20 @@ pub fn run() {
             get_token_key,
             create_user_token,
             update_user_token_group,
+            delete_user_token,
+            update_user_token_status,
+            get_token_auto_groups,
+            get_user_available_groups,
+            get_user_usage_logs,
+            get_user_usage_stat,
+            get_pricing_data,
             set_selected_token,
             apply_api_key_to_agents,
             get_channel_group_overview,
             get_user_wallet,
+            get_auto_start_status,
+            set_auto_start_status,
+            exit_app,
             feedback::get_system_diagnostic_info,
             feedback::submit_feishu_feedback,
         ])

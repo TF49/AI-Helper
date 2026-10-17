@@ -13,6 +13,7 @@ import { toast } from "sonner";
 import { openUrl } from "../lib/api";
 import { OpenAIIcon, ClaudeIcon, WorkbuddyIcon, AccioWorkIcon } from "./BrandIcons";
 import { ThemeToggle } from "./ThemeToggle";
+import { ButtonToLoaderToSuccess } from "./ui/ButtonToLoaderToSuccess";
 
 interface QuickToolsModalProps {
   open: boolean;
@@ -168,21 +169,28 @@ export function QuickToolsModal({
                     Accio Work
                   </button>
                 </div>
-                <button
-                  type="button"
-                  onClick={handleCopyCurl}
-                  className="flex items-center gap-1 text-[11px] px-2 py-1 rounded bg-slate-100 hover:bg-slate-200 text-slate-700 dark:bg-white/5 dark:hover:bg-white/10 dark:text-gray-300 dark:hover:text-white transition-colors border border-slate-200 dark:border-white/10 cursor-pointer"
-                >
-                  {copiedCurl ? (
-                    <Check
-                      size={12}
-                      className="text-emerald-600 dark:text-emerald-400"
-                    />
-                  ) : (
-                    <Copy size={12} />
-                  )}
-                  {copiedCurl ? "已复制" : "复制命令"}
-                </button>
+                <ButtonToLoaderToSuccess
+                  accent="blue"
+                  className="px-2 py-1 min-w-[75px] rounded text-[11px] font-medium"
+                  idleLabel={
+                    <>
+                      <Copy size={12} />
+                      <span>复制命令</span>
+                    </>
+                  }
+                  successLabel="已复制"
+                  resetAfterMs={1800}
+                  holdMs={500}
+                  onAction={async () => {
+                    try {
+                      await navigator.clipboard.writeText(curlCommand);
+                      toast.success("已复制 cURL 测试脚本");
+                    } catch (err) {
+                      toast.error("复制失败，请手动选取复制");
+                      throw err;
+                    }
+                  }}
+                />
               </div>
             </div>
             <pre className="p-3 rounded-xl bg-slate-100 dark:bg-black/60 border border-slate-200 dark:border-white/5 font-mono text-[11px] text-slate-800 dark:text-gray-300 overflow-x-auto leading-relaxed">
