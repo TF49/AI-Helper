@@ -11,7 +11,29 @@ export type BoundTokenInfo = {
 
 const ALL_TOOL_IDS = ["chatgpt", "claude", "workbuddy", "acciowork", "default"];
 
-function normalizeGroup(group: unknown): string | null {
+export function normalizeApiKey(k?: string | null): string {
+  if (!k) return "";
+  const trimmed = k.trim();
+  return trimmed.startsWith("sk-") ? trimmed.slice(3) : trimmed;
+}
+
+export function isKeyMatch(a?: string | null, b?: string | null): boolean {
+  if (!a || !b) return false;
+  const normA = normalizeApiKey(a);
+  const normB = normalizeApiKey(b);
+  if (!normA || !normB) return false;
+  if (normA === normB) return true;
+  if (normA.length >= 10 && normB.length >= 10) {
+    const preA = normA.slice(0, 6);
+    const sufA = normA.slice(-4);
+    const preB = normB.slice(0, 6);
+    const sufB = normB.slice(-4);
+    return preA === preB && sufA === sufB;
+  }
+  return false;
+}
+
+export function normalizeGroup(group: unknown): string | null {
   return typeof group === "string" && group.trim() ? group.trim() : null;
 }
 
@@ -31,11 +53,11 @@ function writeBoundToStorage(toolId: string, info: BoundTokenInfo) {
   } catch {}
 }
 
-function toBoundInfo(token: Pick<TokenItem, "id" | "name" | "group">): BoundTokenInfo {
+export function toBoundInfo(token: Pick<TokenItem, "id" | "name" | "group">): BoundTokenInfo {
   return {
     id: token.id,
     name: token.name,
-    group: token.group ?? undefined,
+    group: token.group?.trim() || "default",
   };
 }
 
@@ -43,19 +65,7 @@ function matchTokenByKey(tokens: TokenItem[], apiKey: string): TokenItem | null 
   const val = apiKey.trim();
   if (!val) return null;
 
-  const exact = tokens.find((t) => t.key && t.key === val);
-  if (exact) return exact;
-
-  if (val.length >= 12) {
-    const prefix = val.slice(0, 7);
-    const suffix = val.slice(-4);
-    return (
-      tokens.find(
-        (t) => t.key && t.key.startsWith(prefix) && t.key.endsWith(suffix),
-      ) ?? null
-    );
-  }
-  return null;
+  return tokens.find((t) => isKeyMatch(t.key, val)) ?? null;
 }
 
 /** 复用其他工具已绑定的同一 Key（Accio 有绑定、Claude 无绑定时的关键路径） */
@@ -75,7 +85,7 @@ async function matchViaOtherToolBindings(
 
     try {
       const plain = (await getTokenKey(other.id)).trim();
-      if (!plain || plain !== val) continue;
+      if (!plain || !isKeyMatch(plain, val)) continue;
 
       const cloud = tokens.find((t) => t.id === other.id);
       return toBoundInfo({
@@ -99,17 +109,15 @@ async function matchTokenByFetchingKeys(
   if (!val) return null;
 
   for (const token of tokens) {
-    if (token.key && token.key.length >= 12 && token.key !== val) {
-      const prefix = val.slice(0, 7);
-      const suffix = val.slice(-4);
-      if (!(token.key.startsWith(prefix) && token.key.endsWith(suffix))) {
+    if (token.key && normalizeApiKey(token.key).length >= 10) {
+      if (!isKeyMatch(token.key, val)) {
         continue;
       }
     }
 
     try {
       const plain = (await getTokenKey(token.id)).trim();
-      if (plain && plain === val) return token;
+      if (plain && isKeyMatch(plain, val)) return token;
     } catch {
       // ignore
     }
@@ -177,7 +185,7 @@ export function useBoundTokenGroup(toolId: string, apiKey?: string) {
         if (matched) {
           const info = toBoundInfo(matched);
           writeBoundToStorage(toolId, info);
-          if (alive) setGroup(normalizeGroup(matched.group));
+          if (alive) setGroup(normalizeGroup(info.group));
           return;
         }
 
@@ -198,10 +206,10 @@ export function useBoundTokenGroup(toolId: string, apiKey?: string) {
           if (selected) {
             try {
               const plain = (await getTokenKey(selected.id)).trim();
-              if (alive && plain && plain === key) {
+              if (alive && plain && isKeyMatch(plain, key)) {
                 const info = toBoundInfo(selected);
                 writeBoundToStorage(toolId, info);
-                setGroup(normalizeGroup(selected.group));
+                setGroup(normalizeGroup(info.group));
                 return;
               }
             } catch {
@@ -216,7 +224,7 @@ export function useBoundTokenGroup(toolId: string, apiKey?: string) {
         if (matched) {
           const info = toBoundInfo(matched);
           writeBoundToStorage(toolId, info);
-          setGroup(normalizeGroup(matched.group));
+          setGroup(normalizeGroup(info.group));
           return;
         }
 
@@ -227,7 +235,7 @@ export function useBoundTokenGroup(toolId: string, apiKey?: string) {
         if (!byId) return;
         const info = toBoundInfo(byId);
         writeBoundToStorage(toolId, info);
-        setGroup(normalizeGroup(byId.group));
+        setGroup(normalizeGroup(info.group));
       } catch {
         // 保留本地缓存
       }

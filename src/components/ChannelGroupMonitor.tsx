@@ -328,8 +328,9 @@ export function ChannelGroupMonitor({
 
   // 计算当前工具绑定的生效分组
   const resolvedCurrentGroup = useMemo(() => {
-    if (currentGroupName) return currentGroupName;
-    if (boundTokenInfo?.group) return boundTokenInfo.group.trim();
+    if (currentGroupName && currentGroupName.trim()) return currentGroupName.trim();
+    if (boundTokenInfo?.group && boundTokenInfo.group.trim()) return boundTokenInfo.group.trim();
+    if (boundTokenInfo?.id) return "default";
     return null;
   }, [currentGroupName, boundTokenInfo]);
 
@@ -832,7 +833,7 @@ export function ChannelGroupMonitor({
                 {isUnboundRecommended && (
                   <span className="text-[10px] px-2 py-0.5 rounded font-medium bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border border-emerald-500/20 flex items-center gap-1 flex-shrink-0 shadow-2xs">
                     <Sparkles size={11} className="text-emerald-500" />
-                    未配置 Key · 推荐最优通道
+                    {isKeyConfigured ? "未关联分组 · 推荐最优通道" : "未配置 Key · 推荐最优通道"}
                   </span>
                 )}
               </div>
@@ -1120,7 +1121,7 @@ export function ChannelGroupMonitor({
 
                 {isUnboundRecommended && (
                   <span className="text-[10px] px-1.5 py-0.5 rounded font-medium bg-slate-100 text-slate-600 dark:bg-white/10 dark:text-gray-400 border border-slate-200 dark:border-white/10">
-                    工具推荐默认 (未绑定专属 Key)
+                    {isKeyConfigured ? "未关联专属分组 (推荐优质通道)" : "工具推荐默认 (未绑定专属 Key)"}
                   </span>
                 )}
               </div>

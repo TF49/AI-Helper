@@ -1344,12 +1344,18 @@ function AppContent() {
         open={tokenModalOpen}
         onSelectKey={(_plainKey, token) => {
           const tid = activeTool;
+          const targetGroup = token.group?.trim() || "default";
           try {
             localStorage.setItem(
               `bound_token_${tid}`,
-              JSON.stringify({ id: token.id, name: token.name }),
+              JSON.stringify({ id: token.id, name: token.name, group: targetGroup }),
             );
           } catch {}
+          window.dispatchEvent(
+            new CustomEvent("ai_helper_sync_all_tokens", {
+              detail: { id: token.id, name: token.name, group: targetGroup },
+            }),
+          );
           toast.success(
             `已为当前工具「${
               activeTool === "claude"

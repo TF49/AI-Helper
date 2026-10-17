@@ -18,7 +18,7 @@ import { TokenSelectModal } from "./auth/TokenSelectModal";
 import { ChannelGroupMonitor } from "./ChannelGroupMonitor";
 import { getUserTokens, getTokenKey } from "../lib/api";
 import type { TokenItem } from "../types";
-import type { BoundTokenInfo } from "../lib/useBoundTokenGroup";
+import { isKeyMatch, type BoundTokenInfo } from "../lib/useBoundTokenGroup";
 
 export interface ApiKeyInputProps {
   value: string;
@@ -118,19 +118,15 @@ export function ApiKeyInput({
         if (boundToken) {
           const match = tokens.find((t) => t.id === boundToken.id);
           const isStillMatch = match
-            ? !match.key ||
-              match.key === val ||
-              (val.length >= 12 &&
-                match.key.length >= 12 &&
-                match.key.startsWith(val.slice(0, 7)) &&
-                match.key.endsWith(val.slice(-4)))
+            ? !match.key || isKeyMatch(match.key, val)
             : false;
 
           if (match && isStillMatch) {
-            if (match.group !== boundToken.group) {
+            const resolvedGroup = match.group?.trim() || "default";
+            if (resolvedGroup !== boundToken.group) {
               const updated = {
                 ...boundToken,
-                group: match.group ?? undefined,
+                group: resolvedGroup,
               };
               setBoundToken(updated);
               try {
@@ -148,38 +144,18 @@ export function ApiKeyInput({
         }
 
         // 2. 如果 boundToken 为 null 或已解绑，通过当前输入框中的 Key 明文比对匹配
-        const exactMatch = tokens.find((t) => t.key && t.key === val);
-        if (exactMatch) {
+        const matched = tokens.find((t) => isKeyMatch(t.key, val));
+        if (matched) {
           const info = {
-            id: exactMatch.id,
-            name: exactMatch.name,
-            group: exactMatch.group ?? undefined,
+            id: matched.id,
+            name: matched.name,
+            group: matched.group?.trim() || "default",
           };
           setBoundToken(info);
           try {
             localStorage.setItem(storageKey, JSON.stringify(info));
           } catch {}
           return;
-        }
-
-        // 若为脱敏 key，尝试基于前缀+后缀匹配
-        if (val.length >= 12) {
-          const prefix = val.slice(0, 7);
-          const suffix = val.slice(-4);
-          const partialMatch = tokens.find(
-            (t) => t.key && t.key.startsWith(prefix) && t.key.endsWith(suffix),
-          );
-          if (partialMatch) {
-            const info = {
-              id: partialMatch.id,
-              name: partialMatch.name,
-              group: partialMatch.group ?? undefined,
-            };
-            setBoundToken(info);
-            try {
-              localStorage.setItem(storageKey, JSON.stringify(info));
-            } catch {}
-          }
         }
       })
       .catch(() => {});
@@ -297,12 +273,13 @@ export function ApiKeyInput({
     const info = {
       id: token.id,
       name: token.name,
-      group: token.group ?? undefined,
+      group: token.group?.trim() || "default",
     };
     setBoundToken(info);
     try {
       localStorage.setItem(storageKey, JSON.stringify(info));
     } catch {}
+    onBoundTokenChange?.(info);
   };
 
   return (
