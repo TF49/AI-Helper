@@ -278,6 +278,12 @@ end tell"#,
                 // 在独立 CMD 窗口中启动 Codex CLI (追加 --no-daemon 避免在 Windows 管理员提权环境下触发 Daemon 安全限制)
                 let comspec = std::env::var("COMSPEC").unwrap_or_else(|_| "cmd.exe".to_string());
                 let mut cmd = Command::new(&comspec);
+                let codex_key = crate::codex::get_codex_config()
+                    .map(|c| c.api_key)
+                    .unwrap_or_default();
+                if !codex_key.trim().is_empty() {
+                    cmd.env("CUSTOM_OPENAI_API_KEY", &codex_key);
+                }
                 cmd.args([
                     "/c",
                     "start",

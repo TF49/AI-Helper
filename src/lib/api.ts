@@ -883,16 +883,6 @@ export async function getTokenKey(tokenId: number): Promise<string> {
   return invoke<string>("get_token_key", { tokenId });
 }
 
-export async function createUserToken(
-  name: string,
-  group?: string,
-): Promise<TokenItem> {
-  return invoke<TokenItem>("create_user_token", {
-    name,
-    group: group ?? null,
-  });
-}
-
 export async function updateUserTokenGroup(
   tokenId: number,
   newGroup: string,

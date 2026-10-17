@@ -464,11 +464,6 @@ async fn get_token_key(token_id: i64) -> Result<String, String> {
 }
 
 #[tauri::command]
-async fn create_user_token(name: String, group: Option<String>) -> Result<auth::TokenItem, String> {
-    auth::create_user_token(name, group).await
-}
-
-#[tauri::command]
 async fn update_user_token_group(
     token_id: i64,
     new_group: String,
@@ -694,7 +689,6 @@ pub fn run() {
             logout_account,
             get_user_tokens,
             get_token_key,
-            create_user_token,
             update_user_token_group,
             delete_user_token,
             update_user_token_status,

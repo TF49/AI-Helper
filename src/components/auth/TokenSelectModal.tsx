@@ -313,10 +313,10 @@ export function TokenSelectModal({
         } catch {}
       });
 
-      // 广播全局全套同步事件
+      // 广播全局全套同步事件 (仅广播安全元数据，杜绝在全局 DOM 事件中泄露明文 Key)
       window.dispatchEvent(
         new CustomEvent("ai_helper_sync_all_tokens", {
-          detail: { id: token.id, name: token.name, key: plainKey, group: token.group ?? undefined },
+          detail: { id: token.id, name: token.name, group: token.group ?? undefined },
         }),
       );
 

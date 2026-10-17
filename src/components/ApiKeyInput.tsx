@@ -16,7 +16,7 @@ import { cn } from "../lib/utils";
 import { useAuth } from "../lib/useAuth";
 import { TokenSelectModal } from "./auth/TokenSelectModal";
 import { ChannelGroupMonitor } from "./ChannelGroupMonitor";
-import { getUserTokens } from "../lib/api";
+import { getUserTokens, getTokenKey } from "../lib/api";
 import type { TokenItem } from "../types";
 import type { BoundTokenInfo } from "../lib/useBoundTokenGroup";
 
@@ -195,12 +195,15 @@ export function ApiKeyInput({
       const customEvent = e as CustomEvent<{
         id: number;
         name: string;
-        key?: string;
         group?: string | null;
       }>;
       if (customEvent.detail) {
-        if (customEvent.detail.key) {
-          onChange(customEvent.detail.key);
+        if (customEvent.detail.id) {
+          void getTokenKey(customEvent.detail.id)
+            .then((key) => {
+              if (key) onChange(key);
+            })
+            .catch(() => {});
         }
         const info = {
           id: customEvent.detail.id,
@@ -752,6 +755,8 @@ export function ApiKeyInput({
         <div className="mt-3.5">
           <ChannelGroupMonitor
             currentGroupName={boundToken?.group}
+            hasConfiguredKey={Boolean(value?.trim())}
+            configuredKey={value}
             toolName={toolName}
             toolId={effectiveToolId}
             accentColor={accentColor}

@@ -41,6 +41,7 @@ pub async fn test_codex_config(url: String, api_key: String, model: String) -> A
     let request = client.post(&endpoint).bearer_auth(&api_key).json(&json!({
         "model": model,
         "input": "Hi",
+        "max_output_tokens": 16,
     }));
 
     send_test_request(request).await
@@ -86,7 +87,8 @@ pub async fn test_codex_stream(
         level: "dim".to_string(),
     });
     let _ = on_event.send(TestStreamEvent::Log {
-        text: "发送轻量握手消息: [POST /v1/responses] payload: \"Hi\"...".to_string(),
+        text: "发送轻量握手消息: [POST /v1/responses] payload: \"Hi\" (max_output_tokens: 16)..."
+            .to_string(),
         level: "info".to_string(),
     });
 
@@ -94,6 +96,7 @@ pub async fn test_codex_stream(
     let request = client.post(&endpoint).bearer_auth(&api_key).json(&json!({
         "model": model,
         "input": "Hi",
+        "max_output_tokens": 16,
     }));
 
     let start = Instant::now();

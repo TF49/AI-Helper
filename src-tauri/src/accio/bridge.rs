@@ -319,6 +319,214 @@ pub async fn bind_listener(start_port: u16) -> Result<(TcpListener, u16), String
     ))
 }
 
+/// 严格判断请求 Origin 是否属于受信任的本地/内嵌环境，防止公网网页跨站 (CSRF) 盗刷用户额度与资金
+pub fn is_trusted_bridge_origin(origin: &str) -> bool {
+    let lower = origin.trim().to_ascii_lowercase();
+    if lower.is_empty() {
+        return true;
+    }
+
+    if lower.starts_with("tauri://")
+        || lower.starts_with("vscode-webview://")
+        || lower.starts_with("file://")
+        || lower.starts_with("app://")
+    {
+        return true;
+    }
+
+    if let Ok(url) = reqwest::Url::parse(&lower) {
+        if let Some(host) = url.host_str() {
+            if host == "127.0.0.1" || host == "localhost" || host == "tauri.localhost" {
+                return true;
+            }
+        }
+    }
+
+    false
+}
+
+/// 严格判断请求 Host 是否属于受信任的本地主机地址，彻底封堵公网利用 DNS Rebinding (重绑定) 盗刷本地网关与额度
+pub fn is_trusted_bridge_host(host: &str) -> bool {
+    let lower = host.trim().to_ascii_lowercase();
+    if lower.is_empty() {
+        return false;
+    }
+
+    // 剔除端口部分 (支持 127.0.0.1:8787、localhost:8787、[::1]:8787 等格式)
+    let hostname = if lower.starts_with('[') {
+        if let Some(end_bracket) = lower.find(']') {
+            &lower[1..end_bracket]
+        } else {
+            lower.as_str()
+        }
+    } else if let Some(colon_pos) = lower.rfind(':') {
+        &lower[..colon_pos]
+    } else {
+        lower.as_str()
+    };
+
+    hostname == "127.0.0.1"
+        || hostname == "localhost"
+        || hostname == "tauri.localhost"
+        || hostname == "::1"
+}
+
+/// 滑动窗口流控器，防止恶意死循环或外部脚本高频盗刷用户余额与 API 额度
+pub struct SlidingWindowRateLimiter {
+    window_duration: Duration,
+    max_requests: usize,
+    timestamps: Vec<Instant>,
+}
+
+impl SlidingWindowRateLimiter {
+    pub fn new(window_duration: Duration, max_requests: usize) -> Self {
+        Self {
+            window_duration,
+            max_requests,
+            timestamps: Vec::new(),
+        }
+    }
+
+    pub fn check_and_record(&mut self) -> bool {
+        let now = Instant::now();
+        self.timestamps.retain(|&t| {
+            now.checked_duration_since(t)
+                .map(|d| d < self.window_duration)
+                .unwrap_or(false)
+        });
+        if self.timestamps.len() >= self.max_requests {
+            false
+        } else {
+            self.timestamps.push(now);
+            true
+        }
+    }
+
+    #[cfg(test)]
+    #[allow(dead_code)]
+    pub fn reset(&mut self) {
+        self.timestamps.clear();
+    }
+}
+
+static BRIDGE_LLM_RATE_LIMITER: Mutex<Option<SlidingWindowRateLimiter>> = Mutex::new(None);
+static BRIDGE_IMAGE_RATE_LIMITER: Mutex<Option<SlidingWindowRateLimiter>> = Mutex::new(None);
+
+pub fn check_llm_rate_limit() -> bool {
+    let mut guard = BRIDGE_LLM_RATE_LIMITER.lock().unwrap();
+    let limiter = guard.get_or_insert_with(|| {
+        // 允许 60 秒内最多 120 次请求（平均 2次/秒，足够 Agent 链式推理，但彻底锁死恶意脚本死循环）
+        SlidingWindowRateLimiter::new(Duration::from_secs(60), 120)
+    });
+    limiter.check_and_record()
+}
+
+pub fn check_image_rate_limit() -> bool {
+    let mut guard = BRIDGE_IMAGE_RATE_LIMITER.lock().unwrap();
+    let limiter = guard.get_or_insert_with(|| {
+        // 生图成本极其高昂（DALL-E 3 约 0.3~0.6 元/张），限制 60 秒内最多 6 次请求
+        SlidingWindowRateLimiter::new(Duration::from_secs(60), 6)
+    });
+    limiter.check_and_record()
+}
+
+pub fn is_monetized_bridge_path(path: &str) -> bool {
+    let lower = path.to_ascii_lowercase();
+    lower.starts_with("/api/adk/llm")
+        || lower.starts_with("/api/adk/embedding")
+        || lower.starts_with("/api/tool/rlab/call")
+        || lower.starts_with("/api/mcp/proxy")
+}
+
+/// Anti-CSRF、Anti-DNS-Rebinding 及流控防盗刷中间件：
+/// 1. 严格拦截非受信 Host 请求，抵御 DNS Rebinding 攻击；
+/// 2. 拦截所有带有非受信 Origin 或跨站探测 (Sec-Fetch-Site: cross-site) 的请求；
+/// 3. 对消耗 token/额度的收费端点进行高频死循环拦截与限流保护。
+async fn bridge_anti_csrf_middleware(request: Request, next: axum::middleware::Next) -> Response {
+    // 1. 严格检查 Host 头部 (防范 DNS Rebinding 跨站盗刷)
+    if let Some(host_val) = request.headers().get(header::HOST) {
+        if let Ok(host_str) = host_val.to_str() {
+            if !is_trusted_bridge_host(host_str) {
+                log::warn!(
+                    "【安全拦截】拦截来自非受信 Host 的调用 (疑遭遇 DNS Rebinding 盗刷攻击, Host: {})",
+                    host_str
+                );
+                return (
+                    StatusCode::FORBIDDEN,
+                    Json(json!({
+                        "error_code": 403,
+                        "error_message": "【安全拦截】非受信 Host 请求，已拦截疑似 DNS Rebinding 跨站盗刷"
+                    })),
+                )
+                    .into_response();
+            }
+        }
+    }
+
+    // 2. 检查 Origin 头
+    if let Some(origin_val) = request.headers().get(header::ORIGIN) {
+        if let Ok(origin_str) = origin_val.to_str() {
+            if !is_trusted_bridge_origin(origin_str) {
+                log::warn!(
+                    "【CSRF 安全拦截】拒绝来自非受信任外部 Web 站点的盗刷调用 (Origin: {})",
+                    origin_str
+                );
+                return (
+                    StatusCode::FORBIDDEN,
+                    Json(json!({
+                        "error_code": 403,
+                        "error_message": "【安全拦截】禁止从非受信任的公网网页调用本地 AI Helper Bridge 网关，防止账户额度遭 CSRF 盗刷"
+                    })),
+                )
+                    .into_response();
+            }
+        }
+    }
+
+    // 2. 检查 Sec-Fetch-Site 头
+    if let Some(sec_fetch) = request.headers().get("sec-fetch-site") {
+        if sec_fetch == "cross-site" {
+            let is_trusted = request
+                .headers()
+                .get(header::ORIGIN)
+                .and_then(|v| v.to_str().ok())
+                .map(is_trusted_bridge_origin)
+                .unwrap_or(false);
+
+            if !is_trusted {
+                log::warn!("【CSRF 安全拦截】拦截浏览器 cross-site 探测或恶意调用");
+                return (
+                    StatusCode::FORBIDDEN,
+                    Json(json!({
+                        "error_code": 403,
+                        "error_message": "【安全拦截】禁止跨站 (cross-site) 访问本地 AI Helper Bridge"
+                    })),
+                )
+                    .into_response();
+            }
+        }
+    }
+
+    // 3. 对扣费/高频消费端点执行速率限制保护 (防死循环掏空用户额度)
+    let path = request.uri().path();
+    if is_monetized_bridge_path(path) && !check_llm_rate_limit() {
+        log::warn!(
+            "【流控安全拦截】本地 Bridge 针对收费端点 {} 的请求超出限流阈值 (120次/分钟)，已拦截以防止账户额度耗尽",
+            path
+        );
+        return (
+            StatusCode::TOO_MANY_REQUESTS,
+            Json(json!({
+                "error_code": 429,
+                "error_message": "【安全拦截】请求频率过高已触发本地 AI Helper Bridge 流控保护 (120次/分钟)，自动拦截以防止账户额度遭死循环消耗殆尽。请稍候重试。"
+            })),
+        )
+            .into_response();
+    }
+
+    next.run(request).await
+}
+
 /// 启动 Accio Local Bridge 中继服务器
 pub async fn start_bridge(preferred_port: Option<u16>) -> Result<u16, String> {
     {
@@ -369,6 +577,19 @@ pub async fn start_bridge(preferred_port: Option<u16>) -> Result<u16, String> {
         .build()
         .map_err(|e| format!("构建 HTTP 客户端失败: {}", e))?;
 
+    let cors = CorsLayer::new()
+        .allow_origin(tower_http::cors::AllowOrigin::predicate(
+            |origin: &axum::http::HeaderValue, _| {
+                if let Ok(s) = origin.to_str() {
+                    is_trusted_bridge_origin(s)
+                } else {
+                    false
+                }
+            },
+        ))
+        .allow_methods(tower_http::cors::Any)
+        .allow_headers(tower_http::cors::Any);
+
     let app = Router::new()
         .route("/health", get(handle_health))
         .route("/api/llm/config/v2", any(custom_model_list))
@@ -379,7 +600,8 @@ pub async fn start_bridge(preferred_port: Option<u16>) -> Result<u16, String> {
         .route("/api/mcp/proxy", any(handle_mcp_proxy))
         .route("/api/mcp/proxy/*path", any(handle_mcp_proxy))
         .fallback(any(proxy_official))
-        .layer(CorsLayer::permissive())
+        .layer(axum::middleware::from_fn(bridge_anti_csrf_middleware))
+        .layer(cors)
         .with_state(client);
 
     let (shutdown_tx, shutdown_rx) = oneshot::channel::<()>();
@@ -574,11 +796,17 @@ async fn handle_tool_rlab_call(
     headers.remove(header::CONTENT_ENCODING);
     headers.remove(header::CONTENT_LENGTH);
 
-    // 修复：不再强制覆盖 model_routing，允许 Accio Work 的模型选择生效
-    // model_routing 请求原样透传，让 Accio 决策正常流转
-    log::debug!("转发 /api/tool/rlab/call 请求至官方网关");
+    let config = load_accio_config();
+    if config.prevent_official_leak {
+        log::info!("【防泄漏生效】已开启 prevent_official_leak，对 /api/tool/rlab/call 返回本地合规响应，避免泄漏至官方网关");
+        return (
+            StatusCode::OK,
+            Json(json!({"code": 200, "data": {}, "message": "success (prevent_official_leak active)"})),
+        )
+            .into_response();
+    }
 
-    // 所有请求（包括 model_routing）原样透明转发至阿里官方网关
+    log::debug!("转发 /api/tool/rlab/call 请求至官方网关");
     forward_to_official(&client, parts.method, headers, "/api/tool/rlab/call", bytes).await
 }
 
@@ -846,24 +1074,11 @@ async fn handle_llm(State(client): State<Client>, request: Request) -> Response 
             );
 
             if config_clone.fallback_official {
-                log::warn!("已开启官方网关回退，正在将请求透传至阿里官方网关...");
-                let _ = tx
-                    .send(Ok(Bytes::from(": ai-helper fallback to official\n\n")))
-                    .await;
-                let fallback_res = proxy_official_stream(
-                    &client_clone,
-                    &config_clone,
-                    method_clone,
-                    headers_clone,
-                    &path_clone,
-                    bytes_for_fallback,
-                    tx.clone(),
-                )
-                .await;
-                if let Err(proxy_err) = fallback_res {
+                if config_clone.prevent_official_leak {
+                    log::warn!("【防泄漏拦截】已开启 prevent_official_leak，阻止 LLM 失败后回退至阿里官方网关");
                     let full_err_msg = format!(
-                        "上游自定义模型报错: {}; 官方网关回退失败: {}",
-                        err_msg, proxy_err
+                        "上游自定义模型报错: {}; (已开启防官方泄露，禁止回退官方网关)",
+                        err_msg
                     );
                     let err_frame = json!({
                         "errorCode": error_code,
@@ -877,6 +1092,39 @@ async fn handle_llm(State(client): State<Client>, request: Request) -> Response 
                         "partial": false
                     });
                     let _ = tx.send(Ok(Bytes::from(format_accio_sse(&err_frame)))).await;
+                } else {
+                    log::warn!("已开启官方网关回退，正在将请求透传至阿里官方网关...");
+                    let _ = tx
+                        .send(Ok(Bytes::from(": ai-helper fallback to official\n\n")))
+                        .await;
+                    let fallback_res = proxy_official_stream(
+                        &client_clone,
+                        &config_clone,
+                        method_clone,
+                        headers_clone,
+                        &path_clone,
+                        bytes_for_fallback,
+                        tx.clone(),
+                    )
+                    .await;
+                    if let Err(proxy_err) = fallback_res {
+                        let full_err_msg = format!(
+                            "上游自定义模型报错: {}; 官方网关回退失败: {}",
+                            err_msg, proxy_err
+                        );
+                        let err_frame = json!({
+                            "errorCode": error_code,
+                            "errorMessage": &full_err_msg,
+                            "content": {
+                                "role": "model",
+                                "parts": [{ "text": format!("⚠️ 请求失败: {}", full_err_msg) }]
+                            },
+                            "finishReason": "ERROR",
+                            "turnComplete": true,
+                            "partial": false
+                        });
+                        let _ = tx.send(Ok(Bytes::from(format_accio_sse(&err_frame)))).await;
+                    }
                 }
             } else {
                 let err_frame = json!({
@@ -913,10 +1161,6 @@ async fn handle_llm(State(client): State<Client>, request: Request) -> Response 
     response.headers_mut().insert(
         header::HeaderName::from_static("x-accel-buffering"),
         header::HeaderValue::from_static("no"),
-    );
-    response.headers_mut().insert(
-        header::ACCESS_CONTROL_ALLOW_ORIGIN,
-        header::HeaderValue::from_static("*"),
     );
     response
 }
@@ -1950,6 +2194,10 @@ async fn call_custom_image(
     config: &AccioConfig,
     input: Value,
 ) -> Result<Value, String> {
+    if !check_image_rate_limit() {
+        log::warn!("【生图流控安全拦截】短时间内生图请求过于频繁 (超出 6次/分钟 限制)，已主动拦截以防资金耗损");
+        return Err("【生图流控拦截】1 分钟内生图请求已达到 6 次安全上限。生图接口单价较高，为防止账户额度遭异常耗尽已自动限流，请稍后再试。".to_string());
+    }
     if config.api_key.trim().is_empty() {
         return Err("API 密钥未配置，请先在 AI-Helper 中填写 API Key".to_string());
     }
@@ -2175,6 +2423,20 @@ async fn forward_to_official_result(
     body: Bytes,
 ) -> Result<Response, (StatusCode, String)> {
     let config = load_accio_config();
+    if config.prevent_official_leak {
+        log::warn!(
+            "【防泄漏拦截】已开启 prevent_official_leak，已拦截向阿里官方网关透明转发: {}",
+            path
+        );
+        return Err((
+            StatusCode::FORBIDDEN,
+            format!(
+                "【AI-Helper 安全保护】防官方泄露已开启 (prevent_official_leak=true)，已拦截向阿里官方网关 ({}) 的请求: {}",
+                config.official_gateway, path
+            ),
+        ));
+    }
+
     let url = format!("{}{}", config.official_gateway.trim_end_matches('/'), path);
 
     let mut req = client.request(method, &url).body(body);
@@ -2631,5 +2893,59 @@ mod tests {
 
         let parsed_filtered = parse_responses_api_response(&filtered_response, "gpt-4o");
         assert_eq!(parsed_filtered["finishReason"], "SAFETY");
+    }
+
+    #[test]
+    fn test_is_trusted_bridge_origin() {
+        assert!(is_trusted_bridge_origin("http://127.0.0.1:3000"));
+        assert!(is_trusted_bridge_origin("http://localhost:8080"));
+        assert!(is_trusted_bridge_origin("tauri://localhost"));
+        assert!(is_trusted_bridge_origin("https://tauri.localhost"));
+        assert!(is_trusted_bridge_origin("vscode-webview://d8h24h2f84"));
+
+        assert!(!is_trusted_bridge_origin("https://evil.com"));
+        assert!(!is_trusted_bridge_origin("http://malicious-hacker.com"));
+        assert!(!is_trusted_bridge_origin("http://localhost.attacker.com"));
+    }
+
+    #[test]
+    fn test_is_trusted_bridge_host() {
+        assert!(is_trusted_bridge_host("127.0.0.1"));
+        assert!(is_trusted_bridge_host("127.0.0.1:8787"));
+        assert!(is_trusted_bridge_host("localhost"));
+        assert!(is_trusted_bridge_host("localhost:8787"));
+        assert!(is_trusted_bridge_host("tauri.localhost"));
+        assert!(is_trusted_bridge_host("tauri.localhost:3000"));
+        assert!(is_trusted_bridge_host("[::1]"));
+        assert!(is_trusted_bridge_host("[::1]:8787"));
+
+        assert!(!is_trusted_bridge_host("evil.com"));
+        assert!(!is_trusted_bridge_host("rebind.evil.com:8787"));
+        assert!(!is_trusted_bridge_host("attacker.com"));
+        assert!(!is_trusted_bridge_host("127.0.0.1.attacker.com"));
+        assert!(!is_trusted_bridge_host("localhost.attacker.com:8787"));
+    }
+
+    #[test]
+    fn test_sliding_window_rate_limiter() {
+        let mut limiter = SlidingWindowRateLimiter::new(Duration::from_secs(10), 3);
+        assert!(limiter.check_and_record());
+        assert!(limiter.check_and_record());
+        assert!(limiter.check_and_record());
+        // 4th request must be rejected
+        assert!(!limiter.check_and_record());
+    }
+
+    #[test]
+    fn test_is_monetized_bridge_path() {
+        assert!(is_monetized_bridge_path("/api/adk/llm"));
+        assert!(is_monetized_bridge_path("/api/adk/llm/v1/chat/completions"));
+        assert!(is_monetized_bridge_path("/api/adk/embedding/embed"));
+        assert!(is_monetized_bridge_path("/api/tool/rlab/call"));
+        assert!(is_monetized_bridge_path("/api/mcp/proxy"));
+
+        // Free endpoints must not be throttled by monetized limiter
+        assert!(!is_monetized_bridge_path("/health"));
+        assert!(!is_monetized_bridge_path("/api/llm/config/v2"));
     }
 }

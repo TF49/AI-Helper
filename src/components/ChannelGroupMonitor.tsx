@@ -39,6 +39,7 @@ import {
   updateUserTokenGroup,
   getTokenKey,
   applyApiKeyToAgents,
+  getPricingData,
 } from "../lib/api";
 import type { ChannelGroupOverview, TokenItem } from "../types";
 import { HealthTrendVisualizer } from "./HealthTrendVisualizer";
@@ -47,6 +48,9 @@ import { ButtonToLoaderToSuccess } from "./ui/ButtonToLoaderToSuccess";
 
 export interface ChannelGroupMonitorProps {
   currentGroupName?: string | null;
+  hasConfiguredKey?: boolean;
+  configuredKey?: string | null;
+  defaultShowDetails?: boolean;
   toolName?: string;
   toolId?: string;
   accentColor?: "blue" | "purple" | "emerald" | "orange";
@@ -103,8 +107,119 @@ function formatLatency(seconds?: number | null): string {
   return `${seconds.toFixed(2)}s`;
 }
 
+export interface GroupRatioBadgeInfo {
+  text: string;
+  className: string;
+  ratio: number;
+  isHigh: boolean;
+  isVeryHigh: boolean;
+}
+
+export function getGroupRatioBadge(ratio?: number | null): GroupRatioBadgeInfo | null {
+  if (ratio === undefined || ratio === null) return null;
+  const num = Number(ratio);
+  if (!Number.isFinite(num) || num <= 0) return null;
+
+  if (num < 1.0) {
+    return {
+      text: `${num}x 优惠`,
+      className:
+        "bg-emerald-50 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300 border-emerald-200/60 dark:border-emerald-500/30",
+      ratio: num,
+      isHigh: false,
+      isVeryHigh: false,
+    };
+  }
+  if (num === 1.0) {
+    return {
+      text: "1.0x 标准",
+      className:
+        "bg-slate-100 text-slate-600 dark:bg-white/10 dark:text-gray-300 border-slate-200/60 dark:border-white/10",
+      ratio: num,
+      isHigh: false,
+      isVeryHigh: false,
+    };
+  }
+  if (num <= 1.5) {
+    return {
+      text: `${num}x 较高`,
+      className:
+        "bg-amber-50 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300 border-amber-200/60 dark:border-amber-500/30 font-medium",
+      ratio: num,
+      isHigh: true,
+      isVeryHigh: false,
+    };
+  }
+  return {
+    text: `${num}x 高倍率`,
+    className:
+      "bg-rose-50 text-rose-700 dark:bg-rose-500/15 dark:text-rose-300 border-rose-200/60 dark:border-rose-500/30 font-bold",
+      ratio: num,
+      isHigh: true,
+      isVeryHigh: true,
+    };
+}
+
+/**
+ * 多因子稳定性与健康度评估，选取最健康、最稳定的分组
+ * 1. 优先在当前工具推荐关键词（如 Codex 专属、Claude 专属）分组中寻找
+ * 2. 综合多因子排序：
+ *    - 成功率降序（success_rate 越高越好，极佳 >= 90）
+ *    - 流量验证优先（total_requests > 0 优先于 0 流量空通道）
+ *    - 平均响应时延升序（响应越低越好）
+ *    - 总请求量降序（调用量大说明高并发下依然稳定）
+ * 3. 若专属通道全部不可用或成功率极低（< 85%），则全局寻找最优健康稳定通道兜底
+ */
+export function findHealthiestAndStableGroup(
+  allGroups: ChannelGroupOverview[],
+  guide: ToolExclusiveGuide | null,
+): ChannelGroupOverview | null {
+  if (!allGroups || allGroups.length === 0) return null;
+
+  const sortStability = (list: ChannelGroupOverview[]) => {
+    return [...list].sort((a, b) => {
+      // 1. 成功率对比（差值 >= 0.5% 视为主导差异）
+      if (Math.abs(b.success_rate - a.success_rate) >= 0.5) {
+        return b.success_rate - a.success_rate;
+      }
+      // 2. 真实流量验证（有真实成功请求 > 0 优先于 0 流量空通道）
+      const aTraffic = (a.total_requests || 0) > 0 ? 1 : 0;
+      const bTraffic = (b.total_requests || 0) > 0 ? 1 : 0;
+      if (bTraffic !== aTraffic) return bTraffic - aTraffic;
+      // 3. 响应时延（均值越低越优）
+      const aLat = a.avg_response_time > 0 ? a.avg_response_time : 999;
+      const bLat = b.avg_response_time > 0 ? b.avg_response_time : 999;
+      if (Math.abs(aLat - bLat) >= 0.05) return aLat - bLat;
+      // 4. 承载请求量（流量越大代表越经受考验）
+      return (b.total_requests || 0) - (a.total_requests || 0);
+    });
+  };
+
+  // 1. 优先在当前工具推荐关键词中挑选最稳通道
+  if (guide?.recommendedKeywords && guide.recommendedKeywords.length > 0) {
+    const matched = allGroups.filter((g) => {
+      const lower = g.group_name.toLowerCase();
+      return guide.recommendedKeywords.some((kw) => lower.includes(kw.toLowerCase()));
+    });
+    if (matched.length > 0) {
+      const sortedMatched = sortStability(matched);
+      // 如果工具专属分组中最佳者成功率达到 85% 以上，优先推荐当前工具专属通道
+      if (sortedMatched[0].success_rate >= 85) {
+        return sortedMatched[0];
+      }
+    }
+  }
+
+  // 2. 若无专属关键词或专属分组健康度较低，全局寻找最健康稳定的通道
+  const sortedGlobal = sortStability(allGroups);
+  return sortedGlobal[0] || null;
+}
+
 export function ChannelGroupMonitor({
   currentGroupName,
+  hasConfiguredKey,
+  configuredKey,
+  defaultShowDetails,
   toolName = "当前工具",
   toolId,
   accentColor = "blue",
@@ -115,7 +230,15 @@ export function ChannelGroupMonitor({
   const { authState, setLoginModalOpen } = useAuth();
 
   const [hours, setHours] = useState<number>(1);
+  const [showDetails, setShowDetails] = useState<boolean>(defaultShowDetails ?? false);
   const [groups, setGroups] = useState<ChannelGroupOverview[]>([]);
+  const [pricingInfo, setPricingInfo] = useState<{
+    groupRatio: Record<string, number>;
+    usableGroup: Record<string, string>;
+  }>({
+    groupRatio: {},
+    usableGroup: {},
+  });
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [lastUpdated, setLastUpdated] = useState<string>("");
@@ -291,8 +414,17 @@ export function ChannelGroupMonitor({
       if (!silent) setLoading(true);
       setErrorMsg(null);
       try {
-        const data = await getChannelGroupOverview(hours);
+        const [data, pricing] = await Promise.all([
+          getChannelGroupOverview(hours),
+          getPricingData().catch(() => null),
+        ]);
         setGroups(data || []);
+        if (pricing && pricing.group_ratio) {
+          setPricingInfo({
+            groupRatio: pricing.group_ratio,
+            usableGroup: pricing.usable_group || {},
+          });
+        }
         setLastUpdated(
           new Date().toLocaleTimeString("zh-CN", {
             hour: "2-digit",
@@ -345,6 +477,7 @@ export function ChannelGroupMonitor({
     loadingTokens: boolean;
     syncToAllAgents: boolean;
     isSubmitting: boolean;
+    ackHighRatio: boolean;
     errorMessage?: string | null;
   }>({
     open: false,
@@ -355,6 +488,7 @@ export function ChannelGroupMonitor({
     loadingTokens: false,
     syncToAllAgents: false,
     isSubmitting: false,
+    ackHighRatio: false,
     errorMessage: null,
   });
 
@@ -375,6 +509,7 @@ export function ChannelGroupMonitor({
       loadingTokens: true,
       errorMessage: null,
       isSubmitting: false,
+      ackHighRatio: false,
     }));
 
     try {
@@ -450,7 +585,6 @@ export function ChannelGroupMonitor({
             detail: {
               id: updated.id,
               name: updated.name,
-              key: plainKey || updated.key,
               group: targetGroupName,
             },
           }),
@@ -475,24 +609,29 @@ export function ChannelGroupMonitor({
     }
   };
 
-  // 根据工具关键词优先计算推荐的默认分组
-  const recommendedDefaultGroup = useMemo(() => {
-    if (groups.length === 0) return null;
-    if (guide?.recommendedKeywords) {
-      for (const kw of guide.recommendedKeywords) {
-        const found = groups.find((g) => g.group_name.toLowerCase().includes(kw));
-        if (found) return found.group_name;
-      }
-    }
-    return groups[0]?.group_name || null;
+  // 判定当前工具是否已配置 Key
+  const isKeyConfigured = useMemo(() => {
+    if (typeof hasConfiguredKey === "boolean") return hasConfiguredKey;
+    if (configuredKey && configuredKey.trim()) return true;
+    if (boundTokenInfo?.id || boundTokenInfo?.group) return true;
+    if (currentGroupName && currentGroupName.trim()) return true;
+    return false;
+  }, [hasConfiguredKey, configuredKey, boundTokenInfo, currentGroupName]);
+
+  // 计算健康监控下最稳定、最健康的分组
+  const healthiestGroup = useMemo(() => {
+    return findHealthiestAndStableGroup(groups, guide);
   }, [groups, guide]);
 
-  // 计算当前聚焦的目标分组名称
+  // 计算当前聚焦的目标分组名称：
+  // 1. 若用户正在对比预览，优先展示预览分组
+  // 2. 若用户已配置 Key，且解析到了绑定分组，展示当前 Key 绑定分组
+  // 3. 若用户未配置 Key（或未解析到分组），展示健康监控下最稳定最健康的分组
   const effectiveGroupName = useMemo(() => {
     if (selectedGroupOverride) return selectedGroupOverride;
-    if (resolvedCurrentGroup) return resolvedCurrentGroup;
-    return recommendedDefaultGroup;
-  }, [selectedGroupOverride, resolvedCurrentGroup, recommendedDefaultGroup]);
+    if (isKeyConfigured && resolvedCurrentGroup) return resolvedCurrentGroup;
+    return healthiestGroup?.group_name || groups[0]?.group_name || null;
+  }, [selectedGroupOverride, isKeyConfigured, resolvedCurrentGroup, healthiestGroup, groups]);
 
   const activeGroup = useMemo(() => {
     if (!effectiveGroupName) return null;
@@ -516,12 +655,16 @@ export function ChannelGroupMonitor({
 
   const isCurrentKeyGroup = Boolean(
     !isInspectingOverride &&
+      isKeyConfigured &&
       resolvedCurrentGroup &&
       activeGroup &&
       activeGroup.group_name.toLowerCase() === resolvedCurrentGroup.toLowerCase(),
   );
 
-  const isUnboundRecommended = Boolean(!resolvedCurrentGroup && !selectedGroupOverride);
+  const isUnboundRecommended = Boolean(
+    !isInspectingOverride &&
+      (!isKeyConfigured || !resolvedCurrentGroup),
+  );
 
   // 健康度状态判定
   const getHealthStatus = (rate: number) => {
@@ -617,8 +760,9 @@ export function ChannelGroupMonitor({
         className,
       )}
     >
-      {/* ── 顶部栏：功能标题、时间范围切换、刷新与外链 ── */}
-      <div className="px-4 py-3 border-b border-slate-100 dark:border-white/5 flex items-center justify-between gap-3 flex-wrap sm:flex-nowrap bg-slate-50/50 dark:bg-white/[0.02]">
+      {/* ── 顶部极简概览栏（默认呈现，~52px 高度） ── */}
+      <div className="px-4 py-2.5 flex items-center justify-between gap-3 flex-wrap sm:flex-nowrap bg-slate-50/50 dark:bg-white/[0.02]">
+        {/* 左侧：健康圆点、分组名称与状态标签 */}
         <div className="flex items-center gap-2.5 min-w-0">
           <div
             className={cn(
@@ -630,41 +774,110 @@ export function ChannelGroupMonitor({
           </div>
 
           <div className="min-w-0 flex items-center gap-1.5 flex-wrap">
-            <span className="text-xs font-bold text-slate-800 dark:text-gray-100 tracking-tight">
-              通道分组健康监控
+            <span className="text-xs font-bold text-slate-800 dark:text-gray-100 tracking-tight flex-shrink-0">
+              通道健康监控
             </span>
+
             {toolName && (
-              <span className="text-[10px] px-1.5 py-0.5 rounded font-medium bg-slate-100 dark:bg-white/5 text-slate-600 dark:text-gray-300 border border-slate-200/60 dark:border-white/5 truncate max-w-[140px]">
+              <span className="text-[10px] px-1.5 py-0.5 rounded font-medium bg-slate-100 dark:bg-white/5 text-slate-600 dark:text-gray-300 border border-slate-200/60 dark:border-white/5 truncate max-w-[130px]">
                 {toolName}
               </span>
             )}
-            <span className="hidden sm:inline-block text-[10px] px-1.5 py-0.5 rounded-md font-mono bg-slate-200/60 dark:bg-white/5 text-slate-500 dark:text-gray-400 border border-slate-200/40 dark:border-white/5">
-              Channel Monitor
-            </span>
+
+            {/* 活跃分组及状态指示 */}
+            {activeGroup && (
+              <div className="flex items-center gap-1.5 min-w-0 flex-wrap">
+                <span
+                  className="text-xs font-bold font-mono px-2 py-0.5 rounded-md bg-slate-100 dark:bg-white/5 text-slate-900 dark:text-white border border-slate-200/60 dark:border-white/5 truncate max-w-[170px]"
+                  title={activeGroup.group_name}
+                >
+                  {activeGroup.group_name}
+                </span>
+
+                {(() => {
+                  const badge = getGroupRatioBadge(pricingInfo.groupRatio[activeGroup.group_name]);
+                  if (!badge) return null;
+                  return (
+                    <span
+                      className={cn(
+                        "text-[10px] px-1.5 py-0.5 rounded font-mono font-medium border flex items-center gap-0.5 flex-shrink-0 shadow-2xs",
+                        badge.className,
+                      )}
+                      title={`通道费率倍率: ${pricingInfo.groupRatio[activeGroup.group_name]}x`}
+                    >
+                      {badge.isHigh && <AlertTriangle size={10} className="stroke-[2.5]" />}
+                      {badge.text}
+                    </span>
+                  );
+                })()}
+
+                {isCurrentKeyGroup && (
+                  <span
+                    className={cn(
+                      "text-[10px] px-2 py-0.5 rounded font-semibold border flex items-center gap-1 flex-shrink-0 shadow-2xs",
+                      theme.boundBadge,
+                    )}
+                  >
+                    <Check size={11} className="stroke-[3]" />
+                    当前 Key 绑定
+                  </span>
+                )}
+
+                {isInspectingOverride && (
+                  <span className="text-[10px] px-1.5 py-0.5 rounded font-medium bg-amber-500/10 text-amber-700 dark:text-amber-300 border border-amber-500/20 flex-shrink-0">
+                    临时对比预览
+                  </span>
+                )}
+
+                {isUnboundRecommended && (
+                  <span className="text-[10px] px-2 py-0.5 rounded font-medium bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border border-emerald-500/20 flex items-center gap-1 flex-shrink-0 shadow-2xs">
+                    <Sparkles size={11} className="text-emerald-500" />
+                    未配置 Key · 推荐最优通道
+                  </span>
+                )}
+              </div>
+            )}
           </div>
         </div>
 
-        {/* 右侧控制项 */}
-        <div className="flex items-center gap-2 flex-shrink-0 ml-auto">
-          {/* 时间粒度选择 (1h / 2h / 3h) */}
-          <div className="flex items-center p-0.5 rounded-lg bg-slate-200/70 dark:bg-white/5 border border-slate-200/50 dark:border-white/5 text-[10px]">
-            {[1, 2, 3].map((h) => (
-              <button
-                key={h}
-                type="button"
-                onClick={() => setHours(h)}
-                className={cn(
-                  "px-2 py-0.5 rounded-md font-medium transition-all cursor-pointer",
-                  hours === h
-                    ? "bg-white dark:bg-white/15 text-slate-900 dark:text-white shadow-2xs font-semibold"
-                    : "text-slate-500 hover:text-slate-800 dark:text-gray-400 dark:hover:text-gray-200",
-                )}
-                title={`查看过去 ${h} 小时监控数据`}
-              >
-                {h}h
-              </button>
-            ))}
+        {/* 中间：指标微型徽章（屏幕适中及宽屏下可见，一眼看穿健康与时延） */}
+        {activeGroup && currentHealth && (
+          <div className="hidden lg:flex items-center gap-2 flex-shrink-0 font-mono text-[11px]">
+            <div
+              className={cn(
+                "flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold border shadow-2xs",
+                currentHealth.bgBadge,
+              )}
+            >
+              <currentHealth.Icon size={12} className="stroke-[2.5]" />
+              <span>健康度 {currentHealth.label}</span>
+              <span className="font-bold">({activeGroup.success_rate.toFixed(1)}%)</span>
+            </div>
+
+            <span className="px-2 py-0.5 rounded-md bg-slate-100 dark:bg-white/5 text-slate-600 dark:text-gray-300 border border-slate-200/60 dark:border-white/5">
+              时延: {formatLatency(activeGroup.avg_response_time)}
+            </span>
+
+            {activeGroup.failed_requests > 0 && (
+              <span className="px-2 py-0.5 rounded-md bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-rose-500/20 font-bold">
+                异常 {activeGroup.failed_requests}次
+              </span>
+            )}
           </div>
+        )}
+
+        {/* 右侧控制项：刷新、网页大盘、核心「详情」展开按钮 */}
+        <div className="flex items-center gap-2 flex-shrink-0 ml-auto">
+          {/* 移动端/小屏下的精炼健康胶囊 */}
+          {activeGroup && currentHealth && (
+            <div
+              className="flex lg:hidden items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold border shadow-2xs font-mono"
+              style={{ borderColor: currentHealth.barColor + "40" }}
+            >
+              <span className={cn("w-1.5 h-1.5 rounded-full", currentHealth.dotColor)} />
+              <span>{activeGroup.success_rate.toFixed(0)}%</span>
+            </div>
+          )}
 
           {/* 刷新按钮 */}
           <button
@@ -685,59 +898,76 @@ export function ChannelGroupMonitor({
           <button
             type="button"
             onClick={() => void openUrl("https://bob-api.com/channel-monitor")}
-            className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-medium text-slate-600 hover:text-slate-900 dark:text-gray-300 dark:hover:text-white bg-slate-100/80 hover:bg-slate-200/80 dark:bg-white/5 dark:hover:bg-white/10 border border-slate-200/60 dark:border-white/10 transition-all cursor-pointer shadow-2xs"
+            className="hidden sm:inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-medium text-slate-600 hover:text-slate-900 dark:text-gray-300 dark:hover:text-white bg-slate-100/80 hover:bg-slate-200/80 dark:bg-white/5 dark:hover:bg-white/10 border border-slate-200/60 dark:border-white/10 transition-all cursor-pointer shadow-2xs"
             title="前往 bob-api.com/channel-monitor 查看网页端完整大盘"
           >
             <span>网页大盘</span>
             <ExternalLink size={11} className="opacity-70" />
           </button>
+
+          {/* 核心：「详情 / 收起」切换按钮 */}
+          <button
+            type="button"
+            onClick={() => setShowDetails((prev) => !prev)}
+            className={cn(
+              "inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold transition-all cursor-pointer shadow-2xs active:scale-95",
+              showDetails
+                ? "bg-slate-200/80 dark:bg-white/15 text-slate-800 dark:text-gray-100"
+                : cn("text-white", theme.btnPrimary),
+            )}
+            title={showDetails ? "收起监控图表与全部分组详情" : "展开健康走势图表与全部分组对比"}
+          >
+            <span>{showDetails ? "收起" : "详情"}</span>
+            {showDetails ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
+          </button>
         </div>
       </div>
 
-      {/* ── 核心说明横幅：针对各工具深度定制的专属分组与密钥规则 ── */}
-      <div
-        className={cn(
-          "px-4 py-3 border-b flex items-start gap-2.5 text-xs leading-relaxed transition-colors",
-          theme.bannerBg,
-        )}
-      >
-        <Info size={15} className={cn("flex-shrink-0 mt-0.5", theme.bannerIcon)} />
-        <div className="flex-1 space-y-1 text-[11px]">
-          <div className="flex items-center gap-2 flex-wrap">
-            <span className={cn("font-bold text-xs", theme.bannerTitle)}>
-              {guide ? guide.title : "通道分组与 API Key 对应规则"}
-            </span>
+      {/* ── 核心展开详情区域（带流畅动画滑出） ── */}
+      <AnimatePresence>
+        {showDetails && (
+          <motion.div
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: "auto" }}
+            exit={{ opacity: 0, height: 0 }}
+            transition={{ duration: 0.24, ease: "easeInOut" }}
+            className="overflow-hidden border-t border-slate-100 dark:border-white/5"
+          >
+            {/* ── 针对各工具深度定制的专属分组与密钥规则 ── */}
             {guide && (
-              <span
+              <div
                 className={cn(
-                  "text-[10px] px-2 py-0.2 rounded-full font-semibold border shadow-2xs",
-                  theme.bannerTag,
+                  "px-4 py-3 border-b flex items-start gap-2.5 text-xs leading-relaxed transition-colors",
+                  theme.bannerBg,
                 )}
               >
-                {guide.tag}
-              </span>
+                <Info size={15} className={cn("flex-shrink-0 mt-0.5", theme.bannerIcon)} />
+                <div className="flex-1 space-y-1 text-[11px]">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className={cn("font-bold text-xs", theme.bannerTitle)}>
+                      {guide.title}
+                    </span>
+                    <span
+                      className={cn(
+                        "text-[10px] px-2 py-0.2 rounded-full font-semibold border shadow-2xs",
+                        theme.bannerTag,
+                      )}
+                    >
+                      {guide.tag}
+                    </span>
+                  </div>
+
+                  <p className="opacity-90 leading-relaxed">{guide.desc}</p>
+
+                  <p className="opacity-80 text-[10px] flex items-center gap-1 pt-0.5 font-mono">
+                    <Sparkles size={11} className="flex-shrink-0 opacity-70" />
+                    <span>{guide.technicalNote}</span>
+                  </p>
+                </div>
+              </div>
             )}
-          </div>
-
-          <p className="opacity-90 leading-relaxed">
-            {guide
-              ? guide.desc
-              : `在统一服务网关中，每个分组严格对应每一个专属 Key。不同的分组映射到不同的上游通道、模型配额与并发集群。此处为「${toolName}」呈现所属通道的健康度走势。`}
-          </p>
-
-          <p className="opacity-80 text-[10px] flex items-center gap-1 pt-0.5 font-mono">
-            <Sparkles size={11} className="flex-shrink-0 opacity-70" />
-            <span>
-              {guide
-                ? guide.technicalNote
-                : "每个分组由专属 Key 承载通信，建议优先选用健康度 95% 以上的通道。"}
-            </span>
-          </p>
-        </div>
-      </div>
-
-      {/* ── 监控核心展示区 ── */}
-      <div className="p-4 space-y-3.5">
+            {/* ── 监控核心展示区 ── */}
+            <div className="p-4 space-y-3.5">
         {!authState.is_logged_in ? (
           /* 未登录状态下的引导卡片 */
           <div className="py-6 px-4 rounded-xl border border-dashed border-slate-200 dark:border-white/10 bg-slate-50/50 dark:bg-white/[0.015] flex flex-col items-center justify-center text-center gap-3">
@@ -828,6 +1058,23 @@ export function ChannelGroupMonitor({
                   {activeGroup.group_name}
                 </span>
 
+                {(() => {
+                  const badge = getGroupRatioBadge(pricingInfo.groupRatio[activeGroup.group_name]);
+                  if (!badge) return null;
+                  return (
+                    <span
+                      className={cn(
+                        "text-[10px] px-1.5 py-0.5 rounded font-mono font-medium border flex items-center gap-0.5 flex-shrink-0 shadow-2xs",
+                        badge.className,
+                      )}
+                      title={`通道费率倍率: ${pricingInfo.groupRatio[activeGroup.group_name]}x`}
+                    >
+                      {badge.isHigh && <AlertTriangle size={10} className="stroke-[2.5]" />}
+                      {badge.text}
+                    </span>
+                  );
+                })()}
+
                 {/* 状态指示徽标 */}
                 {isCurrentKeyGroup && (
                   <span
@@ -878,21 +1125,43 @@ export function ChannelGroupMonitor({
                 )}
               </div>
 
-              {/* 健康度徽标 */}
-              {currentHealth && (
-                <div
-                  className={cn(
-                    "flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold border shadow-2xs",
-                    currentHealth.bgBadge,
-                  )}
-                >
-                  <currentHealth.Icon size={12} className="stroke-[2.5]" />
-                  <span>健康度 {currentHealth.label}</span>
-                  <span className="font-mono ml-0.5 font-bold">
-                    ({activeGroup.success_rate.toFixed(1)}%)
-                  </span>
+              {/* 右侧：时间粒度与健康徽标 */}
+              <div className="flex items-center gap-2">
+                {/* 时间粒度选择 (1h / 2h / 3h) */}
+                <div className="flex items-center p-0.5 rounded-lg bg-slate-200/70 dark:bg-white/5 border border-slate-200/50 dark:border-white/5 text-[10px]">
+                  {[1, 2, 3].map((h) => (
+                    <button
+                      key={h}
+                      type="button"
+                      onClick={() => setHours(h)}
+                      className={cn(
+                        "px-2 py-0.5 rounded-md font-medium transition-all cursor-pointer",
+                        hours === h
+                          ? "bg-white dark:bg-white/15 text-slate-900 dark:text-white shadow-2xs font-semibold"
+                          : "text-slate-500 hover:text-slate-800 dark:text-gray-400 dark:hover:text-gray-200",
+                      )}
+                      title={`查看过去 ${h} 小时监控数据`}
+                    >
+                      {h}h
+                    </button>
+                  ))}
                 </div>
-              )}
+
+                {currentHealth && (
+                  <div
+                    className={cn(
+                      "flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold border shadow-2xs",
+                      currentHealth.bgBadge,
+                    )}
+                  >
+                    <currentHealth.Icon size={12} className="stroke-[2.5]" />
+                    <span>健康度 {currentHealth.label}</span>
+                    <span className="font-mono ml-0.5 font-bold">
+                      ({activeGroup.success_rate.toFixed(1)}%)
+                    </span>
+                  </div>
+                )}
+              </div>
             </div>
 
             {/* 核心指标卡片四宫格 */}
@@ -1199,6 +1468,23 @@ export function ChannelGroupMonitor({
                                   推荐通道
                                 </span>
                               )}
+
+                              {(() => {
+                                const badge = getGroupRatioBadge(pricingInfo.groupRatio[g.group_name]);
+                                if (!badge) return null;
+                                return (
+                                  <span
+                                    className={cn(
+                                      "text-[10px] px-1.5 py-0.2 rounded font-mono border flex-shrink-0 flex items-center gap-0.5",
+                                      badge.className,
+                                    )}
+                                    title={`通道计费倍率: ${pricingInfo.groupRatio[g.group_name]}x`}
+                                  >
+                                    {badge.isHigh && <AlertTriangle size={9} />}
+                                    {badge.text}
+                                  </span>
+                                );
+                              })()}
                             </div>
 
                             {/* 右侧：指标数值、改分组与展开按钮 */}
@@ -1594,7 +1880,10 @@ export function ChannelGroupMonitor({
             )}
           </div>
         )}
-      </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* ── 全景对比大盘弹窗 (CompareModal) ── */}
       {compareModalOpen &&
@@ -1851,17 +2140,71 @@ export function ChannelGroupMonitor({
                     )}
                   </div>
 
-                  {switchModalState.targetGroupItem && (
-                    <span
+                  <div className="flex flex-col items-end gap-1.5 flex-shrink-0">
+                    {switchModalState.targetGroupItem && (
+                      <span
+                        className={cn(
+                          "px-2.5 py-1 rounded-full text-xs font-mono font-bold shadow-2xs",
+                          getHealthStatus(switchModalState.targetGroupItem.success_rate).bgBadge,
+                        )}
+                      >
+                        {switchModalState.targetGroupItem.success_rate.toFixed(1)}% {getHealthStatus(switchModalState.targetGroupItem.success_rate).label}
+                      </span>
+                    )}
+                    {(() => {
+                      const badge = getGroupRatioBadge(pricingInfo.groupRatio[switchModalState.targetGroupName]);
+                      if (!badge) return null;
+                      return (
+                        <span className={cn("px-2 py-0.5 rounded-full text-[10px] font-mono border", badge.className)}>
+                          计费 {badge.text}
+                        </span>
+                      );
+                    })()}
+                  </div>
+                </div>
+
+                {/* 费率与额度风险警告条 */}
+                {(() => {
+                  const targetRatio = pricingInfo.groupRatio[switchModalState.targetGroupName] ?? 1.0;
+                  if (targetRatio <= 1.0) return null;
+                  const isVeryHigh = targetRatio >= 2.0;
+                  return (
+                    <div
                       className={cn(
-                        "px-2.5 py-1 rounded-full text-xs font-mono font-bold flex-shrink-0 shadow-2xs",
-                        getHealthStatus(switchModalState.targetGroupItem.success_rate).bgBadge,
+                        "p-3.5 rounded-2xl border text-xs flex items-start gap-2.5 animate-in fade-in duration-200",
+                        isVeryHigh
+                          ? "bg-rose-50/90 dark:bg-rose-950/30 border-rose-200 dark:border-rose-800/40 text-rose-900 dark:text-rose-200"
+                          : "bg-amber-50/90 dark:bg-amber-950/30 border-amber-200 dark:border-amber-800/40 text-amber-900 dark:text-amber-200",
                       )}
                     >
-                      {switchModalState.targetGroupItem.success_rate.toFixed(1)}% {getHealthStatus(switchModalState.targetGroupItem.success_rate).label}
-                    </span>
-                  )}
-                </div>
+                      <AlertTriangle
+                        size={17}
+                        className={cn(
+                          "flex-shrink-0 mt-0.5",
+                          isVeryHigh ? "text-rose-600 dark:text-rose-400" : "text-amber-600 dark:text-amber-400",
+                        )}
+                      />
+                      <div className="space-y-1">
+                        <div className="font-bold flex items-center gap-1.5">
+                          <span>高费率通道预警：计费倍率 {targetRatio}x</span>
+                          <span
+                            className={cn(
+                              "text-[10px] px-1.5 py-0.2 rounded font-normal",
+                              isVeryHigh
+                                ? "bg-rose-200/60 dark:bg-rose-500/20 text-rose-800 dark:text-rose-300"
+                                : "bg-amber-200/60 dark:bg-amber-500/20 text-amber-800 dark:text-amber-300",
+                            )}
+                          >
+                            消耗加速
+                          </span>
+                        </div>
+                        <p className="text-[11px] leading-relaxed opacity-90">
+                          该通道为高费率/独立算力通道，模型调用的额度消耗将是标准通道的 <strong>{targetRatio} 倍</strong>。请确认您的账户余额充裕，避免短时间内被快速扣尽。
+                        </p>
+                      </div>
+                    </div>
+                  );
+                })()}
 
                 {/* 选择要更改分组的 API Key */}
                 <div className="space-y-1.5">
@@ -1945,6 +2288,30 @@ export function ChannelGroupMonitor({
                   </label>
                 </div>
 
+                {/* 超高倍率通道强制二次确认勾选 */}
+                {(() => {
+                  const targetRatio = pricingInfo.groupRatio[switchModalState.targetGroupName] ?? 1.0;
+                  if (targetRatio < 2.0) return null;
+                  return (
+                    <label className="flex items-start gap-2.5 p-3 rounded-xl bg-rose-50/80 dark:bg-rose-500/10 border border-rose-300 dark:border-rose-500/30 text-xs text-rose-950 dark:text-rose-200 cursor-pointer select-none">
+                      <input
+                        type="checkbox"
+                        checked={switchModalState.ackHighRatio}
+                        onChange={(e) =>
+                          setSwitchModalState((prev) => ({
+                            ...prev,
+                            ackHighRatio: e.target.checked,
+                          }))
+                        }
+                        className="rounded border-rose-400 text-rose-600 focus:ring-rose-500 cursor-pointer mt-0.5"
+                      />
+                      <span className="font-semibold leading-snug">
+                        我已知晓「{switchModalState.targetGroupName}」通道费率为 {targetRatio}x（扣费速度为标准通道 {targetRatio} 倍），确认切换
+                      </span>
+                    </label>
+                  );
+                })()}
+
                 {/* 即时生效温馨提示 */}
                 <div className="p-3 rounded-xl bg-slate-50 dark:bg-white/[0.02] border border-slate-200/60 dark:border-white/5 text-[11px] text-slate-500 dark:text-gray-400 leading-relaxed flex items-start gap-2">
                   <Sparkles size={13} className="text-amber-500 flex-shrink-0 mt-0.5" />
@@ -1988,7 +2355,9 @@ export function ChannelGroupMonitor({
                   accent="blue"
                   disabled={
                     switchModalState.isSubmitting ||
-                    switchModalState.tokensList.length === 0
+                    switchModalState.tokensList.length === 0 ||
+                    ((pricingInfo.groupRatio[switchModalState.targetGroupName] ?? 1.0) >= 2.0 &&
+                      !switchModalState.ackHighRatio)
                   }
                   className="px-5 py-2 min-w-[180px]"
                   idleLabel={

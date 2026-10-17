@@ -351,6 +351,9 @@ export function ClaudePanel() {
               toolName="Claude Code"
               toolId="claude"
               accentColor="purple"
+              hasConfiguredKey={Boolean(apiKey?.trim())}
+              configuredKey={apiKey}
+              currentGroupName={apiKeyGroup}
             />
           </div>
         ) : (

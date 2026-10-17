@@ -746,6 +746,9 @@ export function AccioWorkPanel() {
         toolName="Accio Work"
         toolId="acciowork"
         accentColor="orange"
+        hasConfiguredKey={Boolean(apiKey?.trim())}
+        configuredKey={apiKey}
+        currentGroupName={apiKeyGroup}
       />
     </div>
   );

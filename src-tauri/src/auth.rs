@@ -476,6 +476,11 @@ impl AuthManager {
 
         if let Ok(json_str) = serde_json::to_string_pretty(&storage) {
             let _ = fs::write(&path, json_str);
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::PermissionsExt;
+                let _ = fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600));
+            }
         }
     }
 
@@ -1160,63 +1165,6 @@ pub async fn get_token_key(token_id: i64) -> Result<String, String> {
     }
 
     Ok(key)
-}
-
-/// 快速在 bob-api 创建一个新的普通令牌（可选指定分组）
-pub async fn create_user_token(name: String, group: Option<String>) -> Result<TokenItem, String> {
-    let token = ensure_access_token().await?;
-    let mgr = AUTH_MGR.lock().await;
-
-    let target_group = group.unwrap_or_default().trim().to_string();
-    let url = format!("{}/api/token/", BASE_URL);
-    let body = serde_json::json!({
-        "name": name.trim(),
-        "expired_time": -1,
-        "remain_quota": 0,
-        "unlimited_quota": true,
-        "model_limits_enabled": false,
-        "model_limits": "",
-        "allow_ips": "",
-        "group": target_group,
-        "auto_groups": [],
-        "cross_group_retry": false,
-        "fallback_groups": []
-    });
-
-    let resp = mgr
-        .client
-        .post(&url)
-        .header(AUTHORIZATION, format!("Bearer {}", token))
-        .json(&body)
-        .send()
-        .await
-        .map_err(|e| format!("创建新令牌网络异常: {e}"))?;
-
-    let status = resp.status();
-    let text = resp
-        .text()
-        .await
-        .map_err(|e| format!("读取创建令牌响应失败: {e}"))?;
-
-    let parsed: ApiResponse<serde_json::Value> =
-        parse_api_response_body(status, &text, "创建新令牌")?;
-
-    if !parsed.success {
-        return Err(if parsed.message.is_empty() {
-            "创建令牌失败".to_string()
-        } else {
-            parsed.message
-        });
-    }
-
-    drop(mgr);
-
-    // 重新检索该名称的令牌
-    let tokens = get_user_tokens(None).await?;
-    tokens
-        .into_iter()
-        .find(|t| t.name == name)
-        .ok_or_else(|| "令牌创建成功，但刷新列表时未找到刚创建的记录".to_string())
 }
 
 /// 更新已有 API Key 的所属分组 (调用 PUT /api/token/)

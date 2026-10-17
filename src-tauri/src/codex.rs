@@ -181,7 +181,11 @@ pub fn set_codex_config(
     let doc = prepare_codex_doc(&base_url, model.as_deref());
 
     std::fs::write(&path, doc.to_string())?;
-    write_registry_env("CUSTOM_OPENAI_API_KEY", &api_key)?;
+    if api_key.trim().is_empty() {
+        delete_registry_env("CUSTOM_OPENAI_API_KEY")?;
+    } else {
+        write_registry_env("CUSTOM_OPENAI_API_KEY", &api_key)?;
+    }
     Ok(())
 }
 
@@ -216,6 +220,23 @@ fn write_registry_env(name: &str, value: &str) -> Result<(), AppError> {
 #[cfg(not(target_os = "windows"))]
 fn write_registry_env(name: &str, value: &str) -> Result<(), AppError> {
     std::env::set_var(name, value);
+    Ok(())
+}
+
+#[cfg(target_os = "windows")]
+pub fn delete_registry_env(name: &str) -> Result<(), AppError> {
+    use winreg::{enums::HKEY_CURRENT_USER, RegKey};
+    let hkcu = RegKey::predef(HKEY_CURRENT_USER);
+    if let Ok(env) = hkcu.open_subkey_with_flags("Environment", winreg::enums::KEY_SET_VALUE) {
+        let _ = env.delete_value(name);
+    }
+    std::env::remove_var(name);
+    Ok(())
+}
+
+#[cfg(not(target_os = "windows"))]
+pub fn delete_registry_env(name: &str) -> Result<(), AppError> {
+    std::env::remove_var(name);
     Ok(())
 }
 

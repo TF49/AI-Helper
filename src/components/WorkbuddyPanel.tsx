@@ -620,6 +620,9 @@ export function WorkbuddyPanel() {
               toolName="WorkBuddy"
               toolId="workbuddy"
               accentColor="emerald"
+              hasConfiguredKey={Boolean(apiKey?.trim())}
+              configuredKey={apiKey}
+              currentGroupName={apiKeyGroup}
             />
           </div>
         ) : (

@@ -7,6 +7,7 @@
 ///      - 支持流式分块写入、实时进度回显与源切换事件广播
 ///      - 下载校验完成后自动调起 Windows 安装程序并退出应用生效
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 use std::time::Duration;
 
 const CURRENT_VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -662,6 +663,81 @@ async fn check_static_url(url: &str, source_name: &str) -> Result<UpdateInfo, St
     })
 }
 
+/// 计算本地文件的 SHA-256 哈希值 (小写十六进制)
+pub fn compute_file_sha256(path: &std::path::Path) -> Result<String, String> {
+    use std::io::Read;
+    let mut file = std::fs::File::open(path).map_err(|e| format!("打开文件失败: {}", e))?;
+    let mut hasher = Sha256::new();
+    let mut buffer = [0u8; 64 * 1024];
+    loop {
+        let n = file
+            .read(&mut buffer)
+            .map_err(|e| format!("读取文件失败: {}", e))?;
+        if n == 0 {
+            break;
+        }
+        hasher.update(&buffer[..n]);
+    }
+    Ok(format!("{:x}", hasher.finalize()))
+}
+
+/// 尝试从各备选镜像与官方源获取该版本权威的 SHA256SUMS.txt
+async fn fetch_release_sha256sums(client: &reqwest::Client, version: &str) -> Option<String> {
+    let clean_ver = version.trim_start_matches('v');
+    let candidate_urls = [
+        "https://helper.bob-api.com/downloads/SHA256SUMS.txt".to_string(),
+        format!(
+            "https://github.com/TF49/AI-Helper/releases/download/v{}/SHA256SUMS.txt",
+            clean_ver
+        ),
+        format!(
+            "https://ghfast.top/https://github.com/TF49/AI-Helper/releases/download/v{}/SHA256SUMS.txt",
+            clean_ver
+        ),
+        format!(
+            "https://gh-proxy.com/https://github.com/TF49/AI-Helper/releases/download/v{}/SHA256SUMS.txt",
+            clean_ver
+        ),
+        format!(
+            "https://ghproxy.net/https://github.com/TF49/AI-Helper/releases/download/v{}/SHA256SUMS.txt",
+            clean_ver
+        ),
+    ];
+
+    for url in &candidate_urls {
+        if let Ok(resp) = client.get(url).timeout(Duration::from_secs(8)).send().await {
+            if resp.status().is_success() {
+                if let Ok(text) = resp.text().await {
+                    if text.contains("AI-Helper") {
+                        log::info!("成功从 {} 获取到权威 SHA256SUMS 校验清单", url);
+                        return Some(text);
+                    }
+                }
+            }
+        }
+    }
+    None
+}
+
+/// 从 SHA256SUMS.txt 文本中解析指定安装包名称对应的预期哈希值
+pub fn parse_expected_hash(sums_text: &str, file_name: &str) -> Option<String> {
+    for line in sums_text.lines() {
+        let trimmed = line.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+        let parts: Vec<&str> = trimmed.split_whitespace().collect();
+        if parts.len() >= 2 {
+            let hash = parts[0];
+            let name = parts[1].trim_start_matches('*');
+            if name.eq_ignore_ascii_case(file_name) {
+                return Some(hash.to_lowercase());
+            }
+        }
+    }
+    None
+}
+
 /// 多源容灾自动下载并静默启动更新安装包
 pub async fn download_and_install_update(
     version: String,
@@ -812,6 +888,47 @@ pub async fn download_and_install_update(
             mirror.name,
             downloaded
         );
+
+        // 权威哈希安全校验：比对 SHA-256 防止恶意第三方反代源投毒
+        #[cfg(target_os = "macos")]
+        let target_installer_name = format!("AI-Helper-v{}-macOS.dmg", clean_ver);
+        #[cfg(not(target_os = "macos"))]
+        let target_installer_name = format!("AI-Helper-v{}-Windows-x64-Setup.exe", clean_ver);
+
+        if let Some(sums_text) = fetch_release_sha256sums(&client, clean_ver).await {
+            if let Some(expected_hash) = parse_expected_hash(&sums_text, &target_installer_name) {
+                log::info!(
+                    "正在对下载的安装包执行 SHA-256 完整性验签 (预期: {})...",
+                    expected_hash
+                );
+                match compute_file_sha256(&temp_file_path) {
+                    Ok(actual_hash) => {
+                        if !actual_hash.eq_ignore_ascii_case(&expected_hash) {
+                            let _ = std::fs::remove_file(&temp_file_path);
+                            let err_msg = format!(
+                                "【安全警报】安装包 SHA-256 校验不匹配！预期: {}, 实际: {}。疑似遭遇镜像源篡改或投毒，已紧急删除临时文件并拒绝启动！",
+                                expected_hash, actual_hash
+                            );
+                            log::error!("{}", err_msg);
+                            return Err(err_msg);
+                        }
+                        log::info!("✅ 安装包 SHA-256 校验通过！文件真实可信无篡改。");
+                    }
+                    Err(e) => {
+                        let _ = std::fs::remove_file(&temp_file_path);
+                        return Err(format!("计算安装包哈希失败: {}", e));
+                    }
+                }
+            } else {
+                log::warn!(
+                    "SHA256SUMS.txt 中未找到匹配 {} 的条目，跳过哈希校验",
+                    target_installer_name
+                );
+            }
+        } else {
+            log::warn!("未能从任何备用源检索到权威 SHA256SUMS.txt 清单");
+        }
+
         let _ = on_event.send(UpdateDownloadEvent::Finished);
 
         // 启动安装程序并退出当前应用
@@ -918,5 +1035,20 @@ mod tests {
             assert!(m.url.contains("AI-Helper-v1.0.32-Windows-x64-Setup.exe"));
         }
         assert!(mirrors.iter().any(|m| m.name.contains("阿里云 OSS")));
+    }
+
+    #[test]
+    fn test_parse_expected_hash() {
+        let sample = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855  AI-Helper-v1.0.66-Windows-x64-Setup.exe\n\
+                      a1b2c3d4e5f67890123456789abcdef0123456789abcdef0123456789abcdef0 *AI-Helper-v1.0.66-macOS.dmg";
+        assert_eq!(
+            parse_expected_hash(sample, "AI-Helper-v1.0.66-Windows-x64-Setup.exe"),
+            Some("e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855".to_string())
+        );
+        assert_eq!(
+            parse_expected_hash(sample, "AI-Helper-v1.0.66-macOS.dmg"),
+            Some("a1b2c3d4e5f67890123456789abcdef0123456789abcdef0123456789abcdef0".to_string())
+        );
+        assert_eq!(parse_expected_hash(sample, "NonExistent.exe"), None);
     }
 }

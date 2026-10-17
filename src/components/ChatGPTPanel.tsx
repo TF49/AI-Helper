@@ -350,6 +350,9 @@ export function ChatGPTPanel() {
               toolName="ChatGPT (Codex)"
               toolId="chatgpt"
               accentColor="blue"
+              hasConfiguredKey={Boolean(apiKey?.trim())}
+              configuredKey={apiKey}
+              currentGroupName={apiKeyGroup}
             />
           </div>
         ) : (
