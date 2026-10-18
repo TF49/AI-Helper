@@ -95,6 +95,25 @@ if (fs.existsSync(scriptJsPath)) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// 2.1 同步 website/assets/diagnostics-core.js 与 website/diagnostics.html
+// ─────────────────────────────────────────────────────────────────────────────
+const diagJsPath = path.join(repoRoot, 'website', 'assets', 'diagnostics-core.js');
+if (fs.existsSync(diagJsPath)) {
+  let js = fs.readFileSync(diagJsPath, 'utf8');
+  js = js.replace(/this\.version\s*=\s*['"][^'"]*['"];/, `this.version = '${targetVersion}';`);
+  fs.writeFileSync(diagJsPath, js, 'utf8');
+  console.log(`[sync-website] ✓ website/assets/diagnostics-core.js 已同步 (version: ${targetVersion})`);
+}
+
+const diagHtmlPath = path.join(repoRoot, 'website', 'diagnostics.html');
+if (fs.existsSync(diagHtmlPath)) {
+  let html = fs.readFileSync(diagHtmlPath, 'utf8');
+  html = html.replace(/diagnostics-core\.js(\?v=[^"'\s>]+)?/g, `diagnostics-core.js?v=${targetVersion}`);
+  fs.writeFileSync(diagHtmlPath, html, 'utf8');
+  console.log(`[sync-website] ✓ website/diagnostics.html 已同步 (防缓存版本: ${targetVersion})`);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // 3. 同步 website/version.json
 // ─────────────────────────────────────────────────────────────────────────────
 const versionJsonPath = path.join(repoRoot, 'website', 'version.json');

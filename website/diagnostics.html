@@ -1,0 +1,2044 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+  <meta http-equiv="Pragma" content="no-cache">
+  <meta http-equiv="Expires" content="0">
+  <title>AI-Helper 内部开发者诊断监控中心 (Internal Dev Telemetry Hub)</title>
+  <link rel="icon" type="image/x-icon" href="assets/favicon.ico">
+
+  <style>
+    :root {
+      --bg: #090d16;
+      --bg-card: rgba(16, 23, 41, 0.82);
+      --bg-card-hover: rgba(24, 34, 60, 0.9);
+      --surface: #0f172a;
+      --surface-light: #1e293b;
+      --border: rgba(255, 255, 255, 0.08);
+      --border-strong: rgba(255, 255, 255, 0.16);
+      --text: #f8fafc;
+      --text-muted: #94a3b8;
+      --text-faint: #64748b;
+      --primary: #3b82f6;
+      --primary-hover: #2563eb;
+      --primary-glow: rgba(59, 130, 246, 0.25);
+      --success: #10b981;
+      --success-glow: rgba(16, 185, 129, 0.2);
+      --warning: #f59e0b;
+      --warning-glow: rgba(245, 158, 11, 0.2);
+      --danger: #ef4444;
+      --danger-glow: rgba(239, 68, 68, 0.2);
+      --cyan: #06b6d4;
+      --purple: #8b5cf6;
+      --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "PingFang SC", "Microsoft YaHei", sans-serif;
+      --font-mono: "Cascadia Code", "SFMono-Regular", Consolas, "Courier New", monospace;
+      --radius: 12px;
+      --shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
+    }
+
+    [data-theme="light"] {
+      --bg: #f1f5f9;
+      --bg-card: rgba(255, 255, 255, 0.92);
+      --bg-card-hover: rgba(255, 255, 255, 0.98);
+      --surface: #ffffff;
+      --surface-light: #f8fafc;
+      --border: rgba(15, 23, 42, 0.08);
+      --border-strong: rgba(15, 23, 42, 0.16);
+      --text: #0f172a;
+      --text-muted: #475569;
+      --text-faint: #94a3b8;
+      --primary: #0284c7;
+      --primary-hover: #0369a1;
+      --primary-glow: rgba(2, 132, 199, 0.15);
+      --success: #059669;
+      --success-glow: rgba(5, 150, 105, 0.15);
+      --warning: #d97706;
+      --danger: #dc2626;
+      --danger-glow: rgba(220, 38, 38, 0.15);
+      --cyan: #0891b2;
+      --purple: #7c3aed;
+      --shadow: 0 10px 25px rgba(15, 23, 42, 0.06);
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: var(--font-sans);
+      min-height: 100vh;
+      line-height: 1.5;
+      background-image: 
+        radial-gradient(circle at 12% 10%, rgba(59, 130, 246, 0.08), transparent 45%),
+        radial-gradient(circle at 88% 85%, rgba(139, 92, 246, 0.06), transparent 50%);
+      background-attachment: fixed;
+      transition: background 0.3s ease, color 0.3s ease;
+    }
+
+    .container {
+      max-width: 1400px;
+      margin: 0 auto;
+      padding: 20px 24px 80px;
+    }
+
+    /* 顶部导航栏 - 内部开发者专有 */
+    header.top-nav {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 14px 22px;
+      background: var(--bg-card);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      margin-bottom: 20px;
+      gap: 16px;
+      flex-wrap: wrap;
+    }
+
+    .nav-brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .brand-logo {
+      width: 36px;
+      height: 36px;
+      border-radius: 8px;
+      object-fit: cover;
+      box-shadow: 0 4px 12px var(--primary-glow);
+    }
+
+    .brand-title {
+      font-size: 1.12rem;
+      font-weight: 700;
+      letter-spacing: -0.01em;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .internal-badge {
+      font-size: 0.68rem;
+      padding: 2px 7px;
+      border-radius: 6px;
+      background: rgba(239, 68, 68, 0.15);
+      color: var(--danger);
+      font-weight: 700;
+      border: 1px solid rgba(239, 68, 68, 0.3);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    .nav-actions {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+
+    .server-status-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      font-size: 0.78rem;
+      padding: 5px 12px;
+      border-radius: 20px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      font-weight: 600;
+      color: var(--text-muted);
+    }
+
+    .status-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--warning);
+      box-shadow: 0 0 8px currentColor;
+    }
+
+    .status-dot.online {
+      background: var(--success);
+      box-shadow: 0 0 8px var(--success);
+      animation: pulse-dot 2s infinite;
+    }
+
+    .status-dot.error {
+      background: var(--danger);
+      box-shadow: 0 0 8px var(--danger);
+    }
+
+    @keyframes pulse-dot {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50% { opacity: 0.45; transform: scale(0.85); }
+    }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      font-size: 0.82rem;
+      font-weight: 600;
+      padding: 7px 14px;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      background: var(--surface);
+      color: var(--text);
+      cursor: pointer;
+      text-decoration: none;
+      transition: all 0.2s ease;
+      white-space: nowrap;
+    }
+
+    .btn:hover {
+      background: var(--bg-card-hover);
+      border-color: var(--border-strong);
+      transform: translateY(-1px);
+    }
+
+    .btn-primary {
+      background: var(--primary);
+      color: #fff;
+      border-color: transparent;
+      box-shadow: 0 3px 12px var(--primary-glow);
+    }
+
+    .btn-primary:hover {
+      background: var(--primary-hover);
+      box-shadow: 0 5px 18px var(--primary-glow);
+    }
+
+    .btn-danger {
+      background: rgba(239, 68, 68, 0.12);
+      color: var(--danger);
+      border-color: rgba(239, 68, 68, 0.25);
+    }
+
+    .btn-danger:hover {
+      background: var(--danger);
+      color: #fff;
+    }
+
+    .btn-sm {
+      padding: 4px 10px;
+      font-size: 0.76rem;
+      border-radius: 6px;
+    }
+
+    /* 视图切换 Tabs */
+    .tab-bar {
+      display: flex;
+      gap: 6px;
+      margin-bottom: 20px;
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 8px;
+      overflow-x: auto;
+    }
+
+    .tab-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      padding: 8px 16px;
+      border-radius: 8px;
+      font-size: 0.88rem;
+      font-weight: 600;
+      background: transparent;
+      border: 1px solid transparent;
+      color: var(--text-muted);
+      cursor: pointer;
+      transition: all 0.2s ease;
+      white-space: nowrap;
+    }
+
+    .tab-btn:hover {
+      color: var(--text);
+      background: rgba(255, 255, 255, 0.04);
+    }
+
+    .tab-btn.active {
+      background: var(--primary-glow);
+      color: var(--primary);
+      border-color: rgba(59, 130, 246, 0.3);
+    }
+
+    /* 指标卡片网格 */
+    .kpi-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+      gap: 16px;
+      margin-bottom: 20px;
+    }
+
+    .kpi-card {
+      background: var(--bg-card);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 18px 20px;
+      box-shadow: var(--shadow);
+      position: relative;
+      overflow: hidden;
+    }
+
+    .kpi-card::before {
+      content: "";
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 3px;
+      background: linear-gradient(90deg, var(--primary), var(--cyan));
+      opacity: 0.85;
+    }
+
+    .kpi-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 10px;
+    }
+
+    .kpi-title {
+      font-size: 0.8rem;
+      color: var(--text-muted);
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+
+    .kpi-icon {
+      font-size: 1.15rem;
+    }
+
+    .kpi-value {
+      font-size: 2.1rem;
+      font-weight: 800;
+      letter-spacing: -0.03em;
+      color: var(--text);
+      line-height: 1.1;
+      margin-bottom: 6px;
+      font-family: var(--font-mono);
+    }
+
+    .kpi-sub {
+      font-size: 0.76rem;
+      color: var(--text-faint);
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    /* 模块布局卡片 */
+    .section-card {
+      background: var(--bg-card);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 22px;
+      box-shadow: var(--shadow);
+      margin-bottom: 20px;
+    }
+
+    .section-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 16px;
+      flex-wrap: wrap;
+      gap: 12px;
+    }
+
+    .section-title {
+      font-size: 1.05rem;
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .section-desc {
+      font-size: 0.8rem;
+      color: var(--text-muted);
+      margin-top: 2px;
+    }
+
+    /* 柱状图表组件 */
+    .chart-container {
+      width: 100%;
+      height: 200px;
+      display: flex;
+      align-items: flex-end;
+      padding: 16px 8px 10px;
+      background: var(--surface);
+      border-radius: 10px;
+      border: 1px solid var(--border);
+      position: relative;
+    }
+
+    .freq-bars {
+      display: flex;
+      align-items: flex-end;
+      justify-content: space-around;
+      width: 100%;
+      height: 100%;
+      gap: 8px;
+    }
+
+    .bar-col {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      height: 100%;
+      justify-content: flex-end;
+      flex: 1;
+      min-width: 28px;
+      position: relative;
+      cursor: pointer;
+    }
+
+    .bar-col:hover .bar-fill {
+      filter: brightness(1.2);
+    }
+
+    .bar-fill {
+      width: 70%;
+      max-width: 40px;
+      background: linear-gradient(180deg, var(--primary), #1d4ed8);
+      border-radius: 4px 4px 0 0;
+      min-height: 4px;
+      transition: height 0.4s ease;
+    }
+
+    .bar-val {
+      font-size: 0.72rem;
+      font-family: var(--font-mono);
+      font-weight: 700;
+      color: var(--text-muted);
+      margin-bottom: 4px;
+    }
+
+    .bar-label {
+      font-size: 0.72rem;
+      color: var(--text-faint);
+      margin-top: 6px;
+      white-space: nowrap;
+    }
+
+    /* 表格样式通用 */
+    .data-table-wrap {
+      overflow-x: auto;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      background: var(--surface);
+    }
+
+    .data-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.82rem;
+      text-align: left;
+    }
+
+    .data-table th {
+      background: rgba(255, 255, 255, 0.03);
+      padding: 10px 14px;
+      font-weight: 600;
+      color: var(--text-muted);
+      border-bottom: 1px solid var(--border);
+      white-space: nowrap;
+      font-size: 0.76rem;
+      text-transform: uppercase;
+      letter-spacing: 0.03em;
+    }
+
+    .data-table td {
+      padding: 10px 14px;
+      border-bottom: 1px solid var(--border);
+      color: var(--text);
+      vertical-align: middle;
+    }
+
+    .data-table tr:last-child td {
+      border-bottom: none;
+    }
+
+    .data-table tbody tr {
+      transition: background 0.15s ease;
+    }
+
+    .data-table tbody tr:hover {
+      background: rgba(255, 255, 255, 0.03);
+    }
+
+    /* 状态徽章 */
+    .badge-error {
+      display: inline-block;
+      font-size: 0.7rem;
+      font-weight: 700;
+      padding: 2px 7px;
+      border-radius: 4px;
+      background: rgba(239, 68, 68, 0.15);
+      color: var(--danger);
+      border: 1px solid rgba(239, 68, 68, 0.3);
+    }
+
+    .badge-warn {
+      display: inline-block;
+      font-size: 0.7rem;
+      font-weight: 700;
+      padding: 2px 7px;
+      border-radius: 4px;
+      background: rgba(245, 158, 11, 0.15);
+      color: var(--warning);
+      border: 1px solid rgba(245, 158, 11, 0.3);
+    }
+
+    .badge-info {
+      display: inline-block;
+      font-size: 0.7rem;
+      font-weight: 700;
+      padding: 2px 7px;
+      border-radius: 4px;
+      background: rgba(59, 130, 246, 0.15);
+      color: var(--primary);
+      border: 1px solid rgba(59, 130, 246, 0.3);
+    }
+
+    .badge-success {
+      display: inline-block;
+      font-size: 0.7rem;
+      font-weight: 700;
+      padding: 2px 7px;
+      border-radius: 4px;
+      background: rgba(16, 185, 129, 0.15);
+      color: var(--success);
+      border: 1px solid rgba(16, 185, 129, 0.3);
+    }
+
+    /* 搜索与筛选工具条 */
+    .filter-toolbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 14px;
+      flex-wrap: wrap;
+    }
+
+    .search-input {
+      padding: 7px 14px;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      background: var(--surface);
+      color: var(--text);
+      font-size: 0.82rem;
+      min-width: 260px;
+      outline: none;
+      transition: border 0.2s;
+    }
+
+    .search-input:focus {
+      border-color: var(--primary);
+      box-shadow: 0 0 0 2px var(--primary-glow);
+    }
+
+    .filter-pills {
+      display: flex;
+      gap: 6px;
+      flex-wrap: wrap;
+    }
+
+    .filter-pill {
+      font-size: 0.76rem;
+      padding: 4px 10px;
+      border-radius: 6px;
+      border: 1px solid var(--border);
+      background: var(--surface);
+      color: var(--text-muted);
+      cursor: pointer;
+      font-weight: 500;
+      transition: all 0.15s ease;
+    }
+
+    .filter-pill.active {
+      background: var(--primary);
+      color: #fff;
+      border-color: var(--primary);
+    }
+
+    /* 表单项 */
+    .form-group {
+      margin-bottom: 16px;
+    }
+
+    .form-label {
+      font-size: 0.84rem;
+      font-weight: 600;
+      margin-bottom: 6px;
+      display: block;
+    }
+
+    .form-desc {
+      font-size: 0.76rem;
+      color: var(--text-faint);
+      margin-bottom: 6px;
+    }
+
+    .form-input {
+      width: 100%;
+      padding: 9px 14px;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      background: var(--surface);
+      color: var(--text);
+      font-size: 0.84rem;
+      font-family: var(--font-mono);
+      outline: none;
+    }
+
+    .form-input:focus {
+      border-color: var(--primary);
+      box-shadow: 0 0 0 2px var(--primary-glow);
+    }
+
+    /* 弹窗 Modal */
+    .modal-backdrop {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(0, 0, 0, 0.7);
+      backdrop-filter: blur(8px);
+      z-index: 999;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.2s ease;
+    }
+
+    .modal-backdrop.open {
+      opacity: 1;
+      pointer-events: auto;
+    }
+
+    .modal-box {
+      background: var(--surface);
+      border: 1px solid var(--border-strong);
+      border-radius: var(--radius);
+      box-shadow: 0 20px 50px rgba(0, 0, 0, 0.5);
+      width: 100%;
+      max-width: 860px;
+      max-height: 88vh;
+      overflow-y: auto;
+      padding: 24px;
+    }
+
+    .code-block {
+      background: #050811;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 12px 16px;
+      font-family: var(--font-mono);
+      font-size: 0.78rem;
+      color: #e2e8f0;
+      line-height: 1.5;
+      overflow-x: auto;
+      white-space: pre-wrap;
+      word-break: break-all;
+    }
+
+    /* 全局 Toast */
+    .toast {
+      position: fixed;
+      bottom: 24px;
+      right: 24px;
+      background: var(--surface-light);
+      border: 1px solid var(--border-strong);
+      color: var(--text);
+      padding: 10px 18px;
+      border-radius: 8px;
+      box-shadow: var(--shadow);
+      font-size: 0.84rem;
+      font-weight: 500;
+      z-index: 1000;
+      display: none;
+      align-items: center;
+      gap: 8px;
+    }
+
+    /* 动态流组件 */
+    .stream-list {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      max-height: 300px;
+      overflow-y: auto;
+    }
+
+    .stream-item {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 8px 12px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      font-size: 0.8rem;
+    }
+
+    /* 本机硬件探测卡片网格 */
+    .hw-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+      gap: 12px;
+    }
+
+    .hw-item {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 12px 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .hw-label {
+      font-size: 0.72rem;
+      color: var(--text-faint);
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.03em;
+    }
+
+    .hw-val {
+      font-size: 0.88rem;
+      font-weight: 600;
+      color: var(--text);
+      font-family: var(--font-mono);
+      word-break: break-all;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <!-- 顶部导航栏 (内部开发者标识) -->
+    <header class="top-nav">
+      <div class="nav-brand">
+        <img src="assets/favicon.ico" alt="Logo" class="brand-logo" onerror="this.style.display='none'">
+        <div>
+          <div class="brand-title">
+            <span>AI-Helper 内部开发者诊断监控中心</span>
+            <span class="internal-badge">内部开发专用</span>
+          </div>
+          <div style="font-size: 0.74rem; color: var(--text-faint); margin-top: 2px;">
+            全量产品用户活跃度、异常原因追查与机器硬件全景诊断平台
+          </div>
+        </div>
+      </div>
+
+      <div class="nav-actions">
+        <!-- 数据库状态指示器 -->
+        <div class="server-status-pill" id="server-status-pill" title="监控服务端与 MySQL 连接状态">
+          <span class="status-dot" id="server-status-dot"></span>
+          <span id="server-status-text">检测服务状态中...</span>
+        </div>
+
+        <!-- 自动刷新控制 -->
+        <div style="display: flex; align-items: center; gap: 6px; font-size: 0.78rem; color: var(--text-muted);">
+          <span>定时刷新:</span>
+          <select id="auto-refresh-select" class="form-input" style="width: auto; padding: 4px 8px; font-size: 0.76rem;">
+            <option value="0">关闭</option>
+            <option value="15" selected>15 秒</option>
+            <option value="30">30 秒</option>
+            <option value="60">60 秒</option>
+          </select>
+        </div>
+
+        <button id="btn-manual-refresh" class="btn btn-sm" title="立即从服务端拉取最新真实数据">
+          🔄 刷新大盘
+        </button>
+
+        <button id="theme-toggle-btn" class="btn btn-sm" title="切换暗色/亮色">
+          🌓
+        </button>
+      </div>
+    </header>
+
+    <!-- 视图切换选项卡 -->
+    <nav class="tab-bar">
+      <button class="tab-btn active" data-tab="dashboard">
+        📊 监控分析大盘
+      </button>
+      <button class="tab-btn" data-tab="devices">
+        💻 真实用户设备档案库 (<span id="tab-dev-count">0</span>)
+      </button>
+      <button class="tab-btn" data-tab="errors">
+        🐞 异常追踪与日志流 (<span id="tab-err-count">0</span>)
+      </button>
+      <button class="tab-btn" data-tab="settings">
+        ⚙️ 监控服务与上报配置
+      </button>
+    </nav>
+
+    <!-- ===================================================================== -->
+    <!-- TAB 1: 监控分析大盘 (Dashboard)                                       -->
+    <!-- ===================================================================== -->
+    <section id="tab-dashboard" class="tab-content">
+      <!-- 4 大核心 KPI 卡片 (100% 真实聚合) -->
+      <div class="kpi-grid">
+        <div class="kpi-card">
+          <div class="kpi-header">
+            <span class="kpi-title">全网用户设备总数 (Total Devices)</span>
+            <span class="kpi-icon">💻</span>
+          </div>
+          <div class="kpi-value" id="kpi-total-devices">0</div>
+          <div class="kpi-sub">
+            <span>今日活跃用户 (DAU):</span>
+            <strong id="kpi-today-dau" style="color: var(--primary);">0</strong>
+          </div>
+        </div>
+
+        <div class="kpi-card">
+          <div class="kpi-header">
+            <span class="kpi-title">今日产品调用频次 (Today's Usage)</span>
+            <span class="kpi-icon">⚡</span>
+          </div>
+          <div class="kpi-value" id="kpi-today-invocations" style="color: var(--primary);">0</div>
+          <div class="kpi-sub">
+            <span>全网累计总调用:</span>
+            <strong id="kpi-total-invocations">0</strong>
+          </div>
+        </div>
+
+        <div class="kpi-card">
+          <div class="kpi-header">
+            <span class="kpi-title">异常故障发生率 (Error Rate)</span>
+            <span class="kpi-icon">🛡️</span>
+          </div>
+          <div class="kpi-value" id="kpi-error-rate" style="color: var(--success);">0.0%</div>
+          <div class="kpi-sub">
+            <span>累计捕获报错:</span>
+            <strong id="kpi-total-errors" style="color: var(--danger);">0</strong>
+            <span style="margin-left: 6px;">(今日: <span id="kpi-today-errors">0</span>)</span>
+          </div>
+        </div>
+
+        <div class="kpi-card">
+          <div class="kpi-header">
+            <span class="kpi-title">服务连通与查询性能 (API Latency)</span>
+            <span class="kpi-icon">🌐</span>
+          </div>
+          <div class="kpi-value" id="kpi-query-latency">-- ms</div>
+          <div class="kpi-sub">
+            <span id="kpi-db-status">状态检测中...</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- 7天真实使用频率走势图 -->
+      <div class="section-card">
+        <div class="section-header">
+          <div>
+            <div class="section-title">📈 过去 7 天产品使用频率走势 (真实频次)</div>
+            <div class="section-desc">严格统计自 usage_events 行为表，无虚构数据，每日真实调用总量波动</div>
+          </div>
+          <div style="font-size: 0.78rem; color: var(--text-faint);" id="trend-time-range">过去 7 个自然日</div>
+        </div>
+
+        <div class="chart-container">
+          <div class="freq-bars" id="weekly-bars-container">
+            <!-- 动态生成 7 天真实柱状图 -->
+          </div>
+        </div>
+      </div>
+
+      <!-- 3 维度真实分布卡片 -->
+      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 16px; margin-bottom: 20px;">
+        <!-- 机器操作系统分布 -->
+        <div class="section-card" style="margin-bottom: 0;">
+          <div class="section-header">
+            <div class="section-title">💻 机器操作系统真实分布</div>
+          </div>
+          <div id="os-dist-chart" style="padding-top: 6px;">
+            <div style="font-size:0.82rem; color:var(--text-faint);">正在汇总真实设备数据...</div>
+          </div>
+        </div>
+
+        <!-- 客户端软件版本分布 -->
+        <div class="section-card" style="margin-bottom: 0;">
+          <div class="section-header">
+            <div class="section-title">📦 客户端软件版本分布</div>
+          </div>
+          <div id="version-dist-chart" style="padding-top: 6px;">
+            <div style="font-size:0.82rem; color:var(--text-faint);">正在汇总版本数据...</div>
+          </div>
+        </div>
+
+        <!-- 异常报错原因统计分类 -->
+        <div class="section-card" style="margin-bottom: 0;">
+          <div class="section-header">
+            <div class="section-title">🐞 异常报错原因统计分类</div>
+          </div>
+          <div id="error-category-chart" style="padding-top: 6px;">
+            <div style="font-size:0.82rem; color:var(--text-faint);">正在分析错误类别...</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 实时用户行为动态打点流 (最近 20 条) -->
+      <div class="section-card">
+        <div class="section-header">
+          <div>
+            <div class="section-title">⚡ 全网用户最新活跃动态流 (Live Events Stream)</div>
+            <div class="section-desc">用户启动、心跳保活、及交互行为实时打点记录</div>
+          </div>
+        </div>
+        <div class="stream-list" id="recent-events-stream">
+          <div style="text-align:center; padding:16px; color:var(--text-faint);">暂无活跃动态事件</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===================================================================== -->
+    <!-- TAB 2: 真实用户设备档案库 (Devices)                                   -->
+    <!-- ===================================================================== -->
+    <section id="tab-devices" class="tab-content" style="display: none;">
+      <div class="section-card">
+        <div class="section-header">
+          <div>
+            <div class="section-title">💻 全网用户终端硬件与环境档案库</div>
+            <div class="section-desc">已落库的所有用户真实操作系统、CPU核心、GPU显卡渲染器、内存与屏幕分辨率</div>
+          </div>
+          <div style="display: flex; gap: 8px;">
+            <button id="btn-refresh-devices" class="btn btn-sm btn-primary">
+              🔄 刷新设备列表
+            </button>
+            <button id="btn-export-devices" class="btn btn-sm">
+              💾 导出设备清单 (JSON)
+            </button>
+          </div>
+        </div>
+
+        <!-- 搜索与筛选工具栏 -->
+        <div class="filter-toolbar">
+          <input type="text" id="device-search-input" class="search-input" placeholder="🔍 搜索设备 ID / 显卡型号 / 操作系统...">
+          <div class="filter-pills" id="device-os-pills">
+            <span class="filter-pill active" data-os="ALL">全部系统</span>
+            <span class="filter-pill" data-os="Windows">Windows</span>
+            <span class="filter-pill" data-os="Mac">macOS</span>
+            <span class="filter-pill" data-os="Linux">Linux</span>
+          </div>
+        </div>
+
+        <!-- 用户设备清单表格 -->
+        <div class="data-table-wrap">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th style="width: 140px;">设备 ID / 状态</th>
+                <th style="width: 80px;">版本</th>
+                <th style="width: 160px;">操作系统与架构</th>
+                <th style="width: 120px;">CPU / 估计内存</th>
+                <th>GPU 显卡渲染器型号</th>
+                <th style="width: 140px;">屏幕分辨率</th>
+                <th style="width: 130px;">最后活跃心跳</th>
+                <th style="width: 70px; text-align: center;">调用</th>
+                <th style="width: 70px; text-align: center;">报错</th>
+                <th style="width: 90px; text-align: center;">诊断操作</th>
+              </tr>
+            </thead>
+            <tbody id="device-table-body">
+              <tr>
+                <td colspan="10" style="text-align: center; padding: 30px; color: var(--text-faint);">
+                  正在加载全网用户设备档案...
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- 底部折叠：本机开发环境深度探针 -->
+        <div style="margin-top: 24px; padding-top: 18px; border-top: 1px solid var(--border);">
+          <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px;">
+            <div>
+              <span style="font-weight: 700; font-size: 0.92rem;">🧪 本机开发环境硬件与网络链路探针</span>
+              <div style="font-size: 0.78rem; color: var(--text-faint);">供开发人员测试当前开发机浏览器环境及到镜像节点的延时</div>
+            </div>
+            <button id="btn-probe-local" class="btn btn-sm">
+              🚀 探测本机与测速
+            </button>
+          </div>
+          <div class="hw-grid" id="local-hw-grid" style="display: none;"></div>
+          <div id="local-ping-results" style="margin-top: 10px;"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===================================================================== -->
+    <!-- TAB 3: 异常追踪与日志流 (Errors)                                      -->
+    <!-- ===================================================================== -->
+    <section id="tab-errors" class="tab-content" style="display: none;">
+      <div class="section-card">
+        <div class="section-header">
+          <div>
+            <div class="section-title">🐞 全局异常追踪与真实调用栈日志流</div>
+            <div class="section-desc">自动捕获全网用户的运行时 JS 崩溃、未捕获 Promise、以及网络故障堆栈</div>
+          </div>
+          <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+            <button id="btn-trigger-js-err" class="btn btn-sm btn-danger" title="仅用于测试本地异常拦截与上报链路">
+              🧪 触发模拟测试报错
+            </button>
+            <button id="btn-clear-test-logs" class="btn btn-sm">
+              🧹 清理测试用日志
+            </button>
+            <button id="btn-refresh-errors" class="btn btn-sm btn-primary">
+              🔄 刷新日志流
+            </button>
+          </div>
+        </div>
+
+        <!-- 筛选栏 -->
+        <div class="filter-toolbar">
+          <input type="text" id="log-search-input" class="search-input" placeholder="🔍 搜索报错摘要 / 关键词 / 设备 ID / 堆栈...">
+          <div class="filter-pills" id="log-level-pills">
+            <span class="filter-pill active" data-level="ALL">全部 (<span id="count-all">0</span>)</span>
+            <span class="filter-pill" data-level="ERROR">错误 (<span id="count-err">0</span>)</span>
+            <span class="filter-pill" data-level="WARN">警告 (<span id="count-warn">0</span>)</span>
+            <span class="filter-pill" data-level="INFO">信息 (<span id="count-info">0</span>)</span>
+          </div>
+        </div>
+
+        <!-- 错误日志表格 -->
+        <div class="data-table-wrap">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th style="width: 140px;">发生时间</th>
+                <th style="width: 70px;">级别</th>
+                <th style="width: 120px;">用户设备</th>
+                <th style="width: 80px;">版本</th>
+                <th style="width: 130px;">错误类别</th>
+                <th>报错原因与摘要</th>
+                <th style="width: 150px;">来源位置</th>
+                <th style="width: 80px; text-align: center;">操作</th>
+              </tr>
+            </thead>
+            <tbody id="log-table-body">
+              <tr>
+                <td colspan="8" style="text-align: center; padding: 30px; color: var(--text-faint);">
+                  正在拉取真实报错日志...
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===================================================================== -->
+    <!-- TAB 4: 监控服务与上报配置 (Settings)                                  -->
+    <!-- ===================================================================== -->
+    <section id="tab-settings" class="tab-content" style="display: none;">
+      <div class="section-card">
+        <div class="section-header">
+          <div>
+            <div class="section-title">⚙️ 监控服务端与多通道上报配置</div>
+            <div class="section-desc">配置监控后端 REST API 服务地址、MySQL 连通性测试及飞书告警通道</div>
+          </div>
+          <button id="btn-save-settings" class="btn btn-primary">
+            💾 保存配置
+          </button>
+        </div>
+
+        <form id="settings-form">
+          <div class="form-group">
+            <label class="form-label">☁️ 后端监控服务根地址 (Node.js + MySQL Server Base URL)</label>
+            <div class="form-desc">
+              本网页与客户端通过此地址进行数据交互。若部署在您的云服务器上，填入如：<code>http://123.56.xx.xx:3001</code>
+            </div>
+            <div style="display: flex; gap: 8px;">
+              <input type="text" id="cfg-server-base" class="form-input" placeholder="http://localhost:3001">
+              <button type="button" id="btn-test-server-conn" class="btn btn-primary" style="white-space: nowrap;">
+                🔗 测试连接与 MySQL 状态
+              </button>
+            </div>
+            <div id="server-test-output" style="margin-top: 8px; font-size: 0.8rem;"></div>
+          </div>
+
+          <div class="form-group" style="padding-top: 10px; border-top: 1px solid var(--border);">
+            <label class="form-label">飞书群自定义告警机器人 Webhook URL</label>
+            <div class="form-desc">当用户发生致命崩溃或内部错误时，自动将错误原因与机器快照推送到飞书运维群</div>
+            <input type="text" id="cfg-feishu-url" class="form-input" placeholder="https://open.feishu.cn/open-apis/bot/v2/hook/...">
+            <div style="margin-top: 8px; display: flex; align-items: center; justify-content: space-between;">
+              <label style="font-size: 0.84rem; display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                <input type="checkbox" id="cfg-enable-feishu"> 启用飞书群机器人告警卡片
+              </label>
+              <button type="button" id="btn-test-feishu" class="btn btn-sm">
+                🚀 发送测试飞书卡片
+              </button>
+            </div>
+            <div id="feishu-test-output" style="margin-top: 6px; font-size: 0.8rem;"></div>
+          </div>
+
+          <div class="form-group" style="padding-top: 10px; border-top: 1px solid var(--border);">
+            <label class="form-label">服务端全量真实数据维护</label>
+            <div class="form-desc">导出或清除 MySQL 数据库中的日志，便于备份与调试</div>
+            <div style="display: flex; gap: 10px; margin-top: 8px; flex-wrap: wrap;">
+              <button type="button" id="btn-export-all-json" class="btn btn-sm btn-primary">
+                💾 导出全量监控数据 (JSON)
+              </button>
+              <button type="button" id="btn-purge-simulated" class="btn btn-sm btn-danger">
+                🗑️ 清理数据库中的测试排查数据
+              </button>
+            </div>
+          </div>
+        </form>
+      </div>
+    </section>
+  </div>
+
+  <!-- ======================================================================= -->
+  <!-- 报错堆栈与真实环境快照弹窗 (Error Inspect Modal)                          -->
+  <!-- ======================================================================= -->
+  <div id="error-inspect-modal" class="modal-backdrop">
+    <div class="modal-box">
+      <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px;">
+        <div style="font-size: 1.1rem; font-weight: 700; display: flex; align-items: center; gap: 8px;">
+          <span id="modal-err-badge" class="badge-error">ERROR</span>
+          <span id="modal-err-type">崩溃堆栈与真实现场诊断</span>
+        </div>
+        <button id="modal-err-close" class="btn btn-sm">✕ 关闭</button>
+      </div>
+
+      <div style="margin-bottom: 12px;">
+        <div style="font-size: 0.76rem; color: var(--text-faint); font-weight: 600;">错误原因与摘要 (Message)</div>
+        <div id="modal-err-msg" style="font-weight: 700; font-size: 0.95rem; color: var(--danger); margin-top: 4px; word-break: break-all;"></div>
+      </div>
+
+      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px; margin-bottom: 12px; background: var(--surface-light); padding: 10px 14px; border-radius: 8px;">
+        <div>
+          <span style="font-size: 0.72rem; color: var(--text-faint);">来源设备 ID:</span>
+          <div id="modal-err-dev" style="font-family: var(--font-mono); font-weight: 600; font-size: 0.82rem;"></div>
+        </div>
+        <div>
+          <span style="font-size: 0.72rem; color: var(--text-faint);">客户端软件版本:</span>
+          <div id="modal-err-ver" style="font-weight: 600; font-size: 0.82rem;"></div>
+        </div>
+        <div>
+          <span style="font-size: 0.72rem; color: var(--text-faint);">发生时间:</span>
+          <div id="modal-err-time" style="font-family: var(--font-mono); font-size: 0.82rem;"></div>
+        </div>
+      </div>
+
+      <div style="margin-bottom: 12px;">
+        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px;">
+          <span style="font-size: 0.76rem; color: var(--text-faint); font-weight: 600;">完整调用栈追踪 (Stack Trace)</span>
+          <button id="btn-copy-stack" class="btn btn-sm" style="font-size: 0.72rem;">📋 复制堆栈</button>
+        </div>
+        <pre id="modal-err-stack" class="code-block" style="max-height: 180px;"></pre>
+      </div>
+
+      <div style="margin-bottom: 12px;">
+        <div style="font-size: 0.76rem; color: var(--text-faint); font-weight: 600; margin-bottom: 4px;">发生异常时该用户的真实硬件环境快照</div>
+        <pre id="modal-err-snapshot" class="code-block" style="max-height: 120px;"></pre>
+      </div>
+
+      <div>
+        <div style="font-size: 0.76rem; color: var(--text-faint); font-weight: 600; margin-bottom: 4px;">崩溃前用户操作面包屑轨迹 (Breadcrumbs)</div>
+        <pre id="modal-err-breadcrumbs" class="code-block" style="max-height: 100px;"></pre>
+      </div>
+    </div>
+  </div>
+
+  <!-- ======================================================================= -->
+  <!-- 用户设备硬件详细档案抽屉 (Device Details Drawer)                         -->
+  <!-- ======================================================================= -->
+  <div id="device-inspect-modal" class="modal-backdrop">
+    <div class="modal-box">
+      <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px;">
+        <div style="font-size: 1.1rem; font-weight: 700; display: flex; align-items: center; gap: 8px;">
+          <span>💻 终端设备完整档案与历史追查</span>
+        </div>
+        <button id="modal-dev-close" class="btn btn-sm">✕ 关闭</button>
+      </div>
+
+      <div class="hw-grid" id="modal-dev-hw-grid" style="margin-bottom: 16px;"></div>
+
+      <div style="margin-bottom: 14px;">
+        <div style="font-weight: 700; font-size: 0.9rem; margin-bottom: 8px;">🐞 该设备发生过的历史报错</div>
+        <div class="data-table-wrap" style="max-height: 160px;">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th style="width: 130px;">发生时间</th>
+                <th style="width: 120px;">类型</th>
+                <th>报错信息</th>
+              </tr>
+            </thead>
+            <tbody id="modal-dev-errors-body">
+              <tr><td colspan="3" style="text-align:center; color:var(--text-faint);">暂无报错记录</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div>
+        <div style="font-weight: 700; font-size: 0.9rem; margin-bottom: 8px;">⚡ 该设备的最近活跃动态事件</div>
+        <div class="stream-list" id="modal-dev-events-body" style="max-height: 140px;">
+          <div style="text-align:center; color:var(--text-faint); padding:10px;">暂无动态</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 全局 Toast 提示 -->
+  <div id="toast" class="toast"></div>
+
+  <!-- 引入客户端诊断核心引擎 -->
+  <script src="assets/diagnostics-core.js?v=1.0.69"></script>
+
+  <!-- 页面主控制逻辑 (100% 真实数据交互) -->
+  <script>
+    (function () {
+      'use strict';
+
+      // ── 1. 服务地址自动适配 (若部署到同一 Express 端口，默认当前 origin) ──
+      function getDefaultServerBase() {
+        const saved = localStorage.getItem('ai_helper_telemetry_server_base');
+        if (saved) return saved.trim();
+        // 若当前网页正运行在 Node.js 服务端端口 (如 3001)，则默认指向自身
+        if (window.location.port === '3001') {
+          return window.location.origin;
+        }
+        return 'http://64.118.130.216:3001';
+      }
+
+      let currentServerBase = getDefaultServerBase();
+      let cachedDashboardData = null;
+      let cachedDevices = [];
+      let autoRefreshInterval = null;
+
+      // ── 2. 主题切换与持久化 ──
+      const themeToggleBtn = document.getElementById('theme-toggle-btn');
+      const rootHtml = document.documentElement;
+
+      function setTheme(t) {
+        rootHtml.setAttribute('data-theme', t);
+        localStorage.setItem('ai_helper_theme', t);
+      }
+      setTheme(localStorage.getItem('ai_helper_theme') || 'dark');
+
+      themeToggleBtn?.addEventListener('click', () => {
+        const next = rootHtml.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
+        setTheme(next);
+        showToast(`已切换为 ${next === 'dark' ? '深色模式 🌙' : '浅色模式 ☀️'}`);
+      });
+
+      // ── 3. Toast 提示 ──
+      const toastEl = document.getElementById('toast');
+      let toastTimer = null;
+      function showToast(msg) {
+        if (!toastEl) return;
+        toastEl.textContent = msg;
+        toastEl.style.display = 'flex';
+        clearTimeout(toastTimer);
+        toastTimer = setTimeout(() => { toastEl.style.display = 'none'; }, 2600);
+      }
+
+      // ── 4. 视图 Tab 切换 ──
+      const tabBtns = document.querySelectorAll('.tab-btn');
+      const tabContents = document.querySelectorAll('.tab-content');
+
+      tabBtns.forEach(btn => {
+        btn.addEventListener('click', () => {
+          const tab = btn.getAttribute('data-tab');
+          tabBtns.forEach(b => b.classList.remove('active'));
+          btn.classList.add('active');
+
+          tabContents.forEach(c => {
+            c.style.display = c.id === `tab-${tab}` ? 'block' : 'none';
+          });
+
+          if (tab === 'dashboard') {
+            fetchAndRenderDashboard();
+          } else if (tab === 'devices') {
+            fetchAndRenderDevices();
+          } else if (tab === 'errors') {
+            renderErrorLogsTable();
+          } else if (tab === 'settings') {
+            loadSettingsForm();
+          }
+        });
+      });
+
+      // ── 5. 大盘数据拉取与渲染 (核心真实数据入口) ──
+      async function fetchAndRenderDashboard() {
+        const startTime = performance.now();
+        const serverStatusPill = document.getElementById('server-status-pill');
+        const statusDot = document.getElementById('server-status-dot');
+        const statusText = document.getElementById('server-status-text');
+
+        try {
+          const res = await fetch(`${currentServerBase}/api/telemetry/dashboard`, {
+            signal: AbortSignal.timeout(4000),
+          });
+          const latency = Math.round(performance.now() - startTime);
+
+          if (!res.ok) throw new Error(`HTTP ${res.status}`);
+          const data = await res.json();
+          cachedDashboardData = data;
+
+          // 更新状态徽章
+          if (data.source === 'mysql') {
+            statusDot.className = 'status-dot online';
+            statusText.textContent = `🟢 MySQL 已连接 (${latency}ms)`;
+            document.getElementById('kpi-db-status').textContent = `🟢 数据库: ${data.meta.database} (${data.meta.host})`;
+          } else {
+            statusDot.className = 'status-dot';
+            statusText.textContent = `🟡 内存模式 (未连 MySQL, ${latency}ms)`;
+            document.getElementById('kpi-db-status').textContent = '🟡 内存模式 (请在 server/.env 配置 MySQL 密码)';
+          }
+
+          document.getElementById('kpi-query-latency').textContent = `${latency} ms`;
+
+          // 渲染 KPI 指标卡片
+          const s = data.summary || {};
+          document.getElementById('kpi-total-devices').textContent = (s.total_devices || 0).toLocaleString();
+          document.getElementById('kpi-today-dau').textContent = (s.today_active_users || 0).toLocaleString();
+          document.getElementById('kpi-today-invocations').textContent = (s.today_invocations || 0).toLocaleString();
+          document.getElementById('kpi-total-invocations').textContent = (s.total_invocations || 0).toLocaleString();
+          document.getElementById('kpi-total-errors').textContent = (s.total_errors || 0).toLocaleString();
+          document.getElementById('kpi-today-errors').textContent = (s.today_errors || 0).toLocaleString();
+
+          const errRate = Number(s.error_rate_percent || 0).toFixed(1);
+          const errRateEl = document.getElementById('kpi-error-rate');
+          errRateEl.textContent = `${errRate}%`;
+          errRateEl.style.color = Number(errRate) > 5 ? 'var(--danger)' : (Number(errRate) > 1 ? 'var(--warning)' : 'var(--success)');
+
+          // 更新 Tab 上计数
+          document.getElementById('tab-dev-count').textContent = s.total_devices || 0;
+          document.getElementById('tab-err-count').textContent = s.total_errors || 0;
+
+          // 渲染 7 天真实柱状图
+          renderWeeklyBars(data.weekly_trend || []);
+
+          // 渲染 OS 与 版本 与 报错分布
+          renderDistributions(data.os_distribution || [], data.version_distribution || [], data.error_categories || []);
+
+          // 渲染最新动态流
+          renderRecentEvents(data.latest_events || []);
+
+        } catch (err) {
+          statusDot.className = 'status-dot error';
+          statusText.textContent = '🔴 服务未连接 (离线)';
+          document.getElementById('kpi-query-latency').textContent = 'ERR';
+          document.getElementById('kpi-db-status').textContent = `🔴 无法连接 ${currentServerBase}`;
+          console.warn('[Dashboard] 服务端请求失败:', err);
+        }
+      }
+
+      // 渲染 7 天柱状图 (100% 真实数字)
+      function renderWeeklyBars(trend) {
+        const container = document.getElementById('weekly-bars-container');
+        if (!container) return;
+
+        if (!trend || trend.length === 0) {
+          container.innerHTML = '<div style="color:var(--text-faint); margin:auto;">暂无全网使用频率记录</div>';
+          return;
+        }
+
+        const counts = trend.map(t => Number(t.count) || 0);
+        const maxVal = Math.max(...counts, 1);
+
+        container.innerHTML = trend.map(t => {
+          const count = Number(t.count) || 0;
+          const heightPercent = count === 0 ? 3 : Math.max(6, Math.round((count / maxVal) * 100));
+          const label = String(t.date || '').slice(5); // MM-DD
+          return `
+            <div class="bar-col" title="${t.date}: 真实调用 ${count} 次">
+              <span class="bar-val">${count}</span>
+              <div class="bar-fill" style="height: ${heightPercent}%;"></div>
+              <span class="bar-label">${label}</span>
+            </div>
+          `;
+        }).join('');
+      }
+
+      // 渲染 3 维度真实分布
+      function renderDistributions(osDist, verDist, errCategories) {
+        // 1. OS 分布
+        const osChart = document.getElementById('os-dist-chart');
+        if (osChart) {
+          if (!osDist || osDist.length === 0) {
+            osChart.innerHTML = '<div style="font-size:0.82rem; color:var(--text-faint); padding:10px 0;">暂无设备登记数据</div>';
+          } else {
+            const total = osDist.reduce((acc, c) => acc + Number(c.count || 0), 0) || 1;
+            osChart.innerHTML = osDist.map(item => {
+              const pct = Math.round((Number(item.count || 0) / total) * 100);
+              return `
+                <div style="margin-bottom:8px;">
+                  <div style="display:flex; justify-content:space-between; font-size:0.8rem; margin-bottom:3px;">
+                    <span style="font-weight:600;">${item.os_name || 'Unknown'}</span>
+                    <span style="color:var(--text-muted); font-family:var(--font-mono);">${item.count} 台 (${pct}%)</span>
+                  </div>
+                  <div style="height:6px; background:var(--surface); border-radius:3px; overflow:hidden;">
+                    <div style="width: ${pct}%; height:100%; background:var(--primary);"></div>
+                  </div>
+                </div>
+              `;
+            }).join('');
+          }
+        }
+
+        // 2. 版本分布
+        const verChart = document.getElementById('version-dist-chart');
+        if (verChart) {
+          if (!verDist || verDist.length === 0) {
+            verChart.innerHTML = '<div style="font-size:0.82rem; color:var(--text-faint); padding:10px 0;">暂无客户端版本数据</div>';
+          } else {
+            const total = verDist.reduce((acc, c) => acc + Number(c.count || 0), 0) || 1;
+            verChart.innerHTML = verDist.map(item => {
+              const pct = Math.round((Number(item.count || 0) / total) * 100);
+              return `
+                <div style="margin-bottom:8px;">
+                  <div style="display:flex; justify-content:space-between; font-size:0.8rem; margin-bottom:3px;">
+                    <span style="font-weight:600; font-family:var(--font-mono);">v${item.app_version}</span>
+                    <span style="color:var(--text-muted); font-family:var(--font-mono);">${item.count} 台 (${pct}%)</span>
+                  </div>
+                  <div style="height:6px; background:var(--surface); border-radius:3px; overflow:hidden;">
+                    <div style="width: ${pct}%; height:100%; background:var(--cyan);"></div>
+                  </div>
+                </div>
+              `;
+            }).join('');
+          }
+        }
+
+        // 3. 报错原因类别
+        const errChart = document.getElementById('error-category-chart');
+        if (errChart) {
+          if (!errCategories || errCategories.length === 0) {
+            errChart.innerHTML = '<div style="font-size:0.84rem; color:var(--success); padding:10px 0;">🎉 全网暂无捕获到的异常报错</div>';
+          } else {
+            errChart.innerHTML = errCategories.map(cat => `
+              <div style="display:flex; align-items:center; justify-content:space-between; padding:5px 0; border-bottom:1px solid var(--border); font-size:0.8rem;">
+                <span style="font-weight:600; color:var(--text);">${cat.error_type}</span>
+                <span class="badge-error">${cat.count} 次</span>
+              </div>
+            `).join('');
+          }
+        }
+      }
+
+      // 渲染实时动态流
+      function renderRecentEvents(events) {
+        const streamContainer = document.getElementById('recent-events-stream');
+        if (!streamContainer) return;
+
+        if (!events || events.length === 0) {
+          streamContainer.innerHTML = '<div style="text-align:center; padding:16px; color:var(--text-faint);">暂无活跃动态事件</div>';
+          return;
+        }
+
+        streamContainer.innerHTML = events.map(e => {
+          const timeStr = new Date(e.created_at).toLocaleTimeString();
+          const devShort = (e.device_id || '').slice(0, 14);
+          const badge = e.event_type === 'error' ? 'badge-error' : (e.event_type === 'launch' ? 'badge-success' : 'badge-info');
+          return `
+            <div class="stream-item">
+              <div style="display:flex; align-items:center; gap:8px;">
+                <span style="font-family:var(--font-mono); color:var(--text-faint); font-size:0.75rem;">${timeStr}</span>
+                <span class="${badge}">${e.event_type}</span>
+                <span style="font-weight:600;">${e.action_name || 'session_ping'}</span>
+              </div>
+              <div style="display:flex; align-items:center; gap:10px;">
+                <span style="font-family:var(--font-mono); color:var(--text-muted); font-size:0.76rem;">设备: ${devShort}...</span>
+                <span style="color:var(--text-faint); font-size:0.75rem;">${e.duration_sec ? `${e.duration_sec}s` : ''}</span>
+              </div>
+            </div>
+          `;
+        }).join('');
+      }
+
+      // ── 6. 真实用户设备档案库 (TAB 2) ──
+      async function fetchAndRenderDevices() {
+        const tbody = document.getElementById('device-table-body');
+        if (!tbody) return;
+
+        try {
+          const q = (document.getElementById('device-search-input')?.value || '').trim();
+          const activeOsPill = document.querySelector('#device-os-pills .filter-pill.active');
+          const os = activeOsPill ? activeOsPill.getAttribute('data-os') : 'ALL';
+
+          const res = await fetch(`${currentServerBase}/api/telemetry/devices?q=${encodeURIComponent(q)}&os=${encodeURIComponent(os)}`);
+          if (!res.ok) throw new Error(`HTTP ${res.status}`);
+          const data = await res.json();
+          cachedDevices = data.devices || [];
+
+          document.getElementById('tab-dev-count').textContent = cachedDevices.length;
+
+          if (cachedDevices.length === 0) {
+            tbody.innerHTML = `
+              <tr>
+                <td colspan="10" style="text-align: center; padding: 32px; color: var(--text-faint);">
+                  未检索到匹配的用户设备档案记录
+                </td>
+              </tr>
+            `;
+            return;
+          }
+
+          tbody.innerHTML = cachedDevices.map(d => {
+            const isOnline = (Date.now() - new Date(d.last_active_at || 0).getTime()) < 15 * 60 * 1000;
+            const errBadge = d.error_count > 0 ? `<span class="badge-error">${d.error_count}</span>` : `<span class="badge-success">0</span>`;
+            const shortDevId = (d.device_id || '').slice(0, 12);
+            const timeAgo = formatTimeAgo(new Date(d.last_active_at || Date.now()));
+
+            return `
+              <tr data-device-id="${d.device_id}">
+                <td>
+                  <div style="display:flex; align-items:center; gap:6px;">
+                    <span class="status-dot ${isOnline ? 'online' : ''}" style="width:6px; height:6px;" title="${isOnline ? '当前在线' : '离线'}"></span>
+                    <span style="font-family:var(--font-mono); font-weight:700; cursor:pointer;" class="btn-copy-dev" data-id="${d.device_id}" title="点击复制完整 ID">${shortDevId}...</span>
+                  </div>
+                </td>
+                <td><span style="font-family:var(--font-mono); font-weight:600;">v${d.app_version || '1.0.69'}</span></td>
+                <td>
+                  <div style="font-weight:600;">${d.os_name || 'Unknown'}</div>
+                  <div style="font-size:0.72rem; color:var(--text-faint);">${d.arch || 'x86_64'}</div>
+                </td>
+                <td>
+                  <div>${d.cpu_cores || 4} 核</div>
+                  <div style="font-size:0.72rem; color:var(--text-faint);">${d.device_memory_gb || 'Unknown'}</div>
+                </td>
+                <td style="max-width:240px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="${d.gpu_renderer || ''}">
+                  ${d.gpu_renderer || 'Generic GPU'}
+                </td>
+                <td style="font-family:var(--font-mono); font-size:0.76rem;">${(d.screen_resolution || '').split(' (')[0]}</td>
+                <td style="font-family:var(--font-mono); font-size:0.76rem; color:var(--text-muted);" title="${new Date(d.last_active_at).toLocaleString()}">${timeAgo}</td>
+                <td style="text-align:center; font-weight:600; font-family:var(--font-mono);">${d.total_invocations || 1}</td>
+                <td style="text-align:center;">${errBadge}</td>
+                <td style="text-align:center;">
+                  <button class="btn btn-sm btn-inspect-dev" data-id="${d.device_id}">🔍 诊断</button>
+                </td>
+              </tr>
+            `;
+          }).join('');
+
+          // 绑定点击复制设备 ID
+          tbody.querySelectorAll('.btn-copy-dev').forEach(el => {
+            el.addEventListener('click', (e) => {
+              e.stopPropagation();
+              const id = el.getAttribute('data-id');
+              navigator.clipboard.writeText(id).then(() => showToast(`✓ 已复制设备 ID: ${id}`));
+            });
+          });
+
+          // 绑定点击查看单机档案
+          tbody.querySelectorAll('.btn-inspect-dev').forEach(btn => {
+            btn.addEventListener('click', () => {
+              const id = btn.getAttribute('data-id');
+              openDeviceModal(id);
+            });
+          });
+
+        } catch (err) {
+          tbody.innerHTML = `
+            <tr>
+              <td colspan="10" style="text-align: center; padding: 24px; color: var(--danger);">
+                拉取设备档案列表失败，请确认后端服务已启动 (${err.message})
+              </td>
+            </tr>
+          `;
+        }
+      }
+
+      function formatTimeAgo(date) {
+        const sec = Math.round((Date.now() - date.getTime()) / 1000);
+        if (sec < 60) return `${sec} 秒前`;
+        const min = Math.round(sec / 60);
+        if (min < 60) return `${min} 分钟前`;
+        const hr = Math.round(min / 60);
+        if (hr < 24) return `${hr} 小时前`;
+        const day = Math.round(hr / 24);
+        return `${day} 天前`;
+      }
+
+      // 搜索与系统筛选绑定
+      document.getElementById('device-search-input')?.addEventListener('input', () => fetchAndRenderDevices());
+      document.querySelectorAll('#device-os-pills .filter-pill').forEach(pill => {
+        pill.addEventListener('click', () => {
+          document.querySelectorAll('#device-os-pills .filter-pill').forEach(p => p.classList.remove('active'));
+          pill.classList.add('active');
+          fetchAndRenderDevices();
+        });
+      });
+      document.getElementById('btn-refresh-devices')?.addEventListener('click', () => {
+        fetchAndRenderDevices();
+        showToast('✓ 用户设备档案已刷新');
+      });
+
+      // ── 7. 单机详细全景诊断弹窗 (Device Details Drawer) ──
+      const devModal = document.getElementById('device-inspect-modal');
+      document.getElementById('modal-dev-close')?.addEventListener('click', () => devModal.classList.remove('open'));
+      devModal?.addEventListener('click', (e) => { if (e.target === devModal) devModal.classList.remove('open'); });
+
+      async function openDeviceModal(deviceId) {
+        if (!devModal) return;
+        const hwGrid = document.getElementById('modal-dev-hw-grid');
+        const errsBody = document.getElementById('modal-dev-errors-body');
+        const eventsBody = document.getElementById('modal-dev-events-body');
+
+        hwGrid.innerHTML = '<div style="color:var(--text-faint);">正在读取设备硬件参数...</div>';
+        errsBody.innerHTML = '<tr><td colspan="3" style="text-align:center;">正在读取历史报错...</td></tr>';
+        eventsBody.innerHTML = '<div style="text-align:center; color:var(--text-faint);">正在读取活跃动态...</div>';
+
+        devModal.classList.add('open');
+
+        try {
+          const res = await fetch(`${currentServerBase}/api/telemetry/device/${encodeURIComponent(deviceId)}`);
+          if (!res.ok) throw new Error('Not found');
+          const data = await res.json();
+          const d = data.device || {};
+
+          // 渲染硬件网格
+          const items = [
+            { label: '设备唯一指纹 ID', val: d.device_id },
+            { label: '客户端软件版本', val: `v${d.app_version || '1.0.69'}` },
+            { label: '操作系统与内核', val: `${d.os_name} (${d.arch})` },
+            { label: 'CPU 处理器核心数', val: `${d.cpu_cores} 核心` },
+            { label: '估计运行内存', val: d.device_memory_gb || 'Unknown' },
+            { label: 'GPU 显卡渲染器型号', val: d.gpu_renderer || 'Generic GPU' },
+            { label: 'GPU 芯片供应商', val: d.gpu_vendor || 'Generic' },
+            { label: '显示屏分辨率与 DPR', val: d.screen_resolution || 'Unknown' },
+            { label: '系统时区与语言', val: `${d.timezone} (${d.language})` },
+            { label: '首次登记时间', val: new Date(d.first_seen_at).toLocaleString() },
+            { label: '最后活跃时间', val: new Date(d.last_active_at).toLocaleString() },
+            { label: '累计启动 / 调用总频次', val: `${d.total_sessions} 次启动 / ${d.total_invocations} 次调用` },
+          ];
+
+          hwGrid.innerHTML = items.map(item => `
+            <div class="hw-item">
+              <span class="hw-label">${item.label}</span>
+              <span class="hw-val">${item.val}</span>
+            </div>
+          `).join('');
+
+          // 渲染该机报错
+          const errors = data.errors || [];
+          if (errors.length === 0) {
+            errsBody.innerHTML = '<tr><td colspan="3" style="text-align:center; color:var(--success); padding:12px;">🎉 该设备从未发生过异常报错</td></tr>';
+          } else {
+            errsBody.innerHTML = errors.map(err => `
+              <tr>
+                <td style="font-family:var(--font-mono); font-size:0.75rem;">${new Date(err.occurred_at).toLocaleTimeString()}</td>
+                <td><span class="badge-error">${err.error_type}</span></td>
+                <td style="font-weight:600; color:var(--danger);">${err.message}</td>
+              </tr>
+            `).join('');
+          }
+
+          // 渲染该机事件
+          const events = data.events || [];
+          if (events.length === 0) {
+            eventsBody.innerHTML = '<div style="text-align:center; color:var(--text-faint); padding:10px;">暂无轨迹</div>';
+          } else {
+            eventsBody.innerHTML = events.map(e => `
+              <div class="stream-item">
+                <span style="font-family:var(--font-mono); color:var(--text-faint); font-size:0.75rem;">${new Date(e.created_at).toLocaleTimeString()}</span>
+                <span class="badge-info">${e.event_type}</span>
+                <span>${e.action_name}</span>
+                <span style="color:var(--text-faint); font-size:0.75rem;">${e.duration_sec ? `${e.duration_sec}s` : ''}</span>
+              </div>
+            `).join('');
+          }
+
+        } catch (err) {
+          hwGrid.innerHTML = `<div style="color:var(--danger);">加载设备失败: ${err.message}</div>`;
+        }
+      }
+
+      // ── 8. 异常追查与日志流 (TAB 3) ──
+      let currentFilterLevel = 'ALL';
+
+      function renderErrorLogsTable() {
+        const tbody = document.getElementById('log-table-body');
+        if (!tbody) return;
+
+        let logs = (cachedDashboardData && cachedDashboardData.latest_errors) || [];
+        const localLogs = window.DiagnosticsCore?.getLocalLogs() || [];
+
+        // 合并本地临时错误与云端全量报错
+        const allLogs = [...logs];
+        for (const ll of localLogs) {
+          if (!allLogs.some(al => al.message === ll.message && al.occurred_at === ll.timestamp)) {
+            allLogs.unshift({
+              id: ll.id,
+              device_id: ll.deviceId,
+              app_version: '1.0.69',
+              error_type: ll.errorType,
+              message: ll.message,
+              stack: ll.stack,
+              source_file: ll.source,
+              machine_snapshot: ll.machineSnapshot,
+              breadcrumbs: ll.breadcrumbs,
+              occurred_at: ll.timestamp,
+            });
+          }
+        }
+
+        // 更新计数
+        document.getElementById('count-all').textContent = allLogs.length;
+        document.getElementById('count-err').textContent = allLogs.filter(l => (l.error_type || '').includes('Error') || (l.error_type || '').includes('Reject')).length;
+        document.getElementById('count-warn').textContent = allLogs.filter(l => (l.error_type || '').includes('Warn')).length;
+        document.getElementById('count-info').textContent = allLogs.filter(l => (l.error_type || '').includes('Info') || (l.error_type || '').includes('Test')).length;
+
+        const q = (document.getElementById('log-search-input')?.value || '').trim().toLowerCase();
+
+        const filtered = allLogs.filter(log => {
+          if (q) {
+            const hitMsg = (log.message || '').toLowerCase().includes(q);
+            const hitType = (log.error_type || '').toLowerCase().includes(q);
+            const hitDev = (log.device_id || '').toLowerCase().includes(q);
+            if (!hitMsg && !hitType && !hitDev) return false;
+          }
+          return true;
+        });
+
+        if (filtered.length === 0) {
+          tbody.innerHTML = `
+            <tr>
+              <td colspan="8" style="text-align:center; padding:32px; color:var(--text-faint);">
+                🎉 暂无匹配的真实报错日志条目
+              </td>
+            </tr>
+          `;
+          return;
+        }
+
+        tbody.innerHTML = filtered.map(log => {
+          const timeStr = new Date(log.occurred_at || Date.now()).toLocaleTimeString();
+          const devShort = (log.device_id || '').slice(0, 10);
+          return `
+            <tr data-log-id="${log.id}">
+              <td style="font-family:var(--font-mono); font-size:0.76rem;">${timeStr}</td>
+              <td><span class="badge-error">ERROR</span></td>
+              <td style="font-family:var(--font-mono); font-size:0.76rem;">${devShort}...</td>
+              <td><span style="font-family:var(--font-mono); font-size:0.76rem;">v${log.app_version || '1.0.69'}</span></td>
+              <td style="font-weight:600; font-size:0.78rem;">${log.error_type}</td>
+              <td style="max-width:320px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-weight:600;" title="${log.message}">
+                ${log.message}
+              </td>
+              <td style="font-family:var(--font-mono); font-size:0.74rem; color:var(--text-faint);">${log.source_file || 'inline'}</td>
+              <td style="text-align:center;">
+                <button class="btn btn-sm btn-inspect-error" data-id="${log.id}">排查</button>
+              </td>
+            </tr>
+          `;
+        }).join('');
+
+        tbody.querySelectorAll('.btn-inspect-error').forEach(btn => {
+          btn.addEventListener('click', () => {
+            const id = btn.getAttribute('data-id');
+            const target = allLogs.find(l => String(l.id) === String(id));
+            if (target) openErrorModal(target);
+          });
+        });
+      }
+
+      document.getElementById('log-search-input')?.addEventListener('input', () => renderErrorLogsTable());
+      document.getElementById('btn-refresh-errors')?.addEventListener('click', async () => {
+        await fetchAndRenderDashboard();
+        renderErrorLogsTable();
+        showToast('✓ 异常日志已从服务端刷新');
+      });
+
+      // ── 9. 报错排查弹窗 (Error Inspect Modal) ──
+      const errModal = document.getElementById('error-inspect-modal');
+      document.getElementById('modal-err-close')?.addEventListener('click', () => errModal.classList.remove('open'));
+      errModal?.addEventListener('click', (e) => { if (e.target === errModal) errModal.classList.remove('open'); });
+
+      function openErrorModal(log) {
+        if (!errModal) return;
+        document.getElementById('modal-err-type').textContent = `${log.error_type} - 深度排查分析`;
+        document.getElementById('modal-err-msg').textContent = log.message;
+        document.getElementById('modal-err-dev').textContent = log.device_id || 'Unknown Device';
+        document.getElementById('modal-err-ver').textContent = `v${log.app_version || '1.0.69'}`;
+        document.getElementById('modal-err-time').textContent = new Date(log.occurred_at || Date.now()).toLocaleString();
+        document.getElementById('modal-err-stack').textContent = log.stack || '无可用堆栈 (纯错误消息)';
+
+        // 真实机器快照
+        let snapText = '无环境快照';
+        if (log.machine_snapshot) {
+          try {
+            const snap = typeof log.machine_snapshot === 'string' ? JSON.parse(log.machine_snapshot) : log.machine_snapshot;
+            snapText = JSON.stringify(snap, null, 2);
+          } catch {
+            snapText = String(log.machine_snapshot);
+          }
+        }
+        document.getElementById('modal-err-snapshot').textContent = snapText;
+
+        // 轨迹
+        let bcText = '无前置轨迹';
+        if (log.breadcrumbs) {
+          try {
+            const bc = typeof log.breadcrumbs === 'string' ? JSON.parse(log.breadcrumbs) : log.breadcrumbs;
+            if (Array.isArray(bc) && bc.length > 0) {
+              bcText = bc.map(b => `[${b.time || ''}] [${b.category || 'action'}] ${b.message || ''}`).join('\n');
+            }
+          } catch {}
+        }
+        document.getElementById('modal-err-breadcrumbs').textContent = bcText;
+
+        errModal.classList.add('open');
+      }
+
+      document.getElementById('btn-copy-stack')?.addEventListener('click', () => {
+        const stack = document.getElementById('modal-err-stack').textContent;
+        navigator.clipboard.writeText(stack).then(() => showToast('✓ 完整调用堆栈已复制至剪贴板'));
+      });
+
+      // 模拟测试与清理
+      document.getElementById('btn-trigger-js-err')?.addEventListener('click', () => {
+        showToast('🧪 正在向后端派发一条模拟排查异常...');
+        fetch(`${currentServerBase}/api/telemetry/report`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            report_meta: {
+              device_id: window.DiagnosticsCore?.deviceId || 'dev_internal_tester',
+              session_id: window.DiagnosticsCore?.sessionId || 'sess_test',
+              app_version: '1.0.69',
+              custom_note: 'Internal Developer Test Error',
+            },
+            machine_info: window.DiagnosticsCore?.machineInfo || window.DiagnosticsCore?.probeMachineInfo(),
+            error_details: {
+              errorType: 'InternalDevSimulatedError',
+              message: 'AI-Helper Simulated Test Error: Gateway connection timeout during diagnostic probe',
+              stack: 'Error: Gateway timeout\n    at DiagnosticProbe.run (website/assets/diagnostics-core.js?v=1.0.69:275)\n    at HTMLButtonElement.dispatch (website/diagnostics.html:120)',
+              source_file: 'diagnostics-core.js?v=1.0.69:275:18',
+            },
+            breadcrumbs: window.DiagnosticsCore?.breadcrumbs || [],
+          }),
+        }).then(async () => {
+          showToast('✓ 测试错误已成功上报至服务端');
+          await fetchAndRenderDashboard();
+          renderErrorLogsTable();
+        }).catch(err => {
+          showToast(`上报失败: ${err.message}`);
+        });
+      });
+
+      document.getElementById('btn-clear-test-logs')?.addEventListener('click', async () => {
+        if (!confirm('确定清理 MySQL 与内存中的模拟测试日志吗？真实用户报错不受影响。')) return;
+        try {
+          const res = await fetch(`${currentServerBase}/api/telemetry/clear-test-data`, { method: 'POST' });
+          if (res.ok) {
+            showToast('✓ 测试日志已从数据库清除');
+            await fetchAndRenderDashboard();
+            renderErrorLogsTable();
+          }
+        } catch (e) {
+          showToast(`清理失败: ${e.message}`);
+        }
+      });
+
+      // ── 10. 服务端与上报通道配置 (TAB 4) ──
+      function loadSettingsForm() {
+        const input = document.getElementById('cfg-server-base');
+        if (input) input.value = currentServerBase;
+
+        const core = window.DiagnosticsCore;
+        if (!core) return;
+        const feishuUrlInput = document.getElementById('cfg-feishu-url');
+        const enableFeishuInput = document.getElementById('cfg-enable-feishu');
+        if (feishuUrlInput) feishuUrlInput.value = core.config.feishuWebhookUrl || '';
+        if (enableFeishuInput) enableFeishuInput.checked = Boolean(core.config.enableFeishuReport);
+      }
+
+      document.getElementById('btn-save-settings')?.addEventListener('click', (e) => {
+        e.preventDefault();
+        const serverVal = (document.getElementById('cfg-server-base')?.value || '').trim();
+        if (serverVal) {
+          currentServerBase = serverVal.replace(/\/+$/, '');
+          localStorage.setItem('ai_helper_telemetry_server_base', currentServerBase);
+        }
+
+        const core = window.DiagnosticsCore;
+        if (core) {
+          core.saveConfig({
+            feishuWebhookUrl: document.getElementById('cfg-feishu-url')?.value.trim() || '',
+            enableFeishuReport: document.getElementById('cfg-enable-feishu')?.checked || false,
+          });
+        }
+
+        showToast('✓ 服务端与通道配置已保存');
+        fetchAndRenderDashboard();
+      });
+
+      // 测试连接与 MySQL 状态
+      document.getElementById('btn-test-server-conn')?.addEventListener('click', async () => {
+        const out = document.getElementById('server-test-output');
+        const targetUrl = (document.getElementById('cfg-server-base')?.value || currentServerBase).trim().replace(/\/+$/, '');
+        if (!out) return;
+
+        out.innerHTML = '<span style="color:var(--primary);">正在连接服务端并测试 MySQL 状态...</span>';
+
+        const start = performance.now();
+        try {
+          const res = await fetch(`${targetUrl}/api/health`, { signal: AbortSignal.timeout(5000) });
+          const ms = Math.round(performance.now() - start);
+          if (!res.ok) throw new Error(`HTTP ${res.status}`);
+          const data = await res.json();
+
+          const db = data.database || {};
+          const isDbOk = db.status === 'connected';
+
+          out.innerHTML = `
+            <div style="background:var(--surface); border:1px solid var(--border); padding:10px 14px; border-radius:8px; margin-top:6px;">
+              <div style="font-weight:700; color:${isDbOk ? 'var(--success)' : 'var(--warning)'}; margin-bottom:4px;">
+                ${isDbOk ? '🟢 监控服务与 MySQL 连接全部正常!' : '🟡 服务在线，但未连上 MySQL (当前使用内存安全存储)'}
+              </div>
+              <div style="color:var(--text-muted); font-size:0.78rem;">
+                端到端延时: <strong>${ms} ms</strong> | 运行时间: <strong>${data.uptime_sec}s</strong><br>
+                数据库状态: <strong>${db.status}</strong> (${db.host}:${db.port}/${db.database})<br>
+                库内已沉淀设备: <strong>${db.total_devices} 台</strong> | 历史报错: <strong>${db.total_error_logs} 条</strong> | 活跃打点: <strong>${db.total_usage_events} 条</strong>
+              </div>
+            </div>
+          `;
+          showToast('✓ 服务连通性检验成功');
+        } catch (err) {
+          out.innerHTML = `
+            <div style="background:var(--surface); border:1px solid rgba(239, 68, 68, 0.3); padding:10px 14px; border-radius:8px; margin-top:6px; color:var(--danger);">
+              🔴 无法连接到服务: <strong>${err.message}</strong><br>
+              <span style="font-size:0.75rem; color:var(--text-faint);">请确保已进入 server/ 目录运行 <code>npm start</code>，并在终端观察启动日志。</span>
+            </div>
+          `;
+          showToast('连接失败，请检查服务地址');
+        }
+      });
+
+      // 导出全量 JSON
+      document.getElementById('btn-export-all-json')?.addEventListener('click', async () => {
+        try {
+          const res = await fetch(`${currentServerBase}/api/telemetry/dashboard`);
+          const devRes = await fetch(`${currentServerBase}/api/telemetry/devices`);
+          const dash = await res.json();
+          const devs = await devRes.json();
+
+          const fullDump = {
+            exported_at: new Date().toISOString(),
+            server_base: currentServerBase,
+            dashboard: dash,
+            devices: devs.devices || [],
+          };
+
+          const blob = new Blob([JSON.stringify(fullDump, null, 2)], { type: 'application/json' });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = `AI-Helper-AllTelemetry-${new Date().toISOString().slice(0, 10)}.json`;
+          a.click();
+          URL.revokeObjectURL(url);
+          showToast('✓ 全量真实监控数据已导出为 JSON');
+        } catch (e) {
+          showToast(`导出失败: ${e.message}`);
+        }
+      });
+
+      // ── 11. 本机开发环境探针 (Tab 2 底部工具) ──
+      document.getElementById('btn-probe-local')?.addEventListener('click', async () => {
+        const grid = document.getElementById('local-hw-grid');
+        const pingArea = document.getElementById('local-ping-results');
+        const core = window.DiagnosticsCore;
+        if (!grid || !pingArea || !core) return;
+
+        grid.style.display = 'grid';
+        const info = core.probeMachineInfo();
+
+        const items = [
+          { label: '本机操作系统与架构', val: `${info.osName} (${info.arch})` },
+          { label: 'CPU 逻辑处理器核心数', val: `${info.cpuCores} 核心` },
+          { label: '本机估计运行内存', val: info.deviceMemoryGb },
+          { label: '本机显卡渲染器 (WebGL)', val: info.gpuRenderer },
+          { label: '显卡芯片供应商', val: info.gpuVendor },
+          { label: '显示屏分辨率与缩放', val: info.screenResolution },
+          { label: '网络类型与在线状态', val: `${info.isOnline ? '🟢 已联网' : '🔴 离线'} (${info.networkType})` },
+          { label: '本机设备指纹 ID', val: core.deviceId },
+        ];
+
+        grid.innerHTML = items.map(item => `
+          <div class="hw-item">
+            <span class="hw-label">${item.label}</span>
+            <span class="hw-val">${item.val}</span>
+          </div>
+        `).join('');
+
+        pingArea.innerHTML = '<div style="font-size:0.8rem; color:var(--text-muted);">正在测试链路延时...</div>';
+        const ping = await core.pingNetworkLatency('https://helper.bob-api.com/version.json');
+        pingArea.innerHTML = `
+          <div style="font-size:0.82rem; padding:8px 12px; background:var(--surface); border:1px solid var(--border); border-radius:6px; display:flex; justify-content:space-between;">
+            <span>Bob-API 官方节点测速:</span>
+            <strong style="color:${ping.reachable ? 'var(--success)' : 'var(--danger)'}; font-family:var(--font-mono);">${ping.reachable ? `${ping.latencyMs} ms` : `失败 (${ping.error})`}</strong>
+          </div>
+        `;
+        showToast('✓ 本机硬件与网络探测完成');
+      });
+
+      // ── 12. 自动定时刷新机制 ──
+      const autoRefreshSelect = document.getElementById('auto-refresh-select');
+      function updateAutoRefresh() {
+        if (autoRefreshInterval) clearInterval(autoRefreshInterval);
+        const sec = Number(autoRefreshSelect?.value || 0);
+        if (sec > 0) {
+          autoRefreshInterval = setInterval(() => {
+            fetchAndRenderDashboard();
+            const activeTab = document.querySelector('.tab-btn.active')?.getAttribute('data-tab');
+            if (activeTab === 'devices') fetchAndRenderDevices();
+            if (activeTab === 'errors') renderErrorLogsTable();
+          }, sec * 1000);
+        }
+      }
+
+      autoRefreshSelect?.addEventListener('change', () => {
+        updateAutoRefresh();
+        showToast(`已设置定时刷新: ${autoRefreshSelect.value} 秒`);
+      });
+
+      document.getElementById('btn-manual-refresh')?.addEventListener('click', () => {
+        fetchAndRenderDashboard();
+        showToast('✓ 监控大盘数据已立即刷新');
+      });
+
+      // ── 13. 页面初始化启动 ──
+      window.addEventListener('DOMContentLoaded', () => {
+        fetchAndRenderDashboard();
+        updateAutoRefresh();
+
+        // 监听本地核心报错，实时更新 UI
+        window.DiagnosticsCore?.on('new-log', () => {
+          fetchAndRenderDashboard();
+          renderErrorLogsTable();
+        });
+      });
+
+    })();
+  </script>
+</body>
+</html>
