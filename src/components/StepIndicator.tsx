@@ -15,68 +15,28 @@ interface StepIndicatorProps {
   currentStep: number;
   /** 点击已到达/已完成步骤时触发 */
   onStepClick: (index: number) => void;
-  accentColor?: "blue" | "purple" | "emerald" | "orange";
+  accentColor?: string;
   /** 允许点击跳转的最大步骤索引，默认等于 currentStep */
   maxStepReached?: number;
 }
 
-const COLORS: Record<
-  string,
-  {
-    filled: string;
-    ring: string;
-    connector: string;
-    activeLabel: string;
-    doneLabel: string;
-    doneSummary: string;
-  }
-> = {
-  blue: {
-    filled:
-      "bg-blue-600 border-blue-600 text-white dark:bg-blue-500 dark:border-blue-500",
-    ring: "ring-2 ring-blue-500/30 ring-offset-1 ring-offset-white dark:ring-offset-transparent",
-    connector: "bg-blue-500 dark:bg-blue-400",
-    activeLabel: "text-slate-900 dark:text-white font-semibold",
-    doneLabel: "text-slate-700 dark:text-gray-200",
-    doneSummary: "text-blue-600 dark:text-blue-400 font-medium",
-  },
-  purple: {
-    filled:
-      "bg-purple-600 border-purple-600 text-white dark:bg-purple-500 dark:border-purple-500",
-    ring: "ring-2 ring-purple-500/30 ring-offset-1 ring-offset-white dark:ring-offset-transparent",
-    connector: "bg-purple-500 dark:bg-purple-400",
-    activeLabel: "text-slate-900 dark:text-white font-semibold",
-    doneLabel: "text-slate-700 dark:text-gray-200",
-    doneSummary: "text-purple-600 dark:text-purple-400 font-medium",
-  },
-  emerald: {
-    filled:
-      "bg-emerald-600 border-emerald-600 text-white dark:bg-emerald-500 dark:border-emerald-500",
-    ring: "ring-2 ring-emerald-500/30 ring-offset-1 ring-offset-white dark:ring-offset-transparent",
-    connector: "bg-emerald-500 dark:bg-emerald-400",
-    activeLabel: "text-slate-900 dark:text-white font-semibold",
-    doneLabel: "text-slate-700 dark:text-gray-200",
-    doneSummary: "text-emerald-600 dark:text-emerald-400 font-medium",
-  },
-  orange: {
-    filled:
-      "bg-orange-600 border-orange-600 text-white dark:bg-orange-500 dark:border-orange-500",
-    ring: "ring-2 ring-orange-500/30 ring-offset-1 ring-offset-white dark:ring-offset-transparent",
-    connector: "bg-orange-500 dark:bg-orange-400",
-    activeLabel: "text-slate-900 dark:text-white font-semibold",
-    doneLabel: "text-slate-700 dark:text-gray-200",
-    doneSummary: "text-orange-600 dark:text-orange-400 font-medium",
-  },
+const MONO_STYLE = {
+  filled:
+    "bg-black border-black text-white dark:bg-white dark:border-white dark:text-black",
+  ring: "ring-2 ring-black/20 ring-offset-1 ring-offset-white dark:ring-white/30 dark:ring-offset-black",
+  connector: "bg-black dark:bg-white",
+  activeLabel: "text-black dark:text-white font-semibold",
+  doneLabel: "text-neutral-700 dark:text-neutral-300",
+  doneSummary: "text-neutral-900 dark:text-neutral-200 font-medium",
 };
 
 export function StepIndicator({
   steps,
   currentStep,
   onStepClick,
-  accentColor = "blue",
   maxStepReached,
 }: StepIndicatorProps) {
-  const c = COLORS[accentColor];
+  const c = MONO_STYLE;
   const effectiveMax =
     maxStepReached !== undefined ? maxStepReached : currentStep;
 
@@ -114,11 +74,11 @@ export function StepIndicator({
                   !isDone &&
                     !isActive &&
                     canClick &&
-                    "border-slate-400 dark:border-white/40 text-slate-700 dark:text-gray-200 cursor-pointer hover:border-slate-600 dark:hover:border-white/60 bg-white dark:bg-white/5",
+                    "border-neutral-400 dark:border-neutral-600 text-neutral-700 dark:text-neutral-300 cursor-pointer hover:border-black dark:hover:border-white bg-white dark:bg-black",
                   !isDone &&
                     !isActive &&
                     !canClick &&
-                    "border-slate-200 dark:border-white/10 text-slate-300 dark:text-gray-600 cursor-default bg-slate-50 dark:bg-transparent",
+                    "border-neutral-200 dark:border-neutral-800 text-neutral-300 dark:text-neutral-700 cursor-default bg-neutral-50 dark:bg-black",
                 )}
               >
                 {isDone ? (
@@ -144,7 +104,7 @@ export function StepIndicator({
                       ),
                     !canClick &&
                       !isActive &&
-                      "text-slate-400 dark:text-gray-500 cursor-default",
+                      "text-neutral-400 dark:text-neutral-600 cursor-default",
                   )}
                   title={step.label}
                 >
@@ -169,9 +129,9 @@ export function StepIndicator({
             {/* ── 连接线（最后一步后不渲染） ── */}
             {i < steps.length - 1 && (
               <div className="flex-1 mt-[13px] mx-1 relative h-[2px]">
-                {/* 灰色底轨 */}
-                <div className="absolute inset-0 bg-slate-200 dark:bg-white/10 rounded-full" />
-                {/* 彩色填充 */}
+                {/* 底轨 */}
+                <div className="absolute inset-0 bg-neutral-200 dark:bg-neutral-800 rounded-full" />
+                {/* 填充 */}
                 <div
                   className={cn(
                     "absolute inset-y-0 left-0 rounded-full transition-all duration-500",

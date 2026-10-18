@@ -15,6 +15,13 @@ const RING_RADIUS = (VIEW - RING_STROKE) / 2 - 6;
 const RING_CIRCUMFERENCE = 2 * Math.PI * RING_RADIUS;
 
 const ACCENT = {
+  mono: {
+    idle: "#000000",
+    hover: "#262626",
+    success: "#059669",
+    className:
+      "bg-black text-white hover:bg-neutral-800 active:bg-neutral-900 dark:bg-white dark:text-black dark:hover:bg-neutral-200 dark:active:bg-neutral-300",
+  },
   teal: {
     idle: "#0d9488",
     hover: "#0f766e",
@@ -68,7 +75,7 @@ export function ButtonToLoaderToSuccess({
   successLabel,
   onAction,
   disabled = false,
-  accent = "blue",
+  accent = "mono",
   className,
   type = "button",
   title,

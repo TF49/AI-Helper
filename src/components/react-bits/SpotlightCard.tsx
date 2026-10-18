@@ -16,7 +16,7 @@ export const SpotlightCard: React.FC<SpotlightCardProps> = ({
     <div
       onClick={onClick}
       className={cn(
-        "relative rounded-2xl border border-slate-200/80 dark:border-white/10 bg-white/85 dark:bg-[#121524]/65 backdrop-blur-md shadow-sm dark:shadow-none overflow-hidden transition-colors duration-200 text-slate-800 dark:text-gray-200 hover:border-slate-300 dark:hover:border-white/20",
+        "relative rounded-2xl border border-neutral-200/80 dark:border-neutral-800/80 bg-white dark:bg-[#0a0a0a] shadow-2xs dark:shadow-none overflow-hidden transition-colors duration-200 text-neutral-900 dark:text-neutral-100 hover:border-neutral-300 dark:hover:border-neutral-700",
         className,
       )}
     >

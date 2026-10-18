@@ -26,7 +26,7 @@ export function ModelInput({
   id,
   onRefresh,
   refreshing,
-  accentColor = "blue",
+  accentColor: _accentColor,
 }: ModelInputProps) {
   const [open, setOpen] = useState(false);
   const grouped = new Map<string, FetchedModel[]>();
@@ -37,28 +37,16 @@ export function ModelInput({
     grouped.set(vendor, group);
   }
 
-  const isBlue = accentColor === "blue";
-  const isEmerald = accentColor === "emerald";
-  const isOrange = accentColor === "orange";
-
   return (
     <div className="space-y-2">
       <div className="flex items-center justify-between gap-2">
         <label
           htmlFor={id}
-          className="text-xs font-semibold text-slate-700 dark:text-gray-300 flex items-center gap-1.5"
+          className="text-xs font-semibold text-neutral-700 dark:text-neutral-300 flex items-center gap-1.5"
         >
           <Cpu
             size={14}
-            className={
-              isBlue
-                ? "text-blue-500 dark:text-blue-400"
-                : isEmerald
-                  ? "text-emerald-500 dark:text-emerald-400"
-                  : isOrange
-                    ? "text-orange-500 dark:text-orange-400"
-                    : "text-purple-500 dark:text-purple-400"
-            }
+            className="text-neutral-600 dark:text-neutral-400"
           />
           测试模型
         </label>
@@ -70,17 +58,17 @@ export function ModelInput({
           disabled={refreshing}
           className={cn(
             "h-7 shrink-0 gap-1.5 text-xs rounded-lg transition-all",
-            "border-slate-200 bg-white hover:bg-slate-50 text-slate-700",
-            "dark:border-white/10 dark:bg-[#141724]/60 dark:hover:bg-[#1c2033] dark:text-gray-300",
+            "border-neutral-200 bg-white hover:bg-neutral-50 text-neutral-700",
+            "dark:border-neutral-800 dark:bg-[#0a0a0a] dark:hover:bg-neutral-900 dark:text-neutral-300",
             refreshing && "opacity-75 cursor-not-allowed",
           )}
         >
           {refreshing ? (
-            <Loader2 size={13} className="animate-spin text-blue-500" />
+            <Loader2 size={13} className="animate-spin text-black dark:text-white" />
           ) : (
             <Download
               size={13}
-              className="text-slate-500 dark:text-gray-400 group-hover:text-slate-800 dark:group-hover:text-white"
+              className="text-neutral-500 dark:text-neutral-400 group-hover:text-black dark:group-hover:text-white"
             />
           )}
           获取模型列表
@@ -96,14 +84,8 @@ export function ModelInput({
           autoComplete="off"
           className={cn(
             "min-w-0 flex-1 font-mono text-xs rounded-xl h-10 tracking-wide",
-            "bg-slate-50/80 dark:bg-[#141724]/80 border-slate-200 dark:border-white/10 text-slate-900 dark:text-gray-200",
-            isBlue
-              ? "focus:bg-white dark:focus:bg-[#141724] focus:border-blue-500 focus:ring-1 focus:ring-blue-500/30"
-              : isEmerald
-                ? "focus:bg-white dark:focus:bg-[#141724] focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500/30"
-                : isOrange
-                  ? "focus:bg-white dark:focus:bg-[#141724] focus:border-orange-500 focus:ring-1 focus:ring-orange-500/30"
-                  : "focus:bg-white dark:focus:bg-[#141724] focus:border-purple-500 focus:ring-1 focus:ring-purple-500/30",
+            "bg-neutral-50/80 dark:bg-[#0a0a0a] border-neutral-200 dark:border-neutral-800 text-black dark:text-white",
+            "focus:bg-white dark:focus:bg-black focus:border-black dark:focus:border-white focus:ring-1 focus:ring-black/20 dark:focus:ring-white/30",
           )}
         />
         {models.length > 0 && (
@@ -114,7 +96,7 @@ export function ModelInput({
                 variant="outline"
                 aria-label="选择模型"
                 title="选择模型"
-                className="w-10 h-10 shrink-0 px-0 rounded-xl border-slate-200 bg-white hover:bg-slate-50 text-slate-600 hover:text-slate-900 dark:border-white/10 dark:bg-[#141724]/80 dark:hover:bg-[#1d2136] dark:text-gray-400 dark:hover:text-white"
+                className="w-10 h-10 shrink-0 px-0 rounded-xl border-neutral-200 bg-white hover:bg-neutral-50 text-neutral-600 hover:text-black dark:border-neutral-800 dark:bg-[#0a0a0a] dark:hover:bg-neutral-900 dark:text-neutral-400 dark:hover:text-white"
               >
                 <ChevronDown size={15} />
               </Button>
@@ -124,28 +106,28 @@ export function ModelInput({
                 align="end"
                 sideOffset={6}
                 collisionPadding={10}
-                className="z-[200] w-80 max-w-[calc(100vw-20px)] overflow-hidden rounded-xl border border-slate-200 dark:border-white/10 bg-white/95 dark:bg-[#121522]/95 backdrop-blur-xl text-slate-800 dark:text-gray-200 shadow-2xl"
+                className="z-[200] w-80 max-w-[calc(100vw-20px)] overflow-hidden rounded-xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-[#0a0a0a] text-neutral-900 dark:text-neutral-100 shadow-2xl"
               >
                 <Command label="搜索模型">
-                  <div className="flex items-center gap-2 border-b border-slate-200 dark:border-white/10 px-3 py-1 bg-slate-50 dark:bg-transparent">
+                  <div className="flex items-center gap-2 border-b border-neutral-200 dark:border-neutral-800 px-3 py-1 bg-neutral-50 dark:bg-black">
                     <Search
                       size={14}
-                      className="shrink-0 text-slate-400 dark:text-gray-400"
+                      className="shrink-0 text-neutral-400 dark:text-neutral-500"
                     />
                     <Command.Input
                       placeholder="搜索模型名称..."
-                      className="h-9 min-w-0 flex-1 bg-transparent text-xs outline-none placeholder:text-slate-400 dark:placeholder:text-gray-500 font-mono text-slate-800 dark:text-gray-200"
+                      className="h-9 min-w-0 flex-1 bg-transparent text-xs outline-none placeholder:text-neutral-400 dark:placeholder:text-neutral-600 font-mono text-black dark:text-white"
                     />
                   </div>
                   <Command.List className="max-h-60 overflow-y-auto overscroll-contain p-1.5">
-                    <Command.Empty className="py-6 text-center text-xs text-slate-500 dark:text-gray-500">
+                    <Command.Empty className="py-6 text-center text-xs text-neutral-500 dark:text-neutral-500">
                       未找到匹配的模型
                     </Command.Empty>
                     {[...grouped.keys()].sort().map((vendor) => (
                       <Command.Group
                         key={vendor}
                         heading={vendor}
-                        className="[&_[cmdk-group-heading]]:break-words [&_[cmdk-group-heading]]:px-2 [&_[cmdk-group-heading]]:py-1.5 [&_[cmdk-group-heading]]:text-[10px] [&_[cmdk-group-heading]]:uppercase [&_[cmdk-group-heading]]:tracking-wider [&_[cmdk-group-heading]]:text-slate-400 dark:[&_[cmdk-group-heading]]:text-gray-500"
+                        className="[&_[cmdk-group-heading]]:break-words [&_[cmdk-group-heading]]:px-2 [&_[cmdk-group-heading]]:py-1.5 [&_[cmdk-group-heading]]:text-[10px] [&_[cmdk-group-heading]]:uppercase [&_[cmdk-group-heading]]:tracking-wider [&_[cmdk-group-heading]]:text-neutral-400 dark:[&_[cmdk-group-heading]]:text-neutral-500"
                       >
                         {grouped.get(vendor)!.map((m, index) => (
                           <Command.Item
@@ -157,14 +139,8 @@ export function ModelInput({
                               setOpen(false);
                             }}
                             className={cn(
-                              "cursor-pointer break-all rounded-lg px-2.5 py-1.5 text-xs font-mono text-slate-700 dark:text-gray-300 hover:text-slate-950 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-white/10 transition-colors",
-                              isBlue
-                                ? "data-[selected=true]:bg-blue-50 data-[selected=true]:text-blue-600 dark:data-[selected=true]:bg-blue-500/20 dark:data-[selected=true]:text-blue-300"
-                                : isEmerald
-                                  ? "data-[selected=true]:bg-emerald-50 data-[selected=true]:text-emerald-600 dark:data-[selected=true]:bg-emerald-500/20 dark:data-[selected=true]:text-emerald-300"
-                                  : isOrange
-                                    ? "data-[selected=true]:bg-orange-50 data-[selected=true]:text-orange-600 dark:data-[selected=true]:bg-orange-500/20 dark:data-[selected=true]:text-orange-300"
-                                    : "data-[selected=true]:bg-purple-50 data-[selected=true]:text-purple-600 dark:data-[selected=true]:bg-purple-500/20 dark:data-[selected=true]:text-purple-300",
+                              "cursor-pointer break-all rounded-lg px-2.5 py-1.5 text-xs font-mono text-neutral-700 dark:text-neutral-300 hover:text-black dark:hover:text-white hover:bg-neutral-100 dark:hover:bg-neutral-900 transition-colors",
+                              "data-[selected=true]:bg-black data-[selected=true]:text-white dark:data-[selected=true]:bg-white dark:data-[selected=true]:text-black",
                             )}
                           >
                             {m.id}

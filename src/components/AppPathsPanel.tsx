@@ -542,7 +542,7 @@ export function AppPathsPanel() {
   if (loading) {
     return (
       <div className="flex flex-col items-center justify-center flex-1 h-full min-h-[300px] gap-3">
-        <Loader2 className="animate-spin text-blue-500" size={36} />
+        <Loader2 className="animate-spin text-black dark:text-white" size={36} />
         <span className="text-xs text-slate-500 dark:text-gray-400 animate-pulse">
           正在读取应用与 CLI 路径信息...
         </span>
@@ -555,7 +555,7 @@ export function AppPathsPanel() {
       {/* ── 顶部面板标题栏与快速概览 ── */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 pb-3.5 border-b border-slate-200/80 dark:border-white/10 flex-shrink-0">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-teal-100 text-teal-600 border border-teal-200 dark:bg-teal-500/20 dark:text-teal-400 dark:border-teal-500/30 flex items-center justify-center flex-shrink-0 shadow-xs">
+          <div className="w-10 h-10 rounded-xl bg-neutral-100 text-neutral-800 border border-neutral-200 dark:bg-neutral-900 dark:text-neutral-200 dark:border-neutral-800 flex items-center justify-center flex-shrink-0 shadow-xs">
             <FolderGit2 size={22} />
           </div>
           <div>
@@ -563,7 +563,7 @@ export function AppPathsPanel() {
               <h1 className="text-base font-bold text-slate-900 dark:text-white">
                 应用与 CLI 安装路径管理
               </h1>
-              <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-teal-50 text-teal-700 border border-teal-200 dark:bg-teal-500/10 dark:text-teal-300 dark:border-teal-500/30">
+              <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-neutral-100 text-neutral-700 border border-neutral-200 dark:bg-neutral-900 dark:text-neutral-300 dark:border-neutral-800">
                 Process & Path Discovery
               </span>
             </div>
@@ -581,8 +581,8 @@ export function AppPathsPanel() {
             className={cn(
               "flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-medium transition-colors shadow-2xs cursor-pointer",
               showManualInstallGuide
-                ? "bg-purple-600 text-white border-purple-600 dark:bg-purple-600"
-                : "bg-purple-50 hover:bg-purple-100/80 border-purple-200 text-purple-700 dark:bg-purple-500/10 dark:hover:bg-purple-500/20 dark:border-purple-500/30 dark:text-purple-300",
+                ? "bg-black text-white border-black dark:bg-white dark:text-black dark:border-white"
+                : "bg-neutral-100 hover:bg-neutral-200 border-neutral-200 text-neutral-800 dark:bg-neutral-900 dark:hover:bg-neutral-800 dark:border-neutral-800 dark:text-neutral-200",
             )}
             title="展开/折叠 CLI 手动安装与更新命令中心"
           >
@@ -598,7 +598,7 @@ export function AppPathsPanel() {
             type="button"
             onClick={handleDetectAll}
             disabled={detectingAll}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-medium transition-colors bg-teal-50 hover:bg-teal-100/80 border-teal-200 text-teal-700 dark:bg-teal-500/10 dark:hover:bg-teal-500/20 dark:border-teal-500/30 dark:text-teal-300 shadow-2xs cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-medium transition-colors bg-neutral-100 hover:bg-neutral-200 border-neutral-200 text-black dark:bg-white/10 dark:hover:bg-white/20 dark:border-white/20 dark:text-white shadow-2xs cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
             title="一键全局深度探测所有已安装客户端"
           >
             <Search size={13} className={detectingAll ? "animate-spin" : ""} />
@@ -623,14 +623,14 @@ export function AppPathsPanel() {
         {showManualInstallGuide && (
           <div ref={topGuideRef} className="flex-shrink-0 min-h-fit">
             <SpotlightCard
-              className="p-5 rounded-2xl border border-purple-300/80 dark:border-purple-500/30 bg-purple-50/30 dark:bg-[#15132a]/80 shadow-md animate-fade-in flex-shrink-0 min-h-fit"
-              spotlightColor="rgba(168, 85, 247, 0.15)"
+              className="p-5 rounded-2xl border border-neutral-200 dark:border-white/10 bg-white/80 dark:bg-black/60 shadow-md animate-fade-in flex-shrink-0 min-h-fit"
+              spotlightColor="rgba(255, 255, 255, 0.08)"
             >
               <div className="flex flex-col gap-4">
                 {/* 标题栏 */}
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 pb-2.5 border-b border-purple-200/60 dark:border-purple-500/20">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 pb-2.5 border-b border-neutral-200 dark:border-white/10">
                   <div className="flex items-center gap-2.5">
-                    <div className="w-8 h-8 rounded-lg bg-purple-100 text-purple-600 dark:bg-purple-500/20 dark:text-purple-400 flex items-center justify-center flex-shrink-0">
+                    <div className="w-8 h-8 rounded-lg bg-neutral-100 text-black dark:bg-white/10 dark:text-white flex items-center justify-center flex-shrink-0">
                       <Terminal size={16} />
                     </div>
                     <div>
@@ -647,14 +647,14 @@ export function AppPathsPanel() {
                   </div>
 
                   {/* 选项卡切换: Claude / Codex / Node.js 运行环境 */}
-                  <div className="flex items-center gap-1 p-0.5 rounded-xl bg-purple-100/60 dark:bg-black/40 border border-purple-200/60 dark:border-white/10 self-start sm:self-auto">
+                  <div className="flex items-center gap-1 p-0.5 rounded-xl bg-neutral-100 dark:bg-white/10 border border-neutral-200 dark:border-white/10 self-start sm:self-auto">
                     <button
                       type="button"
                       onClick={() => setGuideActiveTab("claude")}
                       className={cn(
                         "px-3 py-1 rounded-lg text-xs font-medium transition-all cursor-pointer",
                         guideActiveTab === "claude"
-                          ? "bg-purple-600 text-white shadow-xs"
+                          ? "bg-black text-white dark:bg-white dark:text-black shadow-xs"
                           : "text-slate-700 dark:text-gray-300 hover:bg-white/50 dark:hover:bg-white/5",
                       )}
                     >
@@ -666,7 +666,7 @@ export function AppPathsPanel() {
                       className={cn(
                         "px-3 py-1 rounded-lg text-xs font-medium transition-all cursor-pointer",
                         guideActiveTab === "codex"
-                          ? "bg-blue-600 text-white shadow-xs"
+                          ? "bg-black text-white dark:bg-white dark:text-black shadow-xs"
                           : "text-slate-700 dark:text-gray-300 hover:bg-white/50 dark:hover:bg-white/5",
                       )}
                     >
@@ -678,7 +678,7 @@ export function AppPathsPanel() {
                       className={cn(
                         "px-3 py-1 rounded-lg text-xs font-medium transition-all cursor-pointer",
                         guideActiveTab === "nodejs"
-                          ? "bg-teal-600 text-white shadow-xs"
+                          ? "bg-black text-white dark:bg-white dark:text-black shadow-xs"
                           : "text-slate-700 dark:text-gray-300 hover:bg-white/50 dark:hover:bg-white/5",
                       )}
                     >
@@ -693,7 +693,7 @@ export function AppPathsPanel() {
                     <div className="flex items-center justify-between text-[11px] text-slate-500 dark:text-gray-400">
                       <span>
                         官方包名:{" "}
-                        <code className="font-mono text-purple-600 dark:text-purple-400 select-text">
+                        <code className="font-mono text-black dark:text-white select-text font-semibold">
                           @anthropic-ai/claude-code
                         </code>
                       </span>
@@ -701,7 +701,7 @@ export function AppPathsPanel() {
                         type="button"
                         onClick={() => void handleDetectSingle("claude")}
                         disabled={detectingType === "claude"}
-                        className="text-purple-600 dark:text-purple-400 hover:underline flex items-center gap-1 cursor-pointer disabled:opacity-60"
+                        className="text-black dark:text-white hover:underline flex items-center gap-1 cursor-pointer disabled:opacity-60"
                       >
                         <Search
                           size={11}
@@ -725,7 +725,7 @@ export function AppPathsPanel() {
                                 {opt.name}
                               </span>
                               {opt.badge && (
-                                <span className="text-[9px] font-medium px-1.5 py-0.2 rounded bg-purple-100 text-purple-700 border border-purple-200 dark:bg-purple-500/20 dark:text-purple-300 dark:border-purple-500/30">
+                                <span className="text-[9px] font-medium px-1.5 py-0.2 rounded bg-neutral-100 text-neutral-800 border border-neutral-200 dark:bg-white/10 dark:text-neutral-200 dark:border-white/10">
                                   {opt.badge}
                                 </span>
                               )}
@@ -733,7 +733,7 @@ export function AppPathsPanel() {
                                 {opt.desc}
                               </span>
                             </div>
-                            <div className="px-2 py-1 rounded-lg bg-slate-900 dark:bg-black/70 text-purple-300 font-mono text-xs overflow-x-auto select-text">
+                            <div className="px-2 py-1 rounded-lg bg-slate-900 dark:bg-black/70 text-neutral-200 font-mono text-xs overflow-x-auto select-text">
                               <code>{opt.command}</code>
                             </div>
                           </div>
@@ -777,7 +777,7 @@ export function AppPathsPanel() {
                                 )
                               }
                               disabled={runningCmd === opt.command}
-                              className="px-2.5 py-1.5 rounded-lg bg-purple-600 hover:bg-purple-700 text-white text-xs font-medium flex items-center gap-1 transition-colors cursor-pointer disabled:opacity-60"
+                              className="px-2.5 py-1.5 rounded-lg bg-black hover:bg-neutral-800 text-white dark:bg-white dark:hover:bg-neutral-200 dark:text-black text-xs font-medium flex items-center gap-1 transition-colors cursor-pointer disabled:opacity-60"
                               title="在独立控制台终端中拉起并自动执行"
                             >
                               <Play
@@ -803,7 +803,7 @@ export function AppPathsPanel() {
                     <div className="flex items-center justify-between text-[11px] text-slate-500 dark:text-gray-400">
                       <span>
                         官方包名:{" "}
-                        <code className="font-mono text-blue-600 dark:text-blue-400 select-text">
+                        <code className="font-mono text-black dark:text-white select-text font-semibold">
                           @openai/codex
                         </code>
                       </span>
@@ -811,7 +811,7 @@ export function AppPathsPanel() {
                         type="button"
                         onClick={() => void handleDetectSingle("codex")}
                         disabled={detectingType === "codex"}
-                        className="text-blue-600 dark:text-blue-400 hover:underline flex items-center gap-1 cursor-pointer disabled:opacity-60"
+                        className="text-black dark:text-white hover:underline flex items-center gap-1 cursor-pointer disabled:opacity-60"
                       >
                         <Search
                           size={11}
@@ -835,7 +835,7 @@ export function AppPathsPanel() {
                                 {opt.name}
                               </span>
                               {opt.badge && (
-                                <span className="text-[9px] font-medium px-1.5 py-0.2 rounded bg-blue-100 text-blue-700 border border-blue-200 dark:bg-blue-500/20 dark:text-blue-300 dark:border-blue-500/30">
+                                <span className="text-[9px] font-medium px-1.5 py-0.2 rounded bg-neutral-100 text-neutral-800 border border-neutral-200 dark:bg-white/10 dark:text-neutral-200 dark:border-white/10">
                                   {opt.badge}
                                 </span>
                               )}
@@ -843,7 +843,7 @@ export function AppPathsPanel() {
                                 {opt.desc}
                               </span>
                             </div>
-                            <div className="px-2 py-1 rounded-lg bg-slate-900 dark:bg-black/70 text-blue-300 font-mono text-xs overflow-x-auto select-text">
+                            <div className="px-2 py-1 rounded-lg bg-slate-900 dark:bg-black/70 text-neutral-200 font-mono text-xs overflow-x-auto select-text">
                               <code>{opt.command}</code>
                             </div>
                           </div>
@@ -887,7 +887,7 @@ export function AppPathsPanel() {
                                 )
                               }
                               disabled={runningCmd === opt.command}
-                              className="px-2.5 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs font-medium flex items-center gap-1 transition-colors cursor-pointer disabled:opacity-60"
+                              className="px-2.5 py-1.5 rounded-lg bg-black hover:bg-neutral-800 text-white dark:bg-white dark:hover:bg-neutral-200 dark:text-black text-xs font-medium flex items-center gap-1 transition-colors cursor-pointer disabled:opacity-60"
                               title="在独立控制台终端中拉起并自动执行"
                             >
                               <Play
@@ -910,8 +910,8 @@ export function AppPathsPanel() {
                 {/* 选项卡内容: Node.js 运行环境 */}
                 {guideActiveTab === "nodejs" && (
                   <div className="space-y-3">
-                    <div className="p-3 rounded-xl border border-teal-200 dark:border-teal-500/20 bg-teal-50/40 dark:bg-teal-950/20 text-xs text-slate-700 dark:text-gray-300 space-y-1.5">
-                      <div className="font-semibold text-teal-800 dark:text-teal-300 flex items-center gap-1.5">
+                    <div className="p-3 rounded-xl border border-neutral-200 dark:border-white/10 bg-neutral-100/50 dark:bg-white/5 text-xs text-slate-700 dark:text-gray-300 space-y-1.5">
+                      <div className="font-semibold text-black dark:text-white flex items-center gap-1.5">
                         <span>📌 Node.js 运行环境要求</span>
                       </div>
                       <p className="text-[11px] leading-relaxed">
@@ -932,7 +932,7 @@ export function AppPathsPanel() {
                             <div className="text-xs font-medium text-slate-900 dark:text-white">
                               {item.name}
                             </div>
-                            <code className="text-xs font-mono text-teal-600 dark:text-teal-400 select-text">
+                            <code className="text-xs font-mono text-black dark:text-white font-semibold select-text">
                               {item.command}
                             </code>
                           </div>
@@ -963,7 +963,7 @@ export function AppPathsPanel() {
                                   item.name,
                                 )
                               }
-                              className="p-1.5 rounded-lg bg-teal-600 hover:bg-teal-700 text-white cursor-pointer"
+                              className="p-1.5 rounded-lg bg-black hover:bg-neutral-800 text-white dark:bg-white dark:hover:bg-neutral-200 dark:text-black cursor-pointer"
                               title="在终端运行测试命令"
                             >
                               <Play size={12} />
@@ -981,7 +981,7 @@ export function AppPathsPanel() {
                       <button
                         type="button"
                         onClick={() => void openUrl("https://nodejs.org/")}
-                        className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-teal-600 hover:bg-teal-700 text-white text-xs font-medium transition-colors cursor-pointer"
+                        className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-black hover:bg-neutral-800 text-white dark:bg-white dark:hover:bg-neutral-200 dark:text-black text-xs font-medium transition-colors cursor-pointer"
                       >
                         <span>下载 Node.js LTS 官网安装包</span>
                         <ExternalLink size={12} />
@@ -996,13 +996,13 @@ export function AppPathsPanel() {
 
         {/* 卡片 1: Claude Code CLI */}
         <SpotlightCard
-          className="p-5 rounded-2xl border border-slate-200/90 dark:border-white/10 bg-white/80 dark:bg-[#121524]/60 shadow-sm dark:shadow-none flex-shrink-0 min-h-fit"
-          spotlightColor="rgba(168, 85, 247, 0.12)"
+          className="p-5 rounded-2xl border border-slate-200/90 dark:border-white/10 bg-white/80 dark:bg-black/60 shadow-sm dark:shadow-none flex-shrink-0 min-h-fit"
+          spotlightColor="rgba(255, 255, 255, 0.08)"
         >
           <div className="flex flex-col gap-3">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2.5">
-                <div className="w-8 h-8 rounded-lg bg-purple-100 text-purple-600 dark:bg-purple-500/20 dark:text-purple-400 flex items-center justify-center flex-shrink-0">
+                <div className="w-8 h-8 rounded-lg bg-neutral-100 text-black dark:bg-white/10 dark:text-white flex items-center justify-center flex-shrink-0">
                   <ClaudeIcon size={16} />
                 </div>
                 <div>
@@ -1011,8 +1011,8 @@ export function AppPathsPanel() {
                       Claude Code CLI 启动路径
                     </span>
                     {claudeRunning && (
-                      <span className="inline-flex items-center gap-1 text-[10px] font-medium px-2 py-0.2 rounded-full bg-blue-50 text-blue-700 border border-blue-200 dark:bg-blue-500/10 dark:text-blue-300 dark:border-blue-500/30">
-                        <span className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse" />
+                      <span className="inline-flex items-center gap-1 text-[10px] font-medium px-2 py-0.2 rounded-full bg-neutral-100 text-neutral-800 border border-neutral-200 dark:bg-white/10 dark:text-neutral-200 dark:border-white/10">
+                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
                         运行中
                       </span>
                     )}
@@ -1046,7 +1046,7 @@ export function AppPathsPanel() {
                   value={claudePath}
                   onChange={(e) => setClaudePath(e.target.value)}
                   placeholder="例如: C:\Users\Administrator\AppData\Roaming\npm\claude.cmd"
-                  className="w-full text-xs font-mono px-3 py-2 rounded-xl border border-slate-200 dark:border-white/10 bg-slate-50/70 dark:bg-black/30 text-slate-800 dark:text-gray-200 focus:outline-none focus:ring-1 focus:ring-purple-500"
+                  className="w-full text-xs font-mono px-3 py-2 rounded-xl border border-slate-200 dark:border-white/10 bg-slate-50/70 dark:bg-black/30 text-slate-800 dark:text-gray-200 focus:outline-none focus:border-black dark:focus:border-white focus:ring-1 focus:ring-black/20 dark:focus:ring-white/20"
                 />
               </div>
 
@@ -1061,8 +1061,8 @@ export function AppPathsPanel() {
                   className={cn(
                     "px-2.5 py-1.5 rounded-lg border text-xs font-medium flex items-center gap-1 cursor-pointer transition-colors",
                     expandedCardInstall === "claude"
-                      ? "bg-purple-600 text-white border-purple-600 shadow-2xs"
-                      : "border-purple-200 text-purple-700 bg-purple-50 hover:bg-purple-100 dark:border-purple-500/30 dark:bg-purple-500/10 dark:text-purple-300",
+                      ? "bg-black text-white border-black dark:bg-white dark:text-black dark:border-white shadow-2xs"
+                      : "border-slate-200 text-slate-700 bg-white hover:bg-slate-50 dark:border-white/10 dark:bg-white/5 dark:text-gray-300 dark:hover:bg-white/10",
                   )}
                   title="查看/展开 Claude Code 手动安装与更新命令"
                 >
@@ -1079,7 +1079,7 @@ export function AppPathsPanel() {
                   type="button"
                   onClick={() => void handleDetectSingle("claude")}
                   disabled={detectingType === "claude"}
-                  className="px-2.5 py-1.5 rounded-lg border border-purple-200 text-purple-700 bg-purple-50 hover:bg-purple-100 dark:border-purple-500/30 dark:bg-purple-500/10 dark:text-purple-300 text-xs font-medium flex items-center gap-1 cursor-pointer transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+                  className="px-2.5 py-1.5 rounded-lg border border-slate-200 text-slate-700 bg-white hover:bg-slate-50 dark:border-white/10 dark:bg-white/5 dark:text-gray-300 dark:hover:bg-white/10 text-xs font-medium flex items-center gap-1 cursor-pointer transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
                   title="自动探测 Claude CLI 路径"
                 >
                   <Search
@@ -1103,7 +1103,7 @@ export function AppPathsPanel() {
                   type="button"
                   onClick={() => void handleLaunchOrRestart("claude")}
                   disabled={launchingType === "claude"}
-                  className="px-2.5 py-1.5 rounded-lg bg-purple-600 hover:bg-purple-700 text-white text-xs font-medium flex items-center gap-1 cursor-pointer transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+                  className="px-2.5 py-1.5 rounded-lg bg-black hover:bg-neutral-800 text-white dark:bg-white dark:hover:bg-neutral-200 dark:text-black text-xs font-medium flex items-center gap-1 cursor-pointer transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
                   title="在独立终端窗口启动/重启测试"
                 >
                   <Play
@@ -1119,13 +1119,13 @@ export function AppPathsPanel() {
             {expandedCardInstall === "claude" && (
               <div
                 ref={claudeDrawerRef}
-                className="p-3.5 rounded-xl border border-purple-200/80 dark:border-purple-500/20 bg-purple-50/40 dark:bg-purple-950/20 space-y-3 animate-fade-in"
+                className="p-3.5 rounded-xl border border-neutral-200 dark:border-white/10 bg-neutral-50/50 dark:bg-white/5 space-y-3 animate-fade-in"
               >
                 <div className="flex flex-wrap items-center justify-between gap-2">
-                  <div className="flex items-center gap-1.5 text-xs font-semibold text-purple-900 dark:text-purple-300">
+                  <div className="flex items-center gap-1.5 text-xs font-semibold text-black dark:text-white">
                     <Terminal
                       size={13}
-                      className="text-purple-600 dark:text-purple-400"
+                      className="text-black dark:text-white"
                     />
                     <span>Claude Code 手动安装与版本更新</span>
                   </div>
@@ -1141,8 +1141,8 @@ export function AppPathsPanel() {
                       className={cn(
                         "px-2.5 py-1 rounded-lg text-[11px] font-medium transition-all cursor-pointer flex items-center gap-1",
                         claudeSelectedInstallOption === opt.id
-                          ? "bg-purple-600 text-white shadow-xs"
-                          : "bg-white/80 dark:bg-white/5 border border-purple-200/60 dark:border-white/10 text-slate-700 dark:text-gray-300 hover:bg-purple-100/50 dark:hover:bg-white/10",
+                          ? "bg-black text-white dark:bg-white dark:text-black shadow-xs"
+                          : "bg-white dark:bg-white/5 border border-slate-200 dark:border-white/10 text-slate-700 dark:text-gray-300 hover:bg-slate-50 dark:hover:bg-white/10",
                       )}
                     >
                       <span>{opt.name}</span>
@@ -1151,8 +1151,8 @@ export function AppPathsPanel() {
                           className={cn(
                             "text-[9px] px-1 py-0.2 rounded",
                             claudeSelectedInstallOption === opt.id
-                              ? "bg-purple-700 text-white"
-                              : "bg-purple-100 text-purple-700 dark:bg-purple-500/20 dark:text-purple-300",
+                              ? "bg-neutral-800 text-white dark:bg-neutral-200 dark:text-black"
+                              : "bg-neutral-100 text-neutral-800 dark:bg-white/10 dark:text-neutral-300",
                           )}
                         >
                           {opt.badge}
@@ -1175,7 +1175,7 @@ export function AppPathsPanel() {
                       </p>
 
                       <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 p-2 rounded-xl bg-slate-900 dark:bg-black/60 border border-slate-700/60 text-slate-100">
-                        <div className="flex-1 font-mono text-xs overflow-x-auto py-1 px-1.5 text-purple-300 select-text">
+                        <div className="flex-1 font-mono text-xs overflow-x-auto py-1 px-1.5 text-neutral-200 select-text">
                           <code>{selected.command}</code>
                         </div>
 
@@ -1214,7 +1214,7 @@ export function AppPathsPanel() {
                               )
                             }
                             disabled={runningCmd === selected.command}
-                            className="px-2.5 py-1 rounded-lg bg-purple-600 hover:bg-purple-700 text-white text-[11px] font-medium flex items-center gap-1 transition-colors cursor-pointer disabled:opacity-60"
+                            className="px-2.5 py-1 rounded-lg bg-black hover:bg-neutral-800 text-white dark:bg-white dark:hover:bg-neutral-200 dark:text-black text-[11px] font-medium flex items-center gap-1 transition-colors cursor-pointer disabled:opacity-60"
                             title="在独立 CMD 窗口中运行此安装命令"
                           >
                             <Play
@@ -1232,7 +1232,7 @@ export function AppPathsPanel() {
                             type="button"
                             onClick={() => void handleDetectSingle("claude")}
                             disabled={detectingType === "claude"}
-                            className="px-2.5 py-1 rounded-lg border border-purple-400/40 hover:bg-purple-500/20 text-purple-300 text-[11px] font-medium flex items-center gap-1 transition-colors cursor-pointer disabled:opacity-60"
+                            className="px-2.5 py-1 rounded-lg border border-neutral-300 hover:bg-neutral-100 text-black dark:border-white/20 dark:hover:bg-white/10 dark:text-white text-[11px] font-medium flex items-center gap-1 transition-colors cursor-pointer disabled:opacity-60"
                             title="安装完成后立即重新探测路径"
                           >
                             <Search
@@ -1252,7 +1252,7 @@ export function AppPathsPanel() {
             )}
 
             {claudeInfo?.extra_info && (
-              <div className="text-[11px] text-purple-600 dark:text-purple-400 bg-purple-50/50 dark:bg-purple-500/10 px-2.5 py-1 rounded-lg border border-purple-100 dark:border-purple-500/20">
+              <div className="text-[11px] text-neutral-800 dark:text-neutral-200 bg-neutral-100/70 dark:bg-white/5 px-2.5 py-1 rounded-lg border border-neutral-200 dark:border-white/10">
                 💡 {claudeInfo.extra_info}
               </div>
             )}
@@ -1261,13 +1261,13 @@ export function AppPathsPanel() {
 
         {/* 卡片 2: Codex CLI */}
         <SpotlightCard
-          className="p-5 rounded-2xl border border-slate-200/90 dark:border-white/10 bg-white/80 dark:bg-[#121524]/60 shadow-sm dark:shadow-none flex-shrink-0 min-h-fit"
-          spotlightColor="rgba(59, 130, 246, 0.12)"
+          className="p-5 rounded-2xl border border-slate-200/90 dark:border-white/10 bg-white/80 dark:bg-black/60 shadow-sm dark:shadow-none flex-shrink-0 min-h-fit"
+          spotlightColor="rgba(255, 255, 255, 0.08)"
         >
           <div className="flex flex-col gap-3">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2.5">
-                <div className="w-8 h-8 rounded-lg bg-blue-100 text-blue-600 dark:bg-blue-500/20 dark:text-blue-400 flex items-center justify-center flex-shrink-0">
+                <div className="w-8 h-8 rounded-lg bg-neutral-100 text-black dark:bg-white/10 dark:text-white flex items-center justify-center flex-shrink-0">
                   <Terminal size={16} />
                 </div>
                 <div>
@@ -1276,8 +1276,8 @@ export function AppPathsPanel() {
                       Codex CLI 启动路径
                     </span>
                     {codexRunning && (
-                      <span className="inline-flex items-center gap-1 text-[10px] font-medium px-2 py-0.2 rounded-full bg-blue-50 text-blue-700 border border-blue-200 dark:bg-blue-500/10 dark:text-blue-300 dark:border-blue-500/30">
-                        <span className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse" />
+                      <span className="inline-flex items-center gap-1 text-[10px] font-medium px-2 py-0.2 rounded-full bg-neutral-100 text-neutral-800 border border-neutral-200 dark:bg-white/10 dark:text-neutral-200 dark:border-white/10">
+                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
                         运行中
                       </span>
                     )}
@@ -1311,7 +1311,7 @@ export function AppPathsPanel() {
                   value={codexPath}
                   onChange={(e) => setCodexPath(e.target.value)}
                   placeholder="例如: C:\Users\Administrator\AppData\Roaming\npm\codex.cmd"
-                  className="w-full text-xs font-mono px-3 py-2 rounded-xl border border-slate-200 dark:border-white/10 bg-slate-50/70 dark:bg-black/30 text-slate-800 dark:text-gray-200 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  className="w-full text-xs font-mono px-3 py-2 rounded-xl border border-slate-200 dark:border-white/10 bg-slate-50/70 dark:bg-black/30 text-slate-800 dark:text-gray-200 focus:outline-none focus:border-black dark:focus:border-white focus:ring-1 focus:ring-black/20 dark:focus:ring-white/20"
                 />
               </div>
 
@@ -1326,8 +1326,8 @@ export function AppPathsPanel() {
                   className={cn(
                     "px-2.5 py-1.5 rounded-lg border text-xs font-medium flex items-center gap-1 cursor-pointer transition-colors",
                     expandedCardInstall === "codex"
-                      ? "bg-blue-600 text-white border-blue-600 shadow-2xs"
-                      : "border-blue-200 text-blue-700 bg-blue-50 hover:bg-blue-100 dark:border-blue-500/30 dark:bg-blue-500/10 dark:text-blue-300",
+                      ? "bg-black text-white border-black dark:bg-white dark:text-black dark:border-white shadow-2xs"
+                      : "border-slate-200 text-slate-700 bg-white hover:bg-slate-50 dark:border-white/10 dark:bg-white/5 dark:text-gray-300 dark:hover:bg-white/10",
                   )}
                   title="查看/展开 Codex CLI 手动安装与更新命令"
                 >
@@ -1344,7 +1344,7 @@ export function AppPathsPanel() {
                   type="button"
                   onClick={() => void handleDetectSingle("codex")}
                   disabled={detectingType === "codex"}
-                  className="px-2.5 py-1.5 rounded-lg border border-blue-200 text-blue-700 bg-blue-50 hover:bg-blue-100 dark:border-blue-500/30 dark:bg-blue-500/10 dark:text-blue-300 text-xs font-medium flex items-center gap-1 cursor-pointer transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+                  className="px-2.5 py-1.5 rounded-lg border border-slate-200 text-slate-700 bg-white hover:bg-slate-50 dark:border-white/10 dark:bg-white/5 dark:text-gray-300 dark:hover:bg-white/10 text-xs font-medium flex items-center gap-1 cursor-pointer transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
                   title="自动探测 Codex CLI 路径"
                 >
                   <Search
@@ -1368,7 +1368,7 @@ export function AppPathsPanel() {
                   type="button"
                   onClick={() => void handleLaunchOrRestart("codex")}
                   disabled={launchingType === "codex"}
-                  className="px-2.5 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs font-medium flex items-center gap-1 cursor-pointer transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+                  className="px-2.5 py-1.5 rounded-lg bg-black hover:bg-neutral-800 text-white dark:bg-white dark:hover:bg-neutral-200 dark:text-black text-xs font-medium flex items-center gap-1 cursor-pointer transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
                   title="在独立终端窗口启动/重启测试"
                 >
                   <Play
@@ -1384,13 +1384,13 @@ export function AppPathsPanel() {
             {expandedCardInstall === "codex" && (
               <div
                 ref={codexDrawerRef}
-                className="p-3.5 rounded-xl border border-blue-200/80 dark:border-blue-500/20 bg-blue-50/40 dark:bg-blue-950/20 space-y-3 animate-fade-in"
+                className="p-3.5 rounded-xl border border-neutral-200 dark:border-white/10 bg-neutral-50/50 dark:bg-white/5 space-y-3 animate-fade-in"
               >
                 <div className="flex flex-wrap items-center justify-between gap-2">
-                  <div className="flex items-center gap-1.5 text-xs font-semibold text-blue-900 dark:text-blue-300">
+                  <div className="flex items-center gap-1.5 text-xs font-semibold text-black dark:text-white">
                     <Terminal
                       size={13}
-                      className="text-blue-600 dark:text-blue-400"
+                      className="text-black dark:text-white"
                     />
                     <span>Codex CLI 手动安装与版本更新</span>
                   </div>
@@ -1406,8 +1406,8 @@ export function AppPathsPanel() {
                       className={cn(
                         "px-2.5 py-1 rounded-lg text-[11px] font-medium transition-all cursor-pointer flex items-center gap-1",
                         codexSelectedInstallOption === opt.id
-                          ? "bg-blue-600 text-white shadow-xs"
-                          : "bg-white/80 dark:bg-white/5 border border-blue-200/60 dark:border-white/10 text-slate-700 dark:text-gray-300 hover:bg-blue-100/50 dark:hover:bg-white/10",
+                          ? "bg-black text-white dark:bg-white dark:text-black shadow-xs"
+                          : "bg-white dark:bg-white/5 border border-slate-200 dark:border-white/10 text-slate-700 dark:text-gray-300 hover:bg-slate-50 dark:hover:bg-white/10",
                       )}
                     >
                       <span>{opt.name}</span>
@@ -1416,8 +1416,8 @@ export function AppPathsPanel() {
                           className={cn(
                             "text-[9px] px-1 py-0.2 rounded",
                             codexSelectedInstallOption === opt.id
-                              ? "bg-blue-700 text-white"
-                              : "bg-blue-100 text-blue-700 dark:bg-blue-500/20 dark:text-blue-300",
+                              ? "bg-neutral-800 text-white dark:bg-neutral-200 dark:text-black"
+                              : "bg-neutral-100 text-neutral-800 dark:bg-white/10 dark:text-neutral-300",
                           )}
                         >
                           {opt.badge}
@@ -1440,7 +1440,7 @@ export function AppPathsPanel() {
                       </p>
 
                       <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 p-2 rounded-xl bg-slate-900 dark:bg-black/60 border border-slate-700/60 text-slate-100">
-                        <div className="flex-1 font-mono text-xs overflow-x-auto py-1 px-1.5 text-blue-300 select-text">
+                        <div className="flex-1 font-mono text-xs overflow-x-auto py-1 px-1.5 text-neutral-200 select-text">
                           <code>{selected.command}</code>
                         </div>
 
@@ -1479,7 +1479,7 @@ export function AppPathsPanel() {
                               )
                             }
                             disabled={runningCmd === selected.command}
-                            className="px-2.5 py-1 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-[11px] font-medium flex items-center gap-1 transition-colors cursor-pointer disabled:opacity-60"
+                            className="px-2.5 py-1 rounded-lg bg-black hover:bg-neutral-800 text-white dark:bg-white dark:hover:bg-neutral-200 dark:text-black text-[11px] font-medium flex items-center gap-1 transition-colors cursor-pointer disabled:opacity-60"
                             title="在独立 CMD 窗口中运行此安装命令"
                           >
                             <Play
@@ -1497,7 +1497,7 @@ export function AppPathsPanel() {
                             type="button"
                             onClick={() => void handleDetectSingle("codex")}
                             disabled={detectingType === "codex"}
-                            className="px-2.5 py-1 rounded-lg border border-blue-400/40 hover:bg-blue-500/20 text-blue-300 text-[11px] font-medium flex items-center gap-1 transition-colors cursor-pointer disabled:opacity-60"
+                            className="px-2.5 py-1 rounded-lg border border-neutral-300 hover:bg-neutral-100 text-black dark:border-white/20 dark:hover:bg-white/10 dark:text-white text-[11px] font-medium flex items-center gap-1 transition-colors cursor-pointer disabled:opacity-60"
                             title="安装完成后立即重新探测路径"
                           >
                             <Search
@@ -1517,16 +1517,16 @@ export function AppPathsPanel() {
             )}
 
             {codexInfo?.extra_info && (
-              <div className="text-[11px] text-blue-600 dark:text-blue-400 bg-blue-50/50 dark:bg-blue-500/10 px-2.5 py-1 rounded-lg border border-blue-100 dark:border-blue-500/20">
+              <div className="text-[11px] text-neutral-800 dark:text-neutral-200 bg-neutral-100/70 dark:bg-white/5 px-2.5 py-1 rounded-lg border border-neutral-200 dark:border-white/10">
                 💡 {codexInfo.extra_info}
               </div>
             )}
 
             <div className="text-[11px] text-slate-500 dark:text-gray-400 bg-slate-50/60 dark:bg-white/[0.03] px-2.5 py-1.5 rounded-lg border border-slate-200/60 dark:border-white/5 flex items-start gap-1.5">
-              <span className="text-blue-500 font-bold">ℹ️</span>
+              <span className="text-black dark:text-white font-bold">ℹ️</span>
               <span>
                 Windows 提示：若在管理员终端中手动运行 Codex CLI，请使用{" "}
-                <code className="px-1 py-0.5 rounded bg-slate-200/60 dark:bg-white/10 font-mono text-[10px] text-blue-600 dark:text-blue-400">
+                <code className="px-1 py-0.5 rounded bg-slate-200/60 dark:bg-white/10 font-mono text-[10px] text-black dark:text-white">
                   codex --no-daemon
                 </code>
                 （本软件“测试启动”已自动附带该参数）。
@@ -1537,13 +1537,13 @@ export function AppPathsPanel() {
 
         {/* 卡片 3: ChatGPT 桌面客户端 */}
         <SpotlightCard
-          className="p-5 rounded-2xl border border-slate-200/90 dark:border-white/10 bg-white/80 dark:bg-[#121524]/60 shadow-sm dark:shadow-none flex-shrink-0 min-h-fit"
-          spotlightColor="rgba(16, 185, 129, 0.12)"
+          className="p-5 rounded-2xl border border-slate-200/90 dark:border-white/10 bg-white/80 dark:bg-black/60 shadow-sm dark:shadow-none flex-shrink-0 min-h-fit"
+          spotlightColor="rgba(255, 255, 255, 0.08)"
         >
           <div className="flex flex-col gap-3">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2.5">
-                <div className="w-8 h-8 rounded-lg bg-emerald-100 text-emerald-600 dark:bg-emerald-500/20 dark:text-emerald-400 flex items-center justify-center flex-shrink-0">
+                <div className="w-8 h-8 rounded-lg bg-neutral-100 text-black dark:bg-white/10 dark:text-white flex items-center justify-center flex-shrink-0">
                   <OpenAIIcon size={16} />
                 </div>
                 <div>
@@ -1552,7 +1552,7 @@ export function AppPathsPanel() {
                       ChatGPT 桌面客户端路径
                     </span>
                     {chatgptRunning && (
-                      <span className="inline-flex items-center gap-1 text-[10px] font-medium px-2 py-0.2 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 dark:bg-emerald-500/10 dark:text-emerald-300 dark:border-emerald-500/30">
+                      <span className="inline-flex items-center gap-1 text-[10px] font-medium px-2 py-0.2 rounded-full bg-neutral-100 text-neutral-800 border border-neutral-200 dark:bg-white/10 dark:text-neutral-200 dark:border-white/10">
                         <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
                         运行中
                       </span>
@@ -1587,7 +1587,7 @@ export function AppPathsPanel() {
                   value={chatgptPath}
                   onChange={(e) => setChatgptPath(e.target.value)}
                   placeholder="例如: C:\Program Files\WindowsApps\OpenAI.Codex_...\app\ChatGPT.exe"
-                  className="w-full text-xs font-mono px-3 py-2 rounded-xl border border-slate-200 dark:border-white/10 bg-slate-50/70 dark:bg-black/30 text-slate-800 dark:text-gray-200 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                  className="w-full text-xs font-mono px-3 py-2 rounded-xl border border-slate-200 dark:border-white/10 bg-slate-50/70 dark:bg-black/30 text-slate-800 dark:text-gray-200 focus:outline-none focus:border-black dark:focus:border-white focus:ring-1 focus:ring-black/20 dark:focus:ring-white/20"
                 />
               </div>
 
@@ -1603,8 +1603,8 @@ export function AppPathsPanel() {
                   className={cn(
                     "px-2.5 py-1.5 rounded-lg border text-xs font-medium flex items-center gap-1 cursor-pointer transition-colors",
                     expandedCardInstall === "chatgpt"
-                      ? "bg-emerald-600 text-white border-emerald-600 shadow-2xs"
-                      : "border-emerald-200 text-emerald-700 bg-emerald-50 hover:bg-emerald-100 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-300",
+                      ? "bg-black text-white border-black dark:bg-white dark:text-black dark:border-white shadow-2xs"
+                      : "border-slate-200 text-slate-700 bg-white hover:bg-slate-50 dark:border-white/10 dark:bg-white/5 dark:text-gray-300 dark:hover:bg-white/10",
                   )}
                   title="获取与安装 ChatGPT 桌面客户端 (微软应用商店 / WinGet / 官网)"
                 >
@@ -1621,7 +1621,7 @@ export function AppPathsPanel() {
                   type="button"
                   onClick={() => void handleDetectSingle("chatgpt")}
                   disabled={detectingType === "chatgpt"}
-                  className="px-2.5 py-1.5 rounded-lg border border-emerald-200 text-emerald-700 bg-emerald-50 hover:bg-emerald-100 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-300 text-xs font-medium flex items-center gap-1 cursor-pointer transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+                  className="px-2.5 py-1.5 rounded-lg border border-slate-200 text-slate-700 bg-white hover:bg-slate-50 dark:border-white/10 dark:bg-white/5 dark:text-gray-300 dark:hover:bg-white/10 text-xs font-medium flex items-center gap-1 cursor-pointer transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
                   title="自动探测 ChatGPT 客户端安装路径"
                 >
                   <Search
@@ -1647,7 +1647,7 @@ export function AppPathsPanel() {
                   type="button"
                   onClick={() => void handleLaunchOrRestart("chatgpt")}
                   disabled={launchingType === "chatgpt"}
-                  className="px-2.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-medium flex items-center gap-1 cursor-pointer transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+                  className="px-2.5 py-1.5 rounded-lg bg-black hover:bg-neutral-800 text-white dark:bg-white dark:hover:bg-neutral-200 dark:text-black text-xs font-medium flex items-center gap-1 cursor-pointer transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
                   title="静默重启或拉起客户端"
                 >
                   <Play
@@ -1665,13 +1665,13 @@ export function AppPathsPanel() {
             {expandedCardInstall === "chatgpt" && (
               <div
                 ref={chatgptDrawerRef}
-                className="p-3.5 rounded-xl border border-emerald-200/80 dark:border-emerald-500/20 bg-emerald-50/40 dark:bg-emerald-950/20 space-y-3 animate-fade-in"
+                className="p-3.5 rounded-xl border border-neutral-200 dark:border-white/10 bg-neutral-50/50 dark:bg-white/5 space-y-3 animate-fade-in"
               >
                 <div className="flex flex-wrap items-center justify-between gap-2">
-                  <div className="flex items-center gap-1.5 text-xs font-semibold text-emerald-900 dark:text-emerald-300">
+                  <div className="flex items-center gap-1.5 text-xs font-semibold text-black dark:text-white">
                     <DownloadCloud
                       size={13}
-                      className="text-emerald-600 dark:text-emerald-400"
+                      className="text-black dark:text-white"
                     />
                     <span>ChatGPT 官方客户端安装渠道 (Windows x64)</span>
                   </div>
@@ -1683,17 +1683,17 @@ export function AppPathsPanel() {
                 {/* 3 大官方安装渠道展示网格 */}
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-2.5">
                   {/* 方式 1: 微软应用商店 (推荐) */}
-                  <div className="p-3 rounded-xl bg-white/90 dark:bg-[#151928] border border-emerald-200/80 dark:border-emerald-500/20 flex flex-col justify-between gap-3 shadow-2xs">
+                  <div className="p-3 rounded-xl bg-white dark:bg-black/40 border border-neutral-200 dark:border-white/10 flex flex-col justify-between gap-3 shadow-2xs">
                     <div>
                       <div className="flex items-center justify-between gap-1 mb-1.5">
                         <span className="font-semibold text-xs text-slate-800 dark:text-gray-100 flex items-center gap-1.5">
                           <Store
                             size={13}
-                            className="text-emerald-600 dark:text-emerald-400 flex-shrink-0"
+                            className="text-black dark:text-white flex-shrink-0"
                           />
                           微软应用商店
                         </span>
-                        <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-300 font-semibold">
+                        <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-neutral-100 text-neutral-800 dark:bg-white/10 dark:text-neutral-200 font-semibold">
                           推荐
                         </span>
                       </div>
@@ -1704,7 +1704,7 @@ export function AppPathsPanel() {
                     <button
                       type="button"
                       onClick={() => void handleChatgptInstall("store")}
-                      className="w-full py-1.5 px-2.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-medium flex items-center justify-center gap-1.5 transition-colors cursor-pointer shadow-2xs"
+                      className="w-full py-1.5 px-2.5 rounded-lg bg-black hover:bg-neutral-800 text-white dark:bg-white dark:hover:bg-neutral-200 dark:text-black text-xs font-medium flex items-center justify-center gap-1.5 transition-colors cursor-pointer shadow-2xs"
                     >
                       <ExternalLink size={12} />
                       <span>打开微软应用商店</span>
@@ -1712,17 +1712,17 @@ export function AppPathsPanel() {
                   </div>
 
                   {/* 方式 2: WinGet 终端静默安装 */}
-                  <div className="p-3 rounded-xl bg-white/90 dark:bg-[#151928] border border-blue-200/80 dark:border-blue-500/20 flex flex-col justify-between gap-3 shadow-2xs">
+                  <div className="p-3 rounded-xl bg-white dark:bg-black/40 border border-neutral-200 dark:border-white/10 flex flex-col justify-between gap-3 shadow-2xs">
                     <div>
                       <div className="flex items-center justify-between gap-1 mb-1.5">
                         <span className="font-semibold text-xs text-slate-800 dark:text-gray-100 flex items-center gap-1.5">
                           <Terminal
                             size={13}
-                            className="text-blue-600 dark:text-blue-400 flex-shrink-0"
+                            className="text-black dark:text-white flex-shrink-0"
                           />
                           WinGet 静默安装
                         </span>
-                        <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-blue-100 text-blue-700 dark:bg-blue-500/20 dark:text-blue-300 font-medium font-mono">
+                        <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-neutral-100 text-neutral-800 dark:bg-white/10 dark:text-neutral-200 font-medium font-mono">
                           CLI
                         </span>
                       </div>
@@ -1738,7 +1738,7 @@ export function AppPathsPanel() {
                           runningCmd ===
                           "winget install --id=9NT1R1C2HH7J --source=msstore --accept-package-agreements --accept-source-agreements"
                         }
-                        className="flex-1 py-1.5 px-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs font-medium flex items-center justify-center gap-1 transition-colors cursor-pointer disabled:opacity-60"
+                        className="flex-1 py-1.5 px-2 rounded-lg bg-black hover:bg-neutral-800 text-white dark:bg-white dark:hover:bg-neutral-200 dark:text-black text-xs font-medium flex items-center justify-center gap-1 transition-colors cursor-pointer disabled:opacity-60"
                       >
                         <Play
                           size={11}
@@ -1773,7 +1773,7 @@ export function AppPathsPanel() {
                   </div>
 
                   {/* 方式 3: OpenAI 官方下载站 */}
-                  <div className="p-3 rounded-xl bg-white/90 dark:bg-[#151928] border border-slate-200/90 dark:border-white/10 flex flex-col justify-between gap-3 shadow-2xs">
+                  <div className="p-3 rounded-xl bg-white dark:bg-black/40 border border-slate-200/90 dark:border-white/10 flex flex-col justify-between gap-3 shadow-2xs">
                     <div>
                       <div className="flex items-center justify-between gap-1 mb-1.5">
                         <span className="font-semibold text-xs text-slate-800 dark:text-gray-100 flex items-center gap-1.5">
@@ -1802,7 +1802,7 @@ export function AppPathsPanel() {
                   </div>
                 </div>
 
-                <div className="flex flex-wrap items-center justify-between gap-2 pt-1 border-t border-emerald-200/40 dark:border-white/5 text-[11px] text-slate-500 dark:text-gray-400">
+                <div className="flex flex-wrap items-center justify-between gap-2 pt-1 border-t border-neutral-200 dark:border-white/10 text-[11px] text-slate-500 dark:text-gray-400">
                   <span>
                     提示：安装完成后，点击上方【探测】按钮即可自动绑定 ChatGPT 启动程序。
                   </span>
@@ -1810,7 +1810,7 @@ export function AppPathsPanel() {
                     type="button"
                     onClick={() => void handleDetectSingle("chatgpt")}
                     disabled={detectingType === "chatgpt"}
-                    className="text-emerald-600 dark:text-emerald-400 hover:underline flex items-center gap-1 font-medium cursor-pointer"
+                    className="text-black dark:text-white hover:underline flex items-center gap-1 font-medium cursor-pointer"
                   >
                     <Search
                       size={11}
@@ -1823,7 +1823,7 @@ export function AppPathsPanel() {
             )}
 
             {chatgptInfo?.extra_info && (
-              <div className="text-[11px] text-emerald-600 dark:text-emerald-400 bg-emerald-50/50 dark:bg-emerald-500/10 px-2.5 py-1 rounded-lg border border-emerald-100 dark:border-emerald-500/20">
+              <div className="text-[11px] text-neutral-800 dark:text-neutral-200 bg-neutral-100/70 dark:bg-white/5 px-2.5 py-1 rounded-lg border border-neutral-200 dark:border-white/10">
                 💡 {chatgptInfo.extra_info}
               </div>
             )}
@@ -1832,13 +1832,13 @@ export function AppPathsPanel() {
 
         {/* 卡片 4: WorkBuddy 客户端 */}
         <SpotlightCard
-          className="p-5 rounded-2xl border border-slate-200/90 dark:border-white/10 bg-white/80 dark:bg-[#121524]/60 shadow-sm dark:shadow-none flex-shrink-0 min-h-fit"
-          spotlightColor="rgba(16, 185, 129, 0.12)"
+          className="p-5 rounded-2xl border border-slate-200/90 dark:border-white/10 bg-white/80 dark:bg-black/60 shadow-sm dark:shadow-none flex-shrink-0 min-h-fit"
+          spotlightColor="rgba(255, 255, 255, 0.08)"
         >
           <div className="flex flex-col gap-3">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2.5">
-                <div className="w-8 h-8 rounded-lg bg-emerald-100 text-emerald-600 dark:bg-emerald-500/20 dark:text-emerald-400 flex items-center justify-center flex-shrink-0">
+                <div className="w-8 h-8 rounded-lg bg-neutral-100 text-black dark:bg-white/10 dark:text-white flex items-center justify-center flex-shrink-0">
                   <WorkbuddyIcon size={16} />
                 </div>
                 <div>
@@ -1847,7 +1847,7 @@ export function AppPathsPanel() {
                       WorkBuddy 客户端路径
                     </span>
                     {workbuddyRunning && (
-                      <span className="inline-flex items-center gap-1 text-[10px] font-medium px-2 py-0.2 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 dark:bg-emerald-500/10 dark:text-emerald-300 dark:border-emerald-500/30">
+                      <span className="inline-flex items-center gap-1 text-[10px] font-medium px-2 py-0.2 rounded-full bg-neutral-100 text-neutral-800 border border-neutral-200 dark:bg-white/10 dark:text-neutral-200 dark:border-white/10">
                         <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
                         运行中
                       </span>
@@ -1881,7 +1881,7 @@ export function AppPathsPanel() {
                   type="text"
                   value={workbuddyPath}
                   onChange={(e) => setWorkbuddyPath(e.target.value)}
-                  className="w-full text-xs font-mono px-3 py-2 rounded-xl border border-slate-200 dark:border-white/10 bg-slate-50/70 dark:bg-black/30 text-slate-800 dark:text-gray-200 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                  className="w-full text-xs font-mono px-3 py-2 rounded-xl border border-slate-200 dark:border-white/10 bg-slate-50/70 dark:bg-black/30 text-slate-800 dark:text-gray-200 focus:outline-none focus:border-black dark:focus:border-white focus:ring-1 focus:ring-black/20 dark:focus:ring-white/20"
                 />
               </div>
 
@@ -1897,7 +1897,7 @@ export function AppPathsPanel() {
                           "WorkBuddy",
                         )
                       }
-                      className="px-2.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-medium flex items-center gap-1 cursor-pointer transition-colors shadow-2xs"
+                      className="px-2.5 py-1.5 rounded-lg bg-black hover:bg-neutral-800 text-white dark:bg-white dark:hover:bg-neutral-200 dark:text-black text-xs font-medium flex items-center gap-1 cursor-pointer transition-colors shadow-2xs"
                       title="立即运行已下载的 WorkBuddy 安装向导"
                     >
                       <Play size={12} />
@@ -1918,9 +1918,9 @@ export function AppPathsPanel() {
                   <button
                     type="button"
                     disabled
-                    className="px-2.5 py-1.5 rounded-lg border border-emerald-400 text-emerald-700 bg-emerald-50 dark:border-emerald-500/40 dark:bg-emerald-500/10 dark:text-emerald-300 text-xs font-medium flex items-center gap-1.5 cursor-wait"
+                    className="px-2.5 py-1.5 rounded-lg border border-neutral-300 text-neutral-800 bg-neutral-100 dark:border-white/20 dark:bg-white/10 dark:text-neutral-200 text-xs font-medium flex items-center gap-1.5 cursor-wait"
                   >
-                    <Loader2 size={12} className="animate-spin text-emerald-500" />
+                    <Loader2 size={12} className="animate-spin text-black dark:text-white" />
                     <span>
                       下载中{" "}
                       {Math.round(downloadProgress["workbuddy"]?.percent || 0)}%
@@ -1931,7 +1931,7 @@ export function AppPathsPanel() {
                     type="button"
                     onClick={() => void handleDownloadPackage("workbuddy")}
                     disabled={Boolean(downloadingApps["workbuddy"])}
-                    className="px-2.5 py-1.5 rounded-lg border border-emerald-200 text-emerald-700 bg-emerald-50 hover:bg-emerald-100 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-300 text-xs font-medium flex items-center gap-1 cursor-pointer transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+                    className="px-2.5 py-1.5 rounded-lg border border-slate-200 text-slate-700 bg-white hover:bg-slate-50 dark:border-white/10 dark:bg-white/5 dark:text-gray-300 dark:hover:bg-white/10 text-xs font-medium flex items-center gap-1 cursor-pointer transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
                     title="自动嗅探并下载 WorkBuddy 官方最新 Windows 安装包"
                   >
                     <DownloadCloud size={12} />
@@ -1943,7 +1943,7 @@ export function AppPathsPanel() {
                   type="button"
                   onClick={() => void handleDetectSingle("workbuddy")}
                   disabled={detectingType === "workbuddy"}
-                  className="px-2.5 py-1.5 rounded-lg border border-emerald-200 text-emerald-700 bg-emerald-50 hover:bg-emerald-100 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-300 text-xs font-medium flex items-center gap-1 cursor-pointer transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+                  className="px-2.5 py-1.5 rounded-lg border border-slate-200 text-slate-700 bg-white hover:bg-slate-50 dark:border-white/10 dark:bg-white/5 dark:text-gray-300 dark:hover:bg-white/10 text-xs font-medium flex items-center gap-1 cursor-pointer transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
                   title="自动探测 WorkBuddy 客户端安装路径"
                 >
                   <Search
@@ -1969,7 +1969,7 @@ export function AppPathsPanel() {
                   type="button"
                   onClick={() => void handleLaunchOrRestart("workbuddy")}
                   disabled={launchingType === "workbuddy"}
-                  className="px-2.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-medium flex items-center gap-1 cursor-pointer transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+                  className="px-2.5 py-1.5 rounded-lg bg-black hover:bg-neutral-800 text-white dark:bg-white dark:hover:bg-neutral-200 dark:text-black text-xs font-medium flex items-center gap-1 cursor-pointer transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
                   title="静默重启或拉起客户端"
                 >
                   <Play
@@ -1985,12 +1985,12 @@ export function AppPathsPanel() {
 
             {/* WorkBuddy 下载进度展示条 */}
             {downloadingApps["workbuddy"] && downloadProgress["workbuddy"] && (
-              <div className="p-2.5 rounded-xl border border-emerald-200/80 dark:border-emerald-500/20 bg-emerald-50/50 dark:bg-emerald-950/20 space-y-1.5 animate-fade-in">
+              <div className="p-2.5 rounded-xl border border-neutral-200 dark:border-white/10 bg-neutral-100/50 dark:bg-white/5 space-y-1.5 animate-fade-in">
                 <div className="flex items-center justify-between text-[11px]">
-                  <span className="font-mono text-emerald-800 dark:text-emerald-300 truncate max-w-[260px]">
+                  <span className="font-mono text-black dark:text-white truncate max-w-[260px]">
                     {downloadProgress["workbuddy"].fileName}
                   </span>
-                  <span className="font-mono text-emerald-700 dark:text-emerald-400 font-semibold">
+                  <span className="font-mono text-black dark:text-white font-semibold">
                     {formatBytes(downloadProgress["workbuddy"].downloaded)} /{" "}
                     {formatBytes(downloadProgress["workbuddy"].totalBytes)} (
                     {Math.round(downloadProgress["workbuddy"].percent)}%)
@@ -1998,7 +1998,7 @@ export function AppPathsPanel() {
                 </div>
                 <div className="w-full h-1.5 rounded-full bg-slate-200 dark:bg-white/10 overflow-hidden">
                   <div
-                    className="h-full bg-emerald-500 rounded-full transition-all duration-200 ease-out"
+                    className="h-full bg-black dark:bg-white rounded-full transition-all duration-200 ease-out"
                     style={{
                       width: `${Math.max(5, downloadProgress["workbuddy"].percent)}%`,
                     }}
@@ -2008,7 +2008,7 @@ export function AppPathsPanel() {
             )}
 
             {downloadedFiles["workbuddy"] && (
-              <div className="text-[11px] text-emerald-700 dark:text-emerald-300 bg-emerald-50/80 dark:bg-emerald-500/10 px-2.5 py-1.5 rounded-lg border border-emerald-200/80 dark:border-emerald-500/20 flex items-center justify-between animate-fade-in">
+              <div className="text-[11px] text-neutral-800 dark:text-neutral-200 bg-neutral-100/80 dark:bg-white/10 px-2.5 py-1.5 rounded-lg border border-neutral-200 dark:border-white/10 flex items-center justify-between animate-fade-in">
                 <div className="flex items-center gap-1.5">
                   <span>🎉</span>
                   <span>
@@ -2019,7 +2019,7 @@ export function AppPathsPanel() {
             )}
 
             {workbuddyInfo?.extra_info && (
-              <div className="text-[11px] text-emerald-600 dark:text-emerald-400 bg-emerald-50/50 dark:bg-emerald-500/10 px-2.5 py-1 rounded-lg border border-emerald-100 dark:border-emerald-500/20">
+              <div className="text-[11px] text-neutral-800 dark:text-neutral-200 bg-neutral-100/70 dark:bg-white/5 px-2.5 py-1 rounded-lg border border-neutral-200 dark:border-white/10">
                 💡 {workbuddyInfo.extra_info}
               </div>
             )}
@@ -2028,13 +2028,13 @@ export function AppPathsPanel() {
 
         {/* 卡片 5: Accio Work 桌面客户端 */}
         <SpotlightCard
-          className="p-5 rounded-2xl border border-slate-200/90 dark:border-white/10 bg-white/80 dark:bg-[#121524]/60 shadow-sm dark:shadow-none flex-shrink-0 min-h-fit"
-          spotlightColor="rgba(255, 106, 0, 0.12)"
+          className="p-5 rounded-2xl border border-slate-200/90 dark:border-white/10 bg-white/80 dark:bg-black/60 shadow-sm dark:shadow-none flex-shrink-0 min-h-fit"
+          spotlightColor="rgba(255, 255, 255, 0.08)"
         >
           <div className="flex flex-col gap-3">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2.5">
-                <div className="w-8 h-8 rounded-lg bg-orange-100 text-orange-600 dark:bg-orange-500/20 dark:text-orange-400 flex items-center justify-center flex-shrink-0">
+                <div className="w-8 h-8 rounded-lg bg-neutral-100 text-black dark:bg-white/10 dark:text-white flex items-center justify-center flex-shrink-0">
                   <AccioWorkIcon size={16} />
                 </div>
                 <div>
@@ -2043,8 +2043,8 @@ export function AppPathsPanel() {
                       Accio Work 桌面客户端路径
                     </span>
                     {accioRunning && (
-                      <span className="inline-flex items-center gap-1 text-[10px] font-medium px-2 py-0.2 rounded-full bg-orange-50 text-orange-700 border border-orange-200 dark:bg-orange-500/10 dark:text-orange-300 dark:border-orange-500/30">
-                        <span className="w-1.5 h-1.5 rounded-full bg-orange-500 animate-pulse" />
+                      <span className="inline-flex items-center gap-1 text-[10px] font-medium px-2 py-0.2 rounded-full bg-neutral-100 text-neutral-800 border border-neutral-200 dark:bg-white/10 dark:text-neutral-200 dark:border-white/10">
+                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
                         运行中
                       </span>
                     )}
@@ -2078,7 +2078,7 @@ export function AppPathsPanel() {
                   value={accioPath}
                   onChange={(e) => setAccioPath(e.target.value)}
                   placeholder="例如: C:\Users\Administrator\AppData\Local\Programs\Accio Work\Accio Work.exe"
-                  className="w-full text-xs font-mono px-3 py-2 rounded-xl border border-slate-200 dark:border-white/10 bg-slate-50/70 dark:bg-black/30 text-slate-800 dark:text-gray-200 focus:outline-none focus:ring-1 focus:ring-orange-500"
+                  className="w-full text-xs font-mono px-3 py-2 rounded-xl border border-slate-200 dark:border-white/10 bg-slate-50/70 dark:bg-black/30 text-slate-800 dark:text-gray-200 focus:outline-none focus:border-black dark:focus:border-white focus:ring-1 focus:ring-black/20 dark:focus:ring-white/20"
                 />
               </div>
 
@@ -2094,7 +2094,7 @@ export function AppPathsPanel() {
                           "Accio Work",
                         )
                       }
-                      className="px-2.5 py-1.5 rounded-lg bg-orange-600 hover:bg-orange-700 text-white text-xs font-medium flex items-center gap-1 cursor-pointer transition-colors shadow-2xs"
+                      className="px-2.5 py-1.5 rounded-lg bg-black hover:bg-neutral-800 text-white dark:bg-white dark:hover:bg-neutral-200 dark:text-black text-xs font-medium flex items-center gap-1 cursor-pointer transition-colors shadow-2xs"
                       title="立即运行已下载的 Accio Work 安装向导"
                     >
                       <Play size={12} />
@@ -2115,9 +2115,9 @@ export function AppPathsPanel() {
                   <button
                     type="button"
                     disabled
-                    className="px-2.5 py-1.5 rounded-lg border border-orange-400 text-orange-700 bg-orange-50 dark:border-orange-500/40 dark:bg-orange-500/10 dark:text-orange-300 text-xs font-medium flex items-center gap-1.5 cursor-wait"
+                    className="px-2.5 py-1.5 rounded-lg border border-neutral-300 text-neutral-800 bg-neutral-100 dark:border-white/20 dark:bg-white/10 dark:text-neutral-200 text-xs font-medium flex items-center gap-1.5 cursor-wait"
                   >
-                    <Loader2 size={12} className="animate-spin text-orange-500" />
+                    <Loader2 size={12} className="animate-spin text-black dark:text-white" />
                     <span>
                       下载中{" "}
                       {Math.round(downloadProgress["acciowork"]?.percent || 0)}%
@@ -2128,7 +2128,7 @@ export function AppPathsPanel() {
                     type="button"
                     onClick={() => void handleDownloadPackage("acciowork")}
                     disabled={Boolean(downloadingApps["acciowork"])}
-                    className="px-2.5 py-1.5 rounded-lg border border-orange-200 text-orange-700 bg-orange-50 hover:bg-orange-100 dark:border-orange-500/30 dark:bg-orange-500/10 dark:text-orange-300 text-xs font-medium flex items-center gap-1 cursor-pointer transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+                    className="px-2.5 py-1.5 rounded-lg border border-slate-200 text-slate-700 bg-white hover:bg-slate-50 dark:border-white/10 dark:bg-white/5 dark:text-gray-300 dark:hover:bg-white/10 text-xs font-medium flex items-center gap-1 cursor-pointer transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
                     title="自动嗅探并下载 Accio Work 官方最新 Windows 安装包"
                   >
                     <DownloadCloud size={12} />
@@ -2140,7 +2140,7 @@ export function AppPathsPanel() {
                   type="button"
                   onClick={() => void handleDetectSingle("acciowork")}
                   disabled={detectingType === "acciowork"}
-                  className="px-2.5 py-1.5 rounded-lg border border-orange-200 text-orange-700 bg-orange-50 hover:bg-orange-100 dark:border-orange-500/30 dark:bg-orange-500/10 dark:text-orange-300 text-xs font-medium flex items-center gap-1 cursor-pointer transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+                  className="px-2.5 py-1.5 rounded-lg border border-slate-200 text-slate-700 bg-white hover:bg-slate-50 dark:border-white/10 dark:bg-white/5 dark:text-gray-300 dark:hover:bg-white/10 text-xs font-medium flex items-center gap-1 cursor-pointer transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
                   title="自动探测 Accio Work 客户端安装路径"
                 >
                   <Search
@@ -2166,7 +2166,7 @@ export function AppPathsPanel() {
                   type="button"
                   onClick={() => void handleLaunchOrRestart("acciowork")}
                   disabled={launchingType === "acciowork"}
-                  className="px-2.5 py-1.5 rounded-lg bg-orange-600 hover:bg-orange-700 text-white text-xs font-medium flex items-center gap-1 cursor-pointer transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+                  className="px-2.5 py-1.5 rounded-lg bg-black hover:bg-neutral-800 text-white dark:bg-white dark:hover:bg-neutral-200 dark:text-black text-xs font-medium flex items-center gap-1 cursor-pointer transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
                   title="启动或重启 Accio Work 客户端 (自动注入本地网关环境)"
                 >
                   <Play
@@ -2182,12 +2182,12 @@ export function AppPathsPanel() {
 
             {/* Accio Work 下载进度展示条 */}
             {downloadingApps["acciowork"] && downloadProgress["acciowork"] && (
-              <div className="p-2.5 rounded-xl border border-orange-200/80 dark:border-orange-500/20 bg-orange-50/50 dark:bg-orange-950/20 space-y-1.5 animate-fade-in">
+              <div className="p-2.5 rounded-xl border border-neutral-200 dark:border-white/10 bg-neutral-100/50 dark:bg-white/5 space-y-1.5 animate-fade-in">
                 <div className="flex items-center justify-between text-[11px]">
-                  <span className="font-mono text-orange-800 dark:text-orange-300 truncate max-w-[260px]">
+                  <span className="font-mono text-black dark:text-white truncate max-w-[260px]">
                     {downloadProgress["acciowork"].fileName}
                   </span>
-                  <span className="font-mono text-orange-700 dark:text-orange-400 font-semibold">
+                  <span className="font-mono text-black dark:text-white font-semibold">
                     {formatBytes(downloadProgress["acciowork"].downloaded)} /{" "}
                     {formatBytes(downloadProgress["acciowork"].totalBytes)} (
                     {Math.round(downloadProgress["acciowork"].percent)}%)
@@ -2195,7 +2195,7 @@ export function AppPathsPanel() {
                 </div>
                 <div className="w-full h-1.5 rounded-full bg-slate-200 dark:bg-white/10 overflow-hidden">
                   <div
-                    className="h-full bg-orange-500 rounded-full transition-all duration-200 ease-out"
+                    className="h-full bg-black dark:bg-white rounded-full transition-all duration-200 ease-out"
                     style={{
                       width: `${Math.max(5, downloadProgress["acciowork"].percent)}%`,
                     }}
@@ -2205,7 +2205,7 @@ export function AppPathsPanel() {
             )}
 
             {downloadedFiles["acciowork"] && (
-              <div className="text-[11px] text-orange-700 dark:text-orange-300 bg-orange-50/80 dark:bg-orange-500/10 px-2.5 py-1.5 rounded-lg border border-orange-200/80 dark:border-orange-500/20 flex items-center justify-between animate-fade-in">
+              <div className="text-[11px] text-neutral-800 dark:text-neutral-200 bg-neutral-100/80 dark:bg-white/10 px-2.5 py-1.5 rounded-lg border border-neutral-200 dark:border-white/10 flex items-center justify-between animate-fade-in">
                 <div className="flex items-center gap-1.5">
                   <span>🎉</span>
                   <span>
@@ -2216,13 +2216,13 @@ export function AppPathsPanel() {
             )}
 
             {accioInfo?.extra_info && (
-              <div className="text-[11px] text-orange-600 dark:text-orange-400 bg-orange-50/50 dark:bg-orange-500/10 px-2.5 py-1 rounded-lg border border-orange-100 dark:border-orange-500/20">
+              <div className="text-[11px] text-neutral-800 dark:text-neutral-200 bg-neutral-100/70 dark:bg-white/5 px-2.5 py-1 rounded-lg border border-neutral-200 dark:border-white/10">
                 💡 {accioInfo.extra_info}
               </div>
             )}
 
             <div className="text-[11px] text-slate-500 dark:text-gray-400 bg-slate-50/60 dark:bg-white/[0.03] px-2.5 py-1.5 rounded-lg border border-slate-200/60 dark:border-white/5 flex items-start gap-1.5">
-              <span className="text-orange-500 font-bold">ℹ️</span>
+              <span className="text-black dark:text-white font-bold">ℹ️</span>
               <span>
                 启动说明：在此拉起 Accio Work 客户端时，AI-Helper 将在进程中注入本地 Bridge 网关地址环境变量，使应用与后台转译网关实时协同，阻断官方直连以保护 i 豆。
               </span>
@@ -2233,19 +2233,19 @@ export function AppPathsPanel() {
       </div>
 
       {/* ── 底部保存栏 (苹果风毛玻璃悬浮 Dock 栏) ── */}
-      <div className="sticky bottom-0 z-20 mt-auto overflow-visible py-2.5 px-4 rounded-2xl bg-white/45 dark:bg-[#0c0e18]/45 backdrop-blur-xl backdrop-saturate-150 border border-white/60 dark:border-white/10 shadow-[0_4px_24px_-2px_rgba(0,0,0,0.06),inset_0_1px_1px_0_rgba(255,255,255,0.7)] dark:shadow-[0_4px_24px_-2px_rgba(0,0,0,0.3),inset_0_1px_1px_0_rgba(255,255,255,0.08)] flex-shrink-0 transition-all">
+      <div className="sticky bottom-0 z-20 mt-auto overflow-visible py-2.5 px-4 rounded-2xl bg-white/45 dark:bg-black/60 backdrop-blur-xl backdrop-saturate-150 border border-white/60 dark:border-white/10 shadow-[0_4px_24px_-2px_rgba(0,0,0,0.06),inset_0_1px_1px_0_rgba(255,255,255,0.7)] dark:shadow-[0_4px_24px_-2px_rgba(0,0,0,0.3),inset_0_1px_1px_0_rgba(255,255,255,0.08)] flex-shrink-0 transition-all">
         <div className="flex items-center justify-between gap-4">
           <div className="text-[11px] text-slate-500 dark:text-gray-400 font-medium flex items-center gap-1.5">
-            <span className="w-1.5 h-1.5 rounded-full bg-teal-500" />
+            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
             <span>保存后在完成模型连通性测试并应用配置时，系统将使用上述路径进行针对性拉起与环境变量注入</span>
           </div>
 
           <ButtonToLoaderToSuccess
-            accent="teal"
+            accent="mono"
             className="min-w-[210px]"
             idleLabel={
               <>
-                <Save size={14} className="text-white" />
+                <Save size={14} className="text-current" />
                 <span>保存应用与 CLI 路径设置</span>
               </>
             }

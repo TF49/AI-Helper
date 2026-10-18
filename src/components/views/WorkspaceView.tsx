@@ -30,25 +30,25 @@ const TOOLS: {
     id: "chatgpt",
     name: "Codex",
     icon: OpenAIIcon,
-    activeColor: "text-blue-600 dark:text-blue-400",
+    activeColor: "text-black dark:text-white",
   },
   {
     id: "claude",
     name: "Claude Code",
     icon: ClaudeIcon,
-    activeColor: "text-purple-600 dark:text-purple-400",
+    activeColor: "text-black dark:text-white",
   },
   {
     id: "workbuddy",
     name: "WorkBuddy",
     icon: WorkbuddyIcon,
-    activeColor: "text-emerald-600 dark:text-emerald-400",
+    activeColor: "text-black dark:text-white",
   },
   {
     id: "acciowork",
     name: "Accio Work",
     icon: AccioWorkIcon,
-    activeColor: "text-orange-600 dark:text-orange-400",
+    activeColor: "text-black dark:text-white",
   },
 ];
 
@@ -99,7 +99,7 @@ export function WorkspaceView({ activeTool, onSelectTool }: WorkspaceViewProps) 
                 side="bottom"
                 align="start"
                 sideOffset={6}
-                className="z-[110] w-48 p-1.5 rounded-2xl bg-white/95 dark:bg-[#121626]/95 backdrop-blur-xl border border-slate-200/90 dark:border-white/10 shadow-xl animate-in fade-in-0 zoom-in-95 select-none"
+                className="z-[110] w-48 p-1.5 rounded-2xl bg-white/95 dark:bg-neutral-900/95 backdrop-blur-xl border border-slate-200/90 dark:border-white/10 shadow-xl animate-in fade-in-0 zoom-in-95 select-none"
               >
                 <div className="px-2.5 py-1 text-[10px] font-bold text-slate-400 dark:text-gray-500 uppercase tracking-wider border-b border-slate-100 dark:border-white/5 mb-1">
                   选择 AI 工具
@@ -120,7 +120,7 @@ export function WorkspaceView({ activeTool, onSelectTool }: WorkspaceViewProps) 
                         className={cn(
                           "w-full flex items-center justify-between px-2.5 py-2 rounded-xl text-xs font-medium transition-colors cursor-pointer text-left",
                           isActive
-                            ? "bg-blue-500/15 text-blue-600 dark:text-blue-400 font-semibold"
+                            ? "bg-neutral-100 text-black dark:bg-white/10 dark:text-white font-semibold"
                             : "text-slate-600 dark:text-gray-400 hover:text-slate-900 dark:hover:text-gray-200 hover:bg-slate-100 dark:hover:bg-white/5",
                         )}
                       >
@@ -134,7 +134,7 @@ export function WorkspaceView({ activeTool, onSelectTool }: WorkspaceViewProps) 
                           <span>{tool.name}</span>
                         </div>
                         {isActive && (
-                          <span className="w-1.5 h-1.5 rounded-full bg-blue-500" />
+                          <span className="w-1.5 h-1.5 rounded-full bg-black dark:bg-white" />
                         )}
                       </button>
                     );

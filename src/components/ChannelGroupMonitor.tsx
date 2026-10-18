@@ -339,72 +339,29 @@ export function ChannelGroupMonitor({
     return TOOL_EXCLUSIVE_GUIDES[effectiveToolId] || null;
   }, [effectiveToolId]);
 
-  // 主题配色系统
+  // 主题配色系统 (统一极简纯黑白)
   const theme = useMemo(() => {
-    switch (accentColor) {
-      case "purple":
-        return {
-          bannerBg: "bg-purple-50/80 dark:bg-purple-950/25 border-purple-200/70 dark:border-purple-900/30 text-purple-900 dark:text-purple-200",
-          bannerIcon: "text-purple-600 dark:text-purple-400",
-          bannerTitle: "text-purple-950 dark:text-purple-100",
-          bannerTag: "bg-purple-100/90 text-purple-700 dark:bg-purple-500/20 dark:text-purple-300 border-purple-200 dark:border-purple-500/30",
-          topIconBg: "bg-purple-500/10 text-purple-600 dark:text-purple-400 border-purple-500/20",
-          btnPrimary: "bg-purple-600 hover:bg-purple-700 text-white shadow-purple-500/20",
-          boundBadge: "bg-purple-50 text-purple-700 dark:bg-purple-500/15 dark:text-purple-300 border-purple-200/60 dark:border-purple-500/30",
-          accentText: "text-purple-600 dark:text-purple-400",
-          accentIconColor: "text-purple-500",
-          focusRing: "focus:ring-purple-500",
-          drawerActive: "border-purple-500/80 bg-purple-50/80 dark:bg-purple-500/15 shadow-2xs font-semibold",
-          drawerCheck: "text-purple-500",
-        };
-      case "emerald":
-        return {
-          bannerBg: "bg-emerald-50/80 dark:bg-emerald-950/25 border-emerald-200/70 dark:border-emerald-900/30 text-emerald-900 dark:text-emerald-200",
-          bannerIcon: "text-emerald-600 dark:text-emerald-400",
-          bannerTitle: "text-emerald-950 dark:text-emerald-100",
-          bannerTag: "bg-emerald-100/90 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-300 border-emerald-200 dark:border-emerald-500/30",
-          topIconBg: "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20",
-          btnPrimary: "bg-emerald-600 hover:bg-emerald-700 text-white shadow-emerald-500/20",
-          boundBadge: "bg-emerald-50 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300 border-emerald-200/60 dark:border-emerald-500/30",
-          accentText: "text-emerald-600 dark:text-emerald-400",
-          accentIconColor: "text-emerald-500",
-          focusRing: "focus:ring-emerald-500",
-          drawerActive: "border-emerald-500/80 bg-emerald-50/80 dark:bg-emerald-500/15 shadow-2xs font-semibold",
-          drawerCheck: "text-emerald-500",
-        };
-      case "orange":
-        return {
-          bannerBg: "bg-orange-50/80 dark:bg-orange-950/25 border-orange-200/70 dark:border-orange-900/30 text-orange-900 dark:text-orange-200",
-          bannerIcon: "text-orange-600 dark:text-orange-400",
-          bannerTitle: "text-orange-950 dark:text-orange-100",
-          bannerTag: "bg-orange-100/90 text-orange-700 dark:bg-orange-500/20 dark:text-orange-300 border-orange-200 dark:border-orange-500/30",
-          topIconBg: "bg-orange-500/10 text-orange-600 dark:text-orange-400 border-orange-500/20",
-          btnPrimary: "bg-orange-600 hover:bg-orange-700 text-white shadow-orange-500/20",
-          boundBadge: "bg-orange-50 text-orange-700 dark:bg-orange-500/15 dark:text-orange-300 border-orange-200/60 dark:border-orange-500/30",
-          accentText: "text-orange-600 dark:text-orange-400",
-          accentIconColor: "text-orange-500",
-          focusRing: "focus:ring-orange-500",
-          drawerActive: "border-orange-500/80 bg-orange-50/80 dark:bg-orange-500/15 shadow-2xs font-semibold",
-          drawerCheck: "text-orange-500",
-        };
-      case "blue":
-      default:
-        return {
-          bannerBg: "bg-blue-50/80 dark:bg-blue-950/25 border-blue-200/70 dark:border-blue-900/30 text-blue-900 dark:text-blue-200",
-          bannerIcon: "text-blue-600 dark:text-blue-400",
-          bannerTitle: "text-blue-950 dark:text-blue-100",
-          bannerTag: "bg-blue-100/90 text-blue-700 dark:bg-blue-500/20 dark:text-blue-300 border-blue-200 dark:border-blue-500/30",
-          topIconBg: "bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/20",
-          btnPrimary: "bg-blue-600 hover:bg-blue-700 text-white shadow-blue-500/20",
-          boundBadge: "bg-blue-50 text-blue-700 dark:bg-blue-500/15 dark:text-blue-300 border-blue-200/60 dark:border-blue-500/30",
-          accentText: "text-blue-600 dark:text-blue-400",
-          accentIconColor: "text-blue-500",
-          focusRing: "focus:ring-blue-500",
-          drawerActive: "border-blue-500/80 bg-blue-50/80 dark:bg-blue-500/15 shadow-2xs font-semibold",
-          drawerCheck: "text-blue-500",
-        };
-    }
-  }, [accentColor]);
+    return {
+      bannerBg:
+        "bg-neutral-100/80 dark:bg-white/[0.04] border-neutral-200/70 dark:border-white/10 text-neutral-900 dark:text-neutral-200",
+      bannerIcon: "text-black dark:text-white",
+      bannerTitle: "text-black dark:text-white",
+      bannerTag:
+        "bg-neutral-200/90 text-neutral-800 dark:bg-white/15 dark:text-white border-neutral-300 dark:border-white/20",
+      topIconBg:
+        "bg-neutral-100 text-black dark:bg-white/10 dark:text-white border-neutral-200 dark:border-white/10",
+      btnPrimary:
+        "bg-black hover:bg-neutral-800 text-white dark:bg-white dark:hover:bg-neutral-200 dark:text-black shadow-xs",
+      boundBadge:
+        "bg-neutral-100 text-black dark:bg-white/15 dark:text-white border-neutral-200 dark:border-white/20",
+      accentText: "text-black dark:text-white",
+      accentIconColor: "text-black dark:text-white",
+      focusRing: "focus:ring-black dark:focus:ring-white",
+      drawerActive:
+        "border-black bg-neutral-100 text-black dark:border-white dark:bg-white/10 dark:text-white shadow-2xs font-semibold",
+      drawerCheck: "text-black dark:text-white",
+    };
+  }, []);
 
   // 加载监控数据
   const loadData = useCallback(
@@ -1027,7 +984,7 @@ export function ChannelGroupMonitor({
               <button
                 type="button"
                 onClick={() => setLoginModalOpen(true)}
-                className="px-3 py-1 rounded-lg bg-blue-600 text-white font-medium hover:bg-blue-700 active:scale-95 transition-all cursor-pointer"
+                className="px-3 py-1 rounded-lg bg-black text-white hover:bg-neutral-800 dark:bg-white dark:text-black dark:hover:bg-neutral-200 font-medium active:scale-95 transition-all cursor-pointer"
               >
                 去登录
               </button>
@@ -1097,7 +1054,7 @@ export function ChannelGroupMonitor({
                     <button
                       type="button"
                       onClick={() => void handleInitiateSwitchGroup(activeGroup.group_name)}
-                      className="inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-md bg-blue-600 hover:bg-blue-700 text-white shadow-2xs cursor-pointer transition-colors active:scale-95"
+                      className="inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-md bg-black text-white hover:bg-neutral-800 dark:bg-white dark:text-black dark:hover:bg-neutral-200 shadow-2xs cursor-pointer transition-colors active:scale-95"
                       title="直接将当前 API Key 切换至此预览分组"
                     >
                       <Zap size={10} className="fill-current" />
@@ -1425,7 +1382,7 @@ export function ChannelGroupMonitor({
                             className={cn(
                               "flex items-center justify-between gap-3 px-3 py-2 rounded-xl border text-xs transition-all cursor-pointer group",
                               isExpanded
-                                ? "border-blue-500/70 bg-blue-50/80 dark:bg-blue-500/15 shadow-xs"
+                                ? "border-neutral-900 bg-neutral-100 dark:border-white dark:bg-white/10 shadow-xs"
                                 : isCur
                                   ? theme.drawerActive
                                   : "border-slate-200/70 dark:border-white/5 bg-slate-50/50 dark:bg-white/[0.015] hover:border-slate-300 dark:hover:border-white/15 hover:bg-slate-100/60 dark:hover:bg-white/[0.04]",
@@ -1465,7 +1422,7 @@ export function ChannelGroupMonitor({
                               )}
 
                               {isRec && !isBound && (
-                                <span className="hidden sm:inline-block text-[10px] px-1.5 py-0.2 rounded font-mono bg-blue-50 text-blue-600 dark:bg-blue-500/10 dark:text-blue-400 border border-blue-200/50 dark:border-blue-500/20 flex-shrink-0">
+                                <span className="hidden sm:inline-block text-[10px] px-1.5 py-0.2 rounded font-mono bg-neutral-100 text-neutral-700 dark:bg-neutral-900 dark:text-neutral-300 border border-neutral-200 dark:border-neutral-800 flex-shrink-0">
                                   推荐通道
                                 </span>
                               )}
@@ -1527,7 +1484,7 @@ export function ChannelGroupMonitor({
                                     e.stopPropagation();
                                     void handleInitiateSwitchGroup(g.group_name);
                                   }}
-                                  className="px-2 py-0.5 rounded-md text-[10px] font-semibold bg-blue-600 hover:bg-blue-700 text-white transition-all flex items-center gap-1 cursor-pointer shadow-2xs active:scale-95 flex-shrink-0"
+                                  className="px-2 py-0.5 rounded-md text-[10px] font-semibold bg-black text-white hover:bg-neutral-800 dark:bg-white dark:text-black dark:hover:bg-neutral-200 transition-all flex items-center gap-1 cursor-pointer shadow-2xs active:scale-95 flex-shrink-0"
                                   title={`将当前 API Key 直接切换到「${g.group_name}」分组`}
                                 >
                                   <Zap size={10} className="fill-current" />
@@ -1573,7 +1530,7 @@ export function ChannelGroupMonitor({
                                 transition={{ duration: 0.22, ease: "easeOut" }}
                                 className="overflow-hidden"
                               >
-                                <div className="mt-1 mb-2 p-3.5 rounded-xl border border-blue-500/30 dark:border-blue-500/20 bg-white/95 dark:bg-[#111320]/95 shadow-sm space-y-3">
+                                <div className="mt-1 mb-2 p-3.5 rounded-xl border border-neutral-300 dark:border-neutral-700 bg-white/95 dark:bg-black/95 shadow-sm space-y-3">
                                   {/* 顶部标题栏与快速切换 */}
                                   <div className="flex items-center justify-between gap-2 flex-wrap pb-2 border-b border-slate-100 dark:border-white/5">
                                     <div className="flex items-center gap-2">
@@ -1605,7 +1562,7 @@ export function ChannelGroupMonitor({
                                         <button
                                           type="button"
                                           onClick={() => void handleInitiateSwitchGroup(g.group_name)}
-                                          className="px-2.5 py-1 rounded-lg text-xs font-semibold bg-blue-600 hover:bg-blue-700 text-white flex items-center gap-1.5 shadow-xs transition-all cursor-pointer active:scale-95"
+                                          className="px-2.5 py-1 rounded-lg text-xs font-semibold bg-black text-white hover:bg-neutral-800 dark:bg-white dark:text-black dark:hover:bg-neutral-200 flex items-center gap-1.5 shadow-xs transition-all cursor-pointer active:scale-95"
                                         >
                                           <Zap size={12} className="fill-current" />
                                           <span>设为当前生效通道</span>
@@ -1720,7 +1677,7 @@ export function ChannelGroupMonitor({
                             className={cn(
                               "p-2.5 rounded-xl border text-xs transition-all cursor-pointer flex items-center justify-between gap-2.5",
                               isExpanded
-                                ? "border-blue-500/70 bg-blue-50/80 dark:bg-blue-500/15 shadow-xs"
+                                ? "border-neutral-900 bg-neutral-100 dark:border-white dark:bg-white/10 shadow-xs"
                                 : isCur
                                   ? theme.drawerActive
                                   : "border-slate-200/70 dark:border-white/5 bg-slate-50/40 dark:bg-white/[0.015] hover:border-slate-300 dark:hover:border-white/15",
@@ -1732,7 +1689,7 @@ export function ChannelGroupMonitor({
                                   {g.group_name}
                                 </span>
                                 {isBound && (
-                                  <span className="text-[9px] px-1 py-0.2 rounded font-medium bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-300">
+                                  <span className="text-[9px] px-1 py-0.2 rounded font-medium bg-neutral-200 text-neutral-800 dark:bg-white/20 dark:text-neutral-200">
                                     绑定
                                   </span>
                                 )}
@@ -1757,7 +1714,7 @@ export function ChannelGroupMonitor({
 
                               {/* 快捷改分组按钮 vs 当前使用指示 */}
                               {isBound ? (
-                                <span className="text-[9px] px-1.5 py-0.5 rounded font-medium bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-300 flex items-center gap-0.5">
+                                <span className="text-[9px] px-1.5 py-0.5 rounded font-medium bg-neutral-200 text-neutral-800 dark:bg-white/20 dark:text-neutral-200 flex items-center gap-0.5">
                                   <Check size={10} className="stroke-[3]" />
                                   使用中
                                 </span>
@@ -1768,7 +1725,7 @@ export function ChannelGroupMonitor({
                                     e.stopPropagation();
                                     void handleInitiateSwitchGroup(g.group_name);
                                   }}
-                                  className="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-blue-600 hover:bg-blue-700 text-white flex items-center gap-0.5 cursor-pointer shadow-2xs active:scale-95"
+                                  className="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-black text-white hover:bg-neutral-800 dark:bg-white dark:text-black dark:hover:bg-neutral-200 flex items-center gap-0.5 cursor-pointer shadow-2xs active:scale-95"
                                   title={`将当前 API Key 直接切换到「${g.group_name}」分组`}
                                 >
                                   <Zap size={9} className="fill-current" />
@@ -1802,7 +1759,7 @@ export function ChannelGroupMonitor({
                                 transition={{ duration: 0.22, ease: "easeOut" }}
                                 className="overflow-hidden"
                               >
-                                <div className="mt-1 mb-2 p-3.5 rounded-xl border border-blue-500/30 dark:border-blue-500/20 bg-white/95 dark:bg-[#111320]/95 shadow-sm space-y-3">
+                                <div className="mt-1 mb-2 p-3.5 rounded-xl border border-neutral-300 dark:border-neutral-700 bg-white/95 dark:bg-black/95 shadow-sm space-y-3">
                                   <div className="flex items-center justify-between pb-2 border-b border-slate-100 dark:border-white/5">
                                     <span className="font-mono text-xs font-bold text-slate-900 dark:text-white truncate">
                                       {g.group_name}
@@ -1811,7 +1768,7 @@ export function ChannelGroupMonitor({
                                       <button
                                         type="button"
                                         onClick={() => void handleInitiateSwitchGroup(g.group_name)}
-                                        className="px-2 py-0.5 rounded-lg text-[11px] font-semibold bg-blue-600 hover:bg-blue-700 text-white flex items-center gap-1 shadow-xs transition-all cursor-pointer"
+                                        className="px-2 py-0.5 rounded-lg text-[11px] font-semibold bg-black text-white hover:bg-neutral-800 dark:bg-white dark:text-black dark:hover:bg-neutral-200 flex items-center gap-1 shadow-xs transition-all cursor-pointer"
                                       >
                                         <Zap size={10} className="fill-current" />
                                         <span>设为当前生效通道</span>
@@ -1896,7 +1853,7 @@ export function ChannelGroupMonitor({
               if (e.target === e.currentTarget) setCompareModalOpen(false);
             }}
           >
-            <div className="relative w-full max-w-[840px] max-h-[88vh] bg-white dark:bg-[#111320] border border-slate-200 dark:border-white/10 rounded-3xl shadow-2xl flex flex-col overflow-hidden text-slate-800 dark:text-gray-200">
+            <div className="relative w-full max-w-[840px] max-h-[88vh] bg-white dark:bg-black border border-neutral-200 dark:border-neutral-800 rounded-3xl shadow-2xl flex flex-col overflow-hidden text-neutral-800 dark:text-neutral-200">
               {/* 弹窗顶部栏 */}
               <div className="px-6 py-4 border-b border-slate-100 dark:border-white/10 flex items-center justify-between gap-4 bg-slate-50/50 dark:bg-white/[0.02] flex-shrink-0">
                 <div className="flex items-center gap-3">
@@ -2007,7 +1964,7 @@ export function ChannelGroupMonitor({
                               </span>
                             )}
                             {isRec && (
-                              <span className="text-[10px] px-2 py-0.2 rounded-md font-mono bg-blue-50 text-blue-600 dark:bg-blue-500/10 dark:text-blue-400 border border-blue-200/50 dark:border-blue-500/20">
+                              <span className="text-[10px] px-2 py-0.2 rounded-md font-mono bg-neutral-100 text-neutral-700 dark:bg-neutral-900 dark:text-neutral-300 border border-neutral-200 dark:border-neutral-800">
                                 此工具推荐
                               </span>
                             )}
@@ -2086,9 +2043,9 @@ export function ChannelGroupMonitor({
               }
             }}
           >
-            <div className="relative w-full max-w-[500px] bg-white dark:bg-[#111320] border border-slate-200 dark:border-white/10 rounded-3xl shadow-2xl flex flex-col overflow-hidden text-slate-800 dark:text-gray-200 animate-in zoom-in-95 duration-200">
+            <div className="relative w-full max-w-[500px] bg-white dark:bg-black border border-neutral-200 dark:border-neutral-800 rounded-3xl shadow-2xl flex flex-col overflow-hidden text-neutral-800 dark:text-neutral-200 animate-in zoom-in-95 duration-200">
               {/* 弹窗头部 */}
-              <div className="px-6 py-4 border-b border-slate-100 dark:border-white/10 flex items-center justify-between gap-3 bg-slate-50/60 dark:bg-white/[0.02]">
+              <div className="px-6 py-4 border-b border-neutral-200/80 dark:border-neutral-800 flex items-center justify-between gap-3 bg-neutral-50/60 dark:bg-neutral-900/40">
                 <div className="flex items-center gap-2.5">
                   <div
                     className={cn(
@@ -2096,12 +2053,12 @@ export function ChannelGroupMonitor({
                       theme.topIconBg,
                     )}
                   >
-                    <Zap size={16} className="fill-current text-blue-500" />
+                    <Zap size={16} className="fill-current text-black dark:text-white" />
                   </div>
                   <div>
                     <h3 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
                       <span>切换 API Key 分组</span>
-                      <span className="text-[10px] px-1.5 py-0.2 rounded font-mono font-normal bg-blue-50 text-blue-600 dark:bg-blue-500/10 dark:text-blue-400 border border-blue-200/60 dark:border-blue-500/20">
+                      <span className="text-[10px] px-1.5 py-0.2 rounded font-mono font-normal bg-neutral-100 text-neutral-700 dark:bg-neutral-900 dark:text-neutral-300 border border-neutral-200 dark:border-neutral-800">
                         无需回网站
                       </span>
                     </h3>
@@ -2124,9 +2081,9 @@ export function ChannelGroupMonitor({
               {/* 弹窗内容 */}
               <div className="p-6 space-y-4">
                 {/* 目标分组预览卡片 */}
-                <div className="p-3.5 rounded-2xl bg-blue-50/60 dark:bg-blue-500/10 border border-blue-200/80 dark:border-blue-500/20 flex items-center justify-between gap-3">
+                <div className="p-3.5 rounded-2xl bg-neutral-100 dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 flex items-center justify-between gap-3">
                   <div className="min-w-0">
-                    <span className="text-[10px] font-medium text-blue-600 dark:text-blue-400 uppercase tracking-wider block mb-0.5">
+                    <span className="text-[10px] font-medium text-neutral-600 dark:text-neutral-400 uppercase tracking-wider block mb-0.5">
                       目标新分组通道
                     </span>
                     <span className="text-sm font-bold font-mono text-slate-900 dark:text-white truncate block">
@@ -2220,11 +2177,11 @@ export function ChannelGroupMonitor({
 
                   {switchModalState.loadingTokens ? (
                     <div className="py-4 flex items-center justify-center gap-2 text-xs text-slate-400">
-                      <Loader2 size={14} className="animate-spin text-blue-500" />
+                      <Loader2 size={14} className="animate-spin text-black dark:text-white" />
                       <span>正在获取您的 API Key 资产...</span>
                     </div>
                   ) : switchModalState.tokensList.length === 0 ? (
-                    <div className="p-3 rounded-xl bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-500/20 text-xs text-amber-700 dark:text-amber-300">
+                    <div className="p-3 rounded-xl bg-neutral-100 dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 text-xs text-neutral-700 dark:text-neutral-300">
                       未找到可用的 API Key，请先前往 bob-api 网页端创建。
                     </div>
                   ) : (
@@ -2237,7 +2194,7 @@ export function ChannelGroupMonitor({
                             selectedTokenId: Number(e.target.value),
                           }))
                         }
-                        className="w-full h-9 px-3 text-xs rounded-xl bg-slate-50 dark:bg-black/40 border border-slate-200 dark:border-white/10 text-slate-800 dark:text-gray-200 focus:outline-none focus:ring-1 focus:ring-blue-500 font-mono cursor-pointer"
+                        className="w-full h-9 px-3 text-xs rounded-xl bg-neutral-50 dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 text-neutral-900 dark:text-neutral-100 focus:outline-none focus:ring-1 focus:ring-black dark:focus:ring-white font-mono cursor-pointer"
                       >
                         {switchModalState.tokensList.map((token) => (
                           <option key={token.id} value={token.id}>
@@ -2253,14 +2210,14 @@ export function ChannelGroupMonitor({
                         );
                         if (!curToken) return null;
                         return (
-                          <div className="p-2.5 rounded-xl bg-slate-50 dark:bg-white/[0.02] border border-slate-200/60 dark:border-white/5 text-[11px] font-mono flex items-center justify-between">
-                            <span className="text-slate-500">分组变更路径:</span>
+                          <div className="p-2.5 rounded-xl bg-neutral-50 dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 text-[11px] font-mono flex items-center justify-between">
+                            <span className="text-neutral-500">分组变更路径:</span>
                             <div className="flex items-center gap-1.5 font-semibold">
-                              <span className="text-slate-600 dark:text-gray-400">
+                              <span className="text-neutral-600 dark:text-neutral-400">
                                 {curToken.group || "默认"}
                               </span>
-                              <span className="text-slate-400">➔</span>
-                              <span className="text-blue-600 dark:text-blue-400">
+                              <span className="text-neutral-400">➔</span>
+                              <span className="text-black dark:text-white font-bold">
                                 {switchModalState.targetGroupName}
                               </span>
                             </div>
@@ -2283,7 +2240,7 @@ export function ChannelGroupMonitor({
                           syncToAllAgents: e.target.checked,
                         }))
                       }
-                      className="rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
+                      className="rounded border-neutral-300 dark:border-neutral-700 text-black dark:text-white focus:ring-black dark:focus:ring-white cursor-pointer"
                     />
                     <span>同时将此生效 Key 同步至全部 4 大本地 Agent (Codex, Claude, Workbuddy, Accio)</span>
                   </label>
@@ -2353,7 +2310,7 @@ export function ChannelGroupMonitor({
                 </button>
 
                 <ButtonToLoaderToSuccess
-                  accent="blue"
+                  accent="mono"
                   disabled={
                     switchModalState.isSubmitting ||
                     switchModalState.tokensList.length === 0 ||

@@ -14,7 +14,7 @@ export function ThemeToggle({ variant = "icon", className }: ThemeToggleProps) {
     return (
       <div
         className={cn(
-          "inline-flex gap-1 rounded-xl border p-1 bg-slate-100 dark:bg-[#161928] border-slate-200 dark:border-white/10",
+          "inline-flex gap-1 rounded-xl border p-1 bg-neutral-100 dark:bg-neutral-900 border-neutral-200 dark:border-neutral-800",
           className,
         )}
       >
@@ -22,43 +22,40 @@ export function ThemeToggle({ variant = "icon", className }: ThemeToggleProps) {
           type="button"
           onClick={() => setTheme("light")}
           className={cn(
-            "flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all",
+            "flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all cursor-pointer",
             theme === "light"
-              ? "bg-white text-blue-600 shadow-sm font-semibold"
-              : "text-slate-600 dark:text-gray-400 hover:text-slate-900 dark:hover:text-white",
+              ? "bg-white text-black shadow-xs font-semibold border border-neutral-200"
+              : "text-neutral-500 hover:text-black dark:text-neutral-400 dark:hover:text-white",
           )}
         >
-          <Sun
-            size={14}
-            className={theme === "light" ? "text-amber-500" : ""}
-          />
-          浅色
+          <Sun size={14} />
+          纯白
         </button>
         <button
           type="button"
           onClick={() => setTheme("dark")}
           className={cn(
-            "flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all",
+            "flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all cursor-pointer",
             theme === "dark"
-              ? "bg-[#202538] text-blue-400 shadow-sm font-semibold"
-              : "text-slate-600 dark:text-gray-400 hover:text-slate-900 dark:hover:text-white",
+              ? "bg-white text-black dark:bg-white dark:text-black shadow-xs font-semibold"
+              : "text-neutral-500 hover:text-black dark:text-neutral-400 dark:hover:text-white",
           )}
         >
-          <Moon size={14} className={theme === "dark" ? "text-blue-400" : ""} />
-          深色
+          <Moon size={14} />
+          纯黑
         </button>
         <button
           type="button"
           onClick={() => setTheme("system")}
           className={cn(
-            "flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all",
+            "flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all cursor-pointer",
             theme === "system"
-              ? "bg-white dark:bg-[#202538] text-blue-600 dark:text-blue-400 shadow-sm font-semibold"
-              : "text-slate-600 dark:text-gray-400 hover:text-slate-900 dark:hover:text-white",
+              ? "bg-black text-white dark:bg-white dark:text-black shadow-xs font-semibold"
+              : "text-neutral-500 hover:text-black dark:text-neutral-400 dark:hover:text-white",
           )}
         >
           <Monitor size={14} />
-          跟随系统
+          系统
         </button>
       </div>
     );
@@ -72,23 +69,23 @@ export function ThemeToggle({ variant = "icon", className }: ThemeToggleProps) {
       type="button"
       onClick={toggleTheme}
       className={cn(
-        "w-7 h-7 flex items-center justify-center rounded-lg border transition-all",
-        "border-slate-200 dark:border-white/10",
-        "bg-slate-100 hover:bg-slate-200 text-slate-700",
-        "dark:bg-white/5 dark:hover:bg-white/10 dark:text-gray-400 dark:hover:text-white",
+        "w-7 h-7 flex items-center justify-center rounded-lg border transition-all cursor-pointer",
+        "border-neutral-200 dark:border-white/10",
+        "bg-neutral-100 hover:bg-neutral-200 text-black",
+        "dark:bg-white/10 dark:hover:bg-white/20 dark:text-white",
         className,
       )}
-      title={`当前为${isDark ? "深色模式" : "浅色模式"}，点击切换`}
+      title={`当前为${isDark ? "纯黑模式" : "纯白模式"}，点击切换`}
     >
       {isDark ? (
         <Sun
           size={14}
-          className="text-amber-400 transition-transform hover:rotate-45"
+          className="text-white transition-transform hover:rotate-45"
         />
       ) : (
         <Moon
           size={14}
-          className="text-slate-700 transition-transform hover:-rotate-12"
+          className="text-black transition-transform hover:-rotate-12"
         />
       )}
     </button>

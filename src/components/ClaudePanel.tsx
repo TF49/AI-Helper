@@ -194,7 +194,7 @@ export function ClaudePanel() {
   if (loading) {
     return (
       <div className="flex flex-col items-center justify-center flex-1 h-full min-h-[300px] gap-3">
-        <Loader2 className="animate-spin text-purple-500" size={36} />
+        <Loader2 className="animate-spin text-black dark:text-white" size={36} />
         <span className="text-xs text-slate-500 dark:text-gray-400 animate-pulse">
           正在读取 Claude Code 本地配置文件...
         </span>
@@ -207,7 +207,7 @@ export function ClaudePanel() {
       {/* ── 顶部面板标题栏 ── */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 pb-3 border-b border-slate-200/80 dark:border-white/10 flex-shrink-0">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-purple-100 text-purple-600 border border-purple-200 dark:bg-purple-500/20 dark:text-purple-400 dark:border-purple-500/30 flex items-center justify-center flex-shrink-0 shadow-xs">
+          <div className="w-10 h-10 rounded-xl bg-neutral-100 text-black border border-neutral-200 dark:bg-white/10 dark:text-white dark:border-white/20 flex items-center justify-center flex-shrink-0 shadow-xs">
             <ClaudeIcon size={22} />
           </div>
           <div>
@@ -215,7 +215,7 @@ export function ClaudePanel() {
               <h1 className="text-base font-bold text-slate-900 dark:text-white">
                 Claude Code 终端配置
               </h1>
-              <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-purple-50 text-purple-700 border border-purple-200 dark:bg-purple-500/10 dark:text-purple-300 dark:border-purple-500/30">
+              <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-neutral-100 text-neutral-800 border border-neutral-200 dark:bg-white/10 dark:text-white dark:border-white/20">
                 Anthropic Protocol
               </span>
             </div>
@@ -231,7 +231,7 @@ export function ClaudePanel() {
             <button
               type="button"
               onClick={() => goToStep(0)}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-medium transition-colors bg-purple-50 hover:bg-purple-100 border-purple-200 text-purple-700 dark:bg-purple-500/10 dark:hover:bg-purple-500/20 dark:border-purple-500/30 dark:text-purple-300 shadow-2xs cursor-pointer"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-medium transition-colors bg-neutral-100 hover:bg-neutral-200 border-neutral-200 text-black dark:bg-white/10 dark:hover:bg-white/20 dark:border-white/20 dark:text-white shadow-2xs cursor-pointer"
               title="切换到分步配置向导引导模式"
             >
               <Sparkles size={12} />
@@ -275,8 +275,8 @@ export function ClaudePanel() {
           /* ── 摘要视图（已有配置时默认呈现） ── */
           <div className="w-full flex flex-col gap-4">
             <SpotlightCard
-              className="p-5 rounded-2xl border border-slate-200/90 dark:border-white/10 bg-white/80 dark:bg-[#161324]/60 shadow-sm"
-              spotlightColor="rgba(168, 85, 247, 0.12)"
+              className="p-5 rounded-2xl border border-slate-200/90 dark:border-white/10 bg-white/80 dark:bg-black/60 shadow-sm"
+              spotlightColor="rgba(255, 255, 255, 0.08)"
             >
               <div className="flex items-center justify-between mb-4 pb-3 border-b border-slate-100 dark:border-white/5">
                 <div className="flex items-center gap-2">
@@ -285,7 +285,8 @@ export function ClaudePanel() {
                     当前配置概览
                   </span>
                 </div>
-                <span className="text-[11px] font-mono text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-500/10 px-2 py-0.5 rounded-full border border-emerald-200 dark:border-emerald-500/20">
+                <span className="inline-flex items-center gap-1.5 text-[11px] font-mono text-neutral-800 dark:text-neutral-200 bg-neutral-100 dark:bg-neutral-900 px-2.5 py-0.5 rounded-full border border-neutral-200 dark:border-neutral-800">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
                   已就绪
                 </span>
               </div>
@@ -293,7 +294,7 @@ export function ClaudePanel() {
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <div className="p-3 rounded-xl bg-slate-50/80 dark:bg-white/[0.02] border border-slate-200/60 dark:border-white/5">
                   <div className="flex items-center gap-1.5 text-slate-400 dark:text-gray-500 text-[11px] mb-1">
-                    <Server size={13} className="text-purple-500" />
+                    <Server size={13} className="text-black dark:text-white" />
                     <span>服务网关节点</span>
                   </div>
                   <div
@@ -306,13 +307,13 @@ export function ClaudePanel() {
 
                 <div className="p-3 rounded-xl bg-slate-50/80 dark:bg-white/[0.02] border border-slate-200/60 dark:border-white/5 min-w-0">
                   <div className="flex items-center gap-1.5 text-slate-400 dark:text-gray-500 text-[11px] mb-1">
-                    <KeyRound size={13} className="text-purple-500 shrink-0" />
+                    <KeyRound size={13} className="text-black dark:text-white shrink-0" />
                     <span>Auth Token / Key</span>
                   </div>
                   {apiKeyGroup ? (
                     <div className="mb-1 min-w-0">
                       <span
-                        className="inline-block max-w-full px-1.5 py-0.5 rounded-md border text-[10px] font-medium leading-snug break-words bg-purple-50 text-purple-600 border-purple-200/80 dark:bg-purple-500/15 dark:text-purple-300 dark:border-purple-500/25"
+                        className="inline-block max-w-full px-1.5 py-0.5 rounded-md border text-[10px] font-medium leading-snug break-words bg-neutral-100 text-black border-neutral-200/80 dark:bg-white/10 dark:text-white dark:border-white/20"
                         title={`所属分组：${apiKeyGroup}`}
                       >
                         {apiKeyGroup}
@@ -326,10 +327,10 @@ export function ClaudePanel() {
 
                 <div className="p-3 rounded-xl bg-slate-50/80 dark:bg-white/[0.02] border border-slate-200/60 dark:border-white/5">
                   <div className="flex items-center gap-1.5 text-slate-400 dark:text-gray-500 text-[11px] mb-1">
-                    <Cpu size={13} className="text-purple-500" />
+                    <Cpu size={13} className="text-black dark:text-white" />
                     <span>当前测试模型</span>
                   </div>
-                  <div className="text-xs font-mono font-medium text-purple-600 dark:text-purple-400 truncate">
+                  <div className="text-xs font-mono font-medium text-black dark:text-white truncate">
                     {model || "未配置"}
                   </div>
                 </div>
@@ -370,12 +371,12 @@ export function ClaudePanel() {
             >
               {currentStep === 0 && (
                 <SpotlightCard
-                  className="p-5 rounded-2xl border border-slate-200/90 dark:border-white/10 bg-white/80 dark:bg-[#161324]/60 shadow-sm"
-                  spotlightColor="rgba(168, 85, 247, 0.12)"
+                  className="p-5 rounded-2xl border border-slate-200/90 dark:border-white/10 bg-white/80 dark:bg-black/60 shadow-sm"
+                  spotlightColor="rgba(255, 255, 255, 0.08)"
                 >
                   <div className="flex items-center justify-between mb-3 flex-shrink-0">
                     <Label className="text-xs font-semibold text-slate-800 dark:text-gray-200 flex items-center gap-2">
-                      <Server size={14} className="text-purple-500" />
+                      <Server size={14} className="text-black dark:text-white" />
                       API 服务网关节点
                     </Label>
                     <span className="text-[11px] text-slate-400 dark:text-gray-500">
@@ -385,7 +386,6 @@ export function ClaudePanel() {
                   <NodeCardSelector
                     value={url}
                     onChange={setUrl}
-                    accentColor="purple"
                   />
                   <p className="mt-3 text-[11px] text-slate-500 dark:text-gray-400">
                     请选择目标 API 反代路由节点，将自动适配 Claude Code
@@ -396,8 +396,8 @@ export function ClaudePanel() {
 
               {currentStep === 1 && (
                 <SpotlightCard
-                  className="p-5 rounded-2xl border border-slate-200/90 dark:border-white/10 bg-white/80 dark:bg-[#161324]/60 shadow-sm"
-                  spotlightColor="rgba(168, 85, 247, 0.12)"
+                  className="p-5 rounded-2xl border border-slate-200/90 dark:border-white/10 bg-white/80 dark:bg-black/60 shadow-sm"
+                  spotlightColor="rgba(255, 255, 255, 0.08)"
                 >
                   <ApiKeyInput
                     title="Anthropic Auth Token / API Key"
@@ -407,7 +407,6 @@ export function ClaudePanel() {
                     placeholder="sk-ant-... (填入 BobAPI 密钥)"
                     storageLocation="~/.claude/settings.json"
                     configKey="env.ANTHROPIC_AUTH_TOKEN"
-                    accentColor="purple"
                     toolName="Claude Code"
                     toolId="claude"
                     onBoundTokenChange={onBoundTokenChange}
@@ -417,8 +416,8 @@ export function ClaudePanel() {
 
               {currentStep === 2 && (
                 <SpotlightCard
-                  className="p-5 rounded-2xl border border-slate-200/90 dark:border-white/10 bg-white/80 dark:bg-[#161324]/60 shadow-sm"
-                  spotlightColor="rgba(168, 85, 247, 0.12)"
+                  className="p-5 rounded-2xl border border-slate-200/90 dark:border-white/10 bg-white/80 dark:bg-black/60 shadow-sm"
+                  spotlightColor="rgba(255, 255, 255, 0.08)"
                 >
                   <ModelInput
                     value={model}
@@ -428,10 +427,9 @@ export function ClaudePanel() {
                     id="claude-models"
                     onRefresh={() => void refreshModels()}
                     refreshing={refreshingModels}
-                    accentColor="purple"
                   />
 
-                  <div className="mt-4 p-3 rounded-xl bg-purple-50/60 dark:bg-purple-500/10 border border-purple-200/60 dark:border-purple-500/20 text-xs text-purple-700 dark:text-purple-300 flex items-start gap-2">
+                  <div className="mt-4 p-3 rounded-xl bg-neutral-100/60 dark:bg-white/5 border border-neutral-200/60 dark:border-white/10 text-xs text-neutral-800 dark:text-neutral-300 flex items-start gap-2">
                     <Sparkles size={14} className="flex-shrink-0 mt-0.5" />
                     <span>
                       选定的模型将配置为 Claude Code CLI 默认调用的 Anthropic
@@ -443,8 +441,7 @@ export function ClaudePanel() {
 
               {currentStep === 3 && (
                 <ConfigConfirmStep
-                  accentColor="purple"
-                  spotlightColor="rgba(168, 85, 247, 0.12)"
+                  spotlightColor="rgba(255, 255, 255, 0.08)"
                   totalSteps={TOTAL_STEPS}
                   confirmed={configConfirmed}
                   onConfirmedChange={setConfigConfirmed}
@@ -479,7 +476,7 @@ export function ClaudePanel() {
       </div>
 
       {/* ── 底部操作栏 (苹果风毛玻璃悬浮 Dock 栏) ── */}
-      <div className="sticky bottom-0 z-20 mt-auto py-2.5 px-4 rounded-2xl bg-white/45 dark:bg-[#0c0e18]/45 backdrop-blur-xl backdrop-saturate-150 border border-white/60 dark:border-white/10 shadow-[0_4px_24px_-2px_rgba(0,0,0,0.06),inset_0_1px_1px_0_rgba(255,255,255,0.7)] dark:shadow-[0_4px_24px_-2px_rgba(0,0,0,0.3),inset_0_1px_1px_0_rgba(255,255,255,0.08)] flex-shrink-0 transition-all">
+      <div className="sticky bottom-0 z-20 mt-auto py-2.5 px-4 rounded-2xl bg-white/70 dark:bg-black/80 backdrop-blur-xl backdrop-saturate-150 border border-white/60 dark:border-white/10 shadow-[0_4px_24px_-2px_rgba(0,0,0,0.06),inset_0_1px_1px_0_rgba(255,255,255,0.7)] dark:shadow-[0_4px_24px_-2px_rgba(0,0,0,0.3),inset_0_1px_1px_0_rgba(255,255,255,0.08)] flex-shrink-0 transition-all">
         {showSummary ? (
           <div className="flex items-center justify-between gap-4">
             {/* 左侧：辅助动作与状态指示 */}
@@ -497,7 +494,7 @@ export function ClaudePanel() {
                 <span>重新配置向导</span>
               </button>
               <div className="hidden sm:flex items-center gap-1.5 text-[11px] text-slate-500 dark:text-gray-400 font-medium">
-                <span className="w-1.5 h-1.5 rounded-full bg-purple-500" />
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
                 <span>Claude Code 配置已生效 (settings.json)</span>
               </div>
             </div>
@@ -508,7 +505,7 @@ export function ClaudePanel() {
                 type="button"
                 onClick={handleSave}
                 disabled={testModalOpen}
-                className="flex items-center justify-center gap-2 px-6 py-2.5 min-w-[210px] rounded-xl text-xs font-semibold bg-purple-600 hover:bg-purple-700 active:bg-purple-800 text-white transition-colors shadow-xs cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                className="flex items-center justify-center gap-2 px-6 py-2.5 min-w-[210px] rounded-xl text-xs font-semibold bg-black hover:bg-neutral-800 text-white dark:bg-white dark:hover:bg-neutral-200 dark:text-black transition-colors shadow-xs cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 <Save size={14} />
                 <span>保存并应用 Claude Code 配置</span>
@@ -550,7 +547,7 @@ export function ClaudePanel() {
                 <button
                   type="button"
                   onClick={handleNext}
-                  className="flex items-center gap-1.5 px-6 py-2 rounded-xl text-xs font-medium bg-purple-600 hover:bg-purple-700 active:bg-purple-800 text-white transition-colors shadow-xs cursor-pointer"
+                  className="flex items-center gap-1.5 px-6 py-2 rounded-xl text-xs font-medium bg-black hover:bg-neutral-800 text-white dark:bg-white dark:hover:bg-neutral-200 dark:text-black transition-colors shadow-xs cursor-pointer"
                 >
                   <span>下一步</span>
                   <ChevronRight size={14} />
@@ -561,10 +558,10 @@ export function ClaudePanel() {
                   onClick={handleSave}
                   disabled={testModalOpen || !configConfirmed}
                   className={cn(
-                    "flex items-center justify-center gap-1.5 px-6 py-2 min-w-[210px] rounded-xl text-xs font-semibold text-white transition-colors shadow-xs cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed",
+                    "flex items-center justify-center gap-1.5 px-6 py-2 min-w-[210px] rounded-xl text-xs font-semibold transition-colors shadow-xs cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed",
                     configConfirmed
-                      ? "bg-purple-600 hover:bg-purple-700 active:bg-purple-800"
-                      : "bg-purple-600/80 hover:bg-purple-600",
+                      ? "bg-black hover:bg-neutral-800 text-white dark:bg-white dark:hover:bg-neutral-200 dark:text-black"
+                      : "bg-neutral-800 hover:bg-neutral-700 text-white dark:bg-neutral-200 dark:hover:bg-neutral-100 dark:text-black",
                   )}
                 >
                   <Save size={14} />

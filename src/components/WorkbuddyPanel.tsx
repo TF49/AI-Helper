@@ -397,7 +397,7 @@ export function WorkbuddyPanel() {
   if (loading) {
     return (
       <div className="flex flex-col items-center justify-center flex-1 h-full min-h-[300px] gap-3">
-        <Loader2 className="animate-spin text-emerald-500" size={36} />
+        <Loader2 className="animate-spin text-black dark:text-white" size={36} />
         <span className="text-xs text-slate-500 dark:text-gray-400 animate-pulse">
           正在读取 WorkBuddy 本地配置文件...
         </span>
@@ -410,7 +410,7 @@ export function WorkbuddyPanel() {
       {/* ── 顶部面板标题栏 ── */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 pb-3 border-b border-slate-200/80 dark:border-white/10 flex-shrink-0">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-emerald-100 text-emerald-600 border border-emerald-200 dark:bg-emerald-500/20 dark:text-emerald-400 dark:border-emerald-500/30 flex items-center justify-center flex-shrink-0 shadow-xs">
+          <div className="w-10 h-10 rounded-xl bg-neutral-100 text-black border border-neutral-200 dark:bg-white/10 dark:text-white dark:border-white/20 flex items-center justify-center flex-shrink-0 shadow-xs">
             <WorkbuddyIcon size={22} />
           </div>
           <div>
@@ -418,7 +418,7 @@ export function WorkbuddyPanel() {
               <h1 className="text-base font-bold text-slate-900 dark:text-white">
                 WorkBuddy 接入配置
               </h1>
-              <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 dark:bg-emerald-500/10 dark:text-emerald-300 dark:border-emerald-500/30">
+              <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-neutral-100 text-neutral-800 border border-neutral-200 dark:bg-white/10 dark:text-white dark:border-white/20">
                 多模型拼接模式 (Array Config)
               </span>
             </div>
@@ -434,7 +434,7 @@ export function WorkbuddyPanel() {
             <button
               type="button"
               onClick={() => goToStep(0)}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-medium transition-colors bg-emerald-50 hover:bg-emerald-100 border-emerald-200 text-emerald-700 dark:bg-emerald-500/10 dark:hover:bg-emerald-500/20 dark:border-emerald-500/30 dark:text-emerald-300 shadow-2xs cursor-pointer"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-medium transition-colors bg-neutral-100 hover:bg-neutral-200 border-neutral-200 text-black dark:bg-white/10 dark:hover:bg-white/20 dark:border-white/20 dark:text-white shadow-2xs cursor-pointer"
               title="切换到分步配置向导引导模式"
             >
               <Sparkles size={12} />
@@ -458,7 +458,6 @@ export function WorkbuddyPanel() {
                 : "~/.workbuddy/models.json"
             }
             exists={configExists}
-            accentColor="emerald"
           />
         </div>
       </div>
@@ -470,7 +469,6 @@ export function WorkbuddyPanel() {
             steps={STEPS}
             currentStep={currentStep}
             onStepClick={goToStep}
-            accentColor="emerald"
             maxStepReached={maxStepReached}
           />
         </div>
@@ -482,8 +480,8 @@ export function WorkbuddyPanel() {
           /* ── 摘要视图（已有配置时默认呈现） ── */
           <div className="w-full flex flex-col gap-4">
             <SpotlightCard
-              className="p-5 rounded-2xl border border-slate-200/90 dark:border-white/10 bg-white/80 dark:bg-[#121524]/60 shadow-sm"
-              spotlightColor="rgba(16, 185, 129, 0.12)"
+              className="p-5 rounded-2xl border border-slate-200/90 dark:border-white/10 bg-white/80 dark:bg-black/60 shadow-sm"
+              spotlightColor="rgba(255, 255, 255, 0.08)"
             >
               <div className="flex items-center justify-between mb-4 pb-3 border-b border-slate-100 dark:border-white/5">
                 <div className="flex items-center gap-2">
@@ -493,7 +491,8 @@ export function WorkbuddyPanel() {
                   </span>
                 </div>
                 <div className="flex items-center gap-2">
-                  <span className="text-[11px] font-mono text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-500/10 px-2 py-0.5 rounded-full border border-emerald-200 dark:border-emerald-500/20">
+                  <span className="inline-flex items-center gap-1.5 text-[11px] font-mono text-neutral-800 dark:text-neutral-200 bg-neutral-100 dark:bg-neutral-900 px-2.5 py-0.5 rounded-full border border-neutral-200 dark:border-neutral-800">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
                     已就绪 (共 {configuredModels.length} 个模型)
                   </span>
                 </div>
@@ -502,7 +501,7 @@ export function WorkbuddyPanel() {
               <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
                 <div className="p-3 rounded-xl bg-slate-50/80 dark:bg-white/[0.02] border border-slate-200/60 dark:border-white/5">
                   <div className="flex items-center gap-1.5 text-slate-400 dark:text-gray-500 text-[11px] mb-1">
-                    <Server size={13} className="text-emerald-500" />
+                    <Server size={13} className="text-black dark:text-white" />
                     <span>服务网关节点</span>
                   </div>
                   <div
@@ -515,13 +514,13 @@ export function WorkbuddyPanel() {
 
                 <div className="p-3 rounded-xl bg-slate-50/80 dark:bg-white/[0.02] border border-slate-200/60 dark:border-white/5 min-w-0">
                   <div className="flex items-center gap-1.5 text-slate-400 dark:text-gray-500 text-[11px] mb-1">
-                    <KeyRound size={13} className="text-emerald-500 shrink-0" />
+                    <KeyRound size={13} className="text-black dark:text-white shrink-0" />
                     <span>API Key 凭据</span>
                   </div>
                   {apiKeyGroup ? (
                     <div className="mb-1 min-w-0">
                       <span
-                        className="inline-block max-w-full px-1.5 py-0.5 rounded-md border text-[10px] font-medium leading-snug break-words bg-emerald-50 text-emerald-600 border-emerald-200/80 dark:bg-emerald-500/15 dark:text-emerald-300 dark:border-emerald-500/25"
+                        className="inline-block max-w-full px-1.5 py-0.5 rounded-md border text-[10px] font-medium leading-snug break-words bg-neutral-100 text-black border-neutral-200/80 dark:bg-white/10 dark:text-white dark:border-white/20"
                         title={`所属分组：${apiKeyGroup}`}
                       >
                         {apiKeyGroup}
@@ -535,17 +534,17 @@ export function WorkbuddyPanel() {
 
                 <div className="p-3 rounded-xl bg-slate-50/80 dark:bg-white/[0.02] border border-slate-200/60 dark:border-white/5">
                   <div className="flex items-center gap-1.5 text-slate-400 dark:text-gray-500 text-[11px] mb-1">
-                    <Cpu size={13} className="text-emerald-500" />
+                    <Cpu size={13} className="text-black dark:text-white" />
                     <span>当前操作模型</span>
                   </div>
-                  <div className="text-xs font-mono font-medium text-emerald-600 dark:text-emerald-400 truncate">
+                  <div className="text-xs font-mono font-medium text-black dark:text-white truncate">
                     {model || "未配置"}
                   </div>
                 </div>
 
                 <div className="p-3 rounded-xl bg-slate-50/80 dark:bg-white/[0.02] border border-slate-200/60 dark:border-white/5">
                   <div className="flex items-center gap-1.5 text-slate-400 dark:text-gray-500 text-[11px] mb-1">
-                    <Layers size={13} className="text-emerald-500" />
+                    <Layers size={13} className="text-black dark:text-white" />
                     <span>已保存模型数</span>
                   </div>
                   <div className="text-xs font-mono font-medium text-slate-800 dark:text-gray-200 truncate">
@@ -559,7 +558,7 @@ export function WorkbuddyPanel() {
                 <div className="mt-4 pt-3.5 border-t border-slate-100 dark:border-white/5">
                   <div className="flex items-center justify-between mb-2">
                     <span className="text-xs font-semibold text-slate-800 dark:text-gray-200 flex items-center gap-1.5">
-                      <Layers size={13} className="text-emerald-500" />
+                      <Layers size={13} className="text-black dark:text-white" />
                       已配置模型列表 ({configuredModels.length})
                     </span>
                     <button
@@ -568,7 +567,7 @@ export function WorkbuddyPanel() {
                         handleAddNewModel();
                         goToStep(2);
                       }}
-                      className="flex items-center gap-1 text-[11px] font-medium text-emerald-600 dark:text-emerald-400 hover:text-emerald-700 dark:hover:text-emerald-300 bg-emerald-500/10 hover:bg-emerald-500/20 px-2 py-0.5 rounded-md border border-emerald-500/20 transition-colors cursor-pointer"
+                      className="flex items-center gap-1 text-[11px] font-medium text-black dark:text-white bg-neutral-100 hover:bg-neutral-200 dark:bg-white/10 dark:hover:bg-white/20 px-2 py-0.5 rounded-md border border-neutral-200 dark:border-white/10 transition-colors cursor-pointer"
                     >
                       <Plus size={11} />
                       <span>新增模型</span>
@@ -589,7 +588,7 @@ export function WorkbuddyPanel() {
                           }}
                           className={`flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-mono border transition-all cursor-pointer ${
                             isSelected
-                              ? "bg-emerald-500/15 border-emerald-500/60 text-emerald-800 dark:text-emerald-300 font-semibold shadow-xs"
+                              ? "bg-neutral-100 dark:bg-white/15 border-black dark:border-white text-black dark:text-white font-semibold shadow-xs"
                               : "bg-white dark:bg-white/5 border-slate-200 dark:border-white/10 text-slate-700 dark:text-gray-300 hover:border-slate-300 dark:hover:border-white/20"
                           }`}
                           title={`点击查看并编辑 ${item.id} 的各项参数`}
@@ -606,7 +605,7 @@ export function WorkbuddyPanel() {
                   <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 flex-shrink-0" />
                   <span className="leading-relaxed">
                     当前已存储{" "}
-                    <strong className="text-emerald-600 dark:text-emerald-400 font-mono">
+                    <strong className="text-black dark:text-white font-mono">
                       {configuredModels.length}
                     </strong>{" "}
                     个独立模型。WorkBuddy 支持内部热重载，无需重启即可感知。
@@ -619,7 +618,6 @@ export function WorkbuddyPanel() {
             <ChannelGroupMonitor
               toolName="WorkBuddy"
               toolId="workbuddy"
-              accentColor="emerald"
               hasConfiguredKey={Boolean(apiKey?.trim())}
               configuredKey={apiKey}
               currentGroupName={apiKeyGroup}
@@ -639,12 +637,12 @@ export function WorkbuddyPanel() {
             >
               {currentStep === 0 && (
                 <SpotlightCard
-                  className="p-5 rounded-2xl border border-slate-200/90 dark:border-white/10 bg-white/80 dark:bg-[#121524]/60 shadow-sm"
-                  spotlightColor="rgba(16, 185, 129, 0.12)"
+                  className="p-5 rounded-2xl border border-slate-200/90 dark:border-white/10 bg-white/80 dark:bg-black/60 shadow-sm"
+                  spotlightColor="rgba(255, 255, 255, 0.08)"
                 >
                   <div className="flex items-center justify-between mb-3 flex-shrink-0">
                     <Label className="text-xs font-semibold text-slate-800 dark:text-gray-200 flex items-center gap-2">
-                      <Server size={14} className="text-emerald-500" />
+                      <Server size={14} className="text-black dark:text-white" />
                       API 服务网关节点
                     </Label>
                     <span className="text-[11px] text-slate-400 dark:text-gray-500">
@@ -654,7 +652,6 @@ export function WorkbuddyPanel() {
                   <NodeCardSelector
                     value={url}
                     onChange={setUrl}
-                    accentColor="emerald"
                   />
                   <p className="mt-3 text-[11px] text-slate-500 dark:text-gray-400">
                     选择 API 服务中转节点，WorkBuddy 将通过此节点转发模型请求。
@@ -664,8 +661,8 @@ export function WorkbuddyPanel() {
 
               {currentStep === 1 && (
                 <SpotlightCard
-                  className="p-5 rounded-2xl border border-slate-200/90 dark:border-white/10 bg-white/80 dark:bg-[#121524]/60 shadow-sm"
-                  spotlightColor="rgba(16, 185, 129, 0.12)"
+                  className="p-5 rounded-2xl border border-slate-200/90 dark:border-white/10 bg-white/80 dark:bg-black/60 shadow-sm"
+                  spotlightColor="rgba(255, 255, 255, 0.08)"
                 >
                   <ApiKeyInput
                     title="OpenAI API Key"
@@ -681,7 +678,6 @@ export function WorkbuddyPanel() {
                         : "~/.workbuddy/models.json (双向兼容 ~/.workbuddy-ai)"
                     }
                     hintText="无需环境变量"
-                    accentColor="emerald"
                     toolName="WorkBuddy"
                     toolId="workbuddy"
                     onBoundTokenChange={onBoundTokenChange}
@@ -691,20 +687,20 @@ export function WorkbuddyPanel() {
 
               {currentStep === 2 && (
                 <SpotlightCard
-                  className="p-5 rounded-2xl border border-slate-200/90 dark:border-white/10 bg-white/80 dark:bg-[#121524]/60 shadow-sm space-y-4"
-                  spotlightColor="rgba(16, 185, 129, 0.12)"
+                  className="p-5 rounded-2xl border border-slate-200/90 dark:border-white/10 bg-white/80 dark:bg-black/60 shadow-sm space-y-4"
+                  spotlightColor="rgba(255, 255, 255, 0.08)"
                 >
                   {/* 已配置模型标签组与切换 */}
                   <div>
                     <div className="flex items-center justify-between mb-2">
                       <Label className="text-xs font-semibold text-slate-800 dark:text-gray-200 flex items-center gap-2">
-                        <Layers size={14} className="text-emerald-500" />
+                        <Layers size={14} className="text-black dark:text-white" />
                         已配置模型列表 ({configuredModels.length})
                       </Label>
                       <button
                         type="button"
                         onClick={handleAddNewModel}
-                        className="flex items-center gap-1 px-2 py-0.5 text-[11px] font-medium text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/20 rounded-md transition-colors cursor-pointer"
+                        className="flex items-center gap-1 px-2 py-0.5 text-[11px] font-medium text-black dark:text-white bg-neutral-100 hover:bg-neutral-200 dark:bg-white/10 dark:hover:bg-white/20 border border-neutral-200 dark:border-white/10 rounded-md transition-colors cursor-pointer"
                         title="清空当前输入，准备新增模型"
                       >
                         <Plus size={12} />
@@ -725,7 +721,7 @@ export function WorkbuddyPanel() {
                               onClick={() => applyModelConfig(item)}
                               className={`group relative flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs cursor-pointer border transition-all ${
                                 isSelected
-                                  ? "bg-emerald-500/15 border-emerald-500/60 text-emerald-800 dark:text-emerald-300 font-semibold shadow-xs"
+                                  ? "bg-neutral-100 dark:bg-white/15 border-black dark:border-white text-black dark:text-white font-semibold shadow-xs"
                                   : "bg-white dark:bg-white/5 border-slate-200 dark:border-white/10 text-slate-700 dark:text-gray-300 hover:border-slate-300 dark:hover:border-white/20"
                               }`}
                               title={`点击查看并编辑 ${item.id} 的配置参数`}
@@ -770,13 +766,12 @@ export function WorkbuddyPanel() {
                       id="workbuddy-models"
                       onRefresh={() => void refreshModels()}
                       refreshing={refreshingModels}
-                      accentColor="emerald"
                     />
 
                     {/* 动态模式指示条 */}
                     <div className="mt-2.5">
                       {isExistingModel ? (
-                        <div className="flex items-center gap-1.5 p-2 rounded-lg bg-blue-500/10 border border-blue-500/20 text-blue-700 dark:text-blue-300 text-xs">
+                        <div className="flex items-center gap-1.5 p-2 rounded-lg bg-neutral-100/80 dark:bg-white/10 border border-neutral-200 dark:border-white/20 text-neutral-800 dark:text-neutral-200 text-xs">
                           <Info size={13} className="flex-shrink-0" />
                           <span>
                             当前模型已存在于 models.json
@@ -784,7 +779,7 @@ export function WorkbuddyPanel() {
                           </span>
                         </div>
                       ) : model.trim() ? (
-                        <div className="flex items-center gap-1.5 p-2 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-emerald-700 dark:text-emerald-300 text-xs">
+                        <div className="flex items-center gap-1.5 p-2 rounded-lg bg-neutral-100/80 dark:bg-white/10 border border-neutral-200 dark:border-white/20 text-neutral-800 dark:text-neutral-200 text-xs">
                           <Sparkles size={13} className="flex-shrink-0" />
                           <span>
                             新增模型模式：保存将作为新模型追加（拼接）至
@@ -803,7 +798,7 @@ export function WorkbuddyPanel() {
                   <div className="flex items-start gap-2 p-3 rounded-xl bg-slate-50 dark:bg-white/[0.03] border border-slate-200/60 dark:border-white/5 text-xs text-slate-500 dark:text-gray-400">
                     <Info
                       size={14}
-                      className="flex-shrink-0 mt-0.5 text-emerald-500"
+                      className="flex-shrink-0 mt-0.5 text-black dark:text-white"
                     />
                     <span>
                       以下高级特性与 Token
@@ -813,12 +808,12 @@ export function WorkbuddyPanel() {
 
                   {/* 特性开关卡片 */}
                   <SpotlightCard
-                    className="p-5 rounded-2xl border border-slate-200/90 dark:border-white/10 bg-white/80 dark:bg-[#121524]/60 shadow-sm"
-                    spotlightColor="rgba(16, 185, 129, 0.12)"
+                    className="p-5 rounded-2xl border border-slate-200/90 dark:border-white/10 bg-white/80 dark:bg-black/60 shadow-sm"
+                    spotlightColor="rgba(255, 255, 255, 0.08)"
                   >
                     <div className="flex items-center justify-between mb-3">
                       <Label className="text-xs font-semibold text-slate-800 dark:text-gray-200 flex items-center gap-2">
-                        <Cpu size={14} className="text-emerald-500" />
+                        <Cpu size={14} className="text-black dark:text-white" />
                         高级配置与能力开关
                       </Label>
                       <span className="text-[11px] text-slate-400 dark:text-gray-500">
@@ -834,7 +829,7 @@ export function WorkbuddyPanel() {
                           onChange={(e) =>
                             setSupportsToolCall(e.target.checked)
                           }
-                          className="w-3.5 h-3.5 rounded text-emerald-600 focus:ring-emerald-500 border-slate-300 dark:border-white/20 dark:bg-white/5"
+                          className="w-3.5 h-3.5 rounded text-black focus:ring-black dark:text-white dark:focus:ring-white border-slate-300 dark:border-white/20 dark:bg-white/5"
                         />
                         <span className="text-xs text-slate-700 dark:text-gray-300 select-none">
                           工具调用
@@ -846,7 +841,7 @@ export function WorkbuddyPanel() {
                           type="checkbox"
                           checked={supportsImages}
                           onChange={(e) => setSupportsImages(e.target.checked)}
-                          className="w-3.5 h-3.5 rounded text-emerald-600 focus:ring-emerald-500 border-slate-300 dark:border-white/20 dark:bg-white/5"
+                          className="w-3.5 h-3.5 rounded text-black focus:ring-black dark:text-white dark:focus:ring-white border-slate-300 dark:border-white/20 dark:bg-white/5"
                         />
                         <span className="text-xs text-slate-700 dark:text-gray-300 select-none">
                           图片输入
@@ -860,7 +855,7 @@ export function WorkbuddyPanel() {
                           onChange={(e) =>
                             setSupportsReasoning(e.target.checked)
                           }
-                          className="w-3.5 h-3.5 rounded text-emerald-600 focus:ring-emerald-500 border-slate-300 dark:border-white/20 dark:bg-white/5"
+                          className="w-3.5 h-3.5 rounded text-black focus:ring-black dark:text-white dark:focus:ring-white border-slate-300 dark:border-white/20 dark:bg-white/5"
                         />
                         <span className="text-xs text-slate-700 dark:text-gray-300 select-none">
                           思考模式
@@ -872,7 +867,7 @@ export function WorkbuddyPanel() {
                           type="checkbox"
                           checked={onlyReasoning}
                           onChange={(e) => setOnlyReasoning(e.target.checked)}
-                          className="w-3.5 h-3.5 rounded text-emerald-600 focus:ring-emerald-500 border-slate-300 dark:border-white/20 dark:bg-white/5"
+                          className="w-3.5 h-3.5 rounded text-black focus:ring-black dark:text-white dark:focus:ring-white border-slate-300 dark:border-white/20 dark:bg-white/5"
                         />
                         <span className="text-xs text-slate-700 dark:text-gray-300 select-none">
                           仅思考模式
@@ -886,7 +881,7 @@ export function WorkbuddyPanel() {
                           onChange={(e) =>
                             setCanDisableThinking(e.target.checked)
                           }
-                          className="w-3.5 h-3.5 rounded text-emerald-600 focus:ring-emerald-500 border-slate-300 dark:border-white/20 dark:bg-white/5"
+                          className="w-3.5 h-3.5 rounded text-black focus:ring-black dark:text-white dark:focus:ring-white border-slate-300 dark:border-white/20 dark:bg-white/5"
                         />
                         <span className="text-xs text-slate-700 dark:text-gray-300 select-none">
                           允许关闭思考
@@ -903,7 +898,7 @@ export function WorkbuddyPanel() {
                           onChange={(e) =>
                             setUseCustomProtocol(e.target.checked)
                           }
-                          className="w-3.5 h-3.5 rounded text-emerald-600 focus:ring-emerald-500 border-slate-300 dark:border-white/20 dark:bg-white/5"
+                          className="w-3.5 h-3.5 rounded text-black focus:ring-black dark:text-white dark:focus:ring-white border-slate-300 dark:border-white/20 dark:bg-white/5"
                         />
                         <span className="text-xs text-slate-700 dark:text-gray-300 select-none flex items-center gap-1">
                           自定义协议
@@ -915,13 +910,13 @@ export function WorkbuddyPanel() {
 
                   {/* 思考强度与 Token 限制卡片 */}
                   <SpotlightCard
-                    className="p-5 rounded-2xl border border-slate-200/90 dark:border-white/10 bg-white/80 dark:bg-[#121524]/60 shadow-sm"
-                    spotlightColor="rgba(16, 185, 129, 0.12)"
+                    className="p-5 rounded-2xl border border-slate-200/90 dark:border-white/10 bg-white/80 dark:bg-black/60 shadow-sm"
+                    spotlightColor="rgba(255, 255, 255, 0.08)"
                   >
                     <div className="space-y-4">
                       <div className="flex items-center justify-between">
                         <Label className="text-xs font-semibold text-slate-800 dark:text-gray-200 flex items-center gap-2">
-                          <Sliders size={14} className="text-emerald-500" />
+                          <Sliders size={14} className="text-black dark:text-white" />
                           思考强度与 Token 上限
                         </Label>
                         <span className="text-[11px] text-slate-400 dark:text-gray-500">
@@ -938,7 +933,7 @@ export function WorkbuddyPanel() {
                           <select
                             value={defaultEffort}
                             onChange={(e) => setDefaultEffort(e.target.value)}
-                            className="text-xs bg-slate-50 dark:bg-[#181b2a] border border-slate-200 dark:border-white/10 rounded-lg px-2.5 py-1 text-slate-800 dark:text-gray-200 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                            className="text-xs bg-slate-50 dark:bg-neutral-900 border border-slate-200 dark:border-white/10 rounded-lg px-2.5 py-1 text-slate-800 dark:text-gray-200 focus:outline-none focus:ring-1 focus:ring-black dark:focus:ring-white"
                           >
                             <option value="">自动（使用请求层默认值）</option>
                             <option value="low">低 (low)</option>
@@ -965,14 +960,14 @@ export function WorkbuddyPanel() {
                                   onClick={() => toggleEffort(item.id)}
                                   className={`text-xs px-2.5 py-1 rounded-lg border transition-all cursor-pointer flex items-center gap-1.5 ${
                                     checked
-                                      ? "bg-emerald-500/15 border-emerald-500/50 text-emerald-700 dark:text-emerald-300 font-medium"
+                                      ? "bg-neutral-100 border-black text-black dark:bg-white/10 dark:border-white dark:text-white font-medium"
                                       : "bg-slate-50 dark:bg-white/5 border-slate-200 dark:border-white/10 text-slate-600 dark:text-gray-400 hover:border-slate-300 dark:hover:border-white/20"
                                   }`}
                                 >
                                   <span
                                     className={`w-3 h-3 rounded flex items-center justify-center border text-[9px] ${
                                       checked
-                                        ? "bg-emerald-500 border-emerald-600 text-white"
+                                        ? "bg-black border-black text-white dark:bg-white dark:border-white dark:text-black"
                                         : "border-slate-300 dark:border-white/20"
                                     }`}
                                   >
@@ -1003,7 +998,7 @@ export function WorkbuddyPanel() {
                               )
                             }
                             placeholder="默认 32768"
-                            className="w-full text-xs font-mono bg-slate-50 dark:bg-[#181b2a] border border-slate-200 dark:border-white/10 rounded-lg px-2.5 py-1.5 text-slate-800 dark:text-gray-200 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                            className="w-full text-xs font-mono bg-slate-50 dark:bg-neutral-900 border border-slate-200 dark:border-white/10 rounded-lg px-2.5 py-1.5 text-slate-800 dark:text-gray-200 focus:outline-none focus:ring-1 focus:ring-black dark:focus:ring-white"
                           />
                           <div className="flex gap-1">
                             {INPUT_TOKEN_PRESETS.map((p) => (
@@ -1013,7 +1008,7 @@ export function WorkbuddyPanel() {
                                 onClick={() => setMaxInputTokens(p.value)}
                                 className={`text-[10px] px-1.5 py-0.5 rounded border transition-colors cursor-pointer ${
                                   maxInputTokens === p.value
-                                    ? "bg-emerald-500/20 border-emerald-500/40 text-emerald-700 dark:text-emerald-300 font-semibold"
+                                    ? "bg-neutral-200 border-neutral-300 text-black dark:bg-white/20 dark:border-white/30 dark:text-white font-semibold"
                                     : "bg-slate-100 dark:bg-white/5 border-slate-200 dark:border-white/10 text-slate-500 dark:text-gray-400"
                                 }`}
                               >
@@ -1038,7 +1033,7 @@ export function WorkbuddyPanel() {
                               )
                             }
                             placeholder="默认 32768"
-                            className="w-full text-xs font-mono bg-slate-50 dark:bg-[#181b2a] border border-slate-200 dark:border-white/10 rounded-lg px-2.5 py-1.5 text-slate-800 dark:text-gray-200 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                            className="w-full text-xs font-mono bg-slate-50 dark:bg-neutral-900 border border-slate-200 dark:border-white/10 rounded-lg px-2.5 py-1.5 text-slate-800 dark:text-gray-200 focus:outline-none focus:ring-1 focus:ring-black dark:focus:ring-white"
                           />
                           <div className="flex gap-1">
                             {OUTPUT_TOKEN_PRESETS.map((p) => (
@@ -1048,7 +1043,7 @@ export function WorkbuddyPanel() {
                                 onClick={() => setMaxOutputTokens(p.value)}
                                 className={`text-[10px] px-1.5 py-0.5 rounded border transition-colors cursor-pointer ${
                                   maxOutputTokens === p.value
-                                    ? "bg-emerald-500/20 border-emerald-500/40 text-emerald-700 dark:text-emerald-300 font-semibold"
+                                    ? "bg-neutral-200 border-neutral-300 text-black dark:bg-white/20 dark:border-white/30 dark:text-white font-semibold"
                                     : "bg-slate-100 dark:bg-white/5 border-slate-200 dark:border-white/10 text-slate-500 dark:text-gray-400"
                                 }`}
                               >
@@ -1065,8 +1060,7 @@ export function WorkbuddyPanel() {
 
               {currentStep === 4 && (
                 <ConfigConfirmStep
-                  accentColor="emerald"
-                  spotlightColor="rgba(16, 185, 129, 0.12)"
+                  spotlightColor="rgba(255, 255, 255, 0.08)"
                   totalSteps={TOTAL_STEPS}
                   confirmed={configConfirmed}
                   onConfirmedChange={setConfigConfirmed}
@@ -1114,7 +1108,7 @@ export function WorkbuddyPanel() {
       </div>
 
       {/* ── 底部操作栏 (苹果风毛玻璃悬浮 Dock 栏) ── */}
-      <div className="sticky bottom-0 z-20 mt-auto py-2.5 px-4 rounded-2xl bg-white/45 dark:bg-[#0c0e18]/45 backdrop-blur-xl backdrop-saturate-150 border border-white/60 dark:border-white/10 shadow-[0_4px_24px_-2px_rgba(0,0,0,0.06),inset_0_1px_1px_0_rgba(255,255,255,0.7)] dark:shadow-[0_4px_24px_-2px_rgba(0,0,0,0.3),inset_0_1px_1px_0_rgba(255,255,255,0.08)] flex-shrink-0 transition-all">
+      <div className="sticky bottom-0 z-20 mt-auto py-2.5 px-4 rounded-2xl bg-white/70 dark:bg-black/80 backdrop-blur-xl backdrop-saturate-150 border border-white/60 dark:border-white/10 shadow-[0_4px_24px_-2px_rgba(0,0,0,0.06),inset_0_1px_1px_0_rgba(255,255,255,0.7)] dark:shadow-[0_4px_24px_-2px_rgba(0,0,0,0.3),inset_0_1px_1px_0_rgba(255,255,255,0.08)] flex-shrink-0 transition-all">
         {showSummary ? (
           <div className="flex items-center justify-between gap-4">
             {/* 左侧：辅助动作与状态指示 */}
@@ -1143,7 +1137,7 @@ export function WorkbuddyPanel() {
                 type="button"
                 onClick={handleSave}
                 disabled={testModalOpen}
-                className="flex items-center justify-center gap-2 px-6 py-2.5 min-w-[210px] rounded-xl text-xs font-semibold bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white transition-colors shadow-xs cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                className="flex items-center justify-center gap-2 px-6 py-2.5 min-w-[210px] rounded-xl text-xs font-semibold bg-black hover:bg-neutral-800 text-white dark:bg-white dark:hover:bg-neutral-200 dark:text-black transition-colors shadow-xs cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {isExistingModel ? <Save size={14} /> : <Plus size={14} />}
                 <span>
@@ -1189,7 +1183,7 @@ export function WorkbuddyPanel() {
                 <button
                   type="button"
                   onClick={handleNext}
-                  className="flex items-center gap-1.5 px-6 py-2 rounded-xl text-xs font-medium bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white transition-colors shadow-xs cursor-pointer"
+                  className="flex items-center gap-1.5 px-6 py-2 rounded-xl text-xs font-medium bg-black hover:bg-neutral-800 text-white dark:bg-white dark:hover:bg-neutral-200 dark:text-black transition-colors shadow-xs cursor-pointer"
                 >
                   <span>下一步</span>
                   <ChevronRight size={14} />
@@ -1200,10 +1194,10 @@ export function WorkbuddyPanel() {
                   onClick={handleSave}
                   disabled={testModalOpen || !configConfirmed}
                   className={cn(
-                    "flex items-center justify-center gap-1.5 px-6 py-2 min-w-[210px] rounded-xl text-xs font-semibold text-white transition-colors shadow-xs cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed",
+                    "flex items-center justify-center gap-1.5 px-6 py-2 min-w-[210px] rounded-xl text-xs font-semibold transition-colors shadow-xs cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed",
                     configConfirmed
-                      ? "bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800"
-                      : "bg-emerald-600/80 hover:bg-emerald-600",
+                      ? "bg-black hover:bg-neutral-800 text-white dark:bg-white dark:hover:bg-neutral-200 dark:text-black"
+                      : "bg-neutral-800 hover:bg-neutral-700 text-white dark:bg-neutral-200 dark:hover:bg-neutral-100 dark:text-black",
                   )}
                 >
                   {isExistingModel ? <Save size={14} /> : <Plus size={14} />}

@@ -16,7 +16,7 @@ export function ConfigPathBar({
   path,
   shortPath,
   exists,
-  accentColor = "blue",
+  accentColor: _accentColor,
   className,
 }: ConfigPathBarProps) {
   const [copied, setCopied] = useState(false);
@@ -53,12 +53,8 @@ export function ConfigPathBar({
     }
   };
 
-  const accentBtnStyle = {
-    blue: "text-blue-600 hover:text-blue-700 hover:bg-blue-50 dark:text-blue-400 dark:hover:text-blue-300 dark:hover:bg-blue-500/10",
-    purple: "text-purple-600 hover:text-purple-700 hover:bg-purple-50 dark:text-purple-400 dark:hover:text-purple-300 dark:hover:bg-purple-500/10",
-    emerald: "text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50 dark:text-emerald-400 dark:hover:text-emerald-300 dark:hover:bg-emerald-500/10",
-    orange: "text-orange-600 hover:text-orange-700 hover:bg-orange-50 dark:text-orange-400 dark:hover:text-orange-300 dark:hover:bg-orange-500/10",
-  }[accentColor];
+  const accentBtnStyle =
+    "text-black hover:text-neutral-700 hover:bg-neutral-100 dark:text-white dark:hover:text-neutral-200 dark:hover:bg-white/10";
 
   return (
     <div

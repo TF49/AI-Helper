@@ -18,7 +18,7 @@ export const StarBorder: React.FC<StarBorderProps> = ({
   as: Component = "button",
   className = "",
   innerClassName = "",
-  color = "#3b82f6",
+  color = "#737373",
   speed = "4s",
   thickness = 1,
   backgroundColor,
@@ -49,7 +49,7 @@ export const StarBorder: React.FC<StarBorderProps> = ({
       <div
         className={`relative z-10 w-full h-full flex items-center justify-center rounded-[11px] px-4 py-2.5 font-medium text-sm transition-colors ${
           !backgroundColor
-            ? "bg-blue-600 text-white hover:bg-blue-700 dark:bg-[#0e1726] dark:text-blue-100"
+            ? "bg-black text-white hover:bg-neutral-800 dark:bg-white dark:text-black dark:hover:bg-neutral-200"
             : ""
         } ${innerClassName}`}
         style={backgroundColor ? { background: backgroundColor } : undefined}

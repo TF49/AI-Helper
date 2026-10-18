@@ -7,7 +7,7 @@
   margin: 0;
   padding: 0;
   scrollbar-width: thin;
-  scrollbar-color: rgba(148, 163, 184, 0.4) transparent;
+  scrollbar-color: rgba(0, 0, 0, 0.25) transparent;
 }
 
 html.dark * {
@@ -16,57 +16,53 @@ html.dark * {
 
 /* 自定义极简优雅滚动条 (WebKit/Blink) */
 ::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
+  width: 6px;
+  height: 6px;
 }
 
 ::-webkit-scrollbar-track {
-  background: rgba(0, 0, 0, 0.03);
-  border-radius: 9999px;
+  background: transparent;
 }
 
 ::-webkit-scrollbar-thumb {
-  background-color: rgba(148, 163, 184, 0.55);
+  background-color: rgba(0, 0, 0, 0.2);
   border-radius: 9999px;
-  border: 2px solid transparent;
-  background-clip: padding-box;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background-color: rgba(100, 116, 139, 0.85);
+  background-color: rgba(0, 0, 0, 0.4);
 }
 
 html.dark ::-webkit-scrollbar-track {
-  background: rgba(255, 255, 255, 0.03);
+  background: transparent;
 }
 
 html.dark ::-webkit-scrollbar-thumb {
-  background-color: rgba(255, 255, 255, 0.25);
+  background-color: rgba(255, 255, 255, 0.2);
   border-radius: 9999px;
-  border: 2px solid transparent;
-  background-clip: padding-box;
 }
 
 html.dark ::-webkit-scrollbar-thumb:hover {
-  background-color: rgba(255, 255, 255, 0.45);
+  background-color: rgba(255, 255, 255, 0.4);
 }
 
 html,
 body {
   font-family:
     -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-  /* 背景色与应用主背景保持一致，防止大窗口/全屏时底部出现黑边 */
-  background: #f8fafc;
-  color: #e5e5e5;
+  /* 极致纯白/纯黑背景，防止大窗口/全屏时底部出现黑边或杂色 */
+  background: #ffffff;
+  color: #171717;
   height: 100%;
   overflow: hidden;
   user-select: text;
   -webkit-user-select: text;
 }
 
-/* ThemeProvider 只在 <html> 上切换 .dark class，body.dark 永远不触发 */
+/* ThemeProvider 只在 <html> 上切换 .dark class */
 html.dark {
-  background: #090a0f;
+  background: #000000;
+  color: #ededed;
 }
 
 #root {

@@ -7,47 +7,16 @@ export interface AuroraBackgroundProps {
 }
 
 export const AuroraBackground: React.FC<AuroraBackgroundProps> = ({
-  theme = "chatgpt",
   className = "",
   children,
 }) => {
-  const isClaude = theme === "claude";
-  const isWorkbuddy = theme === "workbuddy";
-  const isAccio = theme === "acciowork";
-
-  const topGradient = isAccio
-    ? "radial-gradient(circle, #fb923c 0%, #f97316 40%, transparent 70%)"
-    : isWorkbuddy
-      ? "radial-gradient(circle, #34d399 0%, #10b981 40%, transparent 70%)"
-      : isClaude
-        ? "radial-gradient(circle, #fbbf24 0%, #f472b6 40%, transparent 70%)"
-        : "radial-gradient(circle, #38bdf8 0%, #60a5fa 40%, transparent 70%)";
-
-  const bottomGradient = isAccio
-    ? "radial-gradient(circle, #ea580c 0%, #f59e0b 50%, transparent 70%)"
-    : isWorkbuddy
-      ? "radial-gradient(circle, #059669 0%, #06b6d4 50%, transparent 70%)"
-      : isClaude
-        ? "radial-gradient(circle, #c084fc 0%, #fb7185 50%, transparent 70%)"
-        : "radial-gradient(circle, #34d399 0%, #3b82f6 50%, transparent 70%)";
-
   return (
     <div
-      className={`relative flex-1 h-full min-h-0 flex flex-col overflow-hidden transition-colors duration-300 bg-[#f8fafc] dark:bg-[#090a0f] ${className}`}
+      className={`relative flex-1 h-full min-h-0 flex flex-col overflow-hidden transition-colors duration-300 bg-white dark:bg-black ${className}`}
     >
-      {/* 极光发光光晕层 */}
+      {/* 细腻极简点阵网格 */}
       <div
-        className="pointer-events-none absolute -top-[20%] -left-[10%] w-[75vw] h-[50vh] rounded-full blur-[110px] opacity-35 dark:opacity-25 transition-all duration-700 ease-in-out"
-        style={{ background: topGradient }}
-      />
-      <div
-        className="pointer-events-none absolute -bottom-[20%] -right-[10%] w-[65vw] h-[50vh] rounded-full blur-[120px] opacity-30 dark:opacity-20 transition-all duration-700 ease-in-out"
-        style={{ background: bottomGradient }}
-      />
-
-      {/* 细腻点阵网格 */}
-      <div
-        className="pointer-events-none absolute inset-0 opacity-[0.035] dark:opacity-[0.04]"
+        className="pointer-events-none absolute inset-0 opacity-[0.03] dark:opacity-[0.04]"
         style={{
           backgroundImage: `radial-gradient(circle at 1px 1px, currentColor 1px, transparent 0)`,
           backgroundSize: "24px 24px",

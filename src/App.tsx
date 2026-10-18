@@ -120,25 +120,25 @@ const WORKBENCH_TOOLS: {
     id: "chatgpt",
     name: "Codex",
     icon: OpenAIIcon,
-    activeColor: "text-blue-600 dark:text-blue-400",
+    activeColor: "text-black dark:text-white",
   },
   {
     id: "claude",
     name: "Claude Code",
     icon: ClaudeIcon,
-    activeColor: "text-purple-600 dark:text-purple-400",
+    activeColor: "text-black dark:text-white",
   },
   {
     id: "workbuddy",
     name: "WorkBuddy",
     icon: WorkbuddyIcon,
-    activeColor: "text-emerald-600 dark:text-emerald-400",
+    activeColor: "text-black dark:text-white",
   },
   {
     id: "acciowork",
     name: "Accio Work",
     icon: AccioWorkIcon,
-    activeColor: "text-orange-600 dark:text-orange-400",
+    activeColor: "text-black dark:text-white",
   },
 ];
 
@@ -456,7 +456,7 @@ function AppContent() {
     >
       {/* ── 顶部无缝桌面标题栏 (始终置顶 z-[100]，确保窗口控制随时可用) ── */}
       <div
-        className="flex items-center justify-between h-11 px-3 border-b flex-shrink-0 z-[100] backdrop-blur-xl transition-colors duration-200 bg-white/90 border-slate-200/90 dark:bg-[#0c0e18]/90 dark:border-white/10 select-none cursor-default"
+        className="flex items-center justify-between h-11 px-3 border-b flex-shrink-0 z-[100] backdrop-blur-xl transition-colors duration-200 bg-white/90 border-slate-200/90 dark:bg-black/90 dark:border-white/10 select-none cursor-default"
         data-tauri-drag-region
         onDoubleClick={(e) => {
           const target = e.target as HTMLElement;
@@ -520,7 +520,7 @@ function AppContent() {
           >
             <Bell size={13} />
             {hasUnreadAnnouncement && (
-              <span className="absolute top-1.5 right-1.5 w-1.5 h-1.5 rounded-full bg-blue-500 ring-2 ring-white dark:ring-[#0b0e1b]" />
+              <span className="absolute top-1.5 right-1.5 w-1.5 h-1.5 rounded-full bg-black dark:bg-white ring-2 ring-white dark:ring-black" />
             )}
           </button>
 
@@ -533,7 +533,7 @@ function AppContent() {
             className="h-7 px-2 flex items-center gap-1.5 rounded-lg text-xs font-medium border border-transparent hover:border-slate-200 dark:hover:border-white/10 bg-slate-100/60 hover:bg-slate-200/80 text-slate-600 hover:text-slate-900 dark:bg-white/5 dark:hover:bg-white/10 dark:text-gray-300 dark:hover:text-white transition-colors cursor-pointer"
             title="意见反馈 (BUG反馈、功能建议与工单)"
           >
-            <MessageSquare size={12} className="text-cyan-500" />
+            <MessageSquare size={12} className="text-black dark:text-white" />
             <span className="text-[11px] font-normal">反馈</span>
           </button>
 
@@ -643,7 +643,7 @@ function AppContent() {
         {/* ── 全新左侧边栏导航 (严格复刻图一 6 大板块，保留底部资产卡片不动) ── */}
         <aside
           className={cn(
-            "flex-shrink-0 flex flex-col justify-between border-r border-slate-200/90 dark:border-white/10 bg-white/70 dark:bg-[#0c0e18]/70 backdrop-blur-xl transition-all duration-300 select-none overflow-y-auto overflow-x-hidden scrollbar-none",
+            "flex-shrink-0 flex flex-col justify-between border-r border-slate-200/90 dark:border-white/10 bg-white/70 dark:bg-black/80 backdrop-blur-xl transition-all duration-300 select-none overflow-y-auto overflow-x-hidden scrollbar-none",
             isSidebarCollapsed ? "w-[68px] p-2" : "w-64 p-3.5",
           )}
         >
@@ -685,19 +685,19 @@ function AppContent() {
                               className={cn(
                                 "w-10 h-10 rounded-xl flex items-center justify-center transition-all cursor-pointer relative",
                                 isActive
-                                  ? "border border-blue-500/70 bg-blue-500/15 text-blue-600 dark:text-blue-400 shadow-2xs ring-1 ring-blue-500/30"
+                                  ? "border border-black bg-neutral-100 text-black dark:border-white dark:bg-white/10 dark:text-white shadow-2xs"
                                   : "border border-transparent text-slate-600 dark:text-gray-400 hover:bg-slate-100/80 dark:hover:bg-white/5 hover:text-slate-900 dark:hover:text-gray-200",
                               )}
                               title={`${item.title} (点击展开工具二级菜单)`}
                             >
                               {isActive && (
-                                <span className="absolute -left-1 top-2.5 bottom-2.5 w-1 rounded-r-full bg-blue-500" />
+                                <span className="absolute -left-1 top-2.5 bottom-2.5 w-1 rounded-r-full bg-black dark:bg-white" />
                               )}
                               <div
                                 className={cn(
                                   "w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0 transition-colors",
                                   isActive
-                                    ? "bg-blue-600 text-white dark:bg-blue-500 dark:text-white"
+                                    ? "bg-black text-white dark:bg-white dark:text-black"
                                     : "bg-slate-100 text-slate-500 dark:bg-white/5 dark:text-gray-400",
                                 )}
                               >
@@ -710,7 +710,7 @@ function AppContent() {
                               side="right"
                               sideOffset={12}
                               align="start"
-                              className="z-[110] w-48 p-1.5 rounded-2xl bg-white/95 dark:bg-[#121626]/95 backdrop-blur-xl border border-slate-200/90 dark:border-white/10 shadow-xl animate-in fade-in-0 zoom-in-95 select-none"
+                              className="z-[110] w-48 p-1.5 rounded-2xl bg-white/95 dark:bg-neutral-900/95 backdrop-blur-xl border border-slate-200/90 dark:border-white/10 shadow-xl animate-in fade-in-0 zoom-in-95 select-none"
                             >
                               <div className="px-2.5 py-1 text-[10px] font-bold text-slate-400 dark:text-gray-500 uppercase tracking-wider border-b border-slate-100 dark:border-white/5 mb-1">
                                 工作台工具
@@ -733,7 +733,7 @@ function AppContent() {
                                       className={cn(
                                         "w-full flex items-center justify-between px-2.5 py-2 rounded-xl text-xs font-medium transition-colors cursor-pointer text-left",
                                         isToolActive
-                                          ? "bg-blue-500/15 text-blue-600 dark:text-blue-400 font-semibold"
+                                          ? "bg-neutral-100 text-black dark:bg-white/10 dark:text-white font-semibold"
                                           : "text-slate-600 dark:text-gray-400 hover:text-slate-900 dark:hover:text-gray-200 hover:bg-slate-100 dark:hover:bg-white/5",
                                       )}
                                     >
@@ -749,7 +749,7 @@ function AppContent() {
                                         <span>{tool.name}</span>
                                       </div>
                                       {isToolActive && (
-                                        <span className="w-1.5 h-1.5 rounded-full bg-blue-500" />
+                                        <span className="w-1.5 h-1.5 rounded-full bg-black dark:bg-white" />
                                       )}
                                     </button>
                                   );
@@ -769,19 +769,19 @@ function AppContent() {
                         className={cn(
                           "w-10 h-10 rounded-xl flex items-center justify-center transition-all cursor-pointer relative",
                           isActive
-                            ? "border border-blue-500/70 bg-blue-500/15 text-blue-600 dark:text-blue-400 shadow-2xs ring-1 ring-blue-500/30"
+                            ? "border border-black bg-neutral-100 text-black dark:border-white dark:bg-white/10 dark:text-white shadow-2xs"
                             : "border border-transparent text-slate-600 dark:text-gray-400 hover:bg-slate-100/80 dark:hover:bg-white/5 hover:text-slate-900 dark:hover:text-gray-200",
                         )}
                         title={`${item.title} (${item.subtitle})`}
                       >
                         {isActive && (
-                          <span className="absolute -left-1 top-2.5 bottom-2.5 w-1 rounded-r-full bg-blue-500" />
+                          <span className="absolute -left-1 top-2.5 bottom-2.5 w-1 rounded-r-full bg-black dark:bg-white" />
                         )}
                         <div
                           className={cn(
                             "w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0 transition-colors",
                             isActive
-                              ? "bg-blue-600 text-white dark:bg-blue-500 dark:text-white"
+                              ? "bg-black text-white dark:bg-white dark:text-black"
                               : "bg-slate-100 text-slate-500 dark:bg-white/5 dark:text-gray-400",
                           )}
                         >
@@ -799,7 +799,7 @@ function AppContent() {
                   <button
                     type="button"
                     onClick={() => handleSelectNav("account")}
-                    className="w-9 h-9 rounded-xl bg-blue-600 hover:bg-blue-700 text-white flex items-center justify-center font-bold text-xs relative transition-transform hover:scale-105 shadow-2xs cursor-pointer group"
+                    className="w-9 h-9 rounded-xl bg-black hover:bg-neutral-800 text-white dark:bg-white dark:hover:bg-neutral-200 dark:text-black flex items-center justify-center font-bold text-xs relative transition-transform hover:scale-105 shadow-2xs cursor-pointer group"
                     title={`${authState.user?.display_name || authState.user?.username || "用户"} - 点击进入个人中心`}
                   >
                     <span>
@@ -807,7 +807,7 @@ function AppContent() {
                         "U"}
                     </span>
                     <span
-                      className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-emerald-500 border-2 border-white dark:border-[#0c0e18]"
+                      className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-emerald-500 border-2 border-white dark:border-black"
                       title="已就绪"
                     />
                   </button>
@@ -815,7 +815,7 @@ function AppContent() {
                   <button
                     type="button"
                     onClick={() => setLoginModalOpen(true)}
-                    className="w-9 h-9 rounded-xl bg-blue-50 dark:bg-blue-500/10 text-blue-600 dark:text-blue-400 hover:bg-blue-100 dark:hover:bg-blue-500/20 flex items-center justify-center transition-colors cursor-pointer"
+                    className="w-9 h-9 rounded-xl bg-neutral-100 dark:bg-white/10 text-neutral-800 dark:text-neutral-200 hover:bg-neutral-200 dark:hover:bg-white/20 flex items-center justify-center transition-colors cursor-pointer"
                     title="登录 bob-api.com"
                   >
                     <User size={15} />
@@ -827,7 +827,7 @@ function AppContent() {
                   <button
                     type="button"
                     onClick={() => handleSelectNav("account")}
-                    className="w-9 h-9 rounded-xl bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-100 dark:hover:bg-indigo-500/20 flex items-center justify-center transition-colors cursor-pointer relative shadow-2xs"
+                    className="w-9 h-9 rounded-xl bg-neutral-100 dark:bg-white/10 text-neutral-800 dark:text-neutral-200 hover:bg-neutral-200 dark:hover:bg-white/20 flex items-center justify-center transition-colors cursor-pointer relative shadow-2xs"
                     title={
                       wallet
                         ? `账号额度: $${wallet.quota_usd.toFixed(2)} (≈ ¥${wallet.quota_cny.toFixed(2)}) - 点击前往个人中心`
@@ -850,7 +850,7 @@ function AppContent() {
                     networkState === "unreachable" &&
                       "text-amber-600 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-500/10",
                     networkState === "checking" &&
-                      "text-blue-500 hover:bg-slate-100 dark:hover:bg-white/5",
+                      "text-black dark:text-white hover:bg-slate-100 dark:hover:bg-white/5",
                   )}
                   title={
                     networkState === "checking"
@@ -861,7 +861,7 @@ function AppContent() {
                   }
                 >
                   {networkState === "checking" ? (
-                    <Loader2 size={15} className="animate-spin text-blue-500" />
+                    <Loader2 size={15} className="animate-spin text-black dark:text-white" />
                   ) : networkState === "reachable" ? (
                     <Wifi size={15} />
                   ) : (
@@ -884,7 +884,7 @@ function AppContent() {
                   <RefreshCw
                     size={12}
                     className={
-                      isManualChecking ? "animate-spin text-blue-500" : ""
+                      isManualChecking ? "animate-spin text-black dark:text-white" : ""
                     }
                   />
                 </button>
@@ -897,7 +897,7 @@ function AppContent() {
                 {/* 顶部 Brand 标题区 (复刻图一) */}
                 <div className="px-2 pt-1 pb-1 flex items-center justify-between">
                   <div>
-                    <div className="text-xs font-black tracking-widest text-blue-600 dark:text-blue-400 uppercase">
+                    <div className="text-xs font-black tracking-widest text-black dark:text-white uppercase">
                       AI HELPER
                     </div>
                     <div className="text-[11px] font-medium text-slate-400 dark:text-gray-500 mt-0.5">
@@ -938,7 +938,7 @@ function AppContent() {
                             className={cn(
                               "relative w-full flex items-center justify-between p-2.5 rounded-2xl border text-left transition-all cursor-pointer select-none",
                               isActive
-                                ? "border-blue-500/60 bg-blue-50/90 text-blue-900 dark:bg-blue-500/15 dark:border-blue-500/40 dark:text-blue-100 shadow-xs ring-1 ring-blue-500/10"
+                                ? "border-black/60 bg-neutral-100 text-black dark:bg-white/10 dark:border-white/40 dark:text-white shadow-xs"
                                 : "border-transparent text-slate-600 dark:text-gray-400 hover:bg-slate-100/80 dark:hover:bg-white/5 hover:text-slate-900 dark:hover:text-gray-200",
                             )}
                           >
@@ -947,7 +947,7 @@ function AppContent() {
                                 className={cn(
                                   "w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0 transition-colors",
                                   isActive
-                                    ? "bg-blue-600 text-white dark:bg-blue-500 dark:text-white shadow-xs"
+                                    ? "bg-black text-white dark:bg-white dark:text-black shadow-xs"
                                     : "bg-slate-100 text-slate-500 dark:bg-white/5 dark:text-gray-400",
                                 )}
                               >
@@ -958,7 +958,7 @@ function AppContent() {
                                   className={cn(
                                     "text-xs font-bold truncate leading-tight",
                                     isActive
-                                      ? "text-blue-900 dark:text-blue-100"
+                                      ? "text-black dark:text-white"
                                       : "text-slate-800 dark:text-gray-200",
                                   )}
                                 >
@@ -984,7 +984,7 @@ function AppContent() {
                                   "transition-transform duration-200 flex-shrink-0",
                                   workspaceMenuOpen ? "rotate-90" : "rotate-0",
                                   isActive
-                                    ? "text-blue-600 dark:text-blue-400"
+                                    ? "text-black dark:text-white"
                                     : "text-slate-400 dark:text-gray-500",
                                 )}
                               />
@@ -1020,7 +1020,7 @@ function AppContent() {
                                         className={cn(
                                           "relative w-full flex items-center justify-between px-2.5 py-2 rounded-xl text-xs font-medium transition-all cursor-pointer group text-left select-none",
                                           isToolActive
-                                            ? "bg-blue-500/15 text-blue-900 dark:text-blue-100 font-semibold border border-blue-500/30 shadow-2xs"
+                                            ? "bg-neutral-100 text-black dark:bg-white/10 dark:text-white font-semibold border border-black/20 dark:border-white/20 shadow-2xs"
                                             : "text-slate-600 dark:text-gray-400 hover:text-slate-900 dark:hover:text-gray-200 hover:bg-slate-100/80 dark:hover:bg-white/5 border border-transparent",
                                         )}
                                       >
@@ -1042,7 +1042,7 @@ function AppContent() {
                                         </div>
 
                                         {isToolActive && (
-                                          <span className="w-1.5 h-1.5 rounded-full bg-blue-500 flex-shrink-0 ml-1 shadow-2xs" />
+                                          <span className="w-1.5 h-1.5 rounded-full bg-black dark:bg-white flex-shrink-0 ml-1 shadow-2xs" />
                                         )}
                                       </button>
                                     );
@@ -1063,7 +1063,7 @@ function AppContent() {
                         className={cn(
                           "relative w-full flex items-center justify-between p-2.5 rounded-2xl border text-left transition-all cursor-pointer select-none",
                           isActive
-                            ? "border-blue-500/60 bg-blue-50/90 text-blue-900 dark:bg-blue-500/15 dark:border-blue-500/40 dark:text-blue-100 shadow-xs ring-1 ring-blue-500/10"
+                            ? "border-black/60 bg-neutral-100 text-black dark:bg-white/10 dark:border-white/40 dark:text-white shadow-xs"
                             : "border-transparent text-slate-600 dark:text-gray-400 hover:bg-slate-100/80 dark:hover:bg-white/5 hover:text-slate-900 dark:hover:text-gray-200",
                         )}
                       >
@@ -1072,7 +1072,7 @@ function AppContent() {
                             className={cn(
                               "w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0 transition-colors",
                               isActive
-                                ? "bg-blue-600 text-white dark:bg-blue-500 dark:text-white shadow-xs"
+                                ? "bg-black text-white dark:bg-white dark:text-black shadow-xs"
                                 : "bg-slate-100 text-slate-500 dark:bg-white/5 dark:text-gray-400",
                             )}
                           >
@@ -1083,7 +1083,7 @@ function AppContent() {
                               className={cn(
                                 "text-xs font-bold truncate leading-tight",
                                 isActive
-                                  ? "text-blue-900 dark:text-blue-100"
+                                  ? "text-black dark:text-white"
                                   : "text-slate-800 dark:text-gray-200",
                               )}
                             >
@@ -1098,7 +1098,7 @@ function AppContent() {
                         {isActive && (
                           <ChevronRight
                             size={14}
-                            className="text-blue-600 dark:text-blue-400 flex-shrink-0 ml-1"
+                            className="text-black dark:text-white flex-shrink-0 ml-1"
                           />
                         )}
                       </button>
@@ -1147,7 +1147,7 @@ function AppContent() {
                     {networkState === "checking" ? (
                       <Loader2
                         size={13}
-                        className="animate-spin text-blue-500 flex-shrink-0"
+                        className="animate-spin text-black dark:text-white flex-shrink-0"
                       />
                     ) : networkState === "reachable" ? (
                       <div className="relative flex items-center justify-center flex-shrink-0">
@@ -1188,7 +1188,7 @@ function AppContent() {
                     <RefreshCw
                       size={10}
                       className={
-                        isManualChecking ? "animate-spin text-blue-500" : ""
+                        isManualChecking ? "animate-spin text-black dark:text-white" : ""
                       }
                     />
                     <span>{isManualChecking ? "检查中" : "检查更新"}</span>
@@ -1392,9 +1392,9 @@ function AppContent() {
       {/* ── 阶段 1：启动检查更新阶段过渡层 ── */}
       {!isBootCheckComplete && updatePhase === "idle" && (
         <div className="fixed inset-0 top-11 z-50 flex flex-col items-center justify-center bg-slate-950/75 backdrop-blur-md select-none p-4">
-          <div className="max-w-sm w-full p-6 rounded-2xl bg-white dark:bg-[#121524] border border-slate-200 dark:border-white/10 shadow-2xl flex flex-col items-center text-center">
-            <div className="w-12 h-12 rounded-xl bg-blue-50 dark:bg-blue-500/10 border border-blue-200 dark:border-blue-500/20 flex items-center justify-center shadow-sm mb-3.5">
-              <RefreshCw className="w-5 h-5 text-blue-600 dark:text-blue-400 animate-spin" />
+          <div className="max-w-sm w-full p-6 rounded-2xl bg-white dark:bg-black border border-neutral-200 dark:border-neutral-800 shadow-2xl flex flex-col items-center text-center">
+            <div className="w-12 h-12 rounded-xl bg-neutral-100 dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 flex items-center justify-center shadow-sm mb-3.5">
+              <RefreshCw className="w-5 h-5 text-black dark:text-white animate-spin" />
             </div>
             <h2 className="text-sm font-semibold text-slate-900 dark:text-white tracking-wide">
               正在检查版本与环境...
@@ -1409,7 +1409,7 @@ function AppContent() {
                   handleUpdateClose();
                   setInitModalOpen(true);
                 }}
-                className="flex-1 px-3.5 py-2 rounded-xl text-xs font-semibold text-white bg-blue-600 hover:bg-blue-700 active:bg-blue-800 transition-colors shadow-xs flex items-center justify-center gap-1.5 cursor-pointer"
+                className="flex-1 px-3.5 py-2 rounded-xl text-xs font-semibold text-white bg-black hover:bg-neutral-800 dark:bg-white dark:text-black dark:hover:bg-neutral-200 transition-colors shadow-xs flex items-center justify-center gap-1.5 cursor-pointer"
               >
                 <ShieldCheck size={14} />
                 <span>配置引导向导</span>
@@ -1429,8 +1429,8 @@ function AppContent() {
       {/* ── 阶段 2：启动凭据初次校验恢复微过渡 ── */}
       {isBootCheckComplete && updatePhase === "idle" && !isAuthReady && (
         <div className="fixed inset-0 top-11 z-50 flex flex-col items-center justify-center bg-slate-950/75 backdrop-blur-md select-none">
-          <div className="w-12 h-12 rounded-2xl bg-blue-500/10 border border-blue-500/30 flex items-center justify-center shadow-lg shadow-blue-500/10 mb-3">
-            <Loader2 className="w-6 h-6 text-blue-400 animate-spin" />
+          <div className="w-12 h-12 rounded-2xl bg-neutral-900 border border-neutral-700 flex items-center justify-center shadow-lg mb-3">
+            <Loader2 className="w-6 h-6 text-white animate-spin" />
           </div>
           <p className="text-xs text-slate-300 font-medium tracking-wide">
             正在校验用户登录状态...
