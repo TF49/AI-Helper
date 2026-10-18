@@ -53,10 +53,14 @@ const memoryStore = {
   usageEvents: [],
 };
 
+let isInitializing = false;
 /**
- * 自动初始化 MySQL 数据库与数据表
+ * 自动初始化 MySQL 数据库与数据表 (带自动重试与自愈重连机制)
  */
-async function initDatabase() {
+async function initDatabase(retryCount = 0, maxRetries = 8) {
+  if (isDbConnected || isInitializing) return;
+  isInitializing = true;
+
   const dbConfig = {
     host: dbMeta.host,
     port: dbMeta.port,
@@ -162,9 +166,26 @@ async function initDatabase() {
     isDbConnected = false;
     dbMeta.error = err.message;
     console.warn(`[Database] ⚠️ 无法直连 MySQL (${err.message})`);
-    console.warn(`[Database] 提示: 请在 server/.env 中设置正确的 DB_USER 与 DB_PASSWORD。当前已安全切换至真实内存存储模式，数据收发真实有效。`);
+    if (retryCount < maxRetries) {
+      console.log(`[Database] 🔄 正在重试连接 (${retryCount + 1}/${maxRetries})...`);
+      setTimeout(() => {
+        isInitializing = false;
+        void initDatabase(retryCount + 1, maxRetries);
+      }, 3000);
+      return;
+    }
+    console.warn(`[Database] 提示: 请在 server/.env 中设置正确的 DB_USER 与 DB_PASSWORD。当前已安全切换至真实内存存储模式，后台每隔 15 秒自动探测数据库。`);
+  } finally {
+    isInitializing = false;
   }
 }
+
+// 后台定时自愈：若数据库离线，每隔 15 秒重新尝试连接一次
+setInterval(() => {
+  if (!isDbConnected && !isInitializing) {
+    void initDatabase(0, 1);
+  }
+}, 15000);
 
 // -----------------------------------------------------------------------------
 // 1. 服务健康状态检查 (GET /api/health)

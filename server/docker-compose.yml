@@ -1,13 +1,13 @@
 version: '3.8'
 
 services:
-  # MySQL 数据库服务
+  # MySQL 8.0 数据库服务
   mysql:
     image: mysql:8.0
     container_name: ai_helper_mysql
     restart: always
     environment:
-      MYSQL_ROOT_PASSWORD: root_password_here
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-root_password_here}
       MYSQL_DATABASE: ai_helper_telemetry
     ports:
       - "3306:3306"
@@ -15,10 +15,17 @@ services:
       - mysql_data:/var/lib/mysql
       - ./schema.sql:/docker-entrypoint-initdb.d/init.sql:ro
     command: --default-authentication-plugin=mysql_native_password --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -uroot -p$${MYSQL_ROOT_PASSWORD:-root_password_here} --silent"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
 
-  # 监控后端服务
+  # AI-Helper 监控与诊断 API 服务
   telemetry_api:
-    build: .
+    build:
+      context: ..
+      dockerfile: server/Dockerfile
     container_name: ai_helper_telemetry_api
     restart: always
     ports:
@@ -28,10 +35,11 @@ services:
       DB_HOST: mysql
       DB_PORT: 3306
       DB_USER: root
-      DB_PASSWORD: root_password_here
+      DB_PASSWORD: ${DB_PASSWORD:-${MYSQL_ROOT_PASSWORD:-root_password_here}}
       DB_NAME: ai_helper_telemetry
     depends_on:
-      - mysql
+      mysql:
+        condition: service_healthy
 
 volumes:
   mysql_data:
