@@ -228,6 +228,36 @@ app.get('/api/health', async (req, res) => {
   });
 });
 
+// 内部开发者专属鉴权 Token (可通过环境变量 ADMIN_TOKEN 配置)
+const ADMIN_TOKEN = process.env.ADMIN_TOKEN || 'ai_helper_dev_2026';
+
+function requireAdminAuth(req, res, next) {
+  const token = req.headers['x-admin-token'] || req.query.token;
+  if (!token || token !== ADMIN_TOKEN) {
+    return res.status(401).json({
+      success: false,
+      error: 'Unauthorized: 请提供有效的内部开发者口令 (x-admin-token)',
+    });
+  }
+  next();
+}
+
+// 自动数据生命周期清理 (定期清理超过 DATA_RETENTION_DAYS 天的历史心跳与旧报错，默认 90 天)
+async function cleanOldData() {
+  if (isDbConnected && pool) {
+    try {
+      const retentionDays = Number(process.env.DATA_RETENTION_DAYS) || 90;
+      await pool.query('DELETE FROM usage_events WHERE created_at < DATE_SUB(NOW(), INTERVAL ? DAY)', [retentionDays]);
+      await pool.query('DELETE FROM error_logs WHERE occurred_at < DATE_SUB(NOW(), INTERVAL ? DAY)', [retentionDays]);
+      console.log(`[Retention] ✓ 自动清理任务完成: 已归档超 ${retentionDays} 天的历史心跳与事件`);
+    } catch (e) {
+      console.warn(`[Retention] 数据清理异常: ${e.message}`);
+    }
+  }
+}
+setTimeout(cleanOldData, 60000);
+setInterval(cleanOldData, 24 * 3600 * 1000);
+
 // -----------------------------------------------------------------------------
 // 2. 核心上报接口：接收客户端诊断报告 (POST /api/telemetry/report)
 // -----------------------------------------------------------------------------
@@ -387,6 +417,7 @@ app.post('/api/telemetry/report', async (req, res) => {
     success: true,
     message: 'Report received and recorded',
     device_id: deviceId,
+    new_server_url: process.env.SERVER_PUBLIC_URL || null,
     timestamp: Date.now(),
   });
 });
@@ -394,9 +425,9 @@ app.post('/api/telemetry/report', async (req, res) => {
 // -----------------------------------------------------------------------------
 // 3. 监控大盘聚合数据接口 (GET /api/telemetry/dashboard)
 // 供 website/diagnostics.html 一键查询全网所有真实用户的聚合指标
-// 严格杜绝任何虚假生成数字，全部来自真实表聚合
+// 严格杜绝任何虚假生成数字，全部来自真实表聚合 (需要内部管理员鉴权)
 // -----------------------------------------------------------------------------
-app.get('/api/telemetry/dashboard', async (req, res) => {
+app.get('/api/telemetry/dashboard', requireAdminAuth, async (req, res) => {
   const queryStart = Date.now();
 
   // 生成连续 7 天标准日期数组 (YYYY-MM-DD)
@@ -597,7 +628,7 @@ app.get('/api/telemetry/dashboard', async (req, res) => {
 // 4. 用户设备档案列表接口 (GET /api/telemetry/devices)
 // 供内部开发人员查看全网所有用户的真实机器硬件配置与活跃档案
 // -----------------------------------------------------------------------------
-app.get('/api/telemetry/devices', async (req, res) => {
+app.get('/api/telemetry/devices', requireAdminAuth, async (req, res) => {
   const searchQuery = (req.query.q || '').trim().toLowerCase();
   const osFilter = (req.query.os || '').trim();
 
@@ -661,7 +692,7 @@ app.get('/api/telemetry/devices', async (req, res) => {
 // 5. 单个设备全景诊断档案接口 (GET /api/telemetry/device/:deviceId)
 // 供点击某个特定用户时，深入查看该用户的所有硬件参数、报错历史与活跃轨迹
 // -----------------------------------------------------------------------------
-app.get('/api/telemetry/device/:deviceId', async (req, res) => {
+app.get('/api/telemetry/device/:deviceId', requireAdminAuth, async (req, res) => {
   const { deviceId } = req.params;
 
   if (isDbConnected && pool) {
@@ -708,7 +739,7 @@ app.get('/api/telemetry/device/:deviceId', async (req, res) => {
 // -----------------------------------------------------------------------------
 // 6. 开发者维护辅助接口：清理测试日志 (POST /api/telemetry/clear-test-data)
 // -----------------------------------------------------------------------------
-app.post('/api/telemetry/clear-test-data', async (req, res) => {
+app.post('/api/telemetry/clear-test-data', requireAdminAuth, async (req, res) => {
   if (isDbConnected && pool) {
     try {
       await pool.query('DELETE FROM error_logs WHERE message LIKE ? OR message LIKE ?', ['%Simulated%', '%测试%']);

@@ -37,6 +37,9 @@ services:
       DB_USER: root
       DB_PASSWORD: ${DB_PASSWORD:-${MYSQL_ROOT_PASSWORD:-root_password_here}}
       DB_NAME: ai_helper_telemetry
+      ADMIN_TOKEN: ${ADMIN_TOKEN:-ai_helper_dev_2026}
+      SERVER_PUBLIC_URL: ${SERVER_PUBLIC_URL:-}
+      DATA_RETENTION_DAYS: ${DATA_RETENTION_DAYS:-90}
     depends_on:
       mysql:
         condition: service_healthy

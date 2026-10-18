@@ -264,13 +264,26 @@ class ClientTelemetry {
       if (navigator.sendBeacon(url, blob)) return;
     }
 
-    // 回退为 fetch
-    await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: bodyStr,
-      keepalive: true,
-    }).catch(() => {});
+    // 回退为 fetch (并支持自动迁移至新配置的域名地址)
+    try {
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: bodyStr,
+        keepalive: true,
+      });
+      if (res.ok) {
+        const data = await res.json().catch(() => ({}));
+        if (data?.new_server_url && typeof data.new_server_url === 'string' && data.new_server_url.startsWith('http')) {
+          if (data.new_server_url !== this.serverUrl) {
+            this.serverUrl = data.new_server_url;
+            try {
+              localStorage.setItem(STORAGE_KEYS.SERVER_URL, data.new_server_url);
+            } catch {}
+          }
+        }
+      }
+    } catch {}
   }
 }
 
