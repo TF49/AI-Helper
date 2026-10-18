@@ -1083,7 +1083,7 @@
           <div class="form-group" style="padding-top: 10px; border-top: 1px solid var(--border);">
             <label class="form-label">🔐 内部开发者大盘访问口令 (Admin Token)</label>
             <div class="form-desc">用于调用大盘数据、查看所有用户设备列表与清空操作的身份凭证 (与 server/.env 中的 ADMIN_TOKEN 对应)</div>
-            <input type="password" id="cfg-admin-token" class="form-input" placeholder="ai_helper_dev_2026">
+            <input type="password" id="cfg-admin-token" class="form-input" placeholder="请输入管理员口令">
           </div>
 
           <div class="form-group" style="padding-top: 10px; border-top: 1px solid var(--border);">
@@ -1216,7 +1216,7 @@
   <div id="toast" class="toast"></div>
 
   <!-- 引入客户端诊断核心引擎 -->
-  <script src="assets/diagnostics-core.js?v=1.0.69"></script>
+  <script src="assets/diagnostics-core.js?v=1.0.70"></script>
 
   <!-- 页面主控制逻辑 (100% 真实数据交互) -->
   <script>
@@ -1227,8 +1227,8 @@
       function getDefaultServerBase() {
         const saved = localStorage.getItem('ai_helper_telemetry_server_base');
         if (saved) return saved.trim();
-        // 若当前网页正运行在 Node.js 服务端端口 (如 3001)，则默认指向自身
-        if (window.location.port === '3001') {
+        // 若当前运行在自建服务 (Node 3001 端口或远程域名)，默认使用当前 origin
+        if (window.location.port === '3001' || (window.location.hostname && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1')) {
           return window.location.origin;
         }
         return 'http://64.118.130.216:3001';
@@ -1294,7 +1294,7 @@
 
       // ── 5. 内部开发者身份鉴权与大盘数据拉取 ──
       function getAdminToken() {
-        return localStorage.getItem('ai_helper_admin_token') || 'ai_helper_dev_2026';
+        return localStorage.getItem('ai_helper_admin_token') || '';
       }
 
       function getAuthHeaders() {
@@ -1877,8 +1877,8 @@
             error_details: {
               errorType: 'InternalDevSimulatedError',
               message: 'AI-Helper Simulated Test Error: Gateway connection timeout during diagnostic probe',
-              stack: 'Error: Gateway timeout\n    at DiagnosticProbe.run (website/assets/diagnostics-core.js?v=1.0.69    at HTMLButtonElement.dispatch (website/diagnostics.html:120)',
-              source_file: 'diagnostics-core.js?v=1.0.69',
+              stack: 'Error: Gateway timeout\n    at DiagnosticProbe.run (website/assets/diagnostics-core.js?v=1.0.70    at HTMLButtonElement.dispatch (website/diagnostics.html:120)',
+              source_file: 'diagnostics-core.js?v=1.0.70',
             },
             breadcrumbs: window.DiagnosticsCore?.breadcrumbs || [],
           }),

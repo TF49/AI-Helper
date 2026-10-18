@@ -17,10 +17,12 @@ const STORAGE_KEYS = {
   SERVER_URL: 'ai_helper_telemetry_server_url',
 };
 
-// 默认服务器上报地址 (您的公网服务器)
+// 默认服务器上报地址 (优先读取构建环境变量，回退至生产端点，亦可被本地缓存动态覆盖)
 const DEFAULT_SERVER_URL =
   (typeof window !== 'undefined' && localStorage.getItem(STORAGE_KEYS.SERVER_URL)) ||
-  'http://64.118.130.216:3001/api/telemetry/report';
+  (import.meta.env?.VITE_TELEMETRY_SERVER_URL
+    ? `${import.meta.env.VITE_TELEMETRY_SERVER_URL}/api/telemetry/report`
+    : 'http://64.118.130.216:3001/api/telemetry/report');
 
 function getOrCreateDeviceId(): string {
   try {
@@ -274,7 +276,7 @@ class ClientTelemetry {
       });
       if (res.ok) {
         const data = await res.json().catch(() => ({}));
-        if (data?.new_server_url && typeof data.new_server_url === 'string' && data.new_server_url.startsWith('http')) {
+        if (data?.new_server_url && typeof data.new_server_url === 'string' && (data.new_server_url.startsWith('https://') || data.new_server_url.startsWith('http://'))) {
           if (data.new_server_url !== this.serverUrl) {
             this.serverUrl = data.new_server_url;
             try {

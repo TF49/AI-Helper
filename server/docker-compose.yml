@@ -9,8 +9,9 @@ services:
     environment:
       MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-root_password_here}
       MYSQL_DATABASE: ai_helper_telemetry
-    ports:
-      - "3306:3306"
+    # 不暴露 MySQL 端口到宿主机，仅允许内部服务间通信
+    expose:
+      - "3306"
     volumes:
       - mysql_data:/var/lib/mysql
       - ./schema.sql:/docker-entrypoint-initdb.d/init.sql:ro
@@ -37,7 +38,7 @@ services:
       DB_USER: root
       DB_PASSWORD: ${DB_PASSWORD:-${MYSQL_ROOT_PASSWORD:-root_password_here}}
       DB_NAME: ai_helper_telemetry
-      ADMIN_TOKEN: ${ADMIN_TOKEN:-ai_helper_dev_2026}
+      ADMIN_TOKEN: ${ADMIN_TOKEN:?请在 .env 中设置 ADMIN_TOKEN}
       SERVER_PUBLIC_URL: ${SERVER_PUBLIC_URL:-}
       DATA_RETENTION_DAYS: ${DATA_RETENTION_DAYS:-90}
     depends_on:

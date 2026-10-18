@@ -18,6 +18,7 @@ import dotenv from 'dotenv';
 import mysql from 'mysql2/promise';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import rateLimit from 'express-rate-limit';
 
 dotenv.config();
 
@@ -28,9 +29,41 @@ const app = express();
 const PORT = process.env.PORT || 3001;
 
 // 中间件配置
-app.use(cors({ origin: process.env.CORS_ORIGIN || '*' }));
+const corsOrigin = process.env.CORS_ORIGIN || (process.env.NODE_ENV === 'production' ? false : '*');
+app.use(cors({ origin: corsOrigin }));
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+
+// 安全响应头
+app.use((req, res, next) => {
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('X-Frame-Options', 'DENY');
+  res.setHeader('X-XSS-Protection', '1; mode=block');
+  res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+  if (process.env.NODE_ENV === 'production') {
+    res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
+    res.setHeader('Content-Security-Policy', "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'");
+  }
+  next();
+});
+
+// 速率限制：上报接口 (每设备每分钟最多 30 次)
+const reportLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 30,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { success: false, error: 'Too many requests, please try again later' },
+});
+
+// 速率限制：管理接口 (每 IP 每分钟最多 60 次)
+const adminLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 60,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { success: false, error: 'Too many requests, please try again later' },
+});
 
 // 静态托管 website 目录，便于同一端口直达监控后台 (http://localhost:3001/diagnostics.html)
 app.use(express.static(path.join(__dirname, '../website')));
@@ -191,25 +224,29 @@ setInterval(() => {
 // 1. 服务健康状态检查 (GET /api/health)
 // -----------------------------------------------------------------------------
 app.get('/api/health', async (req, res) => {
-  let dbStatus = isDbConnected ? 'connected' : 'disconnected (memory fallback)';
-  let totalDevices = memoryStore.devices.size;
-  let totalErrors = memoryStore.errorLogs.length;
-  let totalEvents = memoryStore.usageEvents.length;
+  // 检查是否携带管理员 Token (可选认证，决定返回详情深度)
+  const token = req.headers['x-admin-token'];
+  const isAdmin = token && token === ADMIN_TOKEN;
 
-  if (isDbConnected && pool) {
+  let dbStatus = isDbConnected ? 'connected' : 'disconnected (memory fallback)';
+  let detailedInfo = {};
+
+  if (isAdmin && isDbConnected && pool) {
     try {
       const [devRows] = await pool.query('SELECT COUNT(*) as count FROM devices');
       const [errRows] = await pool.query('SELECT COUNT(*) as count FROM error_logs');
       const [eventRows] = await pool.query('SELECT COUNT(*) as count FROM usage_events');
-      totalDevices = devRows[0]?.count || 0;
-      totalErrors = errRows[0]?.count || 0;
-      totalEvents = eventRows[0]?.count || 0;
+      detailedInfo = {
+        total_devices: devRows[0]?.count || 0,
+        total_error_logs: errRows[0]?.count || 0,
+        total_usage_events: eventRows[0]?.count || 0,
+      };
     } catch (e) {
       dbStatus = `query error: ${e.message}`;
     }
   }
 
-  res.json({
+  const response = {
     status: 'ok',
     service: 'AI-Helper Telemetry & Diagnostics Backend',
     version: '1.0.0',
@@ -217,26 +254,28 @@ app.get('/api/health', async (req, res) => {
     uptime_sec: Math.round(process.uptime()),
     database: {
       status: dbStatus,
-      host: dbMeta.host,
-      port: dbMeta.port,
-      database: dbMeta.database,
-      total_devices: totalDevices,
-      total_error_logs: totalErrors,
-      total_usage_events: totalEvents,
+      ...(isAdmin ? detailedInfo : {}),
     },
     timestamp: new Date().toISOString(),
-  });
+  };
+
+  res.json(response);
 });
 
-// 内部开发者专属鉴权 Token (可通过环境变量 ADMIN_TOKEN 配置)
-const ADMIN_TOKEN = process.env.ADMIN_TOKEN || 'ai_helper_dev_2026';
+// 内部开发者专属鉴权 Token (必须通过环境变量 ADMIN_TOKEN 配置)
+const ADMIN_TOKEN = process.env.ADMIN_TOKEN;
+if (!ADMIN_TOKEN || ADMIN_TOKEN.length < 16) {
+  console.warn('[Security] ⚠️ ADMIN_TOKEN 未设置或长度不足 16 位！管理接口将拒绝所有请求。');
+  console.warn('[Security]     请在 server/.env 中设置强随机 Token:');
+  console.warn("[Security]     node -e \"console.log(require('crypto').randomBytes(32).toString('hex'))\"");
+}
 
 function requireAdminAuth(req, res, next) {
-  const token = req.headers['x-admin-token'] || req.query.token;
-  if (!token || token !== ADMIN_TOKEN) {
+  const token = req.headers['x-admin-token'];
+  if (!ADMIN_TOKEN || !token || token !== ADMIN_TOKEN) {
     return res.status(401).json({
       success: false,
-      error: 'Unauthorized: 请提供有效的内部开发者口令 (x-admin-token)',
+      error: 'Unauthorized: 请提供有效的内部开发者口令 (x-admin-token header)',
     });
   }
   next();
@@ -261,7 +300,7 @@ setInterval(cleanOldData, 24 * 3600 * 1000);
 // -----------------------------------------------------------------------------
 // 2. 核心上报接口：接收客户端诊断报告 (POST /api/telemetry/report)
 // -----------------------------------------------------------------------------
-app.post('/api/telemetry/report', async (req, res) => {
+app.post('/api/telemetry/report', reportLimiter, async (req, res) => {
   const payload = req.body;
   if (!payload) {
     return res.status(400).json({ success: false, error: 'Empty payload received' });
@@ -427,7 +466,7 @@ app.post('/api/telemetry/report', async (req, res) => {
 // 供 website/diagnostics.html 一键查询全网所有真实用户的聚合指标
 // 严格杜绝任何虚假生成数字，全部来自真实表聚合 (需要内部管理员鉴权)
 // -----------------------------------------------------------------------------
-app.get('/api/telemetry/dashboard', requireAdminAuth, async (req, res) => {
+app.get('/api/telemetry/dashboard', adminLimiter, requireAdminAuth, async (req, res) => {
   const queryStart = Date.now();
 
   // 生成连续 7 天标准日期数组 (YYYY-MM-DD)
@@ -537,7 +576,6 @@ app.get('/api/telemetry/dashboard', requireAdminAuth, async (req, res) => {
         source: 'mysql',
         meta: {
           database: dbMeta.database,
-          host: dbMeta.host,
           query_duration_ms: Date.now() - queryStart,
           queried_at: new Date().toISOString(),
         },
@@ -601,7 +639,6 @@ app.get('/api/telemetry/dashboard', requireAdminAuth, async (req, res) => {
     source: 'memory_fallback',
     meta: {
       database: 'In-Memory (Awaiting MySQL configuration in server/.env)',
-      host: dbMeta.host,
       query_duration_ms: Date.now() - queryStart,
       queried_at: new Date().toISOString(),
     },
@@ -628,7 +665,7 @@ app.get('/api/telemetry/dashboard', requireAdminAuth, async (req, res) => {
 // 4. 用户设备档案列表接口 (GET /api/telemetry/devices)
 // 供内部开发人员查看全网所有用户的真实机器硬件配置与活跃档案
 // -----------------------------------------------------------------------------
-app.get('/api/telemetry/devices', requireAdminAuth, async (req, res) => {
+app.get('/api/telemetry/devices', adminLimiter, requireAdminAuth, async (req, res) => {
   const searchQuery = (req.query.q || '').trim().toLowerCase();
   const osFilter = (req.query.os || '').trim();
 
@@ -692,7 +729,7 @@ app.get('/api/telemetry/devices', requireAdminAuth, async (req, res) => {
 // 5. 单个设备全景诊断档案接口 (GET /api/telemetry/device/:deviceId)
 // 供点击某个特定用户时，深入查看该用户的所有硬件参数、报错历史与活跃轨迹
 // -----------------------------------------------------------------------------
-app.get('/api/telemetry/device/:deviceId', requireAdminAuth, async (req, res) => {
+app.get('/api/telemetry/device/:deviceId', adminLimiter, requireAdminAuth, async (req, res) => {
   const { deviceId } = req.params;
 
   if (isDbConnected && pool) {
@@ -739,7 +776,7 @@ app.get('/api/telemetry/device/:deviceId', requireAdminAuth, async (req, res) =>
 // -----------------------------------------------------------------------------
 // 6. 开发者维护辅助接口：清理测试日志 (POST /api/telemetry/clear-test-data)
 // -----------------------------------------------------------------------------
-app.post('/api/telemetry/clear-test-data', requireAdminAuth, async (req, res) => {
+app.post('/api/telemetry/clear-test-data', adminLimiter, requireAdminAuth, async (req, res) => {
   if (isDbConnected && pool) {
     try {
       await pool.query('DELETE FROM error_logs WHERE message LIKE ? OR message LIKE ?', ['%Simulated%', '%测试%']);
