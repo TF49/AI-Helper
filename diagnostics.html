@@ -1081,6 +1081,12 @@
           </div>
 
           <div class="form-group" style="padding-top: 10px; border-top: 1px solid var(--border);">
+            <label class="form-label">🔐 内部开发者大盘访问口令 (Admin Token)</label>
+            <div class="form-desc">用于调用大盘数据、查看所有用户设备列表与清空操作的身份凭证 (与 server/.env 中的 ADMIN_TOKEN 对应)</div>
+            <input type="password" id="cfg-admin-token" class="form-input" placeholder="ai_helper_dev_2026">
+          </div>
+
+          <div class="form-group" style="padding-top: 10px; border-top: 1px solid var(--border);">
             <label class="form-label">飞书群自定义告警机器人 Webhook URL</label>
             <div class="form-desc">当用户发生致命崩溃或内部错误时，自动将错误原因与机器快照推送到飞书运维群</div>
             <input type="text" id="cfg-feishu-url" class="form-input" placeholder="https://open.feishu.cn/open-apis/bot/v2/hook/...">
@@ -1286,7 +1292,27 @@
         });
       });
 
-      // ── 5. 大盘数据拉取与渲染 (核心真实数据入口) ──
+      // ── 5. 内部开发者身份鉴权与大盘数据拉取 ──
+      function getAdminToken() {
+        return localStorage.getItem('ai_helper_admin_token') || 'ai_helper_dev_2026';
+      }
+
+      function getAuthHeaders() {
+        return {
+          'Content-Type': 'application/json',
+          'x-admin-token': getAdminToken(),
+        };
+      }
+
+      function promptForAdminToken() {
+        const val = prompt('🔐 【内部开发者身份验证】\n服务端已开启鉴权保护，请输入访问口令 (Admin Token)：', getAdminToken());
+        if (val && val.trim()) {
+          localStorage.setItem('ai_helper_admin_token', val.trim());
+          showToast('✓ 开发者口令已保存，正在重新加载...');
+          fetchAndRenderDashboard();
+        }
+      }
+
       async function fetchAndRenderDashboard() {
         const startTime = performance.now();
         const serverStatusPill = document.getElementById('server-status-pill');
@@ -1295,9 +1321,17 @@
 
         try {
           const res = await fetch(`${currentServerBase}/api/telemetry/dashboard`, {
+            headers: getAuthHeaders(),
             signal: AbortSignal.timeout(4000),
           });
           const latency = Math.round(performance.now() - startTime);
+
+          if (res.status === 401) {
+            statusDot.className = 'status-dot error';
+            statusText.textContent = '🔒 口令验证失败 (401)';
+            promptForAdminToken();
+            return;
+          }
 
           if (!res.ok) throw new Error(`HTTP ${res.status}`);
           const data = await res.json();
@@ -1485,7 +1519,13 @@
           const activeOsPill = document.querySelector('#device-os-pills .filter-pill.active');
           const os = activeOsPill ? activeOsPill.getAttribute('data-os') : 'ALL';
 
-          const res = await fetch(`${currentServerBase}/api/telemetry/devices?q=${encodeURIComponent(q)}&os=${encodeURIComponent(os)}`);
+          const res = await fetch(`${currentServerBase}/api/telemetry/devices?q=${encodeURIComponent(q)}&os=${encodeURIComponent(os)}`, {
+            headers: getAuthHeaders(),
+          });
+          if (res.status === 401) {
+            promptForAdminToken();
+            return;
+          }
           if (!res.ok) throw new Error(`HTTP ${res.status}`);
           const data = await res.json();
           cachedDevices = data.devices || [];
@@ -1611,7 +1651,13 @@
         devModal.classList.add('open');
 
         try {
-          const res = await fetch(`${currentServerBase}/api/telemetry/device/${encodeURIComponent(deviceId)}`);
+          const res = await fetch(`${currentServerBase}/api/telemetry/device/${encodeURIComponent(deviceId)}`, {
+            headers: getAuthHeaders(),
+          });
+          if (res.status === 401) {
+            promptForAdminToken();
+            return;
+          }
           if (!res.ok) throw new Error('Not found');
           const data = await res.json();
           const d = data.device || {};
@@ -1848,7 +1894,14 @@
       document.getElementById('btn-clear-test-logs')?.addEventListener('click', async () => {
         if (!confirm('确定清理 MySQL 与内存中的模拟测试日志吗？真实用户报错不受影响。')) return;
         try {
-          const res = await fetch(`${currentServerBase}/api/telemetry/clear-test-data`, { method: 'POST' });
+          const res = await fetch(`${currentServerBase}/api/telemetry/clear-test-data`, {
+            method: 'POST',
+            headers: getAuthHeaders(),
+          });
+          if (res.status === 401) {
+            promptForAdminToken();
+            return;
+          }
           if (res.ok) {
             showToast('✓ 测试日志已从数据库清除');
             await fetchAndRenderDashboard();
@@ -1864,6 +1917,9 @@
         const input = document.getElementById('cfg-server-base');
         if (input) input.value = currentServerBase;
 
+        const tokenInput = document.getElementById('cfg-admin-token');
+        if (tokenInput) tokenInput.value = getAdminToken();
+
         const core = window.DiagnosticsCore;
         if (!core) return;
         const feishuUrlInput = document.getElementById('cfg-feishu-url');
@@ -1878,6 +1934,11 @@
         if (serverVal) {
           currentServerBase = serverVal.replace(/\/+$/, '');
           localStorage.setItem('ai_helper_telemetry_server_base', currentServerBase);
+        }
+
+        const tokenVal = (document.getElementById('cfg-admin-token')?.value || '').trim();
+        if (tokenVal) {
+          localStorage.setItem('ai_helper_admin_token', tokenVal);
         }
 
         const core = window.DiagnosticsCore;
@@ -1937,8 +1998,12 @@
       // 导出全量 JSON
       document.getElementById('btn-export-all-json')?.addEventListener('click', async () => {
         try {
-          const res = await fetch(`${currentServerBase}/api/telemetry/dashboard`);
-          const devRes = await fetch(`${currentServerBase}/api/telemetry/devices`);
+          const res = await fetch(`${currentServerBase}/api/telemetry/dashboard`, { headers: getAuthHeaders() });
+          const devRes = await fetch(`${currentServerBase}/api/telemetry/devices`, { headers: getAuthHeaders() });
+          if (res.status === 401 || devRes.status === 401) {
+            promptForAdminToken();
+            return;
+          }
           const dash = await res.json();
           const devs = await devRes.json();
 
