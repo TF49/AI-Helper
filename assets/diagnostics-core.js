@@ -24,7 +24,7 @@
     ? `${window.location.origin}/api/telemetry/report`
     : ((typeof window !== 'undefined' && localStorage.getItem('ai_helper_telemetry_server_base'))
         ? `${localStorage.getItem('ai_helper_telemetry_server_base').replace(/\/+$/, '')}/api/telemetry/report`
-        : 'http://64.118.130.216:3001/api/telemetry/report');
+        : `${window.location.origin}/api/telemetry/report`);
 
   const DEFAULT_CONFIG = {
     enabled: true,
@@ -75,7 +75,7 @@
 
   class DiagnosticsCore {
     constructor() {
-      this.version = '1.0.69';
+      this.version = '1.0.70';
       this.deviceId = getOrCreateDeviceId();
       this.sessionId = getOrCreateSessionId();
       this.sessionStartTime = Date.now();
