@@ -2026,6 +2026,62 @@
         showToast('✓ 监控大盘数据已立即刷新');
       });
 
+      // 测试飞书 Webhook
+      document.getElementById('btn-test-feishu')?.addEventListener('click', async () => {
+        const out = document.getElementById('feishu-test-output');
+        const feishuUrl = (document.getElementById('cfg-feishu-url')?.value || '').trim();
+        if (!out) return;
+
+        if (!feishuUrl) {
+          out.innerHTML = '<span style="color:var(--danger);">❌ 请先输入飞书 Webhook 地址</span>';
+          showToast('请填写飞书 Webhook URL');
+          return;
+        }
+
+        out.innerHTML = '<span style="color:var(--primary);">正在发送测试卡片...</span>';
+
+        try {
+          const core = window.DiagnosticsCore;
+          if (!core) throw new Error('诊断核心未加载');
+
+          const testPayload = {
+            report_meta: {
+              device_id: core.deviceId,
+              session_id: core.sessionId,
+              app_version: '1.0.0',
+              timestamp: new Date().toISOString(),
+            },
+            machine_info: core.probeMachineInfo(),
+          };
+
+          const testError = {
+            level: 'ERROR',
+            message: '这是一条测试告警消息，验证飞书通道连接。',
+            errorType: 'TestAlert',
+            stack: 'Error: Test alert\n  at diagnostics.html:0:0',
+          };
+
+          const card = core.buildFeishuCard(testPayload, testError, 'error');
+          const res = await fetch(feishuUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(card),
+            signal: AbortSignal.timeout(5000),
+          });
+
+          const resData = await res.json();
+          if (res.ok && resData.code === 0) {
+            out.innerHTML = '<span style="color:var(--success);">✅ 测试卡片已成功发送到飞书！请检查飞书群消息。</span>';
+            showToast('✓ 飞书告警通道测试成功');
+          } else {
+            throw new Error(`飞书返回错误: ${resData.msg || res.statusText}`);
+          }
+        } catch (err) {
+          out.innerHTML = `<span style="color:var(--danger);">❌ 发送失败: ${err.message}</span>`;
+          showToast(`飞书测试失败: ${err.message}`);
+        }
+      });
+
       // ── 13. 页面初始化启动 ──
       window.addEventListener('DOMContentLoaded', () => {
         fetchAndRenderDashboard();
