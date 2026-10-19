@@ -51,6 +51,7 @@ export interface CliInstallOption {
   name: string;
   badge?: string;
   command: string;
+  operationId?: string;
   desc: string;
   recommended?: boolean;
 }
@@ -61,6 +62,7 @@ export const CLAUDE_INSTALL_OPTIONS: CliInstallOption[] = [
     name: "npm 官方推荐",
     badge: "推荐",
     command: "npm i -g @anthropic-ai/claude-code",
+    operationId: "claude_npm",
     desc: "Anthropic 官方推荐全局安装命令 (要求系统已配置 Node.js 18+ 环境)",
     recommended: true,
   },
@@ -78,6 +80,7 @@ export const CODEX_INSTALL_OPTIONS: CliInstallOption[] = [
     name: "npm 官方推荐",
     badge: "推荐",
     command: "npm i -g @openai/codex",
+    operationId: "codex_npm",
     desc: "OpenAI 官方 Codex CLI 全局安装命令 (要求系统已配置 Node.js 18+ 环境)",
     recommended: true,
   },
@@ -94,12 +97,14 @@ export const NODE_CHECK_COMMANDS = [
     id: "node_version",
     name: "检查 Node.js 版本 (要求 >= 18 LTS)",
     command: "node -v",
+    operationId: "node_version",
     desc: "验证系统中是否已安装 Node.js 运行环境及其版本号",
   },
   {
     id: "npm_version",
     name: "检查 npm 包管理器",
     command: "npm -v",
+    operationId: "npm_version",
     desc: "验证 npm 全局包管理工具是否可用",
   },
 ];
@@ -164,6 +169,9 @@ export function AppPathsPanel() {
     >
   >({});
   const [downloadedFiles, setDownloadedFiles] = useState<
+    Record<string, string>
+  >({});
+  const [downloadedRecords, setDownloadedRecords] = useState<
     Record<string, string>
   >({});
 
@@ -428,11 +436,11 @@ export function AppPathsPanel() {
   };
 
   // 在独立终端窗口中自动运行安装命令
-  const handleRunInTerminal = async (command: string, label: string) => {
-    setRunningCmd(command);
+  const handleRunInTerminal = async (operationId: string, label: string) => {
+    setRunningCmd(operationId);
     try {
       toast.info(`正在打开终端执行 ${label}...`);
-      const res = await executeInTerminal(command);
+      const res = await executeInTerminal(operationId);
       toast.success(res);
     } catch (err) {
       toast.error(`终端执行失败: ${err}`);
@@ -482,6 +490,10 @@ export function AppPathsPanel() {
             ...prev,
             [type]: event.data.filePath,
           }));
+          setDownloadedRecords((prev) => ({
+            ...prev,
+            [type]: event.data.recordId,
+          }));
           toast.success(`${label} 官方安装包已成功下载至系统 Downloads 目录！`);
         } else if (event.event === "Error") {
           // 仅记录控制台日志，界面错误通知统一由外层 catch 显示，避免双重弹窗
@@ -489,7 +501,7 @@ export function AppPathsPanel() {
         }
       });
 
-      setDownloadedFiles((prev) => ({
+      setDownloadedRecords((prev) => ({
         ...prev,
         [type]: savedPath,
       }));
@@ -501,9 +513,9 @@ export function AppPathsPanel() {
   };
 
   // 运行已下载的安装程序
-  const handleRunInstaller = async (filePath: string, appName: string) => {
+  const handleRunInstaller = async (recordId: string, appName: string) => {
     try {
-      await runInstallerFile(filePath);
+      await runInstallerFile(recordId);
       toast.success(`已调起 ${appName} 安装程序。安装完成后，请点击【探测】按钮自动绑定路径！`);
     } catch (err) {
       toast.error(`启动安装程序失败: ${err}`);
@@ -524,14 +536,14 @@ export function AppPathsPanel() {
     if (method === "store") {
       try {
         toast.info("正在唤起微软应用商店安装 ChatGPT 官方客户端...");
-        await openSystemUri("ms-windows-store://pdp/?productid=9NT1R1C2HH7J");
+        await openSystemUri("chatgpt_store");
       } catch (err) {
         toast.error(`唤起微软商店失败: ${err}，已为您切换为浏览器打开`);
         void openUrl("https://apps.microsoft.com/detail/9NT1R1C2HH7J");
       }
     } else if (method === "winget") {
       void handleRunInTerminal(
-        "winget install --id=9NT1R1C2HH7J --source=msstore --accept-package-agreements --accept-source-agreements",
+        "chatgpt_winget",
         "ChatGPT 官方安装命令",
       );
     } else {
@@ -771,19 +783,20 @@ export function AppPathsPanel() {
                             <button
                               type="button"
                               onClick={() =>
+                                opt.operationId &&
                                 void handleRunInTerminal(
-                                  opt.command,
+                                  opt.operationId,
                                   "Claude Code 安装命令",
                                 )
                               }
-                              disabled={runningCmd === opt.command}
+                              disabled={!opt.operationId || runningCmd === opt.operationId}
                               className="px-2.5 py-1.5 rounded-lg bg-black hover:bg-neutral-800 text-white dark:bg-white dark:hover:bg-neutral-200 dark:text-black text-xs font-medium flex items-center gap-1 transition-colors cursor-pointer disabled:opacity-60"
                               title="在独立控制台终端中拉起并自动执行"
                             >
                               <Play
                                 size={11}
                                 className={
-                                  runningCmd === opt.command
+                                  runningCmd === opt.operationId
                                     ? "animate-spin"
                                     : ""
                                 }
@@ -881,19 +894,20 @@ export function AppPathsPanel() {
                             <button
                               type="button"
                               onClick={() =>
+                                opt.operationId &&
                                 void handleRunInTerminal(
-                                  opt.command,
+                                  opt.operationId,
                                   "Codex CLI 安装命令",
                                 )
                               }
-                              disabled={runningCmd === opt.command}
+                              disabled={!opt.operationId || runningCmd === opt.operationId}
                               className="px-2.5 py-1.5 rounded-lg bg-black hover:bg-neutral-800 text-white dark:bg-white dark:hover:bg-neutral-200 dark:text-black text-xs font-medium flex items-center gap-1 transition-colors cursor-pointer disabled:opacity-60"
                               title="在独立控制台终端中拉起并自动执行"
                             >
                               <Play
                                 size={11}
                                 className={
-                                  runningCmd === opt.command
+                                  runningCmd === opt.operationId
                                     ? "animate-spin"
                                     : ""
                                 }
@@ -959,7 +973,7 @@ export function AppPathsPanel() {
                               type="button"
                               onClick={() =>
                                 void handleRunInTerminal(
-                                  item.command,
+                                  item.operationId,
                                   item.name,
                                 )
                               }
@@ -1208,19 +1222,23 @@ export function AppPathsPanel() {
                           <button
                             type="button"
                             onClick={() =>
+                              selected.operationId &&
                               void handleRunInTerminal(
-                                selected.command,
+                                selected.operationId,
                                 "Claude Code 安装命令",
                               )
                             }
-                            disabled={runningCmd === selected.command}
+                            disabled={
+                              !selected.operationId ||
+                              runningCmd === selected.operationId
+                            }
                             className="px-2.5 py-1 rounded-lg bg-black hover:bg-neutral-800 text-white dark:bg-white dark:hover:bg-neutral-200 dark:text-black text-[11px] font-medium flex items-center gap-1 transition-colors cursor-pointer disabled:opacity-60"
                             title="在独立 CMD 窗口中运行此安装命令"
                           >
                             <Play
                               size={11}
                               className={
-                                runningCmd === selected.command
+                                runningCmd === selected.operationId
                                   ? "animate-spin"
                                   : ""
                               }
@@ -1473,19 +1491,23 @@ export function AppPathsPanel() {
                           <button
                             type="button"
                             onClick={() =>
+                              selected.operationId &&
                               void handleRunInTerminal(
-                                selected.command,
+                                selected.operationId,
                                 "Codex CLI 安装命令",
                               )
                             }
-                            disabled={runningCmd === selected.command}
+                            disabled={
+                              !selected.operationId ||
+                              runningCmd === selected.operationId
+                            }
                             className="px-2.5 py-1 rounded-lg bg-black hover:bg-neutral-800 text-white dark:bg-white dark:hover:bg-neutral-200 dark:text-black text-[11px] font-medium flex items-center gap-1 transition-colors cursor-pointer disabled:opacity-60"
                             title="在独立 CMD 窗口中运行此安装命令"
                           >
                             <Play
                               size={11}
                               className={
-                                runningCmd === selected.command
+                                runningCmd === selected.operationId
                                   ? "animate-spin"
                                   : ""
                               }
@@ -1893,7 +1915,7 @@ export function AppPathsPanel() {
                       type="button"
                       onClick={() =>
                         void handleRunInstaller(
-                          downloadedFiles["workbuddy"],
+                          downloadedRecords["workbuddy"] || "",
                           "WorkBuddy",
                         )
                       }
@@ -2090,7 +2112,7 @@ export function AppPathsPanel() {
                       type="button"
                       onClick={() =>
                         void handleRunInstaller(
-                          downloadedFiles["acciowork"],
+                          downloadedRecords["acciowork"] || "",
                           "Accio Work",
                         )
                       }

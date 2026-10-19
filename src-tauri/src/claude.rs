@@ -116,8 +116,30 @@ pub fn get_claude_config() -> Result<ClaudeConfig, AppError> {
     ))
 }
 
+#[cfg_attr(not(test), allow(dead_code))]
 pub fn prepare_claude_json(url: &str, api_key: &str, model: Option<&str>) -> Value {
-    let mut env = serde_json::Map::new();
+    merge_claude_settings(Value::Object(serde_json::Map::new()), url, api_key, model)
+        .expect("empty object is valid")
+}
+
+pub fn merge_claude_settings(
+    existing: Value,
+    url: &str,
+    api_key: &str,
+    model: Option<&str>,
+) -> Result<Value, AppError> {
+    let mut root = match existing {
+        Value::Object(map) => map,
+        _ => {
+            return Err(AppError::Other(
+                "Claude 配置不是 JSON 对象，已停止写入以免覆盖安全规则".into(),
+            ))
+        }
+    };
+    let mut env = root
+        .remove("env")
+        .and_then(|v| v.as_object().cloned())
+        .unwrap_or_default();
     env.insert(
         "ANTHROPIC_BASE_URL".to_string(),
         Value::String(url.to_string()),
@@ -126,22 +148,16 @@ pub fn prepare_claude_json(url: &str, api_key: &str, model: Option<&str>) -> Val
         "ANTHROPIC_AUTH_TOKEN".to_string(),
         Value::String(api_key.to_string()),
     );
-
     let model_str = model.unwrap_or("").trim();
     if !model_str.is_empty() {
         env.insert(
             "ANTHROPIC_MODEL".to_string(),
             Value::String(model_str.to_string()),
         );
-    }
-
-    let mut root = serde_json::Map::new();
-    if !model_str.is_empty() {
         root.insert("model".to_string(), Value::String(model_str.to_string()));
     }
     root.insert("env".to_string(), Value::Object(env));
-
-    Value::Object(root)
+    Ok(Value::Object(root))
 }
 
 pub fn set_claude_config(
@@ -149,22 +165,41 @@ pub fn set_claude_config(
     api_key: String,
     model: Option<String>,
 ) -> Result<(), AppError> {
-    let path = claude_config_path()?;
+    if crate::credential_policy::is_managed_key(&api_key) {
+        crate::credential_policy::assert_managed_key_destination(
+            &url,
+            &crate::credential_policy::default_managed_origins(),
+            crate::credential_policy::loopback_http_allowed(),
+        )
+        .map_err(|e| AppError::Other(e.to_string()))?;
+    } else {
+        crate::credential_policy::validate_endpoint(
+            &url,
+            crate::credential_policy::loopback_http_allowed(),
+        )
+        .map_err(|e| AppError::Other(e.to_string()))?;
+    }
 
+    let path = claude_config_path()?;
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)?;
     }
 
-    // 写入前自动将旧配置文件归档备份至 .bak，然后彻底清除旧内容重新写入纯净配置
-    if path.exists() {
-        let bak_path = path.with_extension("json.bak");
-        let _ = std::fs::copy(&path, &bak_path);
-        let _ = std::fs::remove_file(&path);
-    }
+    let existing = if path.exists() {
+        let raw = std::fs::read_to_string(&path)?;
+        if raw.trim().is_empty() {
+            Value::Object(serde_json::Map::new())
+        } else {
+            serde_json::from_str(&raw).map_err(|_| {
+                AppError::Other("现有 Claude 配置损坏，已停止写入以免丢失安全规则".into())
+            })?
+        }
+    } else {
+        Value::Object(serde_json::Map::new())
+    };
 
-    let json = prepare_claude_json(&url, &api_key, model.as_deref());
-
-    std::fs::write(&path, serde_json::to_string_pretty(&json)?)?;
+    let json = merge_claude_settings(existing, &url, &api_key, model.as_deref())?;
+    crate::safe_fs::backup_then_atomic_write(&path, serde_json::to_string_pretty(&json)?)?;
     Ok(())
 }
 
@@ -235,5 +270,36 @@ mod tests {
         assert_eq!(json["env"]["ANTHROPIC_AUTH_TOKEN"], "sk-test");
         assert!(json.get("model").is_none());
         assert!(json["env"].get("ANTHROPIC_MODEL").is_none());
+    }
+
+    #[test]
+    fn merge_preserves_permissions_sandbox_hooks_and_unknown_fields() {
+        let existing = serde_json::json!({
+            "permissions": { "allow": ["Bash"] },
+            "sandbox": { "enabled": true },
+            "hooks": { "pre": "echo" },
+            "unknownFuture": 1,
+            "env": { "KEEP_ME": "yes" }
+        });
+        let merged = merge_claude_settings(
+            existing,
+            "https://bob-api.com",
+            "sk-managed",
+            Some("claude-sonnet"),
+        )
+        .unwrap();
+        assert_eq!(merged["permissions"]["allow"][0], "Bash");
+        assert_eq!(merged["sandbox"]["enabled"], true);
+        assert_eq!(merged["hooks"]["pre"], "echo");
+        assert_eq!(merged["unknownFuture"], 1);
+        assert_eq!(merged["env"]["KEEP_ME"], "yes");
+        assert_eq!(merged["env"]["ANTHROPIC_AUTH_TOKEN"], "sk-managed");
+    }
+
+    #[test]
+    fn merge_rejects_non_object_config() {
+        assert!(
+            merge_claude_settings(Value::Array(vec![]), "https://bob-api.com", "k", None).is_err()
+        );
     }
 }

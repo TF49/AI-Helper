@@ -9,6 +9,7 @@ import {
   X,
   Loader2,
   AlertCircle,
+  AlertTriangle,
   Clock,
   Coins,
   Sparkles,
@@ -27,6 +28,8 @@ import {
   openUrl,
   updateUserTokenGroup,
   getChannelGroupOverview,
+  getPricingData,
+  getUserAvailableGroups,
 } from "../../lib/api";
 import type { TokenItem } from "../../types";
 import { cn } from "../../lib/utils";
@@ -35,6 +38,7 @@ import { ButtonToLoaderToSuccess } from "../ui/ButtonToLoaderToSuccess";
 import { CircleToSearchBar } from "../ui/CircleToSearchBar";
 import { ShinyText } from "../react-bits/ShinyText";
 import { DecryptedText } from "../react-bits/DecryptedText";
+import { scheduleClipboardClear } from "../../lib/secureClipboard";
 
 export interface TokenSelectModalProps {
   open: boolean;
@@ -71,7 +75,9 @@ export function TokenSelectModal({
   // 快速修改 Token 分组状态
   const [editingGroupToken, setEditingGroupToken] = useState<TokenItem | null>(null);
   const [availableGroups, setAvailableGroups] = useState<string[]>([]);
+  const [groupRatios, setGroupRatios] = useState<Record<string, number>>({});
   const [selectedNewGroup, setSelectedNewGroup] = useState<string>("");
+  const [rateConfirmed, setRateConfirmed] = useState(false);
   const [isUpdatingGroup, setIsUpdatingGroup] = useState(false);
 
   // DOM 引用（供 GSAP 流畅动效）
@@ -196,10 +202,25 @@ export function TokenSelectModal({
       void loadTokens();
       setSearchQuery("");
       setFilterMode("all");
-    } else if (isRendered && !isClosing) {
-      handleSmoothClose();
+    } else {
+      setRevealedKeys({});
+      setRateConfirmed(false);
+      if (isRendered && !isClosing) {
+        handleSmoothClose();
+      }
     }
   }, [open, loadTokens]);
+
+  // 账号切换或退出登录时清空所有状态及明文 Key 缓存
+  useEffect(() => {
+    const handleAuthChange = () => {
+      setRevealedKeys({});
+      setTokens([]);
+      setRateConfirmed(false);
+    };
+    window.addEventListener("ai_helper_auth_changed", handleAuthChange);
+    return () => window.removeEventListener("ai_helper_auth_changed", handleAuthChange);
+  }, []);
 
   // 执行 GSAP 打开弹窗的平滑弹性动画
   useEffect(() => {
@@ -303,15 +324,25 @@ export function TokenSelectModal({
         `全套同步成功！已将「${token.name}」配置到 ${successCount} 个本地 Agent！`,
       );
 
-      // 同步更新所有工具的本地 boundToken 记录
-      ["chatgpt", "claude", "workbuddy", "acciowork", "default"].forEach((tid) => {
+      // 核心安全修复：仅对实际写入成功的工具更新本地 boundToken 记录，失败工具绝不伪造绑定
+      ["chatgpt", "claude", "workbuddy", "acciowork"].forEach((tid) => {
+        if (results[tid]) {
+          try {
+            localStorage.setItem(
+              `bound_token_${tid}`,
+              JSON.stringify({ id: token.id, name: token.name, group: token.group ?? undefined }),
+            );
+          } catch {}
+        }
+      });
+      if (successCount > 0) {
         try {
           localStorage.setItem(
-            `bound_token_${tid}`,
+            `bound_token_default`,
             JSON.stringify({ id: token.id, name: token.name, group: token.group ?? undefined }),
           );
         } catch {}
-      });
+      }
 
       // 广播全局全套同步事件 (仅广播安全元数据，杜绝在全局 DOM 事件中泄露明文 Key)
       window.dispatchEvent(
@@ -339,6 +370,7 @@ export function TokenSelectModal({
         setRevealedKeys((prev) => ({ ...prev, [token.id]: keyToCopy }));
       }
       await navigator.clipboard.writeText(keyToCopy);
+      scheduleClipboardClear(keyToCopy);
       setCopiedId(token.id);
       setTimeout(() => setCopiedId(null), 1800);
       toast.success(`已复制 ${token.name} 的 API Key`);
@@ -372,13 +404,46 @@ export function TokenSelectModal({
   const handleOpenEditGroup = async (token: TokenItem) => {
     setEditingGroupToken(token);
     setSelectedNewGroup(token.group || "default");
-    if (availableGroups.length === 0) {
-      try {
-        const overview = await getChannelGroupOverview(1);
-        if (overview && overview.length > 0) {
-          setAvailableGroups(overview.map((g) => g.group_name));
+    setRateConfirmed(false);
+    try {
+      const pricing = await getPricingData();
+      if (pricing) {
+        const ratios: Record<string, number> = {};
+        if (pricing.group_ratio) {
+          Object.assign(ratios, pricing.group_ratio);
         }
-      } catch {}
+        if (pricing.svip_group_ratio) {
+          Object.assign(ratios, pricing.svip_group_ratio);
+        }
+        setGroupRatios(ratios);
+
+        const groupsSet = new Set<string>();
+        if (pricing.user_available_groups && pricing.user_available_groups.length > 0) {
+          pricing.user_available_groups.forEach((g) => groupsSet.add(g));
+        } else if (pricing.usable_group) {
+          Object.keys(pricing.usable_group).forEach((g) => groupsSet.add(g));
+        }
+        if (Object.keys(ratios).length > 0) {
+          Object.keys(ratios).forEach((g) => groupsSet.add(g));
+        }
+        if (groupsSet.size > 0) {
+          setAvailableGroups(Array.from(groupsSet));
+        }
+      }
+    } catch {
+      try {
+        const userGroups = await getUserAvailableGroups();
+        if (userGroups && userGroups.length > 0) {
+          setAvailableGroups(userGroups);
+        }
+      } catch {
+        try {
+          const overview = await getChannelGroupOverview(1);
+          if (overview && overview.length > 0) {
+            setAvailableGroups(overview.map((g) => g.group_name));
+          }
+        } catch {}
+      }
     }
   };
 
@@ -394,6 +459,12 @@ export function TokenSelectModal({
     if (targetGroup === (editingGroupToken.group || "default")) {
       toast.info("该 Key 当前已经是此分组，无需修改");
       throw new Error("noop");
+    }
+
+    const targetRatio = groupRatios[targetGroup] ?? 1.0;
+    if (targetRatio >= 2.0 && !rateConfirmed) {
+      toast.warning(`目标分组费率倍率为 ${targetRatio}x，请勾选确认已知悉费率后再提交`);
+      throw new Error("请确认费率");
     }
 
     try {
@@ -430,21 +501,26 @@ export function TokenSelectModal({
       );
 
     } catch (err: unknown) {
-      if (err instanceof Error && err.message === "noop") throw err;
+      if (err instanceof Error && (err.message === "noop" || err.message === "请确认费率")) throw err;
       const msg = typeof err === "string" ? err : "更新分组失败";
       toast.error(msg);
       throw err;
     }
   };
 
-  // 聚合所有可选分组列表（系统默认 + 监控获取 + 当前已有凭据使用的分组）
+  // 聚合所有可选分组列表（权威服务可用分组 + 监控获取 + 当前已有凭据使用的分组）
+  // 杜绝硬编码未校验分组
   const groupOptions = useMemo(() => {
-    const set = new Set<string>(["default", "vip", "svip"]);
+    const set = new Set<string>();
+    if (availableGroups.length > 0) {
+      availableGroups.forEach((g) => {
+        if (g) set.add(g);
+      });
+    } else {
+      set.add("default");
+    }
     tokens.forEach((t) => {
       if (t.group) set.add(t.group);
-    });
-    availableGroups.forEach((g) => {
-      if (g) set.add(g);
     });
     return Array.from(set);
   }, [tokens, availableGroups]);
@@ -980,19 +1056,37 @@ export function TokenSelectModal({
               {groupOptions.map((grp) => {
                 const isChosen = selectedNewGroup === grp;
                 const isCurrent = (editingGroupToken.group || "default") === grp;
+                const ratio = groupRatios[grp];
                 return (
                   <button
                     key={grp}
                     type="button"
-                    onClick={() => setSelectedNewGroup(grp)}
+                    onClick={() => {
+                      setSelectedNewGroup(grp);
+                      setRateConfirmed(false);
+                    }}
                     className={cn(
-                      "px-2.5 py-1.5 rounded-lg text-xs font-medium border transition-all cursor-pointer flex items-center gap-1",
+                      "px-2.5 py-1.5 rounded-lg text-xs font-medium border transition-all cursor-pointer flex items-center gap-1.5",
                       isChosen
                         ? "bg-blue-600 text-white border-blue-600 shadow-sm shadow-blue-500/20"
                         : "bg-slate-100/80 dark:bg-white/5 hover:bg-slate-200 dark:hover:bg-white/10 border-slate-200/80 dark:border-white/10 text-slate-700 dark:text-gray-300",
                     )}
                   >
                     <span>{grp}</span>
+                    {ratio !== undefined && (
+                      <span
+                        className={cn(
+                          "text-[10px] px-1 py-0.5 rounded font-mono leading-none",
+                          isChosen
+                            ? "bg-white/20 text-white"
+                            : ratio >= 2.0
+                              ? "bg-amber-500/20 text-amber-700 dark:text-amber-300 font-bold"
+                              : "bg-slate-200/60 dark:bg-white/10 text-slate-500 dark:text-gray-400",
+                        )}
+                      >
+                        {ratio}x
+                      </span>
+                    )}
                     {isCurrent && (
                       <span className="text-[10px] opacity-75">(当前)</span>
                     )}
@@ -1001,6 +1095,28 @@ export function TokenSelectModal({
               })}
             </div>
           </div>
+
+          {/* 高倍率费率确认 */}
+          {(groupRatios[selectedNewGroup] ?? 1.0) >= 2.0 && (
+            <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-800 dark:text-amber-200 space-y-2">
+              <div className="flex items-center gap-1.5 text-xs font-semibold">
+                <AlertTriangle size={14} className="text-amber-600 dark:text-amber-400 flex-shrink-0" />
+                <span>高倍率费率确认</span>
+              </div>
+              <p className="text-[11px] leading-relaxed text-amber-700 dark:text-amber-300">
+                目标分组「{selectedNewGroup}」的官方计费倍率为 <strong>{groupRatios[selectedNewGroup]}x</strong>，在该分组下调用模型将以较高费率扣减额度。
+              </p>
+              <label className="flex items-center gap-2 cursor-pointer text-xs select-none pt-1">
+                <input
+                  type="checkbox"
+                  checked={rateConfirmed}
+                  onChange={(e) => setRateConfirmed(e.target.checked)}
+                  className="rounded border-amber-400 text-blue-600 focus:ring-amber-500 cursor-pointer"
+                />
+                <span className="font-medium">我已知悉该分组的高倍率计费规则</span>
+              </label>
+            </div>
+          )}
 
           {/* 底部按钮 */}
           <div className="flex items-center justify-between pt-2 border-t border-slate-100 dark:border-white/5">
@@ -1024,7 +1140,11 @@ export function TokenSelectModal({
               </button>
               <ButtonToLoaderToSuccess
                 accent="blue"
-                disabled={isUpdatingGroup || !selectedNewGroup.trim()}
+                disabled={
+                  isUpdatingGroup ||
+                  !selectedNewGroup.trim() ||
+                  ((groupRatios[selectedNewGroup] ?? 1.0) >= 2.0 && !rateConfirmed)
+                }
                 className="px-4 py-1.5 min-w-[120px] shadow-md shadow-blue-600/20"
                 idleLabel={<span>确认修改</span>}
                 successLabel="分组已更新"

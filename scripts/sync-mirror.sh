@@ -143,7 +143,6 @@ mkdir -p "${DOWNLOAD_DIR}"
 TMP_DIR=$(mktemp -d)
 trap 'rm -rf "${TMP_DIR}"' EXIT
 
-# ── 4. 下载安装包、ZIP、签名文件 ─────────────────────────────────────────────
 download_file() {
     local url="$1"
     local dest="$2"
@@ -151,49 +150,43 @@ download_file() {
     curl -fsSL --retry 3 --retry-delay 5 -o "${dest}" "${url}"
 }
 
-download_file "${GITHUB_BASE}/${SETUP_FILE}" "${TMP_DIR}/${SETUP_FILE}"
-download_file "${GITHUB_BASE}/${ZIP_FILE}"   "${TMP_DIR}/${ZIP_FILE}"
-download_file "${GITHUB_BASE}/${SIG_FILE}"   "${TMP_DIR}/${SIG_FILE}"
-
-# ── 5. 读取真实签名（来自 GitHub Release 的 .sig 文件）──────────────────────
-SIGNATURE=$(cat "${TMP_DIR}/${SIG_FILE}")
-log "Signature loaded (${#SIGNATURE} chars)"
-
-# ── 6. 获取发布日期 ───────────────────────────────────────────────────────────
-PUB_DATE=$(echo "${RELEASE_JSON:-$(curl -fsSL --retry 3 "${GITHUB_API}")}" \
-    | grep '"published_at"' | head -1 \
-    | sed 's/.*"published_at": *"\([^"]*\)".*/\1/')
-[[ -z "${PUB_DATE}" ]] && PUB_DATE="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-
-# ── 7. 生成 latest.json（Tauri updater 格式）─────────────────────────────────
-# Tauri updater 要求的字段：version, notes, pub_date, platforms
-NOTES="AI Helper ${TAG} 已就绪，详情见 https://github.com/${GITHUB_REPO}/releases/tag/${TAG}"
-
-cat > "${TMP_DIR}/latest.json" <<EOF
-{
-  "version": "${VERSION}",
-  "notes": "${NOTES}",
-  "pub_date": "${PUB_DATE}",
-  "platforms": {
-    "windows-x86_64": {
-      "signature": "${SIGNATURE}",
-      "url": "https://helper.bob-api.com/downloads/${SETUP_FILE}"
-    }
-  }
+download_file_optional() {
+    local url="$1"
+    local dest="$2"
+    if curl -fsSL --head "${url}" >/dev/null 2>&1; then
+        log "Downloading optional: ${url}"
+        curl -fsSL --retry 3 --retry-delay 5 -o "${dest}" "${url}" || true
+    fi
 }
-EOF
 
-log "Generated latest.json for v${VERSION}"
+download_file "${GITHUB_BASE}/${SETUP_FILE}" "${TMP_DIR}/${SETUP_FILE}"
+download_file "${GITHUB_BASE}/${SIG_FILE}"   "${TMP_DIR}/${SIG_FILE}"
+download_file_optional "${GITHUB_BASE}/${ZIP_FILE}" "${TMP_DIR}/${ZIP_FILE}"
 
-# ── 8. 原子替换：先写入临时文件，再 mv 到目标路径 ────────────────────────────
-mv "${TMP_DIR}/${SETUP_FILE}" "${DOWNLOAD_DIR}/${SETUP_FILE}"
-mv "${TMP_DIR}/${ZIP_FILE}"   "${DOWNLOAD_DIR}/${ZIP_FILE}"
-mv "${TMP_DIR}/latest.json"  "${DOWNLOAD_DIR}/latest.json"
+# ── 5. 同步权威发布清单与验签文件（必须包含签名与发布日期）───────────────────
+download_file "${GITHUB_BASE}/latest.json"     "${TMP_DIR}/latest.json"
+download_file "${GITHUB_BASE}/latest.json.sig" "${TMP_DIR}/latest.json.sig"
+
+# ── 6. 同步 macOS 跨平台分发包与签名文件（若已发布）───────────────────────────
+DMG_ARM64="AI-Helper-${TAG}-macOS-arm64.dmg"
+DMG_X64="AI-Helper-${TAG}-macOS-x64.dmg"
+download_file_optional "${GITHUB_BASE}/${DMG_ARM64}"     "${TMP_DIR}/${DMG_ARM64}"
+download_file_optional "${GITHUB_BASE}/${DMG_ARM64}.sig" "${TMP_DIR}/${DMG_ARM64}.sig"
+download_file_optional "${GITHUB_BASE}/${DMG_X64}"       "${TMP_DIR}/${DMG_X64}"
+download_file_optional "${GITHUB_BASE}/${DMG_X64}.sig"   "${TMP_DIR}/${DMG_X64}.sig"
+
+# ── 7. 原子替换：将临时目录文件同步至公开下载目录 ────────────────────────────
+for f in "${TMP_DIR}"/*; do
+    if [[ -f "$f" ]]; then
+        mv "$f" "${DOWNLOAD_DIR}/"
+    fi
+done
 
 write_site_version "${VERSION}"
 cleanup_old_versions
 
 log "Sync complete: ${DOWNLOAD_DIR}/"
 log "  ${SETUP_FILE}"
-log "  ${ZIP_FILE}"
+log "  ${SIG_FILE}"
 log "  latest.json (v${VERSION})"
+log "  latest.json.sig (verified signature)"

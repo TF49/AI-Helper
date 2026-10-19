@@ -48,7 +48,7 @@ export interface AppInstallerInfo {
 export type AppDownloadEvent =
   | { event: "Started"; data: { totalBytes?: number; fileName: string } }
   | { event: "Progress"; data: { downloaded: number; totalBytes: number; percent: number } }
-  | { event: "Finished"; data: { filePath: string } }
+  | { event: "Finished"; data: { filePath: string; recordId: string } }
   | { event: "Error"; data: { message: string } };
 
 export type InitStepId = "network" | "paths" | "config" | "confirm";

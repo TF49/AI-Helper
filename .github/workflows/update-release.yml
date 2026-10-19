@@ -19,8 +19,35 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  check-version:
+    name: Check if release is needed
+    runs-on: ubuntu-22.04
+    outputs:
+      should_release: ${{ steps.check.outputs.should_release }}
+      tag: ${{ steps.check.outputs.tag }}
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+
+      - name: Check if tag already released
+        id: check
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          package_ver=$(jq -r .version package.json)
+          tag="v${package_ver}"
+          echo "tag=$tag" >> $GITHUB_OUTPUT
+          if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "Release $tag already exists on GitHub. Skipping release build."
+            echo "should_release=false" >> $GITHUB_OUTPUT
+          else
+            echo "Release $tag does not exist. Proceeding with release build."
+            echo "should_release=true" >> $GITHUB_OUTPUT
+          fi
+
   build-windows:
     name: Build Windows x64
+    needs: check-version
+    if: needs.check-version.outputs.should_release == 'true'
     runs-on: windows-2022
     defaults:
       run:
@@ -28,21 +55,21 @@ jobs:
     outputs:
       tag: ${{ steps.package.outputs.tag }}
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
 
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
           node-version: '22'
 
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v4
         with:
           version: 10.12.3
 
-      - uses: dtolnay/rust-toolchain@master
+      - uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8 # master
         with:
           toolchain: '1.95'
 
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@779680da715d629ac1d338a641029a2f4372abb5 # v2
         with:
           workspaces: src-tauri
 
@@ -70,7 +97,7 @@ jobs:
           "tag=$tag" >> $env:GITHUB_OUTPUT
 
       - name: Upload Windows artifacts
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: windows-assets
           path: release/${{ steps.package.outputs.tag }}/*
@@ -78,30 +105,32 @@ jobs:
 
   build-macos:
     name: Build macOS (${{ matrix.target }})
+    needs: check-version
+    if: needs.check-version.outputs.should_release == 'true'
     runs-on: macos-14
     strategy:
       fail-fast: false
       matrix:
         target: [aarch64-apple-darwin, x86_64-apple-darwin]
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
 
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
           node-version: '22'
 
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v4
         with:
           version: 10.12.3
 
-      - uses: dtolnay/rust-toolchain@master
+      - uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8 # master
         with:
           toolchain: '1.95'
           targets: ${{ matrix.target }}
       - name: Add Rust target
         run: rustup target add ${{ matrix.target }}
 
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@779680da715d629ac1d338a641029a2f4372abb5 # v2
         with:
           workspaces: src-tauri
 
@@ -123,7 +152,7 @@ jobs:
           echo "tag=v${package_ver}" >> $GITHUB_OUTPUT
 
       - name: Upload macOS artifacts
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: macos-assets-${{ matrix.target }}
           path: release/${{ steps.package.outputs.tag }}/*
@@ -131,13 +160,14 @@ jobs:
 
   update-release:
     name: Update latest release
-    needs: [build-windows, build-macos]
+    needs: [check-version, build-windows, build-macos]
+    if: needs.check-version.outputs.should_release == 'true'
     runs-on: ubuntu-22.04
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
 
       - name: Download all artifacts
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7
         with:
           path: artifacts
 
@@ -151,50 +181,18 @@ jobs:
           echo "tag=$tag" >> $GITHUB_OUTPUT
           ls -la release_assets/
 
-      - name: Check if release exists
-        id: check_release
+      - name: Verify release immutability
         env:
           GH_TOKEN: ${{ github.token }}
           RELEASE_TAG: ${{ steps.prep.outputs.tag }}
         run: |
           tag="${RELEASE_TAG}"
           if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
-            echo "exists=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "exists=false" >> "$GITHUB_OUTPUT"
-          fi
-
-      - name: Delete old release assets
-        if: steps.check_release.outputs.exists == 'true'
-        env:
-          GH_TOKEN: ${{ github.token }}
-          RELEASE_TAG: ${{ steps.prep.outputs.tag }}
-        run: |
-          tag="${RELEASE_TAG}"
-          assets=$(gh release view "$tag" --repo "$GITHUB_REPOSITORY" --json assets -q '.assets[].name' 2>/dev/null || true)
-          for asset in $assets; do
-            if [[ "$asset" != "Source code"* ]]; then
-              echo "Deleting old asset: $asset"
-              gh release delete-asset "$tag" "$asset" --repo "$GITHUB_REPOSITORY" --yes || true
-            fi
-          done
-
-      - name: Upload new assets to existing release
-        if: steps.check_release.outputs.exists == 'true'
-        env:
-          GH_TOKEN: ${{ github.token }}
-          RELEASE_TAG: ${{ steps.prep.outputs.tag }}
-        run: |
-          tag="${RELEASE_TAG}"
-          assets=(release_assets/*)
-          gh release upload "$tag" "${assets[@]}" --repo "$GITHUB_REPOSITORY" --clobber
-          notes="docs/releases/${tag}.md"
-          if [ -f "$notes" ]; then
-            gh release edit "$tag" --repo "$GITHUB_REPOSITORY" --notes-file "$notes"
+            echo "::error::Release $tag already exists! Overwriting or clobbering published release binaries and manifests is strictly prohibited to guarantee update anti-replay integrity and reproducible signatures. Please increment the version in package.json and publish a new release tag."
+            exit 1
           fi
 
       - name: Create new release
-        if: steps.check_release.outputs.exists == 'false'
         env:
           GH_TOKEN: ${{ github.token }}
           RELEASE_TAG: ${{ steps.prep.outputs.tag }}

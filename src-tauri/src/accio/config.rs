@@ -26,6 +26,9 @@ pub struct AccioConfig {
     /// `base_url||api_key` 指纹，用于避免把上一把 Key 的模型缓存误用到新 Key。
     #[serde(default)]
     pub cached_models_fingerprint: String,
+    /// 受管生图模型。为空表示未配置，禁止静默使用昂贵默认模型。
+    #[serde(default)]
+    pub image_model: String,
 }
 
 fn default_base_url() -> String {
@@ -55,7 +58,13 @@ pub fn clean_base_url(url: &str) -> &str {
 }
 
 pub fn model_source_fingerprint(base_url: &str, api_key: &str) -> String {
-    format!("{}||{}", clean_base_url(base_url), api_key.trim())
+    use sha2::{Digest, Sha256};
+    let mut hasher = Sha256::new();
+    hasher.update(b"ai-helper.accio.model-cache.v1");
+    hasher.update(clean_base_url(base_url).as_bytes());
+    hasher.update([0u8]);
+    hasher.update(api_key.trim().as_bytes());
+    format!("{:x}", hasher.finalize())
 }
 
 impl Default for AccioConfig {
@@ -71,6 +80,7 @@ impl Default for AccioConfig {
             auto_start_bridge: true,
             cached_models: Vec::new(),
             cached_models_fingerprint: String::new(),
+            image_model: String::new(),
         }
     }
 }
@@ -114,12 +124,23 @@ pub fn load_accio_config() -> AccioConfig {
 }
 
 pub fn save_accio_config(config: &AccioConfig) -> Result<(), AppError> {
-    let path = get_accio_config_path()?;
-    if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent)?;
+    if crate::credential_policy::is_managed_key(&config.api_key) {
+        crate::credential_policy::assert_managed_key_destination(
+            &config.base_url,
+            &crate::credential_policy::default_managed_origins(),
+            crate::credential_policy::loopback_http_allowed(),
+        )
+        .map_err(|e| AppError::Other(e.to_string()))?;
+    } else {
+        crate::credential_policy::validate_endpoint(
+            &config.base_url,
+            crate::credential_policy::loopback_http_allowed(),
+        )
+        .map_err(|e| AppError::Other(e.to_string()))?;
     }
+    let path = get_accio_config_path()?;
     let content = serde_json::to_string_pretty(config)?;
-    std::fs::write(&path, content)?;
+    crate::safe_fs::safe_write_file(&path, content.as_bytes())?;
     Ok(())
 }
 

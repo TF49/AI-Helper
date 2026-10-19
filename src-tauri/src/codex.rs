@@ -134,28 +134,71 @@ pub fn get_codex_config() -> Result<CodexConfig, AppError> {
     ))
 }
 
+#[cfg_attr(not(test), allow(dead_code))]
 pub fn prepare_codex_doc(base_url: &str, model: Option<&str>) -> DocumentMut {
     let mut doc = DocumentMut::new();
+    merge_codex_managed_fields(&mut doc, base_url, model);
+    doc
+}
 
+pub fn merge_codex_managed_fields(doc: &mut DocumentMut, base_url: &str, model: Option<&str>) {
     let model_str = model.unwrap_or("").trim();
     if !model_str.is_empty() {
         doc["model"] = toml_edit::value(model_str);
     }
-
     doc["model_provider"] = toml_edit::value("custom");
 
-    let mut custom_table = toml_edit::Table::new();
-    custom_table["name"] = toml_edit::value("Custom");
-    custom_table["base_url"] = toml_edit::value(base_url);
-    custom_table["api"] = toml_edit::value("openai-responses");
-    custom_table["env_key"] = toml_edit::value("CUSTOM_OPENAI_API_KEY");
-
-    let mut providers_table = toml_edit::Table::new();
-    providers_table["custom"] = toml_edit::Item::Table(custom_table);
-
-    doc["model_providers"] = toml_edit::Item::Table(providers_table);
-
-    doc
+    if doc.get("model_providers").is_none() {
+        doc["model_providers"] = toml_edit::Item::Table(toml_edit::Table::new());
+    }
+    let providers = &mut doc["model_providers"];
+    if let Some(providers_tbl) = providers.as_table_mut() {
+        if let Some(custom_item) = providers_tbl.get_mut("custom") {
+            if let Some(inline) = custom_item.as_inline_table_mut() {
+                inline.insert("base_url", base_url.into());
+                if !inline.contains_key("name") {
+                    inline.insert("name", "Custom".into());
+                }
+                if !inline.contains_key("api") {
+                    inline.insert("api", "openai-responses".into());
+                }
+                if !inline.contains_key("env_key") {
+                    inline.insert("env_key", "CUSTOM_OPENAI_API_KEY".into());
+                }
+            } else if let Some(custom) = custom_item.as_table_mut() {
+                custom["base_url"] = toml_edit::value(base_url);
+                if custom.get("name").is_none() {
+                    custom["name"] = toml_edit::value("Custom");
+                }
+                if custom.get("api").is_none() {
+                    custom["api"] = toml_edit::value("openai-responses");
+                }
+                if custom.get("env_key").is_none() {
+                    custom["env_key"] = toml_edit::value("CUSTOM_OPENAI_API_KEY");
+                }
+            } else {
+                let mut custom_table = toml_edit::Table::new();
+                custom_table["name"] = toml_edit::value("Custom");
+                custom_table["api"] = toml_edit::value("openai-responses");
+                custom_table["env_key"] = toml_edit::value("CUSTOM_OPENAI_API_KEY");
+                custom_table["base_url"] = toml_edit::value(base_url);
+                *custom_item = toml_edit::Item::Table(custom_table);
+            }
+        } else {
+            let mut custom_table = toml_edit::Table::new();
+            custom_table["name"] = toml_edit::value("Custom");
+            custom_table["api"] = toml_edit::value("openai-responses");
+            custom_table["env_key"] = toml_edit::value("CUSTOM_OPENAI_API_KEY");
+            custom_table["base_url"] = toml_edit::value(base_url);
+            providers_tbl["custom"] = toml_edit::Item::Table(custom_table);
+        }
+    } else if let Some(inline_providers) = providers.as_inline_table_mut() {
+        if let Some(custom_val) = inline_providers.get_mut("custom") {
+            if let Some(inline_custom) = custom_val.as_inline_table_mut() {
+                inline_custom.insert("base_url", base_url.into());
+            }
+        }
+    }
 }
 
 pub fn set_codex_config(
@@ -163,6 +206,21 @@ pub fn set_codex_config(
     api_key: String,
     model: Option<String>,
 ) -> Result<(), AppError> {
+    if crate::credential_policy::is_managed_key(&api_key) {
+        crate::credential_policy::assert_managed_key_destination(
+            &url,
+            &crate::credential_policy::default_managed_origins(),
+            crate::credential_policy::loopback_http_allowed(),
+        )
+        .map_err(|e| AppError::Other(e.to_string()))?;
+    } else {
+        crate::credential_policy::validate_endpoint(
+            &url,
+            crate::credential_policy::loopback_http_allowed(),
+        )
+        .map_err(|e| AppError::Other(e.to_string()))?;
+    }
+
     let path = codex_config_path()?;
     let normalized = url.trim_end_matches('/');
     let base_url = format!("{}/v1", normalized);
@@ -171,16 +229,37 @@ pub fn set_codex_config(
         std::fs::create_dir_all(parent)?;
     }
 
-    // 写入前自动将旧配置文件归档备份至 .bak，然后彻底清除旧内容重新写入纯净配置
-    if path.exists() {
-        let bak_path = path.with_extension("toml.bak");
-        let _ = std::fs::copy(&path, &bak_path);
-        let _ = std::fs::remove_file(&path);
+    let mut doc = if path.exists() {
+        let raw = std::fs::read_to_string(&path)?;
+        if raw.trim().is_empty() {
+            DocumentMut::new()
+        } else {
+            raw.parse::<DocumentMut>().map_err(|_| {
+                AppError::Toml("现有 Codex 配置损坏，已停止写入以免丢失安全规则".into())
+            })?
+        }
+    } else {
+        DocumentMut::new()
+    };
+    merge_codex_managed_fields(&mut doc, &base_url, model.as_deref());
+    let doc_str = doc.to_string();
+
+    // 关键加固：在写 Key 之前，核对最终解析出的目标地址是否与目标一致！
+    let parsed_check = parse_codex_content(&doc_str, "", true, String::new(), false, None);
+    let parsed_clean = parsed_check
+        .base_url
+        .trim_end_matches('/')
+        .strip_suffix("/v1")
+        .unwrap_or(&parsed_check.base_url)
+        .trim_end_matches('/');
+    if parsed_clean != normalized {
+        return Err(AppError::Other(format!(
+            "Codex 目标校验失败: 最终解析的地址 '{}' 与目标 '{}' 不匹配，已停止写 Key",
+            parsed_check.base_url, normalized
+        )));
     }
 
-    let doc = prepare_codex_doc(&base_url, model.as_deref());
-
-    std::fs::write(&path, doc.to_string())?;
+    crate::safe_fs::backup_then_atomic_write(&path, doc_str)?;
     if api_key.trim().is_empty() {
         delete_registry_env("CUSTOM_OPENAI_API_KEY")?;
     } else {
@@ -345,5 +424,55 @@ base_url = "https://api.openai.com/v1"
             doc["model_providers"]["custom"]["base_url"].as_str(),
             Some("https://api.example.com/v1")
         );
+    }
+
+    #[test]
+    fn merge_preserves_other_providers_and_unknown_keys() {
+        let mut doc: DocumentMut = r#"
+model = "keep-me"
+approval_policy = "untrusted"
+
+[model_providers.openai]
+name = "OpenAI"
+
+[model_providers.custom]
+name = "Custom"
+base_url = "https://old.example/v1"
+extra_flag = true
+"#
+        .parse()
+        .unwrap();
+        merge_codex_managed_fields(&mut doc, "https://bob-api.com/v1", Some("new-model"));
+        assert_eq!(doc["approval_policy"].as_str(), Some("untrusted"));
+        assert_eq!(
+            doc["model_providers"]["openai"]["name"].as_str(),
+            Some("OpenAI")
+        );
+        assert_eq!(
+            doc["model_providers"]["custom"]["base_url"].as_str(),
+            Some("https://bob-api.com/v1")
+        );
+        assert_eq!(
+            doc["model_providers"]["custom"]["extra_flag"].as_bool(),
+            Some(true)
+        );
+        assert_eq!(doc["model"].as_str(), Some("new-model"));
+    }
+
+    #[test]
+    fn merge_updates_inline_table_custom_provider() {
+        let mut doc: DocumentMut = r#"
+[model_providers]
+custom = { name = "Old", base_url = "https://old.example/v1", api = "openai-responses" }
+"#
+        .parse()
+        .unwrap();
+        merge_codex_managed_fields(&mut doc, "https://bob-api.com/v1", Some("gpt-4o"));
+        assert_eq!(
+            doc["model_providers"]["custom"]["base_url"].as_str(),
+            Some("https://bob-api.com/v1")
+        );
+        let parsed = parse_codex_content(&doc.to_string(), "", true, String::new(), false, None);
+        assert_eq!(parsed.base_url, "https://bob-api.com/");
     }
 }

@@ -19,6 +19,7 @@ import { ChannelGroupMonitor } from "./ChannelGroupMonitor";
 import { getUserTokens, getTokenKey } from "../lib/api";
 import type { TokenItem } from "../types";
 import { isKeyMatch, type BoundTokenInfo } from "../lib/useBoundTokenGroup";
+import { scheduleClipboardClear } from "../lib/secureClipboard";
 
 export interface ApiKeyInputProps {
   value: string;
@@ -252,6 +253,7 @@ export function ApiKeyInput({
     if (!value) return;
     try {
       await navigator.clipboard.writeText(value);
+      scheduleClipboardClear(value);
       toast.success("已复制 API Key 到剪贴板");
     } catch {
       toast.error("复制失败");

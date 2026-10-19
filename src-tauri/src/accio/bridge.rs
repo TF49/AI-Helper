@@ -42,6 +42,11 @@ pub struct BridgeHandle {
 }
 
 static RUNNING_BRIDGE: Mutex<Option<BridgeHandle>> = Mutex::new(None);
+static INSTANCE_TOKEN: Mutex<Option<String>> = Mutex::new(None);
+
+pub fn current_instance_token() -> Option<String> {
+    INSTANCE_TOKEN.lock().ok()?.clone()
+}
 
 const MODEL_LIST_TTL: Duration = Duration::from_secs(300);
 
@@ -443,6 +448,22 @@ pub fn is_monetized_bridge_path(path: &str) -> bool {
 /// 2. 拦截所有带有非受信 Origin 或跨站探测 (Sec-Fetch-Site: cross-site) 的请求；
 /// 3. 对消耗 token/额度的收费端点进行高频死循环拦截与限流保护。
 async fn bridge_anti_csrf_middleware(request: Request, next: axum::middleware::Next) -> Response {
+    let path = request.uri().path().to_string();
+    if crate::instance_auth::requires_instance_auth(&path) {
+        let token = current_instance_token().unwrap_or_default();
+        if !crate::instance_auth::header_matches_instance(request.headers(), &token) {
+            log::warn!("【实例鉴权】拒绝未持有当前实例凭据的敏感调用: {}", path);
+            return (
+                StatusCode::UNAUTHORIZED,
+                Json(json!({
+                    "error_code": 401,
+                    "error_message": "【安全拦截】缺少有效的本地实例凭据，已拒绝访问计费或敏感路由"
+                })),
+            )
+                .into_response();
+        }
+    }
+
     // 1. 严格检查 Host 头部 (防范 DNS Rebinding 跨站盗刷)
     if let Some(host_val) = request.headers().get(header::HOST) {
         if let Ok(host_str) = host_val.to_str() {
@@ -508,8 +529,7 @@ async fn bridge_anti_csrf_middleware(request: Request, next: axum::middleware::N
     }
 
     // 3. 对扣费/高频消费端点执行速率限制保护 (防死循环掏空用户额度)
-    let path = request.uri().path();
-    if is_monetized_bridge_path(path) && !check_llm_rate_limit() {
+    if is_monetized_bridge_path(&path) && !check_llm_rate_limit() {
         log::warn!(
             "【流控安全拦截】本地 Bridge 针对收费端点 {} 的请求超出限流阈值 (120次/分钟)，已拦截以防止账户额度耗尽",
             path
@@ -524,6 +544,10 @@ async fn bridge_anti_csrf_middleware(request: Request, next: axum::middleware::N
             .into_response();
     }
 
+    let mut request = request;
+    if let Some(token) = current_instance_token() {
+        crate::instance_auth::strip_instance_headers(request.headers_mut(), &token);
+    }
     next.run(request).await
 }
 
@@ -559,6 +583,15 @@ pub async fn start_bridge(preferred_port: Option<u16>) -> Result<u16, String> {
     let config = load_accio_config();
     let base_port = preferred_port.unwrap_or(config.bridge_port);
     let (listener, target_port) = bind_listener(base_port).await?;
+    let instance_token = crate::instance_auth::generate_instance_token();
+    if let Ok(mut guard) = INSTANCE_TOKEN.lock() {
+        *guard = Some(instance_token.clone());
+    }
+    let image_cap = std::env::var("AI_HELPER_IMAGE_BUDGET_UNITS")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(6);
+    crate::paid_request::reset_image_budget(image_cap);
 
     // 若发现端口发生了递增避让，回写配置
     if target_port != config.bridge_port {
@@ -574,6 +607,7 @@ pub async fn start_bridge(preferred_port: Option<u16>) -> Result<u16, String> {
 
     let client = Client::builder()
         .timeout(Duration::from_secs(180))
+        .redirect(crate::credential_policy::credentialed_redirect_policy())
         .build()
         .map_err(|e| format!("构建 HTTP 客户端失败: {}", e))?;
 
@@ -654,6 +688,9 @@ pub async fn stop_bridge() -> Result<(), String> {
         // 给予底层系统短暂缓冲以释放套接字
         tokio::time::sleep(Duration::from_millis(150)).await;
         log::info!("已安全停止并释放 Accio Bridge 端口 {}", handle.port);
+    }
+    if let Ok(mut guard) = INSTANCE_TOKEN.lock() {
+        *guard = None;
     }
     Ok(())
 }
@@ -1073,7 +1110,10 @@ async fn handle_llm(State(client): State<Client>, request: Request) -> Response 
                 err_msg
             );
 
-            if config_clone.fallback_official {
+            let paid_state = crate::paid_request::PaidAttemptState::DispatchedUnknown;
+            if config_clone.fallback_official
+                && crate::paid_request::may_fallback_to_other_provider(paid_state, status_code_opt)
+            {
                 if config_clone.prevent_official_leak {
                     log::warn!("【防泄漏拦截】已开启 prevent_official_leak，阻止 LLM 失败后回退至阿里官方网关");
                     let full_err_msg = format!(
@@ -2096,15 +2136,10 @@ async fn call_upstream_llm(
         Err((status_opt, err_msg)) => {
             // 智能降级逻辑：检测是否需要从主端点降级到 Chat Completions
             let should_fallback = match primary_endpoint {
-                // Messages API → Chat Completions 降级条件
+                // Messages API → Chat Completions 降级条件：仅限明确未受理的 404 或 501，严禁对 500 或已受理错误自动重试
                 ApiEndpoint::Messages => {
-                    let err_lower = err_msg.to_lowercase();
                     status_opt == Some(StatusCode::NOT_FOUND)
                         || status_opt == Some(StatusCode::NOT_IMPLEMENTED)
-                        || (status_opt == Some(StatusCode::INTERNAL_SERVER_ERROR)
-                            && (err_lower.contains("not implemented")
-                                || err_lower.contains("convert_request_failed")
-                                || err_lower.contains("endpoint not found")))
                 }
                 // Responses API → Chat Completions 降级条件 (仅限明确不支持的情况)
                 ApiEndpoint::Responses => {
@@ -2188,6 +2223,41 @@ async fn call_upstream_llm(
     Ok(payload)
 }
 
+async fn download_generated_image(img_url: &str) -> Result<Vec<u8>, String> {
+    let parsed = crate::image_fetch::validate_image_url(img_url).map_err(|e| e.to_string())?;
+    crate::image_fetch::resolve_and_check_host(&parsed).map_err(|e| e.to_string())?;
+    let client = Client::builder()
+        .redirect(reqwest::redirect::Policy::none())
+        .no_proxy()
+        .timeout(Duration::from_secs(30))
+        .build()
+        .map_err(|e| e.to_string())?;
+    let resp = client
+        .get(parsed)
+        .send()
+        .await
+        .map_err(|e| format!("取图请求失败: {e}"))?;
+    if let Some(peer) = resp.remote_addr() {
+        if crate::image_fetch::is_blocked_ip(peer.ip()) {
+            return Err(crate::image_fetch::ImageFetchError::BlockedAddress.to_string());
+        }
+    }
+    if !resp.status().is_success() {
+        return Err(format!("取图 HTTP {}", resp.status()));
+    }
+    let mut collected = Vec::new();
+    let mut stream = resp.bytes_stream();
+    use futures_util::StreamExt;
+    while let Some(chunk) = stream.next().await {
+        let chunk = chunk.map_err(|e| format!("取图传输中断: {e}"))?;
+        collected.extend_from_slice(&chunk);
+        crate::image_fetch::enforce_image_size(collected.len()).map_err(|e| e.to_string())?;
+    }
+    crate::image_fetch::detect_image_mime(&collected)
+        .ok_or_else(|| crate::image_fetch::ImageFetchError::NotImage.to_string())?;
+    Ok(collected)
+}
+
 /// 处理 Accio Work 的生图请求 (responseModalities: ["IMAGE"])
 async fn call_custom_image(
     client: &Client,
@@ -2201,6 +2271,10 @@ async fn call_custom_image(
     if config.api_key.trim().is_empty() {
         return Err("API 密钥未配置，请先在 AI-Helper 中填写 API Key".to_string());
     }
+    if config.image_model.trim().is_empty() {
+        return Err("未配置受管生图模型或预算，已禁用生图以免静默使用昂贵默认模型".to_string());
+    }
+    crate::paid_request::reserve_image_unit()?;
     let root = clean_base_url(&config.base_url);
     let endpoint = format!("{root}/v1/images/generations");
 
@@ -2243,7 +2317,7 @@ async fn call_custom_image(
         _ => "1024x1024",
     };
 
-    let image_model = "dall-e-3";
+    let image_model = config.image_model.trim();
 
     log::info!(
         "Accio 生图转译：目标端点 {} (模型: {}, 尺寸: {}, prompt: {} 字符)",
@@ -2261,20 +2335,38 @@ async fn call_custom_image(
         "response_format": "b64_json"
     });
 
-    let resp = client
+    let resp = match client
         .post(&endpoint)
         .bearer_auth(&config.api_key)
         .json(&req_payload)
         .timeout(Duration::from_secs(120))
         .send()
         .await
-        .map_err(|e| format!("请求生图服务失败: {}", e))?;
+    {
+        Ok(resp) => {
+            crate::paid_request::settle_image_unit();
+            resp
+        }
+        Err(e) => {
+            crate::paid_request::settle_image_unit();
+            return Err(format!("请求生图服务失败: {}", e));
+        }
+    };
 
     let status = resp.status();
-    let body_text = resp
-        .text()
-        .await
-        .map_err(|e| format!("读取生图响应失败: {}", e))?;
+    let mut stream = resp.bytes_stream();
+    let mut collected = Vec::new();
+    const MAX_RESPONSE_BYTES: usize = 10 * 1024 * 1024; // 10MB 流式读取上限
+    use futures_util::StreamExt;
+    while let Some(chunk) = stream.next().await {
+        let chunk = chunk.map_err(|e| format!("读取生图响应流中断: {}", e))?;
+        if collected.len() + chunk.len() > MAX_RESPONSE_BYTES {
+            return Err("上游生图响应数据超出 10MB 安全上限".to_string());
+        }
+        collected.extend_from_slice(&chunk);
+    }
+    let body_text =
+        String::from_utf8(collected).map_err(|e| format!("解析生图响应文本失败: {}", e))?;
 
     if !status.is_success() {
         let err_preview = if body_text.chars().count() > 300 {
@@ -2295,15 +2387,30 @@ async fn call_custom_image(
             if let Some(b64) = first.get("b64_json").and_then(Value::as_str) {
                 b64_opt = Some(b64.to_string());
             } else if let Some(img_url) = first.get("url").and_then(Value::as_str) {
-                if let Ok(img_resp) = client
-                    .get(img_url)
-                    .timeout(Duration::from_secs(30))
-                    .send()
-                    .await
-                {
-                    if let Ok(bytes) = img_resp.bytes().await {
+                match download_generated_image(img_url).await {
+                    Ok(bytes) => {
                         use base64::Engine;
                         b64_opt = Some(base64::engine::general_purpose::STANDARD.encode(&bytes));
+                    }
+                    Err(e) => {
+                        log::warn!("取图失败，保留原图 URL，不重新计费生成: {}", e);
+                        // 关键加固：保留已扣费生成的图片 URL 返回给用户，避免无法重取或丢失原图
+                        return Ok(json!({
+                            "content": {
+                                "role": "model",
+                                "parts": [{
+                                    "text": format!("图片已扣费生成成功，但自动下载暂未完成 ({})。您可直接点击以下官方原链查看/保存图片（不重复计费）:\n{}", e, img_url)
+                                }]
+                            },
+                            "turnComplete": true,
+                            "partial": false,
+                            "finishReason": "STOP",
+                            "customMetadata": {
+                                "model_name": image_model,
+                                "bridge": "ai-helper-image",
+                                "original_image_url": img_url
+                            }
+                        }));
                     }
                 }
             }
@@ -2661,7 +2768,7 @@ mod tests {
         let fp2 = model_source_fingerprint("https://api.example.com/v1", "sk-123");
         let fp3 = model_source_fingerprint("https://api.example.com/v1/", "sk-123");
         let fp4 = model_source_fingerprint(" https://api.example.com ", "sk-123 ");
-        assert_eq!(fp1, "https://api.example.com||sk-123");
+        assert!(!fp1.contains("sk-123"));
         assert_eq!(fp1, fp2);
         assert_eq!(fp2, fp3);
         assert_eq!(fp3, fp4);

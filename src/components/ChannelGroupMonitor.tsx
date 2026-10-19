@@ -511,6 +511,19 @@ export function ChannelGroupMonitor({
 
     setSwitchModalState((prev) => ({ ...prev, errorMessage: null }));
 
+    const targetRatio = pricingInfo.groupRatio[targetGroupName];
+    if (typeof targetRatio !== "number" || !Number.isFinite(targetRatio)) {
+      const message = "无法核实目标分组费率，已阻止切换";
+      setSwitchModalState((prev) => ({ ...prev, errorMessage: message }));
+      toast.error(message);
+      throw new Error(message);
+    }
+    if (targetRatio >= 2.0 && !switchModalState.ackHighRatio) {
+      const message = "高倍率通道需要显式确认后才能切换";
+      setSwitchModalState((prev) => ({ ...prev, errorMessage: message }));
+      throw new Error(message);
+    }
+
     try {
       const updated = await updateUserTokenGroup(selectedTokenId, targetGroupName);
 
@@ -2123,8 +2136,8 @@ export function ChannelGroupMonitor({
 
                 {/* 费率与额度风险警告条 */}
                 {(() => {
-                  const targetRatio = pricingInfo.groupRatio[switchModalState.targetGroupName] ?? 1.0;
-                  if (targetRatio <= 1.0) return null;
+                  const targetRatio = pricingInfo.groupRatio[switchModalState.targetGroupName];
+                  if (typeof targetRatio !== "number" || !Number.isFinite(targetRatio) || targetRatio <= 1.0) return null;
                   const isVeryHigh = targetRatio >= 2.0;
                   return (
                     <div
@@ -2248,8 +2261,8 @@ export function ChannelGroupMonitor({
 
                 {/* 超高倍率通道强制二次确认勾选 */}
                 {(() => {
-                  const targetRatio = pricingInfo.groupRatio[switchModalState.targetGroupName] ?? 1.0;
-                  if (targetRatio < 2.0) return null;
+                  const targetRatio = pricingInfo.groupRatio[switchModalState.targetGroupName];
+                  if (typeof targetRatio !== "number" || !Number.isFinite(targetRatio) || targetRatio < 2.0) return null;
                   return (
                     <label className="flex items-start gap-2.5 p-3 rounded-xl bg-rose-50/80 dark:bg-rose-500/10 border border-rose-300 dark:border-rose-500/30 text-xs text-rose-950 dark:text-rose-200 cursor-pointer select-none">
                       <input
@@ -2314,7 +2327,9 @@ export function ChannelGroupMonitor({
                   disabled={
                     switchModalState.isSubmitting ||
                     switchModalState.tokensList.length === 0 ||
-                    ((pricingInfo.groupRatio[switchModalState.targetGroupName] ?? 1.0) >= 2.0 &&
+                    typeof pricingInfo.groupRatio[switchModalState.targetGroupName] !== "number" ||
+                    !Number.isFinite(pricingInfo.groupRatio[switchModalState.targetGroupName]) ||
+                    (pricingInfo.groupRatio[switchModalState.targetGroupName] >= 2.0 &&
                       !switchModalState.ackHighRatio)
                   }
                   className="px-5 py-2 min-w-[180px]"

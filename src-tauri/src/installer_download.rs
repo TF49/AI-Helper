@@ -1,10 +1,45 @@
-use crate::updater::{create_client, create_direct_download_client, create_download_client};
+use crate::updater::create_client;
 use futures_util::StreamExt;
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
+use std::sync::Mutex;
 use std::time::Duration;
 use tauri::ipc::Channel;
 use tokio::io::AsyncWriteExt;
+
+#[derive(Clone)]
+struct InstallerRecord {
+    path: PathBuf,
+    sha256: String,
+    consumed: bool,
+}
+
+static INSTALLER_RECORDS: once_cell::sync::Lazy<Mutex<HashMap<String, InstallerRecord>>> =
+    once_cell::sync::Lazy::new(|| Mutex::new(HashMap::new()));
+
+fn register_installer_record(path: &Path) -> Result<String, String> {
+    let sha256 = crate::update_trust::sha256_file(path).map_err(|e| e.to_string())?;
+    let id = format!("{:x}", {
+        use sha2::{Digest, Sha256};
+        let mut hasher = Sha256::new();
+        hasher.update(path.to_string_lossy().as_bytes());
+        hasher.update(sha256.as_bytes());
+        hasher.finalize()
+    });
+    let mut guard = INSTALLER_RECORDS
+        .lock()
+        .map_err(|_| "安装记录锁不可用".to_string())?;
+    guard.insert(
+        id.clone(),
+        InstallerRecord {
+            path: path.to_path_buf(),
+            sha256,
+            consumed: false,
+        },
+    );
+    Ok(id)
+}
 
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(15);
 const DOWNLOAD_CONNECT_TIMEOUT: Duration = Duration::from_secs(30);
@@ -25,6 +60,92 @@ const CHATGPT_STORE_URI: &str = "ms-windows-store://pdp/?productid=9NT1R1C2HH7J"
 const CHATGPT_WINGET_CMD: &str =
     "winget install --id=9NT1R1C2HH7J --source=msstore --accept-package-agreements --accept-source-agreements";
 const CHATGPT_DOWNLOAD_PAGE: &str = "https://chatgpt.com/download";
+
+fn is_allowed_installer_download_url(raw: &str) -> bool {
+    let Ok(url) = reqwest::Url::parse(raw.trim()) else {
+        return false;
+    };
+    if url.scheme() != "https" {
+        return false;
+    }
+    if !url.username().is_empty() || url.password().is_some() {
+        return false;
+    }
+    matches!(
+        url.host_str(),
+        Some("work-download.accio.com")
+            | Some("www.accio.com")
+            | Some("download.codebuddy.cn")
+            | Some("www.workbuddy.cn")
+            | Some("chatgpt.com")
+            | Some("apps.microsoft.com")
+    )
+}
+
+fn create_installer_download_client(connect_timeout: Duration) -> Result<reqwest::Client, String> {
+    let redirect_policy = reqwest::redirect::Policy::custom(|attempt| {
+        let target_url = attempt.url().to_string();
+        if attempt.previous().len() >= 10 {
+            attempt.error("安装包下载重定向次数过多")
+        } else if !is_allowed_installer_download_url(&target_url) {
+            attempt.error(format!(
+                "重定向目标 '{}' 不是允许的官方安装包域名",
+                target_url
+            ))
+        } else {
+            attempt.follow()
+        }
+    });
+
+    let mut builder = reqwest::Client::builder()
+        .user_agent(format!("AI-Helper/{}", env!("CARGO_PKG_VERSION")))
+        .connect_timeout(connect_timeout)
+        .tcp_keepalive(Duration::from_secs(15))
+        .timeout(Duration::from_secs(1800))
+        .redirect(redirect_policy);
+
+    if let Some(proxy_url) = crate::updater::get_upstream_proxy_url() {
+        if let Ok(proxy) = reqwest::Proxy::all(&proxy_url) {
+            builder = builder.proxy(proxy);
+            return builder
+                .build()
+                .map_err(|e| format!("构建带代理下载客户端失败: {}", e));
+        }
+    }
+
+    builder = builder.no_proxy();
+    builder
+        .build()
+        .map_err(|e| format!("构建下载客户端失败: {}", e))
+}
+
+fn create_installer_direct_download_client(
+    connect_timeout: Duration,
+) -> Result<reqwest::Client, String> {
+    let redirect_policy = reqwest::redirect::Policy::custom(|attempt| {
+        let target_url = attempt.url().to_string();
+        if attempt.previous().len() >= 10 {
+            attempt.error("安装包下载重定向次数过多")
+        } else if !is_allowed_installer_download_url(&target_url) {
+            attempt.error(format!(
+                "重定向目标 '{}' 不是允许的官方安装包域名",
+                target_url
+            ))
+        } else {
+            attempt.follow()
+        }
+    });
+
+    reqwest::Client::builder()
+        .user_agent(format!("AI-Helper/{}", env!("CARGO_PKG_VERSION")))
+        .connect_timeout(connect_timeout)
+        .tcp_keepalive(Duration::from_secs(15))
+        .timeout(Duration::from_secs(1800))
+        .no_proxy()
+        .redirect(redirect_policy)
+        .build()
+        .map_err(|e| format!("构建直连下载客户端失败: {}", e))
+}
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct AppInstallerInfo {
@@ -61,6 +182,8 @@ pub enum AppDownloadEvent {
     Finished {
         #[serde(rename = "filePath")]
         file_path: String,
+        #[serde(rename = "recordId")]
+        record_id: String,
     },
     #[serde(rename = "Error")]
     Error { message: String },
@@ -85,7 +208,10 @@ async fn fetch_accio_installer_info(client: &reqwest::Client) -> AppInstallerInf
                                 .replace("\\/", "/")
                                 .trim()
                                 .to_string();
-                            if cleaned.starts_with("http") && cleaned.contains(".exe") {
+                            if cleaned.starts_with("https")
+                                && cleaned.contains(".exe")
+                                && is_allowed_installer_download_url(&cleaned)
+                            {
                                 log::info!(
                                     "Successfully parsed latest Accio Work URL: {}",
                                     cleaned
@@ -164,6 +290,7 @@ async fn fetch_workbuddy_installer_info(client: &reqwest::Client) -> AppInstalle
                         if !cleaned.contains(' ')
                             && !cleaned.contains('"')
                             && !cleaned.contains('<')
+                            && is_allowed_installer_download_url(&cleaned)
                         {
                             log::info!("Successfully parsed latest WorkBuddy URL: {}", cleaned);
                             download_url = cleaned;
@@ -348,7 +475,7 @@ pub async fn download_installer_file(
         std::fs::create_dir_all(&download_dir).map_err(|e| format!("无法创建下载目录: {}", e))?;
     }
 
-    let client = create_download_client(DOWNLOAD_CONNECT_TIMEOUT)?;
+    let client = create_installer_download_client(DOWNLOAD_CONNECT_TIMEOUT)?;
 
     // 准备主下载地址与兜底备用 CDN 地址
     let fallback_candidate = match app_type.as_str() {
@@ -358,6 +485,9 @@ pub async fn download_installer_file(
     };
 
     let mut target_url = info.download_url.clone();
+    if !is_allowed_installer_download_url(&target_url) {
+        return Err("安装包下载地址不在允许的官方域名列表中".to_string());
+    }
     let mut resp = client.get(&target_url).send().await;
 
     // 若嗅探到的直链网络不可达或返回非 200，尝试切换官方 CDN 稳定兜底源
@@ -368,6 +498,9 @@ pub async fn download_installer_file(
         };
 
         if needs_fallback && target_url != fallback_url {
+            if !is_allowed_installer_download_url(fallback_url) {
+                return Err("安装包兜底地址不在允许的官方域名列表中".to_string());
+            }
             log::warn!(
                 "Primary download URL failed or responded with error. Falling back to official stable CDN: {}",
                 fallback_url
@@ -384,7 +517,8 @@ pub async fn download_installer_file(
             .map(|r| !r.status().is_success())
             .unwrap_or(false)
     {
-        if let Ok(direct_client) = create_direct_download_client(DOWNLOAD_CONNECT_TIMEOUT) {
+        if let Ok(direct_client) = create_installer_direct_download_client(DOWNLOAD_CONNECT_TIMEOUT)
+        {
             log::info!("Attempting direct connection (bypassing proxy) for domestic installer...");
             let direct_resp = direct_client.get(&target_url).send().await;
             if let Ok(ref r) = direct_resp {
@@ -396,6 +530,16 @@ pub async fn download_installer_file(
     }
 
     let res = resp.map_err(|e| format!("请求下载直链失败 ({}): {}", target_url, e))?;
+
+    // 关键加固：验证最终响应 URL 依然属于受信任的官方域名清单（防跳转链被劫持）
+    if !is_allowed_installer_download_url(res.url().as_str()) {
+        let msg = format!("最终下载地址 '{}' 不在受信任的官方域名列表中", res.url());
+        log::error!("{}", msg);
+        let _ = on_event.send(AppDownloadEvent::Error {
+            message: msg.clone(),
+        });
+        return Err(msg);
+    }
 
     if !res.status().is_success() {
         let status = res.status();
@@ -541,28 +685,124 @@ pub async fn download_installer_file(
     }
 
     let saved_path_str = final_dest_path.to_string_lossy().to_string();
+    let record_id = register_installer_record(&final_dest_path)?;
     log::info!("Download completed successfully: {}", saved_path_str);
 
     let _ = on_event.send(AppDownloadEvent::Finished {
         file_path: saved_path_str.clone(),
+        record_id: record_id.clone(),
     });
 
-    Ok(saved_path_str)
+    Ok(record_id)
 }
 
-/// 调起运行安装包程序
-pub fn run_installer_file(file_path: String) -> Result<(), String> {
-    let path = Path::new(&file_path);
-    if !path.exists() {
-        return Err(format!("安装包文件不存在: {}", file_path));
+#[cfg(target_os = "windows")]
+fn verify_windows_authenticode_signature(path: &Path) -> Result<(), String> {
+    let path_str = path.to_string_lossy();
+    let escaped = path_str.replace('\'', "''");
+    let script = format!(
+        "$sig = Get-AuthenticodeSignature -LiteralPath '{}'; \
+         if ($sig.Status -ne 'Valid') {{ \
+             Write-Error \"Signature status invalid: $($sig.Status)\"; exit 1 \
+         }} \
+         $subject = if ($sig.SignerCertificate) {{ $sig.SignerCertificate.Subject }} else {{ '' }}; \
+         Write-Output \"VALID:$subject\"",
+        escaped
+    );
+    let output = std::process::Command::new("powershell")
+        .args(["-NoProfile", "-NonInteractive", "-Command", &script])
+        .output()
+        .map_err(|e| format!("调起 Windows 签名校验失败: {}", e))?;
+
+    if !output.status.success() {
+        let err_msg = String::from_utf8_lossy(&output.stderr);
+        return Err(format!(
+            "安装包未通过数字签名验证 (拒绝执行非官方或被篡改的文件): {}",
+            err_msg.trim()
+        ));
+    }
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    if !stdout.contains("VALID:") {
+        return Err("安装包签名状态异常，拒绝执行".to_string());
+    }
+
+    // 校验签名发布者 Subject 是否属于已知官方白名单
+    let subject = stdout
+        .trim()
+        .strip_prefix("VALID:")
+        .unwrap_or("")
+        .to_ascii_uppercase();
+    if !is_trusted_publisher_subject(&subject) {
+        return Err(format!(
+            "安装包签名发布者不在受信任白名单中（Subject: {}），拒绝执行",
+            subject
+        ));
+    }
+    log::info!("Verified official installer signature: {}", stdout.trim());
+    Ok(())
+}
+
+/// 受信任的安装包签名发布者 Subject 关键字白名单。
+/// 匹配规则：Subject（大写）中包含任一关键字即视为可信。
+/// 新增第三方工具时须在此维护对应发布者，不得放行全部合法签名。
+#[cfg(target_os = "windows")]
+const TRUSTED_PUBLISHER_KEYWORDS: &[&str] = &[
+    "ACCIO",     // Accio Work
+    "CODEBUDDY", // WorkBuddy / CodeBuddy
+    "TENCENT",   // WorkBuddy (腾讯旗下)
+    "OPENAI",    // ChatGPT desktop
+    "MICROSOFT", // Microsoft Store apps
+];
+
+#[cfg(target_os = "windows")]
+fn is_trusted_publisher_subject(subject_upper: &str) -> bool {
+    if subject_upper.is_empty() {
+        return false;
+    }
+    TRUSTED_PUBLISHER_KEYWORDS
+        .iter()
+        .any(|kw| subject_upper.contains(kw))
+}
+
+/// 调起运行安装包程序（仅接受本次下载登记的 record_id，并强制核验发布者数字签名）
+pub fn run_installer_file(record_id: String) -> Result<(), String> {
+    let mut guard = INSTALLER_RECORDS
+        .lock()
+        .map_err(|_| "安装记录锁不可用".to_string())?;
+    let record = guard
+        .get_mut(&record_id)
+        .ok_or_else(|| "拒绝执行未登记或已被替换的安装包".to_string())?;
+    if record.consumed {
+        return Err("该安装包记录已使用，请重新下载".to_string());
+    }
+    if !record.path.exists() {
+        return Err(format!("安装包文件不存在: {}", record.path.display()));
+    }
+    let canonical = record
+        .path
+        .canonicalize()
+        .unwrap_or_else(|_| record.path.clone());
+    let actual = crate::update_trust::sha256_file(&canonical).map_err(|e| e.to_string())?;
+    if !record.sha256.eq_ignore_ascii_case(&actual) {
+        return Err("安装包校验失败，文件可能已被替换".to_string());
     }
 
     #[cfg(target_os = "windows")]
     {
+        // 核心安全锁定：在执行前核验预期发布者 Authenticode 签名
+        verify_windows_authenticode_signature(&canonical)?;
+    }
+
+    record.consumed = true;
+    let path = canonical;
+    drop(guard);
+
+    #[cfg(target_os = "windows")]
+    {
         // 优先尝试通过 opener (ShellExecute) 打开安装包，可自动唤起 Windows UAC 管理员提权确认框
-        match opener::open(path) {
+        match opener::open(&path) {
             Ok(_) => Ok(()),
-            Err(_) => std::process::Command::new(&file_path)
+            Err(_) => std::process::Command::new(&path)
                 .spawn()
                 .map(|_| ())
                 .map_err(|e| format!("无法启动安装包: {}", e)),
@@ -571,7 +811,7 @@ pub fn run_installer_file(file_path: String) -> Result<(), String> {
 
     #[cfg(not(target_os = "windows"))]
     {
-        opener::open(path).map_err(|e| format!("无法启动安装包: {}", e))
+        opener::open(&path).map_err(|e| format!("无法启动安装包: {}", e))
     }
 }
 
@@ -602,30 +842,39 @@ pub fn show_file_in_folder(file_path: String) -> Result<(), String> {
     }
 }
 
-/// 调起系统特定 URI 协议（如微软商店 ms-windows-store://）
-pub fn open_system_uri(uri: String) -> Result<(), String> {
-    let trimmed = uri.trim();
-    if trimmed.is_empty() {
-        return Err("URI 不能为空".to_string());
-    }
+const ALLOWED_SYSTEM_URI_OPS: &[(&str, &str)] = &[
+    ("chatgpt_store", CHATGPT_STORE_URI),
+    ("chatgpt_web", CHATGPT_DOWNLOAD_PAGE),
+];
 
-    // 优先尝试使用 opener (ShellExecute) 打开系统协议，避免出现 cmd 黑框闪烁
-    if opener::open(trimmed).is_ok() {
-        return Ok(());
-    }
+/// 调起系统特定 URI 协议（仅固定操作 ID）
+pub fn open_system_uri(uri_id: String) -> Result<(), String> {
+    let trimmed = uri_id.trim();
+    let resolved = ALLOWED_SYSTEM_URI_OPS
+        .iter()
+        .find(|(id, _)| *id == trimmed)
+        .map(|(_, uri)| *uri)
+        .ok_or_else(|| "未授权的系统 URI".to_string())?;
 
-    #[cfg(target_os = "windows")]
-    {
-        // 兜底通过 Windows cmd start 调起
-        std::process::Command::new("cmd")
-            .args(["/c", "start", "", trimmed])
-            .spawn()
-            .map_err(|e| format!("无法调起系统应用协议: {}", e))?;
-        Ok(())
-    }
+    opener::open(resolved).map_err(|e| format!("无法打开 URI: {}", e))
+}
 
-    #[cfg(not(target_os = "windows"))]
-    {
-        opener::open(trimmed).map_err(|e| format!("无法打开 URI: {}", e))
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn installer_urls_must_be_https_official_hosts() {
+        assert!(is_allowed_installer_download_url(ACCIO_FALLBACK_URL));
+        assert!(is_allowed_installer_download_url(WORKBUDDY_FALLBACK_URL));
+        assert!(!is_allowed_installer_download_url(
+            "http://work-download.accio.com/x.exe"
+        ));
+        assert!(!is_allowed_installer_download_url(
+            "https://evil.example/x.exe"
+        ));
+        assert!(!is_allowed_installer_download_url(
+            "https://user:pass@download.codebuddy.cn/x.exe"
+        ));
     }
 }

@@ -39,47 +39,61 @@ Compress-Archive -LiteralPath @(
 
 $installerSig = "$installer.sig"
 $sigName = "$installerName.sig"
-$hasSig = Test-Path -LiteralPath $installerSig -PathType Leaf
+if (-not (Test-Path -LiteralPath $installerSig -PathType Leaf)) {
+    throw "Signature file not found: $installerSig. Set TAURI_SIGNING_PRIVATE_KEY during build; unsigned packages cannot be released."
+}
 
-if ($hasSig) {
-    Copy-Item -LiteralPath $installerSig -Destination (Join-Path $assetRoot $sigName)
-    $sigContent = (Get-Content -LiteralPath $installerSig -Raw -Encoding UTF8).Trim()
-    
-    $notesFile = Join-Path $repoRoot "docs/releases/$Tag.md"
-    $notes = if (Test-Path -LiteralPath $notesFile) {
-        Get-Content -LiteralPath $notesFile -Raw -Encoding UTF8
-    } else {
-        "AI Helper $Tag"
-    }
+Copy-Item -LiteralPath $installerSig -Destination (Join-Path $assetRoot $sigName)
+$sigContent = (Get-Content -LiteralPath $installerSig -Raw -Encoding UTF8).Trim()
+if ([string]::IsNullOrWhiteSpace($sigContent)) {
+    throw "Installer signature is empty: $installerSig"
+}
 
-    # 国内高速 GitHub 反代镜像，彻底解决无 VPN 环境下直连 objects.githubusercontent.com 出现丢包、超时或无法下载的问题
-    $downloadUrl = "https://ghfast.top/https://github.com/TF49/AI-Helper/releases/download/$Tag/$installerName"
+$notesFile = Join-Path $repoRoot "docs/releases/$Tag.md"
+$notes = if (Test-Path -LiteralPath $notesFile) {
+    Get-Content -LiteralPath $notesFile -Raw -Encoding UTF8
+} else {
+    "AI Helper $Tag"
+}
 
-    $latestManifest = [ordered]@{
-        version = $package.version
-        notes = $notes.Trim()
-        pub_date = (Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ')
-        platforms = @{
-            "windows-x86_64" = @{
-                signature = $sigContent
-                url = $downloadUrl
-            }
+$downloadUrl = "https://ghfast.top/https://github.com/TF49/AI-Helper/releases/download/$Tag/$installerName"
+$sha256 = (Get-FileHash -LiteralPath (Join-Path $assetRoot $installerName) -Algorithm SHA256).Hash.ToLowerInvariant()
+$versionParts = $package.version.ToString().Split('.')
+$releaseSeq = ([int64]$versionParts[0] * 1000000) + ([int64]$versionParts[1] * 1000) + ([int64]$versionParts[2])
+
+$latestManifest = [ordered]@{
+    schema_version = 1
+    product = 'ai-helper'
+    channel = 'stable'
+    version = $package.version
+    release_seq = $releaseSeq
+    notes = $notes.Trim()
+    pub_date = (Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ')
+    platforms = @{
+        "windows-x86_64" = @{
+            signature = $sigContent
+            url = $downloadUrl
+            sha256 = $sha256
         }
     }
-
-    $latestJsonPath = Join-Path $assetRoot 'latest.json'
-    $latestJsonContent = $latestManifest | ConvertTo-Json -Depth 5
-    [System.IO.File]::WriteAllText($latestJsonPath, $latestJsonContent, $utf8NoBom)
-    Write-Host "Generated update manifest: $latestJsonPath"
-} else {
-    Write-Warning "Signature file not found: $installerSig. (Updater latest.json will not be generated. Ensure TAURI_SIGNING_PRIVATE_KEY is set during build.)"
 }
 
-$filesToCheck = @($installerName, $zipName)
-if ($hasSig) {
-    $filesToCheck += $sigName
-    $filesToCheck += 'latest.json'
+$latestJsonPath = Join-Path $assetRoot 'latest.json'
+$latestJsonContent = $latestManifest | ConvertTo-Json -Depth 5
+[System.IO.File]::WriteAllText($latestJsonPath, $latestJsonContent, $utf8NoBom)
+Write-Host "Generated update manifest: $latestJsonPath"
+
+Push-Location $repoRoot
+try {
+    pnpm exec tauri signer sign $latestJsonPath
+} finally {
+    Pop-Location
 }
+if (-not (Test-Path -LiteralPath "$latestJsonPath.sig" -PathType Leaf)) {
+    throw "Failed to sign latest.json. Unsigned manifests cannot be released."
+}
+
+$filesToCheck = @($installerName, $zipName, $sigName, 'latest.json', 'latest.json.sig')
 
 $checksums = foreach ($name in $filesToCheck) {
     $filePath = Join-Path $assetRoot $name

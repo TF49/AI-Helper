@@ -1,12 +1,8 @@
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
 
-/// 官方内置默认飞书群 Webhook 地址（免用户配置，开箱即用直接推送至开发团队飞书群）
-pub const DEFAULT_FEISHU_WEBHOOK_URL: &str =
-    "https://open.feishu.cn/open-apis/bot/v2/hook/89f0dca7-8073-4dfc-be74-9379c3d08e1e";
-
-/// 编译期通过 .env 或 CI 注入的环境变量（可选，若配置则优先覆盖默认地址）
-pub const COMPILE_TIME_WEBHOOK_URL: Option<&str> = option_env!("FEISHU_WEBHOOK_URL");
+/// 客户端二进制不再通过编译期环境变量注入 Webhook，杜绝逆向提取泄露。仅支持通过运行期安全通道配置。
+pub const COMPILE_TIME_WEBHOOK_URL: Option<&str> = None;
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct FeishuFeedbackPayload {
@@ -33,30 +29,18 @@ pub struct FeedbackSubmitResult {
     pub message: String,
 }
 
-/// 解析 Webhook 凭据 (优先级: 参数传参 -> 运行期环境变量 -> 编译期环境变量 -> 内置默认值)
-fn resolve_webhook_url(
-    payload_val: Option<&str>,
-    runtime_env_key: &str,
-    compile_time_val: Option<&str>,
-    fallback_val: &str,
-) -> String {
-    payload_val
-        .map(str::trim)
+/// 解析 Webhook：忽略前端传入地址，仅使用运行期/编译期服务端持有的通道。
+fn resolve_webhook_url(runtime_env_key: &str, compile_time_val: Option<&str>) -> Option<String> {
+    std::env::var(runtime_env_key)
+        .ok()
+        .map(|s| s.trim().to_string())
         .filter(|s| !s.is_empty())
-        .map(str::to_string)
-        .or_else(|| {
-            std::env::var(runtime_env_key)
-                .ok()
-                .map(|s| s.trim().to_string())
-                .filter(|s| !s.is_empty())
-        })
         .or_else(|| {
             compile_time_val
                 .map(str::trim)
                 .filter(|s| !s.is_empty())
                 .map(str::to_string)
         })
-        .unwrap_or_else(|| fallback_val.to_string())
 }
 
 /// 获取当前系统的详细操作系统信息 (e.g. "Windows 11 Pro (x86_64)")
@@ -174,14 +158,15 @@ pub async fn submit_feishu_feedback(
 
     let card_obj = build_feishu_card(&payload);
 
-    let webhook_url = resolve_webhook_url(
-        payload.webhook_url.as_deref(),
-        "FEISHU_WEBHOOK_URL",
-        COMPILE_TIME_WEBHOOK_URL,
-        DEFAULT_FEISHU_WEBHOOK_URL,
-    );
+    let Some(webhook_url) = resolve_webhook_url("FEISHU_WEBHOOK_URL", COMPILE_TIME_WEBHOOK_URL)
+    else {
+        return Ok(FeedbackSubmitResult {
+            success: false,
+            message: "反馈通道未在服务端配置，已拒绝发送。".to_string(),
+        });
+    };
 
-    if webhook_url.starts_with("http://") || webhook_url.starts_with("https://") {
+    if webhook_url.starts_with("https://") {
         let webhook_payload = serde_json::json!({
             "msg_type": "interactive",
             "card": card_obj,
@@ -248,24 +233,14 @@ mod tests {
 
     #[test]
     fn test_resolve_webhook_url_fallback() {
-        let res = resolve_webhook_url(
-            None,
-            "NON_EXISTENT_VAR_XYZ",
-            None,
-            DEFAULT_FEISHU_WEBHOOK_URL,
-        );
-        assert_eq!(res, DEFAULT_FEISHU_WEBHOOK_URL);
+        let res = resolve_webhook_url("NON_EXISTENT_VAR_XYZ", None);
+        assert!(res.is_none());
     }
 
     #[test]
-    fn test_resolve_webhook_url_payload_precedence() {
-        let res = resolve_webhook_url(
-            Some("https://custom.webhook.url"),
-            "NON_EXISTENT_VAR_XYZ",
-            Some("https://compile.url"),
-            DEFAULT_FEISHU_WEBHOOK_URL,
-        );
-        assert_eq!(res, "https://custom.webhook.url");
+    fn test_resolve_webhook_url_compile_time_only() {
+        let res = resolve_webhook_url("NON_EXISTENT_VAR_XYZ", Some("https://compile.url"));
+        assert_eq!(res.as_deref(), Some("https://compile.url"));
     }
 
     #[test]

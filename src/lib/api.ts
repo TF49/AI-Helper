@@ -728,8 +728,8 @@ export async function openConfigFile(path: string): Promise<boolean> {
   }
 }
 
-export async function executeInTerminal(command: string): Promise<string> {
-  return invoke<string>("execute_in_terminal", { command });
+export async function executeInTerminal(operationId: string): Promise<string> {
+  return invoke<string>("execute_in_terminal", { operationId });
 }
 
 export interface CandidateMirror {
@@ -941,8 +941,11 @@ export async function downloadInstallerFile(
       });
     }
     const mockPath = `C:\\Users\\User\\Downloads\\${appType}-setup.exe`;
-    onEvent({ event: "Finished", data: { filePath: mockPath } });
-    return mockPath;
+    onEvent({
+      event: "Finished",
+      data: { filePath: mockPath, recordId: `mock-${appType}` },
+    });
+    return `mock-${appType}`;
   }
 
   const channel = new Channel<AppDownloadEvent>();
@@ -952,16 +955,16 @@ export async function downloadInstallerFile(
   return tauriInvoke<string>("download_installer_file", { appType, onEvent: channel });
 }
 
-export async function runInstallerFile(filePath: string): Promise<void> {
-  return invoke("run_installer_file", { filePath });
+export async function runInstallerFile(recordId: string): Promise<void> {
+  return invoke("run_installer_file", { recordId });
 }
 
 export async function showFileInFolder(filePath: string): Promise<void> {
   return invoke("show_file_in_folder", { filePath });
 }
 
-export async function openSystemUri(uri: string): Promise<void> {
-  return invoke("open_system_uri", { uri });
+export async function openSystemUri(uriId: string): Promise<void> {
+  return invoke("open_system_uri", { uriId });
 }
 
 export async function getSystemDiagnosticInfo(): Promise<string> {

@@ -28,10 +28,11 @@ if [ -n "$DMG_FILE" ] && [ -f "$DMG_FILE" ]; then
   cp "$DMG_FILE" "$TARGET_DMG"
   echo "Copied macOS DMG to: $TARGET_DMG"
 
-  # 若有 DMG 签名文件也同步保留
-  if [ -f "$DMG_FILE.sig" ]; then
-    cp "$DMG_FILE.sig" "$TARGET_DMG.sig"
+  if [ ! -f "$DMG_FILE.sig" ]; then
+    echo "Signature file not found: $DMG_FILE.sig. Unsigned packages cannot be released." >&2
+    exit 1
   fi
+  cp "$DMG_FILE.sig" "$TARGET_DMG.sig"
 fi
 
 # 查找 Tauri Updater 增量升级包 (*.tar.gz)

@@ -6,8 +6,12 @@
 ///      - 支持官方直链、ghfast、gh-proxy、ghproxy.net 自动竞速与故障自动秒切
 ///      - 支持流式分块写入、实时进度回显与源切换事件广播
 ///      - 下载校验完成后自动调起 Windows 安装程序并退出应用生效
+use crate::update_trust::{
+    self, current_platform_key, is_newer, load_trust_state, record_accepted_install,
+    save_trust_state, select_trusted_update, TrustError, UntrustedVersionClaim, UpdateSelection,
+    VerifiedManifest, TAURI_UPDATER_PUBKEY_B64,
+};
 use serde::{Deserialize, Serialize};
-use sha2::{Digest, Sha256};
 use std::time::Duration;
 
 const CURRENT_VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -21,10 +25,6 @@ const UPDATER_JSON_MIRROR_BACKUP2_URL: &str =
     "https://ghproxy.net/https://github.com/TF49/AI-Helper/releases/latest/download/latest.json";
 const UPDATER_JSON_OFFICIAL_URL: &str =
     "https://github.com/TF49/AI-Helper/releases/latest/download/latest.json";
-const JSDELIVR_URL: &str = "https://cdn.jsdelivr.net/gh/TF49/AI-Helper@main/package.json";
-const GITHUB_RAW_MIRROR_URL: &str =
-    "https://ghfast.top/https://raw.githubusercontent.com/TF49/AI-Helper/main/package.json";
-const GITHUB_API_URL: &str = "https://api.github.com/repos/TF49/AI-Helper/releases/latest";
 
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(5);
 const WINDOWS_UPDATE_INSTALLER_ARGS: [&str; 4] = ["/P", "/R", "/UPDATE", "/ARGS"];
@@ -49,6 +49,8 @@ pub struct UpdateInfo {
     pub proxy_url: Option<String>,
     #[serde(default)]
     pub candidate_mirrors: Vec<CandidateMirror>,
+    #[serde(default)]
+    pub manifest_verified: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -80,28 +82,14 @@ pub enum UpdateDownloadEvent {
     Finished,
 }
 
-#[derive(Debug, Deserialize)]
-struct UpdaterJson {
-    version: String,
-    #[serde(default)]
-    notes: Option<String>,
-    #[serde(default)]
-    pub_date: Option<String>,
+fn trust_app_dir() -> std::path::PathBuf {
+    dirs::home_dir()
+        .unwrap_or_else(std::env::temp_dir)
+        .join(".ai-helper")
 }
 
-#[derive(Debug, Deserialize)]
-struct GitHubRelease {
-    tag_name: String,
-    html_url: String,
-    #[serde(default)]
-    body: Option<String>,
-    #[serde(default)]
-    published_at: Option<String>,
-}
-
-#[derive(Debug, Deserialize)]
-struct PackageJson {
-    version: String,
+fn signature_url_for(manifest_url: &str) -> String {
+    format!("{}.sig", manifest_url.trim_end_matches('/'))
 }
 
 /// 解析 host 和 port
@@ -290,6 +278,7 @@ pub fn create_download_client(connect_timeout: Duration) -> Result<reqwest::Clie
 }
 
 /// 创建强制直连（绕过系统/环境代理）的下载客户端，专门用于国内 CDN 节点在代理环境下故障时的容灾重试
+#[allow(dead_code)]
 pub fn create_direct_download_client(connect_timeout: Duration) -> Result<reqwest::Client, String> {
     reqwest::Client::builder()
         .user_agent(format!("AI-Helper/{}", CURRENT_VERSION))
@@ -301,30 +290,9 @@ pub fn create_direct_download_client(connect_timeout: Duration) -> Result<reqwes
         .map_err(|e| format!("Failed to create direct HTTP download client: {}", e))
 }
 
-/// 语义化版本比对（如 "1.0.8" vs "1.0.1"）
+#[cfg_attr(not(test), allow(dead_code))]
 fn compare_versions(latest: &str, current: &str) -> bool {
-    let parse_version = |v: &str| -> Vec<u32> {
-        v.trim_start_matches('v')
-            .split('.')
-            .filter_map(|s| s.parse::<u32>().ok())
-            .collect()
-    };
-
-    let latest_parts = parse_version(latest);
-    let current_parts = parse_version(current);
-
-    for i in 0..latest_parts.len().max(current_parts.len()) {
-        let latest_part = latest_parts.get(i).unwrap_or(&0);
-        let current_part = current_parts.get(i).unwrap_or(&0);
-
-        if latest_part > current_part {
-            return true;
-        } else if latest_part < current_part {
-            return false;
-        }
-    }
-
-    false
+    is_newer(latest, current)
 }
 
 /// 获取全平台候选下载镜像源列表
@@ -407,278 +375,210 @@ pub async fn check_for_updates() -> Result<UpdateInfo, String> {
 }
 
 async fn check_for_updates_internal() -> Result<UpdateInfo, String> {
-    let has_proxy = get_upstream_proxy_url().is_some();
-    let mut fallback_no_update: Option<UpdateInfo> = None;
-
-    macro_rules! try_check {
-        ($expr:expr) => {
-            match $expr.await {
-                Ok(info) => {
-                    if info.has_update {
-                        return Ok(info);
-                    }
-                    if fallback_no_update.is_none() {
-                        fallback_no_update = Some(info);
-                    }
-                }
-                Err(e) => {
-                    log::warn!("Update check attempt failed: {}", e);
-                }
-            }
-        };
-    }
-
-    // 0. 优先尝试本站自托管 latest.json（国内直连稳定，无需代理）
-    try_check!(check_updater_json(
+    let platform = current_platform_key();
+    let state = load_trust_state(&trust_app_dir(), CURRENT_VERSION).map_err(|e| e.to_string())?;
+    let official = match fetch_signed_manifest(
         UPDATER_JSON_LOCAL_URL,
         "updater.json (本站 helper.bob-api.com)",
-    ));
+    )
+    .await
+    {
+        Ok(m) => Some(Ok(m)),
+        Err(_) => {
+            match fetch_signed_manifest(UPDATER_JSON_OFFICIAL_URL, "updater.json (GitHub 官方直连)")
+                .await
+            {
+                Ok(m) => Some(Ok(m)),
+                Err(e) => Some(Err(e)),
+            }
+        }
+    };
 
-    // 如果开启了 VPN 代理，优先尝试 GitHub 官方更新源，避免被国内镜像防火墙拦截
-    if has_proxy {
-        try_check!(check_updater_json(
-            UPDATER_JSON_OFFICIAL_URL,
-            "updater.json (GitHub 官方直连)",
-        ));
+    let mut claims = Vec::new();
+    for (url, name) in [
+        (UPDATER_JSON_MIRROR_URL, "updater.json (ghfast)"),
+        (UPDATER_JSON_MIRROR_BACKUP_URL, "updater.json (gh-proxy)"),
+        (
+            UPDATER_JSON_MIRROR_BACKUP2_URL,
+            "updater.json (ghproxy.net)",
+        ),
+    ] {
+        match fetch_signed_manifest(url, name).await {
+            Ok(verified) => claims.push(UntrustedVersionClaim {
+                source: name.to_string(),
+                version: verified.manifest.version.clone(),
+                verified: Some(verified),
+            }),
+            Err(err) => {
+                log::warn!("{} 未通过签名清单校验: {}", name, err);
+                claims.push(UntrustedVersionClaim {
+                    source: name.to_string(),
+                    version: "0.0.0".to_string(),
+                    verified: None,
+                });
+            }
+        }
     }
 
-    // 1. ghfast.top 镜像 updater.json (国内高速通道)
-    try_check!(check_updater_json(
+    let selection =
+        select_trusted_update(CURRENT_VERSION, official.clone(), &claims, &state, platform)
+            .map_err(|e| e.to_string())?;
+
+    let (latest_version, has_update, notes, published_at, download_url, source) = match &selection {
+        UpdateSelection::NoUpdate { latest_version } => (
+            latest_version.clone(),
+            false,
+            "已是最新版本".to_string(),
+            String::new(),
+            format!(
+                "https://github.com/TF49/AI-Helper/releases/tag/v{}",
+                latest_version
+            ),
+            Some("signed-manifest".to_string()),
+        ),
+        UpdateSelection::Update { version, .. } => {
+            let verified = official
+                .as_ref()
+                .and_then(|r| r.as_ref().ok())
+                .cloned()
+                .or_else(|| {
+                    claims
+                        .iter()
+                        .filter_map(|c| c.verified.as_ref())
+                        .find(|v| update_trust::normalize_version(&v.manifest.version) == *version)
+                        .cloned()
+                });
+            let (notes, published_at, download_url) = if let Some(v) = verified {
+                let artifact = v.manifest.platforms.get(platform);
+                (
+                    v.manifest.notes.clone().unwrap_or_default(),
+                    v.manifest.pub_date.clone().unwrap_or_default(),
+                    artifact.map(|a| a.url.clone()).unwrap_or_else(|| {
+                        format!(
+                            "https://github.com/TF49/AI-Helper/releases/tag/v{}",
+                            version
+                        )
+                    }),
+                )
+            } else {
+                (
+                    String::new(),
+                    String::new(),
+                    format!(
+                        "https://github.com/TF49/AI-Helper/releases/tag/v{}",
+                        version
+                    ),
+                )
+            };
+            (
+                version.clone(),
+                true,
+                notes,
+                published_at,
+                download_url,
+                Some("signed-manifest".to_string()),
+            )
+        }
+    };
+
+    Ok(UpdateInfo {
+        current_version: CURRENT_VERSION.to_string(),
+        latest_version,
+        has_update,
+        download_url,
+        release_notes: notes,
+        published_at,
+        source,
+        proxy_url: None,
+        candidate_mirrors: Vec::new(),
+        manifest_verified: true,
+    })
+}
+
+async fn fetch_signed_manifest(
+    url: &str,
+    source_name: &str,
+) -> Result<VerifiedManifest, TrustError> {
+    let client = create_client(REQUEST_TIMEOUT).map_err(TrustError::ReadFailed)?;
+    log::info!("Checking for signed updates via {}...", source_name);
+
+    let response = client
+        .get(url)
+        .send()
+        .await
+        .map_err(|e| TrustError::ReadFailed(e.to_string()))?;
+    if !response.status().is_success() {
+        return Err(TrustError::MissingManifest);
+    }
+    let json = response
+        .bytes()
+        .await
+        .map_err(|e| TrustError::ReadFailed(e.to_string()))?;
+
+    let sig_response = client
+        .get(signature_url_for(url))
+        .send()
+        .await
+        .map_err(|e| TrustError::ReadFailed(e.to_string()))?;
+    if !sig_response.status().is_success() {
+        return Err(TrustError::MissingSignature);
+    }
+    let signature = sig_response
+        .text()
+        .await
+        .map_err(|e| TrustError::ReadFailed(e.to_string()))?;
+
+    update_trust::verify_signed_manifest(
+        &json,
+        Some(&signature),
+        TAURI_UPDATER_PUBKEY_B64,
+        current_platform_key(),
+        chrono::Utc::now(),
+    )
+}
+
+async fn resolve_verified_artifact(
+    version: &str,
+) -> Result<(VerifiedManifest, update_trust::PlatformArtifact), String> {
+    let platform = current_platform_key();
+    let state = load_trust_state(&trust_app_dir(), CURRENT_VERSION).map_err(|e| e.to_string())?;
+    let sources = [
+        UPDATER_JSON_LOCAL_URL,
+        UPDATER_JSON_OFFICIAL_URL,
         UPDATER_JSON_MIRROR_URL,
-        "updater.json (ghfast)",
-    ));
-
-    // 2. 备用 gh-proxy.com 镜像 updater.json
-    try_check!(check_updater_json(
         UPDATER_JSON_MIRROR_BACKUP_URL,
-        "updater.json (gh-proxy)",
-    ));
-
-    // 3. 备用 ghproxy.net 镜像 updater.json
-    try_check!(check_updater_json(
         UPDATER_JSON_MIRROR_BACKUP2_URL,
-        "updater.json (ghproxy.net)",
-    ));
-
-    // 4. 官方 GitHub updater.json (适合海外用户或已配置系统代理/VPN环境)
-    if !has_proxy {
-        try_check!(check_updater_json(
-            UPDATER_JSON_OFFICIAL_URL,
-            "updater.json (GitHub)",
-        ));
+    ];
+    let mut found: Option<VerifiedManifest> = None;
+    for url in sources {
+        if let Ok(verified) = fetch_signed_manifest(url, url).await {
+            if update_trust::normalize_version(&verified.manifest.version)
+                == update_trust::normalize_version(version)
+            {
+                found = Some(verified);
+                break;
+            }
+        }
     }
-
-    // 5. 回退 jsDelivr CDN (package.json)
-    try_check!(check_static_url(JSDELIVR_URL, "jsDelivr"));
-
-    // 6. 回退 GitHub Raw 镜像 (package.json)
-    try_check!(check_static_url(
-        GITHUB_RAW_MIRROR_URL,
-        "GitHub Raw (ghfast)"
-    ));
-
-    // 7. 回退 GitHub Releases API
-    try_check!(check_github_api());
-
-    if let Some(info) = fallback_no_update {
-        return Ok(info);
+    let verified = found.ok_or_else(|| TrustError::MissingManifest.to_string())?;
+    update_trust::assert_artifact_allowed(&verified, CURRENT_VERSION, &state, platform)
+        .map_err(|e| e.to_string())?;
+    let artifact = verified
+        .manifest
+        .platforms
+        .get(platform)
+        .cloned()
+        .ok_or_else(|| TrustError::MissingPlatformEntry(platform.to_string()).to_string())?;
+    if artifact.signature.trim().is_empty() {
+        return Err(TrustError::MissingSignature.to_string());
     }
-
-    Err("所有更新检查源均尝试失败，请检查网络或配置代理".to_string())
-}
-
-async fn check_updater_json(url: &str, source_name: &str) -> Result<UpdateInfo, String> {
-    let client = create_client(REQUEST_TIMEOUT)?;
-    log::info!("Checking for updates via {}...", source_name);
-
-    let response = client
-        .get(url)
-        .send()
-        .await
-        .map_err(|e| format!("Request failed: {}", e))?;
-
-    if !response.status().is_success() {
-        return Err(format!(
-            "{} returned status: {}",
-            source_name,
-            response.status()
-        ));
-    }
-
-    let updater_info: UpdaterJson = response
-        .json()
-        .await
-        .map_err(|e| format!("Failed to parse updater.json: {}", e))?;
-
-    let latest_version = updater_info.version.trim_start_matches('v').to_string();
-    let current_version = CURRENT_VERSION.to_string();
-    let has_update = compare_versions(&latest_version, &current_version);
-
-    if has_update {
-        log::info!(
-            "New version found ({}): {} (Current: {})",
-            source_name,
-            latest_version,
-            current_version
-        );
-    } else {
-        log::info!(
-            "Up to date ({}): {} (Matches {})",
-            source_name,
-            current_version,
-            latest_version
-        );
-    }
-
-    let download_url = format!(
-        "https://github.com/TF49/AI-Helper/releases/tag/v{}",
-        latest_version
-    );
-
-    Ok(UpdateInfo {
-        current_version,
-        latest_version,
-        has_update,
-        download_url,
-        release_notes: updater_info
-            .notes
-            .unwrap_or_else(|| "Release notes available on GitHub.".to_string()),
-        published_at: updater_info.pub_date.unwrap_or_default(),
-        source: Some(source_name.to_string()),
-        proxy_url: None,
-        candidate_mirrors: Vec::new(),
-    })
-}
-
-async fn check_github_api() -> Result<UpdateInfo, String> {
-    let client = create_client(REQUEST_TIMEOUT)?;
-    log::info!("Checking for updates via GitHub API...");
-
-    let response = client
-        .get(GITHUB_API_URL)
-        .header("Accept", "application/vnd.github+json")
-        .send()
-        .await
-        .map_err(|e| format!("Request failed: {}", e))?;
-
-    if !response.status().is_success() {
-        return Err(format!("GitHub API returned status: {}", response.status()));
-    }
-
-    let release: GitHubRelease = response
-        .json()
-        .await
-        .map_err(|e| format!("Failed to parse release info: {}", e))?;
-
-    let latest_version = release.tag_name.trim_start_matches('v').to_string();
-    let current_version = CURRENT_VERSION.to_string();
-    let has_update = compare_versions(&latest_version, &current_version);
-
-    if has_update {
-        log::info!(
-            "New version found (API): {} (Current: {})",
-            latest_version,
-            current_version
-        );
-    } else {
-        log::info!(
-            "Up to date (API): {} (Matches {})",
-            current_version,
-            latest_version
-        );
-    }
-
-    Ok(UpdateInfo {
-        current_version,
-        latest_version,
-        has_update,
-        download_url: release.html_url,
-        release_notes: release.body.unwrap_or_default(),
-        published_at: release.published_at.unwrap_or_default(),
-        source: Some("GitHub API".to_string()),
-        proxy_url: None,
-        candidate_mirrors: Vec::new(),
-    })
-}
-
-async fn check_static_url(url: &str, source_name: &str) -> Result<UpdateInfo, String> {
-    let client = create_client(REQUEST_TIMEOUT)?;
-    log::info!("Checking for updates via {}...", source_name);
-
-    let response = client
-        .get(url)
-        .send()
-        .await
-        .map_err(|e| format!("Request failed: {}", e))?;
-
-    if !response.status().is_success() {
-        return Err(format!(
-            "{} returned status: {}",
-            source_name,
-            response.status()
-        ));
-    }
-
-    let package_json: PackageJson = response
-        .json()
-        .await
-        .map_err(|e| format!("Failed to parse package.json: {}", e))?;
-
-    let latest_version = package_json.version.trim_start_matches('v').to_string();
-    let current_version = CURRENT_VERSION.to_string();
-    let has_update = compare_versions(&latest_version, &current_version);
-
-    if has_update {
-        log::info!(
-            "New version found ({}): {} (Current: {})",
-            source_name,
-            latest_version,
-            current_version
-        );
-    } else {
-        log::info!(
-            "Up to date ({}): {} (Matches {})",
-            source_name,
-            current_version,
-            latest_version
-        );
-    }
-
-    let download_url = "https://github.com/TF49/AI-Helper/releases/latest".to_string();
-    let release_notes = format!(
-        "New version detected via {}. Please check release page for details.",
-        source_name
-    );
-
-    Ok(UpdateInfo {
-        current_version,
-        latest_version,
-        has_update,
-        download_url,
-        release_notes,
-        published_at: String::new(),
-        source: Some(source_name.to_string()),
-        proxy_url: None,
-        candidate_mirrors: Vec::new(),
-    })
+    Ok((verified, artifact))
 }
 
 /// 计算本地文件的 SHA-256 哈希值 (小写十六进制)
+#[cfg_attr(not(test), allow(dead_code))]
 pub fn compute_file_sha256(path: &std::path::Path) -> Result<String, String> {
-    use std::io::Read;
-    let mut file = std::fs::File::open(path).map_err(|e| format!("打开文件失败: {}", e))?;
-    let mut hasher = Sha256::new();
-    let mut buffer = [0u8; 64 * 1024];
-    loop {
-        let n = file
-            .read(&mut buffer)
-            .map_err(|e| format!("读取文件失败: {}", e))?;
-        if n == 0 {
-            break;
-        }
-        hasher.update(&buffer[..n]);
-    }
-    Ok(format!("{:x}", hasher.finalize()))
+    update_trust::sha256_file(path).map_err(|e| e.to_string())
 }
 
 /// 尝试从各备选镜像与官方源获取该版本权威的 SHA256SUMS.txt
@@ -738,24 +638,34 @@ pub fn parse_expected_hash(sums_text: &str, file_name: &str) -> Option<String> {
     None
 }
 
-/// 多源容灾自动下载并静默启动更新安装包
+/// 多源容灾自动下载并在验签通过后启动更新安装包。
+/// 未通过签名、平台或防重放检查的文件不会进入可启动路径。
 pub async fn download_and_install_update(
     version: String,
     on_event: tauri::ipc::Channel<UpdateDownloadEvent>,
 ) -> Result<(), String> {
     let clean_ver = version.trim_start_matches('v');
-    let candidate_mirrors = get_candidate_mirrors(clean_ver);
-    let temp_dir = std::env::temp_dir();
-    #[cfg(target_os = "macos")]
-    let temp_file_path = temp_dir.join(format!("AI-Helper-v{}-macOS.dmg", clean_ver));
-    #[cfg(not(target_os = "macos"))]
-    let temp_file_path = temp_dir.join(format!("AI-Helper-v{}-Windows-x64-Setup.exe", clean_ver));
+    let (verified, artifact) = resolve_verified_artifact(clean_ver).await?;
+    let platform = current_platform_key();
+    let staging = update_trust::create_secure_update_staging_dir().map_err(|e| e.to_string())?;
+    let temp_file_path = update_trust::staging_payload_path(staging.path(), platform);
+
+    let mut candidate_mirrors = vec![CandidateMirror {
+        name: "清单指定下载地址".to_string(),
+        url: artifact.url.clone(),
+    }];
+    candidate_mirrors.extend(get_candidate_mirrors(clean_ver));
 
     // 使用大文件流式下载客户端，避免全局超时掐断下载
     let client = create_download_client(Duration::from_secs(30))?;
     let mut last_error = String::new();
 
     for (idx, mirror) in candidate_mirrors.iter().enumerate() {
+        if !mirror.url.starts_with("https://") {
+            last_error = "拒绝非 HTTPS 更新下载地址".to_string();
+            continue;
+        }
+
         log::info!(
             "Attempting to download update from [{}]: {}",
             mirror.name,
@@ -882,67 +792,93 @@ pub async fn download_and_install_update(
             }
         }
 
-        // 下载圆满成功！
         log::info!(
-            "Update installer successfully downloaded from {} ({} bytes)",
+            "Update installer downloaded from {} ({} bytes), verifying signature",
             mirror.name,
             downloaded
         );
 
-        // 权威哈希安全校验：比对 SHA-256 防止恶意第三方反代源投毒
+        let digest = match update_trust::verify_installer_file(
+            &temp_file_path,
+            &artifact,
+            TAURI_UPDATER_PUBKEY_B64,
+        ) {
+            Ok(digest) => digest,
+            Err(e) => {
+                last_error = e.to_string();
+                log::error!("安装包验签失败，已删除临时文件: {}", last_error);
+                let _ = std::fs::remove_file(&temp_file_path);
+                continue;
+            }
+        };
+
         #[cfg(target_os = "macos")]
         let target_installer_name = format!("AI-Helper-v{}-macOS.dmg", clean_ver);
         #[cfg(not(target_os = "macos"))]
         let target_installer_name = format!("AI-Helper-v{}-Windows-x64-Setup.exe", clean_ver);
-
         if let Some(sums_text) = fetch_release_sha256sums(&client, clean_ver).await {
             if let Some(expected_hash) = parse_expected_hash(&sums_text, &target_installer_name) {
-                log::info!(
-                    "正在对下载的安装包执行 SHA-256 完整性验签 (预期: {})...",
-                    expected_hash
-                );
-                match compute_file_sha256(&temp_file_path) {
-                    Ok(actual_hash) => {
-                        if !actual_hash.eq_ignore_ascii_case(&expected_hash) {
-                            let _ = std::fs::remove_file(&temp_file_path);
-                            let err_msg = format!(
-                                "【安全警报】安装包 SHA-256 校验不匹配！预期: {}, 实际: {}。疑似遭遇镜像源篡改或投毒，已紧急删除临时文件并拒绝启动！",
-                                expected_hash, actual_hash
-                            );
-                            log::error!("{}", err_msg);
-                            return Err(err_msg);
-                        }
-                        log::info!("✅ 安装包 SHA-256 校验通过！文件真实可信无篡改。");
-                    }
-                    Err(e) => {
-                        let _ = std::fs::remove_file(&temp_file_path);
-                        return Err(format!("计算安装包哈希失败: {}", e));
-                    }
+                if !digest.eq_ignore_ascii_case(&expected_hash) {
+                    let _ = std::fs::remove_file(&temp_file_path);
+                    last_error = format!(
+                        "安装包 SHA-256 与 SHA256SUMS 不一致（签名已通过但仍拒绝）: 预期 {}, 实际 {}",
+                        expected_hash, digest
+                    );
+                    log::error!("{}", last_error);
+                    continue;
                 }
-            } else {
-                log::warn!(
-                    "SHA256SUMS.txt 中未找到匹配 {} 的条目，跳过哈希校验",
-                    target_installer_name
-                );
             }
-        } else {
-            log::warn!("未能从任何备用源检索到权威 SHA256SUMS.txt 清单");
         }
+
+        if !update_trust::is_executable_staging_path(&temp_file_path) {
+            let _ = std::fs::remove_file(&temp_file_path);
+            return Err("安装包不在受保护的临时目录中，已拒绝执行".to_string());
+        }
+
+        let digest_again = match update_trust::verify_installer_file(
+            &temp_file_path,
+            &artifact,
+            TAURI_UPDATER_PUBKEY_B64,
+        ) {
+            Ok(digest) => digest,
+            Err(e) => {
+                let _ = std::fs::remove_file(&temp_file_path);
+                return Err(format!("执行前复验失败: {}", e));
+            }
+        };
+        if digest_again != digest {
+            let _ = std::fs::remove_file(&temp_file_path);
+            return Err("执行前文件内容已变化，已拒绝安装".to_string());
+        }
+
+        let mut state =
+            load_trust_state(&trust_app_dir(), CURRENT_VERSION).map_err(|e| e.to_string())?;
+        record_accepted_install(
+            &mut state,
+            &verified.manifest.version,
+            if verified.manifest.release_seq > 0 {
+                verified.manifest.release_seq
+            } else {
+                update_trust::version_to_seq(&verified.manifest.version)
+            },
+            &digest,
+        );
+        save_trust_state(&trust_app_dir(), &state).map_err(|e| e.to_string())?;
 
         let _ = on_event.send(UpdateDownloadEvent::Finished);
 
-        // 启动安装程序并退出当前应用
         #[cfg(target_os = "windows")]
         {
             use std::os::windows::process::CommandExt;
-            log::info!("Launching installer: {:?}", temp_file_path);
+            log::info!("Launching verified installer: {:?}", temp_file_path);
             let spawn_res = std::process::Command::new(&temp_file_path)
                 .args(WINDOWS_UPDATE_INSTALLER_ARGS)
-                .creation_flags(0x00000008 | 0x00000200) // DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP
+                .creation_flags(0x00000008 | 0x00000200)
                 .spawn();
 
             match spawn_res {
                 Ok(_) => {
+                    std::mem::forget(staging);
                     log::info!("Installer launched successfully. Exiting current process.");
                     std::process::exit(0);
                 }
@@ -963,6 +899,7 @@ pub async fn download_and_install_update(
 
             match spawn_res {
                 Ok(_) => {
+                    std::mem::forget(staging);
                     log::info!("DMG package opened successfully. Exiting current process.");
                     std::process::exit(0);
                 }
@@ -1035,6 +972,17 @@ mod tests {
             assert!(m.url.contains("AI-Helper-v1.0.32-Windows-x64-Setup.exe"));
         }
         assert!(mirrors.iter().any(|m| m.name.contains("阿里云 OSS")));
+    }
+
+    #[test]
+    fn compute_file_sha256_matches_empty_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("empty.bin");
+        std::fs::write(&path, b"").unwrap();
+        assert_eq!(
+            compute_file_sha256(&path).unwrap(),
+            "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        );
     }
 
     #[test]

@@ -7,12 +7,18 @@ mod auth;
 mod autostart;
 mod claude;
 mod codex;
+mod credential_policy;
 mod error;
 mod feedback;
+mod image_fetch;
 mod installer_download;
+mod instance_auth;
 mod model_fetch;
 mod network;
+mod paid_request;
 mod process_manager;
+mod safe_fs;
+mod update_trust;
 mod updater;
 mod workbuddy;
 
@@ -81,8 +87,8 @@ async fn restart_target_app(
 }
 
 #[tauri::command]
-async fn execute_in_terminal(command: String) -> Result<String, String> {
-    tokio::task::spawn_blocking(move || process_manager::execute_in_terminal(&command))
+async fn execute_in_terminal(operation_id: String) -> Result<String, String> {
+    tokio::task::spawn_blocking(move || process_manager::execute_in_terminal(&operation_id))
         .await
         .map_err(|e| format!("终端启动异常: {}", e))?
 }
@@ -103,8 +109,8 @@ async fn download_installer_file(
 }
 
 #[tauri::command]
-async fn run_installer_file(file_path: String) -> Result<(), String> {
-    tokio::task::spawn_blocking(move || installer_download::run_installer_file(file_path))
+async fn run_installer_file(record_id: String) -> Result<(), String> {
+    tokio::task::spawn_blocking(move || installer_download::run_installer_file(record_id))
         .await
         .map_err(|e| format!("执行安装程序异常: {}", e))?
 }
@@ -117,8 +123,8 @@ async fn show_file_in_folder(file_path: String) -> Result<(), String> {
 }
 
 #[tauri::command]
-async fn open_system_uri(uri: String) -> Result<(), String> {
-    tokio::task::spawn_blocking(move || installer_download::open_system_uri(uri))
+async fn open_system_uri(uri_id: String) -> Result<(), String> {
+    tokio::task::spawn_blocking(move || installer_download::open_system_uri(uri_id))
         .await
         .map_err(|e| format!("调起系统协议异常: {}", e))?
 }

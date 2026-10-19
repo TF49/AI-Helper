@@ -173,7 +173,7 @@ pub fn get_all_workbuddy_config_paths() -> Vec<PathBuf> {
 
 /// 读取并聚合 WorkBuddy 在所有候选路径（~/.workbuddy 与 ~/.workbuddy-ai）中的模型配置
 /// 返回 (聚合后的模型列表, 主路径, 是否至少存在一个配置文件)
-pub fn read_all_workbuddy_entries() -> (Vec<WorkbuddyModelEntry>, PathBuf, bool) {
+pub fn read_all_workbuddy_entries() -> Result<(Vec<WorkbuddyModelEntry>, PathBuf, bool), AppError> {
     let primary_path = workbuddy_primary_config_path().unwrap_or_else(|_| {
         dirs::home_dir()
             .map(|h| h.join(".workbuddy").join("models.json"))
@@ -187,7 +187,7 @@ pub fn read_all_workbuddy_entries() -> (Vec<WorkbuddyModelEntry>, PathBuf, bool)
     // 1. 优先读取主配置文件 (~/.workbuddy/models.json)
     let primary_count = if primary_path.exists() {
         any_exists = true;
-        let p_entries = read_workbuddy_entries(&primary_path);
+        let p_entries = read_workbuddy_entries(&primary_path)?;
         let count = p_entries.len();
         merged.extend(p_entries);
         count
@@ -202,7 +202,7 @@ pub fn read_all_workbuddy_entries() -> (Vec<WorkbuddyModelEntry>, PathBuf, bool)
         }
         if path.exists() {
             any_exists = true;
-            let other_entries = read_workbuddy_entries(path);
+            let other_entries = read_workbuddy_entries(path)?;
             for entry in other_entries {
                 if !merged.iter().any(|m| m.id == entry.id) {
                     merged.push(entry);
@@ -213,19 +213,16 @@ pub fn read_all_workbuddy_entries() -> (Vec<WorkbuddyModelEntry>, PathBuf, bool)
 
     // 3. 智能自动同步兼容：
     // 若主路径 (~/.workbuddy/models.json) 尚不存在或其模型数少于合并后的模型数（例如 .workbuddy-ai 中配置了更多模型），
-    // 自动将聚合配置同步写入主路径，确保打开 WorkBuddy 时模型能立即被完整识别生效！
+    // 自动将聚合配置通过安全原子写入主路径
     if !merged.is_empty() && (!primary_path.exists() || primary_count < merged.len()) {
-        if let Some(parent) = primary_path.parent() {
-            let _ = std::fs::create_dir_all(parent);
-        }
         if let Ok(json_text) = serde_json::to_string_pretty(&merged) {
-            if std::fs::write(&primary_path, json_text).is_ok() {
+            if crate::safe_fs::safe_write_file(&primary_path, json_text.as_bytes()).is_ok() {
                 any_exists = true;
             }
         }
     }
 
-    (merged, primary_path, any_exists)
+    Ok((merged, primary_path, any_exists))
 }
 
 pub fn detect_workbuddy_installation() -> (bool, Option<String>) {
@@ -248,15 +245,17 @@ pub fn detect_workbuddy_installation() -> (bool, Option<String>) {
 }
 
 /// 解析 WorkBuddy 本地 models.json 配置文件内容，支持标准数组格式与包装对象格式
-pub fn parse_workbuddy_entries_from_str(content: &str) -> Vec<WorkbuddyModelEntry> {
+pub fn parse_workbuddy_entries_from_str(
+    content: &str,
+) -> Result<Vec<WorkbuddyModelEntry>, AppError> {
     let trimmed = content.trim();
     if trimmed.is_empty() {
-        return Vec::new();
+        return Ok(Vec::new());
     }
 
     // 优先尝试标准数组格式: [ { ... }, { ... } ]
     if let Ok(arr) = serde_json::from_str::<Vec<WorkbuddyModelEntry>>(trimmed) {
-        return arr;
+        return Ok(arr);
     }
 
     // 兼容可能存在的对象格式: { "models": [ ... ] }
@@ -264,26 +263,26 @@ pub fn parse_workbuddy_entries_from_str(content: &str) -> Vec<WorkbuddyModelEntr
         if let Some(models_val) = obj.get("models") {
             if let Ok(arr) = serde_json::from_value::<Vec<WorkbuddyModelEntry>>(models_val.clone())
             {
-                return arr;
+                return Ok(arr);
             }
         }
     }
 
-    Vec::new()
+    Err(AppError::Other(
+        "WorkBuddy 配置文件内容损坏或格式不受支持".to_string(),
+    ))
 }
 
-pub fn read_workbuddy_entries(path: &PathBuf) -> Vec<WorkbuddyModelEntry> {
+pub fn read_workbuddy_entries(path: &PathBuf) -> Result<Vec<WorkbuddyModelEntry>, AppError> {
     if !path.exists() {
-        return Vec::new();
+        return Ok(Vec::new());
     }
-    match std::fs::read_to_string(path) {
-        Ok(content) => parse_workbuddy_entries_from_str(&content),
-        Err(_) => Vec::new(),
-    }
+    let content = std::fs::read_to_string(path)?;
+    parse_workbuddy_entries_from_str(&content)
 }
 
 pub fn get_workbuddy_config() -> Result<WorkbuddyUIConfig, AppError> {
-    let (entries, primary_path, config_exists) = read_all_workbuddy_entries();
+    let (entries, primary_path, config_exists) = read_all_workbuddy_entries()?;
     let (is_installed, app_path) = detect_workbuddy_installation();
 
     let mut base_url = "https://bob-api.com/".to_string();
@@ -367,7 +366,21 @@ pub fn get_workbuddy_config() -> Result<WorkbuddyUIConfig, AppError> {
 }
 
 pub fn set_workbuddy_config(payload: WorkbuddySavePayload) -> Result<(), AppError> {
-    let (mut entries, primary_path, _) = read_all_workbuddy_entries();
+    if crate::credential_policy::is_managed_key(&payload.api_key) {
+        crate::credential_policy::assert_managed_key_destination(
+            &payload.url,
+            &crate::credential_policy::default_managed_origins(),
+            crate::credential_policy::loopback_http_allowed(),
+        )
+        .map_err(|e| AppError::Other(e.to_string()))?;
+    } else {
+        crate::credential_policy::validate_endpoint(
+            payload.url.trim(),
+            crate::credential_policy::loopback_http_allowed(),
+        )
+        .map_err(|e| AppError::Other(e.to_string()))?;
+    }
+    let (mut entries, primary_path, _) = read_all_workbuddy_entries()?;
     let all_paths = get_all_workbuddy_config_paths();
 
     // 规范化后端请求 URL
@@ -452,26 +465,17 @@ pub fn set_workbuddy_config(payload: WorkbuddySavePayload) -> Result<(), AppErro
     let json_text = serde_json::to_string_pretty(&entries)?;
 
     // 核心保证：
-    // 1. 优先保证官方标准主路径 (~/.workbuddy/models.json) 写入成功
-    if let Some(parent) = primary_path.parent() {
-        std::fs::create_dir_all(parent)?;
-    }
-    std::fs::write(&primary_path, &json_text)?;
+    // 1. 优先保证官方标准主路径 (~/.workbuddy/models.json) 原子安全写入
+    crate::safe_fs::safe_write_file(&primary_path, json_text.as_bytes())?;
 
     // 2. 双向原子级同步写入所有其他候选兼容路径（~/.workbuddy-ai/models.json 等）
+    // 若兼容路径存在或其父目录已存在，必须安全写入；写入失败必须阻断并报错，不可静默吞掉
     for path in all_paths {
         if path == primary_path {
             continue;
         }
-        if let Some(parent) = path.parent() {
-            let _ = std::fs::create_dir_all(parent);
-        }
-        if let Err(e) = std::fs::write(&path, &json_text) {
-            log::warn!(
-                "同步写入 WorkBuddy 兼容配置文件至 {} 失败: {}",
-                path.display(),
-                e
-            );
+        if path.exists() || path.parent().map(|p| p.exists()).unwrap_or(false) {
+            crate::safe_fs::safe_write_file(&path, json_text.as_bytes())?;
         }
     }
 
@@ -479,7 +483,7 @@ pub fn set_workbuddy_config(payload: WorkbuddySavePayload) -> Result<(), AppErro
 }
 
 pub fn delete_workbuddy_model(model_id: String) -> Result<Vec<WorkbuddyModelEntry>, AppError> {
-    let (mut entries, primary_path, _) = read_all_workbuddy_entries();
+    let (mut entries, primary_path, _) = read_all_workbuddy_entries()?;
     let all_paths = get_all_workbuddy_config_paths();
     let original_len = entries.len();
     entries.retain(|e| e.id != model_id.trim());
@@ -487,11 +491,8 @@ pub fn delete_workbuddy_model(model_id: String) -> Result<Vec<WorkbuddyModelEntr
     if entries.len() != original_len {
         let json_text = serde_json::to_string_pretty(&entries)?;
 
-        // 1. 写入主路径
-        if let Some(parent) = primary_path.parent() {
-            let _ = std::fs::create_dir_all(parent);
-        }
-        let _ = std::fs::write(&primary_path, &json_text);
+        // 1. 原子写入主路径
+        crate::safe_fs::safe_write_file(&primary_path, json_text.as_bytes())?;
 
         // 2. 同步清理其他兼容路径
         for path in all_paths {
@@ -499,7 +500,7 @@ pub fn delete_workbuddy_model(model_id: String) -> Result<Vec<WorkbuddyModelEntr
                 continue;
             }
             if path.exists() {
-                let _ = std::fs::write(&path, &json_text);
+                crate::safe_fs::safe_write_file(&path, json_text.as_bytes())?;
             }
         }
     }
@@ -553,12 +554,19 @@ mod tests {
   }
 ]"#;
 
-        let entries = parse_workbuddy_entries_from_str(sample);
+        let entries = parse_workbuddy_entries_from_str(sample).expect("valid sample");
         assert_eq!(entries.len(), 2);
         assert_eq!(entries[0].id, "gpt-5.6-sol");
         assert_eq!(entries[0].api, Some("openai-responses".to_string()));
         assert_eq!(entries[1].id, "gpt-6-sol");
         assert_eq!(entries[1].api, None);
+    }
+
+    #[test]
+    fn test_parse_corrupt_json_fails() {
+        let corrupt = r#"{"id": "gpt-5", "name":"#;
+        let res = parse_workbuddy_entries_from_str(corrupt);
+        assert!(res.is_err(), "Corrupted config must fail to parse");
     }
 
     #[test]
@@ -578,7 +586,7 @@ mod tests {
   }
 ]"#;
 
-        let mut entries = parse_workbuddy_entries_from_str(sample);
+        let mut entries = parse_workbuddy_entries_from_str(sample).expect("valid sample");
         assert_eq!(entries.len(), 1);
 
         let new_model_id = "gpt-6-sol".to_string();
@@ -630,7 +638,7 @@ mod tests {
   }
 ]"#;
 
-        let mut entries = parse_workbuddy_entries_from_str(sample);
+        let mut entries = parse_workbuddy_entries_from_str(sample).expect("valid sample");
         assert_eq!(entries.len(), 1);
 
         let update_id = "gpt-5.6-sol".to_string();
@@ -698,7 +706,8 @@ mod tests {
 
     #[test]
     fn test_read_all_workbuddy_entries_does_not_panic() {
-        let (entries, primary_path, _exists) = read_all_workbuddy_entries();
+        let (entries, primary_path, _exists) =
+            read_all_workbuddy_entries().expect("read entries successfully");
         assert!(
             primary_path.ends_with(".workbuddy\\models.json")
                 || primary_path.ends_with(".workbuddy/models.json"),

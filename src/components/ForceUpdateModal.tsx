@@ -49,6 +49,7 @@ export interface BackendUpdateInfo {
   source?: string;
   proxy_url?: string;
   candidate_mirrors?: CandidateMirror[];
+  manifest_verified?: boolean;
 }
 
 export type UpdatePhase =
@@ -141,6 +142,10 @@ export function useAppUpdater() {
     try {
       // Step 1: 调用 Rust 后端多源版本检测（updater.json -> GitHub API -> Raw -> jsDelivr）
       const info = await invoke<BackendUpdateInfo>("check_for_updates");
+
+      if (info.has_update && info.manifest_verified === false) {
+        throw new Error("更新清单未通过签名校验，已拒绝自动安装");
+      }
 
       if (!info.has_update) {
         setPhase("idle");

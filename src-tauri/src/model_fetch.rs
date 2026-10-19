@@ -31,7 +31,31 @@ struct ModelsResponse {
 }
 
 pub async fn fetch_models(base_url: &str, api_key: &str) -> Result<Vec<FetchedModel>, String> {
-    fetch_models_with_client(&Client::new(), base_url, api_key).await
+    let client = Client::builder()
+        .redirect(crate::credential_policy::credentialed_redirect_policy())
+        .build()
+        .map_err(|e| format!("Failed to build HTTP client: {e}"))?;
+    fetch_models_with_client(&client, base_url, api_key).await
+}
+
+fn assert_fetch_endpoint(base_url: &str, api_key: &str) -> Result<(), String> {
+    if crate::credential_policy::is_managed_key(api_key) {
+        crate::credential_policy::assert_managed_key_destination(
+            base_url,
+            &crate::credential_policy::default_managed_origins(),
+            crate::credential_policy::loopback_http_allowed(),
+        )
+        .map_err(|e| e.to_string())?;
+        return Ok(());
+    }
+    let origin = crate::credential_policy::parse_origin(base_url).map_err(|e| e.to_string())?;
+    if origin.scheme == "https" {
+        return Ok(());
+    }
+    if origin.scheme == "http" && crate::credential_policy::is_loopback_host(&origin.host) {
+        return Ok(());
+    }
+    Err(crate::credential_policy::PolicyError::HttpRemoteForbidden.to_string())
 }
 
 async fn fetch_models_with_client(
@@ -39,6 +63,7 @@ async fn fetch_models_with_client(
     base_url: &str,
     api_key: &str,
 ) -> Result<Vec<FetchedModel>, String> {
+    assert_fetch_endpoint(base_url, api_key)?;
     let candidates = model_endpoints(base_url)?;
     if api_key.is_empty() {
         return Err("API Key or request headers are required to fetch models".to_string());
@@ -354,6 +379,20 @@ mod tests {
                 .unwrap_err();
             assert!(error.contains("API Key"));
         }
+    }
+
+    #[tokio::test]
+    async fn managed_key_rejects_unauthorized_destination() {
+        let managed_key = "sk-managed-test-model-fetch-01";
+        crate::credential_policy::register_managed_key(managed_key);
+        let error = fetch_models_with_client(
+            &client(),
+            "https://unauthorized-destination.com",
+            managed_key,
+        )
+        .await
+        .unwrap_err();
+        assert!(error.contains("受管 Key 不得发往未授权目标"));
     }
 
     #[test]

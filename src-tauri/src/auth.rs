@@ -382,6 +382,8 @@ pub struct AuthManager {
     session_sid: Option<String>,
     selected_token_id: Option<i64>,
     selected_token_name: Option<String>,
+    session_epoch: u64,
+    auto_refresh_blocked: bool,
 }
 
 impl AuthManager {
@@ -391,6 +393,7 @@ impl AuthManager {
             .cookie_provider(cookie_jar.clone())
             .user_agent(USER_AGENT)
             .timeout(Duration::from_secs(15))
+            .redirect(crate::credential_policy::credentialed_redirect_policy())
             .no_proxy();
 
         let proxy = reqwest::Proxy::custom(|_url| {
@@ -415,6 +418,8 @@ impl AuthManager {
             session_sid: None,
             selected_token_id: None,
             selected_token_name: None,
+            session_epoch: 0,
+            auto_refresh_blocked: false,
         };
 
         // 尝试从本地恢复凭据
@@ -430,7 +435,16 @@ impl AuthManager {
         dir.join("auth_session.json")
     }
 
+    fn logout_marker_path() -> PathBuf {
+        Self::storage_path().with_file_name("auth_logout.marker")
+    }
+
     fn load_persisted_session(&mut self) {
+        if Self::logout_marker_path().exists() {
+            self.auto_refresh_blocked = true;
+            let _ = fs::remove_file(Self::storage_path());
+            return;
+        }
         let path = Self::storage_path();
         if !path.exists() {
             return;
@@ -453,7 +467,7 @@ impl AuthManager {
         }
     }
 
-    fn persist_session(&self, refresh_cookie: Option<&str>) {
+    fn persist_session(&self, refresh_cookie: Option<&str>) -> Result<(), String> {
         let path = Self::storage_path();
         let existing = if path.exists() {
             fs::read_to_string(&path)
@@ -474,14 +488,16 @@ impl AuthManager {
             selected_token_name: self.selected_token_name.clone(),
         };
 
-        if let Ok(json_str) = serde_json::to_string_pretty(&storage) {
-            let _ = fs::write(&path, json_str);
-            #[cfg(unix)]
-            {
-                use std::os::unix::fs::PermissionsExt;
-                let _ = fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600));
-            }
-        }
+        let json_str = serde_json::to_string_pretty(&storage)
+            .map_err(|e| format!("序列化会话数据失败: {e}"))?;
+
+        // 核心加固：先通过 safe_fs 安全原子写入新会话
+        crate::safe_fs::safe_write_file(&path, json_str.as_bytes())
+            .map_err(|e| format!("保存会话文件失败: {e}"))?;
+
+        // 仅在会话安全落盘确认成功之后，才清理主动登出标记
+        let _ = fs::remove_file(Self::logout_marker_path());
+        Ok(())
     }
 
     fn clear_persisted_session(&mut self) {
@@ -527,7 +543,9 @@ impl AuthManager {
     pub fn set_selected_token(&mut self, token_id: Option<i64>, token_name: Option<String>) {
         self.selected_token_id = token_id;
         self.selected_token_name = token_name;
-        self.persist_session(None);
+        if let Err(e) = self.persist_session(None) {
+            log::warn!("保存选定 Token 状态失败: {e}");
+        }
     }
 }
 
@@ -772,11 +790,14 @@ pub async fn login(payload: LoginPayload) -> Result<LoginResult, String> {
 
     // 完整登录成功
     let success_data = parse_login_success_data(&data)?;
+    mgr.auto_refresh_blocked = false;
+    mgr.session_epoch = mgr.session_epoch.wrapping_add(1);
     mgr.access_token = Some(success_data.access_token.clone());
     mgr.access_expires_at = success_data.access_expires_at;
     mgr.current_user = Some(success_data.user.clone());
     mgr.session_sid = success_data.session_sid.clone();
-    mgr.persist_session(extracted_refresh_cookie.as_deref());
+    mgr.persist_session(extracted_refresh_cookie.as_deref())
+        .map_err(|e| format!("持久化登录会话失败: {e}"))?;
 
     Ok(LoginResult::Success(success_data))
 }
@@ -834,11 +855,14 @@ pub async fn login_2fa(flow_token: String, code: String) -> Result<LoginSuccessD
         .ok_or_else(|| "2FA 成功但未返回数据".to_string())?;
     let success_data = parse_login_success_data(&data)?;
 
+    mgr.auto_refresh_blocked = false;
+    mgr.session_epoch = mgr.session_epoch.wrapping_add(1);
     mgr.access_token = Some(success_data.access_token.clone());
     mgr.access_expires_at = success_data.access_expires_at;
     mgr.current_user = Some(success_data.user.clone());
     mgr.session_sid = success_data.session_sid.clone();
-    mgr.persist_session(extracted_refresh_cookie.as_deref());
+    mgr.persist_session(extracted_refresh_cookie.as_deref())
+        .map_err(|e| format!("持久化 2FA 登录会话失败: {e}"))?;
 
     Ok(success_data)
 }
@@ -908,6 +932,10 @@ fn parse_login_success_data(data: &serde_json::Value) -> Result<LoginSuccessData
 /// 刷新当前登录凭据
 pub async fn refresh_session() -> Result<LoginSuccessData, String> {
     let mut mgr = AUTH_MGR.lock().await;
+    if mgr.auto_refresh_blocked {
+        return Err("本地已退出，已禁止自动刷新旧会话".to_string());
+    }
+    let epoch = mgr.session_epoch;
     let url = format!("{}/api/user/auth/refresh", BASE_URL);
 
     let mut req = mgr
@@ -982,11 +1010,15 @@ pub async fn refresh_session() -> Result<LoginSuccessData, String> {
         }
     };
 
+    if mgr.auto_refresh_blocked || mgr.session_epoch != epoch {
+        return Err("会话已切换，已丢弃过期刷新响应".to_string());
+    }
     mgr.access_token = Some(success_data.access_token.clone());
     mgr.access_expires_at = success_data.access_expires_at;
     mgr.current_user = Some(success_data.user.clone());
     mgr.session_sid = success_data.session_sid.clone();
-    mgr.persist_session(extracted_refresh_cookie.as_deref());
+    mgr.persist_session(extracted_refresh_cookie.as_deref())
+        .map_err(|e| format!("持久化刷新会话失败: {e}"))?;
 
     Ok(success_data)
 }
@@ -1001,6 +1033,9 @@ async fn ensure_access_token() -> Result<String, String> {
     // 先在只读锁下判断
     {
         let mgr = AUTH_MGR.lock().await;
+        if mgr.auto_refresh_blocked {
+            return Err("本地已退出，已禁止自动刷新旧会话".to_string());
+        }
         if let Some(token) = &mgr.access_token {
             if mgr.access_expires_at > now + 30 {
                 return Ok(token.clone());
@@ -1030,7 +1065,34 @@ pub async fn logout() -> Result<(), String> {
     }
 
     let _ = req.send().await;
+    mgr.auto_refresh_blocked = true;
+    mgr.session_epoch = mgr.session_epoch.wrapping_add(1);
+    if fs::write(AuthManager::logout_marker_path(), b"logged-out").is_err() {
+        mgr.clear_persisted_session();
+        return Err("本地退出未完成: 无法写入退出标记".to_string());
+    }
     mgr.clear_persisted_session();
+    if AuthManager::storage_path().exists() {
+        return Err("本地退出未完成: 会话文件仍存在".to_string());
+    }
+    mgr.cookie_jar = Arc::new(Jar::default());
+    let mut builder = Client::builder()
+        .cookie_provider(mgr.cookie_jar.clone())
+        .user_agent(USER_AGENT)
+        .timeout(Duration::from_secs(15))
+        .redirect(crate::credential_policy::credentialed_redirect_policy())
+        .no_proxy();
+    let proxy = reqwest::Proxy::custom(|_url| {
+        if let Some(proxy_str) = crate::updater::get_cached_upstream_proxy_url() {
+            Url::parse(&proxy_str).ok()
+        } else {
+            None
+        }
+    });
+    builder = builder.proxy(proxy);
+    mgr.client = builder
+        .build()
+        .map_err(|e| format!("重建认证客户端失败: {e}"))?;
     Ok(())
 }
 
@@ -1043,6 +1105,10 @@ pub async fn get_auth_state() -> CurrentAuthState {
         .as_secs() as i64;
 
     let token_expired = mgr.access_token.is_none() || mgr.access_expires_at <= now;
+
+    if mgr.auto_refresh_blocked {
+        return mgr.get_state();
+    }
 
     // 如果 access_token 已经过期但有 refresh cookie，尝试在后台恢复一次
     if mgr.current_user.is_some() && token_expired && mgr.has_persisted_refresh_cookie() {
@@ -1123,6 +1189,12 @@ pub async fn get_user_tokens(all: Option<bool>) -> Result<Vec<TokenItem>, String
     let items: Vec<TokenItem> = serde_json::from_value(items_val.clone())
         .map_err(|e| format!("反序列化令牌列表失败: {e}"))?;
 
+    for token in &items {
+        if !token.key.is_empty() {
+            crate::credential_policy::register_managed_key(&token.key);
+        }
+    }
+
     Ok(items)
 }
 
@@ -1164,6 +1236,9 @@ pub async fn get_token_key(token_id: i64) -> Result<String, String> {
         key = format!("sk-{}", key);
     }
 
+    // 登记为 Bob API 受管密钥，确保后续单工具关联、保存与模型探测均受来源限制
+    crate::credential_policy::register_managed_key(&key);
+
     Ok(key)
 }
 
@@ -1183,58 +1258,28 @@ pub async fn update_user_token_group(
         mgr.client.clone()
     };
 
-    // 1. 尝试通过 GET /api/token/:id 获取完整原有 Token 信息，确保保留原参数
     let get_url = format!("{}/api/token/{}", BASE_URL, token_id);
-    let mut put_body = None;
-
-    if let Ok(resp) = client
+    let resp = client
         .get(&get_url)
         .header(AUTHORIZATION, format!("Bearer {}", token))
         .send()
         .await
-    {
-        let status = resp.status();
-        if let Ok(text) = resp.text().await {
-            if let Ok(parsed) =
-                parse_api_response_body::<serde_json::Value>(status, &text, "读取原令牌信息")
-            {
-                if parsed.success {
-                    if let Some(mut data_obj) = parsed.data {
-                        if data_obj.is_object() {
-                            data_obj["group"] = serde_json::json!(clean_group);
-                            put_body = Some(data_obj);
-                        }
-                    }
-                }
-            }
-        }
+        .map_err(|_| "无法读取完整 Token 配置，已停止修改以免清空安全限制".to_string())?;
+    let status = resp.status();
+    if !status.is_success() {
+        return Err("无法读取完整 Token 配置，已停止修改以免清空安全限制".to_string());
     }
-
-    // 2. 如果 GET /api/token/:id 未取到，回退从 get_user_tokens 检索原有基础信息
-    let body = if let Some(b) = put_body {
-        b
-    } else {
-        let tokens = get_user_tokens(None).await?;
-        let orig = tokens
-            .into_iter()
-            .find(|t| t.id == token_id)
-            .ok_or_else(|| format!("未找到 ID 为 {} 的 API Key", token_id))?;
-
-        serde_json::json!({
-            "id": orig.id,
-            "name": orig.name,
-            "expired_time": orig.expired_time,
-            "remain_quota": orig.remain_quota,
-            "unlimited_quota": orig.unlimited_quota,
-            "model_limits_enabled": false,
-            "model_limits": "",
-            "allow_ips": "",
-            "group": clean_group,
-            "auto_groups": [],
-            "cross_group_retry": false,
-            "fallback_groups": []
-        })
-    };
+    let text = resp
+        .text()
+        .await
+        .map_err(|_| "无法读取完整 Token 配置，已停止修改以免清空安全限制".to_string())?;
+    let parsed = parse_api_response_body::<serde_json::Value>(status, &text, "读取原令牌信息")
+        .map_err(|_| "无法读取完整 Token 配置，已停止修改以免清空安全限制".to_string())?;
+    let mut body = parsed
+        .data
+        .filter(|v| v.is_object())
+        .ok_or_else(|| "无法读取完整 Token 配置，已停止修改以免清空安全限制".to_string())?;
+    body["group"] = serde_json::json!(clean_group);
 
     let put_url = format!("{}/api/token/", BASE_URL);
     let resp = client
@@ -1262,14 +1307,31 @@ pub async fn update_user_token_group(
         });
     }
 
-    // 重新检索更新后的令牌列表并返回
-    let tokens = get_user_tokens(None).await?;
+    let tokens = match get_user_tokens(None).await {
+        Ok(tokens) => tokens,
+        Err(_) => return Err("修改已提交，状态待确认".to_string()),
+    };
     let updated = tokens
         .into_iter()
         .find(|t| t.id == token_id)
-        .ok_or_else(|| "分组更新成功，但刷新列表时未找到该令牌".to_string())?;
+        .ok_or_else(|| "修改已提交，状态待确认".to_string())?;
 
     Ok(updated)
+}
+
+fn managed_destination(url: &str, default: &str) -> Result<String, String> {
+    let dest = if url.trim().is_empty() {
+        default.to_string()
+    } else {
+        url.to_string()
+    };
+    crate::credential_policy::assert_managed_key_destination(
+        &dest,
+        &crate::credential_policy::default_managed_origins(),
+        crate::credential_policy::loopback_http_allowed(),
+    )
+    .map_err(|e| e.to_string())?;
+    Ok(dest)
 }
 
 /// 一键将 API Key 批量写入指定的 Agent 配置文件中
@@ -1289,7 +1351,10 @@ pub async fn apply_api_key_to_agents(
                     .map(|c| c.base_url.clone())
                     .unwrap_or_else(|| "https://bob-api.com/".to_string());
                 let model = cur.as_ref().map(|c| c.model.clone());
-                match crate::codex::set_codex_config(url, api_key.clone(), model) {
+                match managed_destination(&url, "https://bob-api.com/").and_then(|url| {
+                    crate::codex::set_codex_config(url, api_key.clone(), model)
+                        .map_err(|e| e.to_string())
+                }) {
                     Ok(_) => {
                         results.insert("chatgpt".to_string(), true);
                     }
@@ -1306,7 +1371,10 @@ pub async fn apply_api_key_to_agents(
                     .map(|c| c.base_url.clone())
                     .unwrap_or_else(|| "https://bob-api.com/".to_string());
                 let model = cur.as_ref().map(|c| c.model.clone());
-                match crate::claude::set_claude_config(url, api_key.clone(), model) {
+                match managed_destination(&url, "https://bob-api.com/").and_then(|url| {
+                    crate::claude::set_claude_config(url, api_key.clone(), model)
+                        .map_err(|e| e.to_string())
+                }) {
                     Ok(_) => {
                         results.insert("claude".to_string(), true);
                     }
@@ -1326,6 +1394,14 @@ pub async fn apply_api_key_to_agents(
                     .as_ref()
                     .map(|c| c.model.clone())
                     .unwrap_or_else(|| "gpt-5.6-sol".to_string());
+                let url = match managed_destination(&url, "https://bob-api.com/v1") {
+                    Ok(url) => url,
+                    Err(e) => {
+                        error!("应用 Key 到 WorkBuddy 失败: {e}");
+                        results.insert("workbuddy".to_string(), false);
+                        continue;
+                    }
+                };
                 let payload = crate::workbuddy::WorkbuddySavePayload {
                     url,
                     api_key: api_key.clone(),
@@ -1353,12 +1429,18 @@ pub async fn apply_api_key_to_agents(
             }
             "accio" | "acciowork" => {
                 let cur = crate::accio::config::load_accio_config();
+                let base_url = if cur.base_url.is_empty() {
+                    "https://bob-api.com/".to_string()
+                } else {
+                    cur.base_url
+                };
+                if let Err(e) = managed_destination(&base_url, "https://bob-api.com/") {
+                    error!("应用 Key 到 AccioWork 失败: {e}");
+                    results.insert("acciowork".to_string(), false);
+                    continue;
+                }
                 let config = crate::accio::config::AccioConfig {
-                    base_url: if cur.base_url.is_empty() {
-                        "https://bob-api.com/".to_string()
-                    } else {
-                        cur.base_url
-                    },
+                    base_url,
                     api_key: api_key.clone(),
                     model: cur.model,
                     bridge_port: cur.bridge_port,
@@ -1368,6 +1450,7 @@ pub async fn apply_api_key_to_agents(
                     auto_start_bridge: cur.auto_start_bridge,
                     cached_models: Vec::new(),
                     cached_models_fingerprint: String::new(),
+                    image_model: cur.image_model,
                 };
                 crate::accio::invalidate_model_list_cache();
                 match crate::accio::config::save_accio_config(&config) {
@@ -1442,7 +1525,20 @@ pub async fn get_channel_group_overview(
 
 /// 获取用户在 bob-api 的钱包与额度余额信息 (调用 GET /api/user/self)
 pub async fn get_user_wallet() -> Result<UserWalletInfo, String> {
-    let mut token = ensure_access_token().await?;
+    let (mut token, expected_user_id, expected_epoch) = {
+        let mgr = AUTH_MGR.lock().await;
+        let token = mgr
+            .access_token
+            .clone()
+            .ok_or_else(|| "未登录".to_string())?;
+        let user_id = mgr
+            .current_user
+            .as_ref()
+            .map(|u| u.id)
+            .ok_or_else(|| "未登录".to_string())?;
+        let epoch = mgr.session_epoch;
+        (token, user_id, epoch)
+    };
     let url = format!("{}/api/user/self", BASE_URL);
 
     let mut resp = {
@@ -1520,15 +1616,26 @@ pub async fn get_user_wallet() -> Result<UserWalletInfo, String> {
 
     if role.is_some() || email.is_some() {
         let mut mgr = AUTH_MGR.lock().await;
-        if let Some(ref mut u) = mgr.current_user {
-            if let Some(r) = role {
-                u.role = Some(r);
+        // 关键加固：严格绑定请求发出时的 user_id 与 session_epoch，防止切换账号期间旧响应覆盖新资料落盘
+        if mgr.session_epoch == expected_epoch
+            && mgr.current_user.as_ref().map(|u| u.id) == Some(expected_user_id)
+        {
+            if let Some(ref mut u) = mgr.current_user {
+                if let Some(r) = role {
+                    u.role = Some(r);
+                }
+                if let Some(em) = email {
+                    u.email = Some(em);
+                }
             }
-            if let Some(em) = email {
-                u.email = Some(em);
-            }
+            let _ = mgr.persist_session(None);
+        } else {
+            log::warn!(
+                "会话已切换或已退出，丢弃在途钱包资料响应: expected_user={}, expected_epoch={}",
+                expected_user_id,
+                expected_epoch
+            );
         }
-        mgr.persist_session(None);
     }
 
     let quota_per_unit: i64 = 500000;

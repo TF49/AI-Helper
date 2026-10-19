@@ -15,6 +15,14 @@ fn load_env_file(path: &std::path::Path) {
                     {
                         val = &val[1..val.len() - 1];
                     }
+                    let upper = key.to_ascii_uppercase();
+                    if upper.contains("WEBHOOK")
+                        || upper.contains("SECRET")
+                        || upper.contains("PRIVATE")
+                        || upper.contains("PASSWORD")
+                    {
+                        continue;
+                    }
                     if std::env::var(key).is_err() {
                         println!("cargo:rustc-env={}={}", key, val);
                     }
@@ -34,11 +42,6 @@ fn main() {
     // 自动加载本地 .env（根目录或 src-tauri），编译期无缝注入并规避 Git 提交泄露
     load_env_file(&manifest_dir.join("../.env"));
     load_env_file(&manifest_dir.join(".env"));
-
-    println!("cargo:rerun-if-env-changed=FEISHU_WEBHOOK_URL");
-    if let Ok(val) = std::env::var("FEISHU_WEBHOOK_URL") {
-        println!("cargo:rustc-env=FEISHU_WEBHOOK_URL={}", val);
-    }
 
     // Windows: Embed Common Controls v6 manifest for test binaries
     #[cfg(target_os = "windows")]

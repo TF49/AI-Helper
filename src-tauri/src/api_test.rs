@@ -7,6 +7,44 @@ use tauri::ipc::Channel;
 
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(20);
 
+fn test_http_client() -> Client {
+    Client::builder()
+        .redirect(crate::credential_policy::credentialed_redirect_policy())
+        .timeout(REQUEST_TIMEOUT)
+        .build()
+        .expect("failed to build test HTTP client")
+}
+
+fn reject_unsafe_test_target(url: &str, api_key: &str) -> Option<ApiTestResult> {
+    if crate::credential_policy::is_managed_key(api_key) {
+        if let Err(err) = crate::credential_policy::assert_managed_key_destination(
+            url,
+            &crate::credential_policy::default_managed_origins(),
+            crate::credential_policy::loopback_http_allowed(),
+        ) {
+            return Some(ApiTestResult {
+                success: false,
+                message: err.to_string(),
+                status_code: None,
+                latency_ms: None,
+                response_preview: None,
+            });
+        }
+    } else if let Err(err) = crate::credential_policy::validate_endpoint(
+        url,
+        crate::credential_policy::loopback_http_allowed(),
+    ) {
+        return Some(ApiTestResult {
+            success: false,
+            message: err.to_string(),
+            status_code: None,
+            latency_ms: None,
+            response_preview: None,
+        });
+    }
+    None
+}
+
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct ApiTestResult {
     pub success: bool,
@@ -36,8 +74,11 @@ pub enum TestStreamEvent {
 }
 
 pub async fn test_codex_config(url: String, api_key: String, model: String) -> ApiTestResult {
+    if let Some(rejected) = reject_unsafe_test_target(&url, &api_key) {
+        return rejected;
+    }
     let endpoint = format!("{}/v1/responses", api_root(&url));
-    let client = Client::new();
+    let client = test_http_client();
     let request = client.post(&endpoint).bearer_auth(&api_key).json(&json!({
         "model": model,
         "input": "Hi",
@@ -48,8 +89,11 @@ pub async fn test_codex_config(url: String, api_key: String, model: String) -> A
 }
 
 pub async fn test_claude_config(url: String, api_key: String, model: String) -> ApiTestResult {
+    if let Some(rejected) = reject_unsafe_test_target(&url, &api_key) {
+        return rejected;
+    }
     let endpoint = format!("{}/v1/messages", api_root(&url));
-    let client = Client::new();
+    let client = test_http_client();
     let request = client
         .post(&endpoint)
         .header("x-api-key", &api_key)
@@ -70,6 +114,9 @@ pub async fn test_codex_stream(
     model: String,
     on_event: Channel<TestStreamEvent>,
 ) -> ApiTestResult {
+    if let Some(rejected) = reject_unsafe_test_target(&url, &api_key) {
+        return rejected;
+    }
     let root = api_root(&url);
     let endpoint = format!("{root}/v1/responses");
     let masked_key = mask_api_key(&api_key);
@@ -92,7 +139,7 @@ pub async fn test_codex_stream(
         level: "info".to_string(),
     });
 
-    let client = Client::new();
+    let client = test_http_client();
     let request = client.post(&endpoint).bearer_auth(&api_key).json(&json!({
         "model": model,
         "input": "Hi",
@@ -236,6 +283,9 @@ pub async fn test_claude_stream(
     model: String,
     on_event: Channel<TestStreamEvent>,
 ) -> ApiTestResult {
+    if let Some(rejected) = reject_unsafe_test_target(&url, &api_key) {
+        return rejected;
+    }
     let root = api_root(&url);
     let endpoint = format!("{root}/v1/messages");
     let masked_key = mask_api_key(&api_key);
@@ -257,7 +307,7 @@ pub async fn test_claude_stream(
         level: "info".to_string(),
     });
 
-    let client = Client::new();
+    let client = test_http_client();
     let request = client
         .post(&endpoint)
         .header("x-api-key", &api_key)
@@ -410,6 +460,9 @@ pub async fn test_workbuddy_stream(
     model: String,
     on_event: Channel<TestStreamEvent>,
 ) -> ApiTestResult {
+    if let Some(rejected) = reject_unsafe_test_target(&url, &api_key) {
+        return rejected;
+    }
     let root = api_root(&url);
     let endpoint = format!("{root}/v1/chat/completions");
     let masked_key = mask_api_key(&api_key);
@@ -431,7 +484,7 @@ pub async fn test_workbuddy_stream(
         level: "info".to_string(),
     });
 
-    let client = Client::new();
+    let client = test_http_client();
     let request = client.post(&endpoint).bearer_auth(&api_key).json(&json!({
         "model": model,
         "max_tokens": 16,
@@ -722,6 +775,9 @@ pub async fn test_accio_stream(
     model: String,
     on_event: Channel<TestStreamEvent>,
 ) -> ApiTestResult {
+    if let Some(rejected) = reject_unsafe_test_target(&url, &api_key) {
+        return rejected;
+    }
     let root = api_root(&url);
     let masked_key = mask_api_key(&api_key);
 
@@ -779,7 +835,7 @@ pub async fn test_accio_stream(
         level: "info".to_string(),
     });
 
-    let client = Client::new();
+    let client = test_http_client();
 
     // Claude 协议需要 x-api-key + anthropic-version 头；其余使用 Bearer
     let request = if matches!(protocol, AccioModelProtocol::AnthropicMessages) {
@@ -934,5 +990,36 @@ pub async fn test_accio_stream(
                 response_preview: None,
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_reject_unsafe_remote_http() {
+        let res = reject_unsafe_test_target("http://evil.com/v1", "sk-custom-key");
+        assert!(res.is_some());
+        assert!(!res.unwrap().success);
+    }
+
+    #[test]
+    fn test_reject_managed_key_to_unauthorized_dest() {
+        let managed_key = "sk-managed-test-api-test-01";
+        crate::credential_policy::register_managed_key(managed_key);
+        let res = reject_unsafe_test_target("https://unauthorized-ai-service.com/v1", managed_key);
+        assert!(res.is_some());
+        let rejected = res.unwrap();
+        assert!(!rejected.success);
+        assert!(rejected.message.contains("受管 Key 不得发往未授权目标"));
+    }
+
+    #[test]
+    fn test_allow_managed_key_to_official_dest() {
+        let managed_key = "sk-managed-test-api-test-02";
+        crate::credential_policy::register_managed_key(managed_key);
+        let res = reject_unsafe_test_target("https://bob-api.com/v1", managed_key);
+        assert!(res.is_none());
     }
 }

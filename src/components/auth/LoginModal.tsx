@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { createPortal } from "react-dom";
 import { motion, AnimatePresence } from "motion/react";
 import {
@@ -58,6 +58,20 @@ export function LoginModal({
   const [twoFaFlowToken, setTwoFaFlowToken] = useState<string | null>(null);
   const [twoFaCode, setTwoFaCode] = useState("");
   const [twoFaSubmitting, setTwoFaSubmitting] = useState(false);
+
+  const clearSecrets = () => {
+    setPassword("");
+    setPreparedLoginPayload(null);
+    preparedLoginPayloadRef.current = null;
+    setTwoFaFlowToken(null);
+    setTwoFaCode("");
+  };
+
+  useEffect(() => {
+    if (!open) {
+      clearSecrets();
+    }
+  }, [open]);
 
   if (!open || typeof document === "undefined") return null;
 
@@ -129,14 +143,19 @@ export function LoginModal({
       const result = await loginAccount(payload);
 
       if (result.type === "require_2fa") {
+        setPassword("");
         setTwoFaFlowToken(result.flow_token);
         toast.info("当前账号开启了 2FA 双因素认证，请输入验证码");
       } else if (result.type === "success") {
         toast.success(`欢迎回来，${result.user.display_name || result.user.username}！`);
+        clearSecrets();
         onSuccess(result.user);
         onClose();
       }
     } catch (err: unknown) {
+      setPassword("");
+      setPreparedLoginPayload(null);
+      preparedLoginPayloadRef.current = null;
       const msg = typeof err === "string" ? err : "登录失败，请检查账号密码";
       setErrorMsg(msg);
       toast.error(msg);
@@ -168,6 +187,7 @@ export function LoginModal({
     try {
       const successData = await login2fa(twoFaFlowToken, twoFaCode.trim());
       toast.success(`2FA 验证成功，欢迎回来 ${successData.user.username}！`);
+      clearSecrets();
       onSuccess(successData.user);
       onClose();
     } catch (err: unknown) {
