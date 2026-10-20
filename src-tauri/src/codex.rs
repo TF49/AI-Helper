@@ -162,9 +162,7 @@ pub fn merge_codex_managed_fields(doc: &mut DocumentMut, base_url: &str, model: 
                 if !inline.contains_key("api") {
                     inline.insert("api", "openai-responses".into());
                 }
-                if !inline.contains_key("env_key") {
-                    inline.insert("env_key", "CUSTOM_OPENAI_API_KEY".into());
-                }
+                inline.insert("env_key", "CUSTOM_OPENAI_API_KEY".into());
             } else if let Some(custom) = custom_item.as_table_mut() {
                 custom["base_url"] = toml_edit::value(base_url);
                 if custom.get("name").is_none() {
@@ -173,9 +171,7 @@ pub fn merge_codex_managed_fields(doc: &mut DocumentMut, base_url: &str, model: 
                 if custom.get("api").is_none() {
                     custom["api"] = toml_edit::value("openai-responses");
                 }
-                if custom.get("env_key").is_none() {
-                    custom["env_key"] = toml_edit::value("CUSTOM_OPENAI_API_KEY");
-                }
+                custom["env_key"] = toml_edit::value("CUSTOM_OPENAI_API_KEY");
             } else {
                 let mut custom_table = toml_edit::Table::new();
                 custom_table["name"] = toml_edit::value("Custom");
@@ -196,6 +192,7 @@ pub fn merge_codex_managed_fields(doc: &mut DocumentMut, base_url: &str, model: 
         if let Some(custom_val) = inline_providers.get_mut("custom") {
             if let Some(inline_custom) = custom_val.as_inline_table_mut() {
                 inline_custom.insert("base_url", base_url.into());
+                inline_custom.insert("env_key", "CUSTOM_OPENAI_API_KEY".into());
             }
         }
     }
@@ -206,20 +203,13 @@ pub fn set_codex_config(
     api_key: String,
     model: Option<String>,
 ) -> Result<(), AppError> {
-    if crate::credential_policy::is_managed_key(&api_key) {
-        crate::credential_policy::assert_managed_key_destination(
-            &url,
-            &crate::credential_policy::default_managed_origins(),
-            crate::credential_policy::loopback_http_allowed(),
-        )
-        .map_err(|e| AppError::Other(e.to_string()))?;
-    } else {
-        crate::credential_policy::validate_endpoint(
-            &url,
-            crate::credential_policy::loopback_http_allowed(),
-        )
-        .map_err(|e| AppError::Other(e.to_string()))?;
-    }
+    crate::credential_policy::validate_key_destination(
+        &api_key,
+        &url,
+        &crate::credential_policy::default_managed_origins(),
+        crate::credential_policy::loopback_http_allowed(),
+    )
+    .map_err(|e| AppError::Other(e.to_string()))?;
 
     let path = codex_config_path()?;
     let normalized = url.trim_end_matches('/');
@@ -244,6 +234,17 @@ pub fn set_codex_config(
     merge_codex_managed_fields(&mut doc, &base_url, model.as_deref());
     let doc_str = doc.to_string();
 
+    let final_env_key = doc
+        .get("model_providers")
+        .and_then(|providers| providers.get("custom"))
+        .and_then(|custom| custom.get("env_key"))
+        .and_then(|value| value.as_str());
+    if final_env_key != Some("CUSTOM_OPENAI_API_KEY") {
+        return Err(AppError::Other(
+            "Codex 凭据引用未指向实际写入的 CUSTOM_OPENAI_API_KEY，已停止保存".into(),
+        ));
+    }
+
     // 关键加固：在写 Key 之前，核对最终解析出的目标地址是否与目标一致！
     let parsed_check = parse_codex_content(&doc_str, "", true, String::new(), false, None);
     let parsed_clean = parsed_check
@@ -259,11 +260,30 @@ pub fn set_codex_config(
         )));
     }
 
-    crate::safe_fs::backup_then_atomic_write(&path, doc_str)?;
+    let previous_env = read_registry_env("CUSTOM_OPENAI_API_KEY").ok();
     if api_key.trim().is_empty() {
         delete_registry_env("CUSTOM_OPENAI_API_KEY")?;
     } else {
         write_registry_env("CUSTOM_OPENAI_API_KEY", &api_key)?;
+    }
+    let actual_env = read_registry_env("CUSTOM_OPENAI_API_KEY").unwrap_or_default();
+    if actual_env != api_key {
+        if let Some(previous) = previous_env {
+            let _ = write_registry_env("CUSTOM_OPENAI_API_KEY", &previous);
+        } else {
+            let _ = delete_registry_env("CUSTOM_OPENAI_API_KEY");
+        }
+        return Err(AppError::Other(
+            "Codex 凭据未能写入实际 CLI 环境位置，已停止保存配置".into(),
+        ));
+    }
+    if let Err(error) = crate::safe_fs::backup_then_atomic_write(&path, doc_str) {
+        if let Some(previous) = previous_env {
+            let _ = write_registry_env("CUSTOM_OPENAI_API_KEY", &previous);
+        } else {
+            let _ = delete_registry_env("CUSTOM_OPENAI_API_KEY");
+        }
+        return Err(error);
     }
     Ok(())
 }

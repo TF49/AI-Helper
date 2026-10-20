@@ -85,7 +85,10 @@ Write-Host "Generated update manifest: $latestJsonPath"
 
 Push-Location $repoRoot
 try {
-    pnpm exec tauri signer sign $latestJsonPath
+    & pnpm exec tauri signer sign $latestJsonPath
+    if ($LASTEXITCODE -ne 0) {
+        throw "Tauri signer failed for latest.json (exit code $LASTEXITCODE)."
+    }
 } finally {
     Pop-Location
 }

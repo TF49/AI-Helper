@@ -270,6 +270,12 @@ fn set_accio_config(mut config: accio::AccioConfig) -> Result<(), error::AppErro
         accio::invalidate_model_list_cache();
     }
 
+    // Older UI payloads omitted image_model. Preserve a manually configured
+    // value during ordinary saves; an empty model keeps the feature disabled.
+    if config.image_model.trim().is_empty() && !existing.image_model.trim().is_empty() {
+        config.image_model = existing.image_model;
+    }
+
     accio::save_accio_config(&config)?;
     if accio::is_bridge_running() {
         tauri::async_runtime::spawn(async {

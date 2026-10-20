@@ -90,6 +90,9 @@ jobs:
 
       - name: Package release
         id: package
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         run: |
           $package = Get-Content -LiteralPath package.json -Encoding UTF8 -Raw | ConvertFrom-Json
           $tag = "v$($package.version)"
@@ -145,6 +148,9 @@ jobs:
 
       - name: Package macOS release
         id: package
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         run: |
           chmod +x ./scripts/package-macos.sh
           ./scripts/package-macos.sh "" "${{ matrix.target }}"
@@ -165,6 +171,14 @@ jobs:
     runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: '22'
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v4
+        with:
+          version: 10.12.3
+      - name: Install release tooling
+        run: pnpm install --frozen-lockfile
 
       - name: Download all artifacts
         uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7
@@ -191,6 +205,12 @@ jobs:
             echo "::error::Release $tag already exists! Overwriting or clobbering published release binaries and manifests is strictly prohibited to guarantee update anti-replay integrity and reproducible signatures. Please increment the version in package.json and publish a new release tag."
             exit 1
           fi
+
+      - name: Sign final multi-platform update manifest
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: pwsh -NoProfile -File scripts/finalize-update-manifest.ps1 -AssetRoot release_assets -Tag "${{ steps.prep.outputs.tag }}"
 
       - name: Create new release
         env:

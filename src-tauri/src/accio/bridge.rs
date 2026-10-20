@@ -443,6 +443,17 @@ pub fn is_monetized_bridge_path(path: &str) -> bool {
         || lower.starts_with("/api/mcp/proxy")
 }
 
+fn validate_upstream_destination(config: &AccioConfig) -> Result<(), String> {
+    crate::credential_policy::validate_key_destination(
+        &config.api_key,
+        &config.base_url,
+        &crate::credential_policy::default_managed_origins(),
+        crate::credential_policy::loopback_http_allowed(),
+    )
+    .map(|_| ())
+    .map_err(|error| error.to_string())
+}
+
 /// Anti-CSRF、Anti-DNS-Rebinding 及流控防盗刷中间件：
 /// 1. 严格拦截非受信 Host 请求，抵御 DNS Rebinding 攻击；
 /// 2. 拦截所有带有非受信 Origin 或跨站探测 (Sec-Fetch-Site: cross-site) 的请求；
@@ -590,8 +601,8 @@ pub async fn start_bridge(preferred_port: Option<u16>) -> Result<u16, String> {
     let image_cap = std::env::var("AI_HELPER_IMAGE_BUDGET_UNITS")
         .ok()
         .and_then(|s| s.parse().ok())
-        .unwrap_or(6);
-    crate::paid_request::reset_image_budget(image_cap);
+        .unwrap_or(0);
+    crate::paid_request::reset_image_budget(image_cap)?;
 
     // 若发现端口发生了递增避让，回写配置
     if target_port != config.bridge_port {
@@ -871,6 +882,13 @@ async fn handle_embedding(State(client): State<Client>, request: Request) -> Res
         return (
             StatusCode::UNAUTHORIZED,
             Json(json!({"error": {"message": "API 密钥未配置，请先在 AI-Helper 中填写 API Key"}})),
+        )
+            .into_response();
+    }
+    if let Err(error) = validate_upstream_destination(&config) {
+        return (
+            StatusCode::FORBIDDEN,
+            Json(json!({"error": {"message": error}})),
         )
             .into_response();
     }
@@ -2072,6 +2090,7 @@ async fn call_upstream_llm(
             "API 密钥未配置，请先在 AI-Helper 中填写 API Key".to_string(),
         ));
     }
+    validate_upstream_destination(config).map_err(|e| (None, e))?;
 
     let root = clean_base_url(&config.base_url);
 
@@ -2225,10 +2244,18 @@ async fn call_upstream_llm(
 
 async fn download_generated_image(img_url: &str) -> Result<Vec<u8>, String> {
     let parsed = crate::image_fetch::validate_image_url(img_url).map_err(|e| e.to_string())?;
-    crate::image_fetch::resolve_and_check_host(&parsed).map_err(|e| e.to_string())?;
+    let resolved_ip =
+        crate::image_fetch::resolve_public_host(&parsed).map_err(|e| e.to_string())?;
+    let host = parsed
+        .host_str()
+        .ok_or_else(|| "图片地址缺少主机名".to_string())?;
+    let port = parsed.port_or_known_default().unwrap_or(443);
     let client = Client::builder()
         .redirect(reqwest::redirect::Policy::none())
         .no_proxy()
+        // Bind the checked DNS answer to the actual connection. Re-resolving
+        // the hostname after the preflight would leave a DNS-rebinding window.
+        .resolve(host, std::net::SocketAddr::new(resolved_ip, port))
         .timeout(Duration::from_secs(30))
         .build()
         .map_err(|e| e.to_string())?;
@@ -2271,6 +2298,7 @@ async fn call_custom_image(
     if config.api_key.trim().is_empty() {
         return Err("API 密钥未配置，请先在 AI-Helper 中填写 API Key".to_string());
     }
+    validate_upstream_destination(config)?;
     if config.image_model.trim().is_empty() {
         return Err("未配置受管生图模型或预算，已禁用生图以免静默使用昂贵默认模型".to_string());
     }
@@ -2344,11 +2372,19 @@ async fn call_custom_image(
         .await
     {
         Ok(resp) => {
-            crate::paid_request::settle_image_unit();
+            if resp.status().is_success() {
+                if let Err(error) = crate::paid_request::settle_image_unit() {
+                    log::error!("生图已收到成功响应但预算结算失败，保留未决状态: {error}");
+                }
+            } else {
+                log::warn!(
+                    "生图上游返回 HTTP {}，扣费结果保留未决，不自动释放或重试",
+                    resp.status()
+                );
+            }
             resp
         }
         Err(e) => {
-            crate::paid_request::settle_image_unit();
             return Err(format!("请求生图服务失败: {}", e));
         }
     };

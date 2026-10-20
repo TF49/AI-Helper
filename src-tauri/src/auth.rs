@@ -1258,46 +1258,25 @@ pub async fn update_user_token_group(
         mgr.client.clone()
     };
 
-    let get_url = format!("{}/api/token/{}", BASE_URL, token_id);
+    // Only a group-only endpoint is safe here. A full GET -> PUT would replay
+    // stale quota/IP/model fields and overwrite concurrent server-side changes.
+    let group_url = format!("{}/api/token/{}/group", BASE_URL, token_id);
     let resp = client
-        .get(&get_url)
+        .patch(&group_url)
         .header(AUTHORIZATION, format!("Bearer {}", token))
+        .json(&serde_json::json!({ "group": clean_group }))
         .send()
         .await
-        .map_err(|_| "无法读取完整 Token 配置，已停止修改以免清空安全限制".to_string())?;
-    let status = resp.status();
-    if !status.is_success() {
-        return Err("无法读取完整 Token 配置，已停止修改以免清空安全限制".to_string());
-    }
-    let text = resp
-        .text()
-        .await
-        .map_err(|_| "无法读取完整 Token 配置，已停止修改以免清空安全限制".to_string())?;
-    let parsed = parse_api_response_body::<serde_json::Value>(status, &text, "读取原令牌信息")
-        .map_err(|_| "无法读取完整 Token 配置，已停止修改以免清空安全限制".to_string())?;
-    let mut body = parsed
-        .data
-        .filter(|v| v.is_object())
-        .ok_or_else(|| "无法读取完整 Token 配置，已停止修改以免清空安全限制".to_string())?;
-    body["group"] = serde_json::json!(clean_group);
-
-    let put_url = format!("{}/api/token/", BASE_URL);
-    let resp = client
-        .put(&put_url)
-        .header(AUTHORIZATION, format!("Bearer {}", token))
-        .json(&body)
-        .send()
-        .await
-        .map_err(|e| format!("更新令牌分组网络异常: {e}"))?;
+        .map_err(|e| format!("更新令牌分组网络异常（服务端 group-only 契约不可用）: {e}"))?;
 
     let status = resp.status();
     let text = resp
         .text()
         .await
-        .map_err(|e| format!("读取更新令牌响应失败: {e}"))?;
+        .map_err(|e| format!("读取 group-only 更新响应失败: {e}"))?;
 
     let parsed: ApiResponse<serde_json::Value> =
-        parse_api_response_body(status, &text, "更新令牌分组")?;
+        parse_api_response_body(status, &text, "更新令牌分组（group-only）")?;
 
     if !parsed.success {
         return Err(if parsed.message.is_empty() {
@@ -1593,6 +1572,18 @@ pub async fn get_user_wallet() -> Result<UserWalletInfo, String> {
     let data = parsed
         .data
         .ok_or_else(|| "响应数据中缺少 data 字段".to_string())?;
+
+    // The response itself is session-bound. Never return stale account data to
+    // the renderer after logout or an account switch, even when only profile
+    // fields are absent from the payload.
+    {
+        let mgr = AUTH_MGR.lock().await;
+        if mgr.session_epoch != expected_epoch
+            || mgr.current_user.as_ref().map(|u| u.id) != Some(expected_user_id)
+        {
+            return Err("账号已切换或会话已失效，已丢弃旧钱包响应".to_string());
+        }
+    }
 
     let quota = data.get("quota").and_then(|v| v.as_i64()).unwrap_or(0);
     let used_quota = data.get("used_quota").and_then(|v| v.as_i64()).unwrap_or(0);

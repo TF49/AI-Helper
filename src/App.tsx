@@ -22,6 +22,7 @@ import {
   SlidersHorizontal,
   Bell,
   Clock,
+  Users,
 } from "lucide-react";
 import * as Popover from "@radix-ui/react-popover";
 import { motion, AnimatePresence } from "motion/react";
@@ -42,6 +43,10 @@ import { SettingsView } from "./components/views/SettingsView";
 import { AnnouncementModal, LATEST_ANNOUNCEMENT_ID } from "./components/AnnouncementModal";
 import { QuickToolsModal } from "./components/QuickToolsModal";
 import { FeedbackModal } from "./components/FeedbackModal";
+import {
+  QqGroupModal,
+  QQ_GROUP_DISMISSED_KEY,
+} from "./components/QqGroupModal";
 import { InitializationModal } from "./components/InitializationModal";
 import { LoginModal } from "./components/auth/LoginModal";
 import { TokenSelectModal } from "./components/auth/TokenSelectModal";
@@ -186,6 +191,7 @@ function AppContent() {
   const [toolsOpen, setToolsOpen] = useState(false);
   const [initModalOpen, setInitModalOpen] = useState(false);
   const [feedbackModalOpen, setFeedbackModalOpen] = useState(false);
+  const [qqGroupModalOpen, setQqGroupModalOpen] = useState(false);
   const [announcementModalOpen, setAnnouncementModalOpen] = useState(false);
   const [hasUnreadAnnouncement, setHasUnreadAnnouncement] = useState<boolean>(() => {
     return localStorage.getItem("ai_helper_read_announcement_id") !== LATEST_ANNOUNCEMENT_ID;
@@ -201,6 +207,15 @@ function AppContent() {
     setAnnouncementModalOpen(false);
     localStorage.setItem("ai_helper_read_announcement_id", LATEST_ANNOUNCEMENT_ID);
     setHasUnreadAnnouncement(false);
+  };
+
+  const handleOpenQqGroup = () => {
+    setQqGroupModalOpen(true);
+  };
+
+  const handleCloseQqGroup = () => {
+    setQqGroupModalOpen(false);
+    localStorage.setItem(QQ_GROUP_DISMISSED_KEY, "true");
   };
   const [appVersion, setAppVersion] = useState("...");
   const { resolvedTheme } = useTheme();
@@ -354,6 +369,7 @@ function AppContent() {
       setLoginModalOpen(false);
       setInitModalOpen(false);
       setTokenModalOpen(false);
+      setQqGroupModalOpen(false);
       return;
     }
 
@@ -399,6 +415,31 @@ function AppContent() {
     setIsInitialized(true);
     setInitModalOpen(false);
   };
+
+  // 初始化完成后自动提示售后 QQ 群；用户关闭后写入 localStorage，不再自动弹出
+  useEffect(() => {
+    if (!isBootCheckComplete || !isAuthReady) return;
+    if (
+      updatePhase === "downloading" ||
+      updatePhase === "installing" ||
+      updatePhase === "ready"
+    ) {
+      return;
+    }
+    if (initModalOpen || !isInitialized) return;
+    if (localStorage.getItem(QQ_GROUP_DISMISSED_KEY) === "true") return;
+
+    const timer = window.setTimeout(() => {
+      setQqGroupModalOpen(true);
+    }, 350);
+    return () => window.clearTimeout(timer);
+  }, [
+    isBootCheckComplete,
+    isAuthReady,
+    updatePhase,
+    initModalOpen,
+    isInitialized,
+  ]);
 
   const isDark = resolvedTheme === "dark";
 
@@ -525,6 +566,17 @@ function AppContent() {
           </button>
 
           <ThemeToggle />
+
+          {/* 售后 QQ 群入口 */}
+          <button
+            type="button"
+            onClick={handleOpenQqGroup}
+            className="h-7 px-2 flex items-center gap-1.5 rounded-lg text-xs font-medium border border-transparent hover:border-slate-200 dark:hover:border-white/10 bg-slate-100/60 hover:bg-slate-200/80 text-slate-600 hover:text-slate-900 dark:bg-white/5 dark:hover:bg-white/10 dark:text-gray-300 dark:hover:text-white transition-colors cursor-pointer"
+            title="加入售后服务 QQ 群"
+          >
+            <Users size={12} className="text-sky-600 dark:text-sky-400" />
+            <span className="text-[11px] font-normal">售后群</span>
+          </button>
 
           {/* 意见反馈按钮 */}
           <button
@@ -1304,6 +1356,8 @@ function AppContent() {
         currentUser={authState.user}
         onRefreshAuth={refreshState}
       />
+
+      <QqGroupModal open={qqGroupModalOpen} onClose={handleCloseQqGroup} />
 
       <AnnouncementModal
         open={announcementModalOpen}

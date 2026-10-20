@@ -143,7 +143,10 @@ export function LoginModal({
       const result = await loginAccount(payload);
 
       if (result.type === "require_2fa") {
+        // The 2FA flow no longer needs the original password or captcha payload.
         setPassword("");
+        setPreparedLoginPayload(null);
+        preparedLoginPayloadRef.current = null;
         setTwoFaFlowToken(result.flow_token);
         toast.info("当前账号开启了 2FA 双因素认证，请输入验证码");
       } else if (result.type === "success") {

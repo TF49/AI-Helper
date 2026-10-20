@@ -15,7 +15,7 @@ fi
 ASSET_ROOT="$REPO_ROOT/release/$TAG"
 mkdir -p "$ASSET_ROOT"
 
-# 查找 DMG 安装包
+# DMG 是手动安装分发物；Tauri updater 实际签署的是 .app.tar.gz。
 DMG_FILE=$(find "$BUILD_ROOT/bundle/dmg" -name "*.dmg" 2>/dev/null | head -n 1 || true)
 if [ -n "$DMG_FILE" ] && [ -f "$DMG_FILE" ]; then
   ARCH_NAME="aarch64"
@@ -28,21 +28,28 @@ if [ -n "$DMG_FILE" ] && [ -f "$DMG_FILE" ]; then
   cp "$DMG_FILE" "$TARGET_DMG"
   echo "Copied macOS DMG to: $TARGET_DMG"
 
-  if [ ! -f "$DMG_FILE.sig" ]; then
-    echo "Signature file not found: $DMG_FILE.sig. Unsigned packages cannot be released." >&2
-    exit 1
-  fi
-  cp "$DMG_FILE.sig" "$TARGET_DMG.sig"
 fi
 
 # 查找 Tauri Updater 增量升级包 (*.tar.gz)
 TAR_GZ=$(find "$BUILD_ROOT/bundle/macos" -name "*.tar.gz" 2>/dev/null | head -n 1 || true)
 if [ -n "$TAR_GZ" ] && [ -f "$TAR_GZ" ]; then
-  cp "$TAR_GZ" "$ASSET_ROOT/"
-  if [ -f "$TAR_GZ.sig" ]; then
-    cp "$TAR_GZ.sig" "$ASSET_ROOT/"
+  if [ ! -f "$TAR_GZ.sig" ]; then
+    echo "Signature file not found: $TAR_GZ.sig. Unsigned updater artifacts cannot be released." >&2
+    exit 1
   fi
-  echo "Copied macOS updater artifact: $(basename "$TAR_GZ")"
+  ARCH_NAME="aarch64"
+  if [[ "$TARGET" == *"x86_64"* ]]; then
+    ARCH_NAME="x64"
+  elif [[ "$TARGET" == *"universal"* ]]; then
+    ARCH_NAME="universal"
+  fi
+  TARGET_TAR="$ASSET_ROOT/AI-Helper-$TAG-macOS-$ARCH_NAME.app.tar.gz"
+  cp "$TAR_GZ" "$TARGET_TAR"
+  cp "$TAR_GZ.sig" "$TARGET_TAR.sig"
+  echo "Copied signed macOS updater artifact: $(basename "$TARGET_TAR")"
+else
+  echo "Tauri updater artifact (.app.tar.gz) not found under $BUILD_ROOT/bundle/macos" >&2
+  exit 1
 fi
 
 ls -la "$ASSET_ROOT"

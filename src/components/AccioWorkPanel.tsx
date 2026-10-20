@@ -68,6 +68,7 @@ export function AccioWorkPanel() {
   const [url, setUrl] = useState<string>(PRESET_URLS[0]);
   const [apiKey, setApiKey] = useState("");
   const [model, setModel] = useState("");
+  const [imageModel, setImageModel] = useState("");
   const [bridgePort, setBridgePort] = useState<number>(8787);
   const [officialGateway, setOfficialGateway] = useState(
     "https://phoenix-gw.alibaba.com",
@@ -129,6 +130,7 @@ export function AccioWorkPanel() {
         }
         setApiKey(cfg.api_key || "");
         setModel(cfg.model || "");
+        setImageModel(cfg.image_model || "");
         setBridgePort(cfg.bridge_port || 8787);
         setOfficialGateway(
           cfg.official_gateway || "https://phoenix-gw.alibaba.com",
@@ -174,6 +176,7 @@ export function AccioWorkPanel() {
     fallbackOfficial,
     preventOfficialLeak,
     autoStartBridge,
+    imageModel,
   ]);
 
   useEffect(() => {
@@ -259,6 +262,7 @@ export function AccioWorkPanel() {
     prevent_official_leak: preventOfficialLeak,
     auto_start_bridge: autoStartBridge,
     cached_models: models.map((m) => m.id),
+    image_model: imageModel.trim(),
   };
 
   const handleSave = () => {
@@ -418,6 +422,17 @@ export function AccioWorkPanel() {
                 onRefresh={() => void refreshModels()}
                 refreshing={refreshingModels}
               />
+              <div className="mt-4 space-y-1.5">
+                <label className="text-xs font-medium text-slate-700 dark:text-gray-300">
+                  生图模型（可选，未填写时生图保持关闭）
+                </label>
+                <input
+                  value={imageModel}
+                  onChange={(e) => setImageModel(e.target.value)}
+                  placeholder="例如 dall-e-3"
+                  className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs outline-none focus:border-black dark:border-white/10 dark:bg-white/5 dark:text-white"
+                />
+              </div>
             </SpotlightCard>
 
             <div className="p-2.5 rounded-xl bg-slate-50/70 dark:bg-white/[0.03] border border-slate-200/80 dark:border-white/5 text-[11px] text-slate-500 dark:text-gray-400 leading-relaxed flex items-start gap-2">

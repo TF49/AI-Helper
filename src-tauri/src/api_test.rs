@@ -16,22 +16,10 @@ fn test_http_client() -> Client {
 }
 
 fn reject_unsafe_test_target(url: &str, api_key: &str) -> Option<ApiTestResult> {
-    if crate::credential_policy::is_managed_key(api_key) {
-        if let Err(err) = crate::credential_policy::assert_managed_key_destination(
-            url,
-            &crate::credential_policy::default_managed_origins(),
-            crate::credential_policy::loopback_http_allowed(),
-        ) {
-            return Some(ApiTestResult {
-                success: false,
-                message: err.to_string(),
-                status_code: None,
-                latency_ms: None,
-                response_preview: None,
-            });
-        }
-    } else if let Err(err) = crate::credential_policy::validate_endpoint(
+    if let Err(err) = crate::credential_policy::validate_key_destination(
+        api_key,
         url,
+        &crate::credential_policy::default_managed_origins(),
         crate::credential_policy::loopback_http_allowed(),
     ) {
         return Some(ApiTestResult {

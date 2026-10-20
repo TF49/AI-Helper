@@ -96,6 +96,7 @@ pub struct AccioUIConfig {
     pub prevent_official_leak: bool,
     pub auto_start_bridge: bool,
     pub cached_models: Vec<String>,
+    pub image_model: String,
     pub config_exists: bool,
     pub config_path: String,
     pub is_installed: bool,
@@ -124,20 +125,13 @@ pub fn load_accio_config() -> AccioConfig {
 }
 
 pub fn save_accio_config(config: &AccioConfig) -> Result<(), AppError> {
-    if crate::credential_policy::is_managed_key(&config.api_key) {
-        crate::credential_policy::assert_managed_key_destination(
-            &config.base_url,
-            &crate::credential_policy::default_managed_origins(),
-            crate::credential_policy::loopback_http_allowed(),
-        )
-        .map_err(|e| AppError::Other(e.to_string()))?;
-    } else {
-        crate::credential_policy::validate_endpoint(
-            &config.base_url,
-            crate::credential_policy::loopback_http_allowed(),
-        )
-        .map_err(|e| AppError::Other(e.to_string()))?;
-    }
+    crate::credential_policy::validate_key_destination(
+        &config.api_key,
+        &config.base_url,
+        &crate::credential_policy::default_managed_origins(),
+        crate::credential_policy::loopback_http_allowed(),
+    )
+    .map_err(|e| AppError::Other(e.to_string()))?;
     let path = get_accio_config_path()?;
     let content = serde_json::to_string_pretty(config)?;
     crate::safe_fs::safe_write_file(&path, content.as_bytes())?;
@@ -163,6 +157,7 @@ pub fn get_accio_ui_config(bridge_running: bool, actual_port: Option<u16>) -> Ac
         prevent_official_leak: config.prevent_official_leak,
         auto_start_bridge: config.auto_start_bridge,
         cached_models: config.cached_models,
+        image_model: config.image_model,
         config_exists,
         config_path,
         is_installed: detected.exists,

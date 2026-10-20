@@ -70,12 +70,14 @@ export function TokenSelectModal({
   // 查看真实明文 Key 缓存映射 (tokenId -> plainKey)
   const [revealedKeys, setRevealedKeys] = useState<Record<number, string>>({});
   const [revealingId, setRevealingId] = useState<number | null>(null);
+  const revealGeneration = useRef(0);
   const [copiedId, setCopiedId] = useState<number | null>(null);
 
   // 快速修改 Token 分组状态
   const [editingGroupToken, setEditingGroupToken] = useState<TokenItem | null>(null);
   const [availableGroups, setAvailableGroups] = useState<string[]>([]);
   const [groupRatios, setGroupRatios] = useState<Record<string, number>>({});
+  const [pricingLoadedAt, setPricingLoadedAt] = useState<number | null>(null);
   const [selectedNewGroup, setSelectedNewGroup] = useState<string>("");
   const [rateConfirmed, setRateConfirmed] = useState(false);
   const [isUpdatingGroup, setIsUpdatingGroup] = useState(false);
@@ -203,7 +205,10 @@ export function TokenSelectModal({
       setSearchQuery("");
       setFilterMode("all");
     } else {
+      revealGeneration.current += 1;
       setRevealedKeys({});
+      setGroupRatios({});
+      setPricingLoadedAt(null);
       setRateConfirmed(false);
       if (isRendered && !isClosing) {
         handleSmoothClose();
@@ -214,6 +219,7 @@ export function TokenSelectModal({
   // 账号切换或退出登录时清空所有状态及明文 Key 缓存
   useEffect(() => {
     const handleAuthChange = () => {
+      revealGeneration.current += 1;
       setRevealedKeys({});
       setTokens([]);
       setRateConfirmed(false);
@@ -391,9 +397,12 @@ export function TokenSelectModal({
     }
 
     setRevealingId(token.id);
+    const generation = ++revealGeneration.current;
     try {
       const plainKey = await getTokenKey(token.id);
-      setRevealedKeys((prev) => ({ ...prev, [token.id]: plainKey }));
+      if (generation === revealGeneration.current && open) {
+        setRevealedKeys((prev) => ({ ...prev, [token.id]: plainKey }));
+      }
     } catch {
       toast.error("获取明文失败");
     } finally {
@@ -405,6 +414,8 @@ export function TokenSelectModal({
     setEditingGroupToken(token);
     setSelectedNewGroup(token.group || "default");
     setRateConfirmed(false);
+    setGroupRatios({});
+    setPricingLoadedAt(null);
     try {
       const pricing = await getPricingData();
       if (pricing) {
@@ -416,6 +427,9 @@ export function TokenSelectModal({
           Object.assign(ratios, pricing.svip_group_ratio);
         }
         setGroupRatios(ratios);
+        if (Object.keys(ratios).some((key) => Number.isFinite(ratios[key]) && ratios[key] > 0)) {
+          setPricingLoadedAt(Date.now());
+        }
 
         const groupsSet = new Set<string>();
         if (pricing.user_available_groups && pricing.user_available_groups.length > 0) {
@@ -431,6 +445,8 @@ export function TokenSelectModal({
         }
       }
     } catch {
+      setGroupRatios({});
+      setPricingLoadedAt(null);
       try {
         const userGroups = await getUserAvailableGroups();
         if (userGroups && userGroups.length > 0) {
@@ -461,7 +477,17 @@ export function TokenSelectModal({
       throw new Error("noop");
     }
 
-    const targetRatio = groupRatios[targetGroup] ?? 1.0;
+    const targetRatio = groupRatios[targetGroup];
+    if (
+      targetRatio === undefined ||
+      !Number.isFinite(targetRatio) ||
+      targetRatio <= 0 ||
+      pricingLoadedAt === null ||
+      Date.now() - pricingLoadedAt > 5 * 60 * 1000
+    ) {
+      toast.warning("目标分组费率尚未取得有效权威数据，请刷新后再提交");
+      throw new Error("费率未知或已过期");
+    }
     if (targetRatio >= 2.0 && !rateConfirmed) {
       toast.warning(`目标分组费率倍率为 ${targetRatio}x，请勾选确认已知悉费率后再提交`);
       throw new Error("请确认费率");
@@ -1097,7 +1123,7 @@ export function TokenSelectModal({
           </div>
 
           {/* 高倍率费率确认 */}
-          {(groupRatios[selectedNewGroup] ?? 1.0) >= 2.0 && (
+          {Number.isFinite(groupRatios[selectedNewGroup]) && groupRatios[selectedNewGroup] >= 2.0 && (
             <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-800 dark:text-amber-200 space-y-2">
               <div className="flex items-center gap-1.5 text-xs font-semibold">
                 <AlertTriangle size={14} className="text-amber-600 dark:text-amber-400 flex-shrink-0" />
@@ -1143,7 +1169,12 @@ export function TokenSelectModal({
                 disabled={
                   isUpdatingGroup ||
                   !selectedNewGroup.trim() ||
-                  ((groupRatios[selectedNewGroup] ?? 1.0) >= 2.0 && !rateConfirmed)
+                  groupRatios[selectedNewGroup] === undefined ||
+                  !Number.isFinite(groupRatios[selectedNewGroup]) ||
+                  groupRatios[selectedNewGroup] <= 0 ||
+                  pricingLoadedAt === null ||
+                  Date.now() - pricingLoadedAt > 5 * 60 * 1000 ||
+                  (groupRatios[selectedNewGroup] >= 2.0 && !rateConfirmed)
                 }
                 className="px-4 py-1.5 min-w-[120px] shadow-md shadow-blue-600/20"
                 idleLabel={<span>确认修改</span>}

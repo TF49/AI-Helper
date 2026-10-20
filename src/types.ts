@@ -203,6 +203,7 @@ export interface AccioConfig {
   prevent_official_leak: boolean;
   auto_start_bridge?: boolean;
   cached_models?: string[];
+  image_model?: string;
   config_exists?: boolean;
   config_path?: string;
   is_installed?: boolean;

@@ -164,3 +164,67 @@ P1 表示应在本轮安全版本发布前修复或限制相应功能；P2 表�
 - 使用 Node.js 对仓库前端源码片段执行两项隔离验证，使用假 Key 和模拟接口，确认 R09、R11。
 - 当前环境 PATH 未发现可用 `cargo`、`rustc` 或 `pnpm`，未重跑文档声称的 127 项 Rust 测试、Clippy、TypeScript 和完整构建。
 - 未发送真实登录或计费请求，未运行安装包，未读取个人实际凭据，未验证线上部署状态；本次只新增这份复核记录，未修改业务代码。
+
+
+---
+
+## 8. 修复记录（2026-10-20 working tree）
+
+基于本复核文档，在 `5d9db855` 之后的 working tree 中完成以下修复。
+
+### R01 已修复
+`verify_minisign()` 中加入 Base64 解码层：`STANDARD.decode(sig_str)` → `UTF-8` → `Signature::decode()`，与 Tauri signer 的实际输出格式对齐。
+
+### R02 已修复
+`release.yml` 和 `update-release.yml` 的 `Package release`（Windows/macOS）步骤各自注入 `TAURI_SIGNING_PRIVATE_KEY` 和 `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`；`package-release.ps1` 签名命令检查 `$LASTEXITCODE`。
+
+### R03 已修复
+`package-macos.sh` 移除 `.dmg.sig` 强制要求，改为检查 `.app.tar.gz.sig`（Tauri 实际产物）；新增 `scripts/finalize-update-manifest.ps1` 在两个 workflow 中汇总 Windows + macOS 平台产物、生成多平台 `latest.json`、签署最终清单。
+
+### R04 已修复
+`credential_policy.rs` 新增 `KeyStore`（Managed/External/Unknown 三分类）及持久化；旧 `HashSet<String>` 格式自动迁移保持 Managed 分类；`validate_key_destination()` 统一凭据出口入口（Managed→白名单，External→普通 HTTPS，Unknown→阻断）；`accio/config.rs`、`codex.rs` 均改用该入口；Bridge `handle_embedding`、`call_upstream_llm`、`call_custom_image` 发送前各自调用目标校验；`download_generated_image` 用 `.resolve(host, ip)` 将 DNS 绑定到实际连接，消除 TOCTOU。
+
+### R05 已修复
+`codex.rs` 的 `merge_codex_managed_fields()` 改为无条件写入 `env_key = CUSTOM_OPENAI_API_KEY`；`set_codex_config()` 最终校验解析出的 `env_key` 必须为 `CUSTOM_OPENAI_API_KEY`；保存流程：先写注册表 → 回读确认 → 写文件，任一失败均回滚注册表。
+
+### R06 已修复
+`safe_fs.rs` 全面重写：`write_temp()` 先 `create_new` 后立即设权限再写内容；`restrict_existing_path()` Unix 权限失败返回 `Err`，Windows `icacls` 检查退出码；`backup_then_atomic_write()` 备份也调用 `restrict_existing_path()`；Windows 原子替换使用 `ReplaceFileW`/`MoveFileExW`；`with_file_lock()` 防同文件多写者并发；`recover_missing_file()` 从 `.bak` 恢复正式文件。另修复 `image_fetch.rs` Clippy `never_loop`：改为检查所有解析地址后返回第一个安全地址。
+
+### R07 已修复
+`paid_request.rs`：`load_ledger()` 改为 `Result`（损坏报错不重置零）；`save_ledger()` 改为 `Result`；`reserve_image_unit()` 在锁内原子 load → reserve → save → 更新内存（落盘成功才放行）；跨进程文件锁 `with_ledger_lock()` 100 次 10ms 重试；默认预算上限改为 `0`（关闭），需显式配置 `AI_HELPER_IMAGE_BUDGET_UNITS`；生图成功响应 settle，网络错误保留 pending 不自动释放。
+
+### R08 已修复（客户端侧，服务端依赖）
+`auth.rs` `update_user_token_group()` 改为 `PATCH /api/token/{id}/group` 仅发送 `{ "group": "..." }`，移除完整 GET→PUT 覆盖；服务端需实现该端点（若 404/405 前端收到明确错误）。
+
+### R09 已修复
+`TokenSelectModal.tsx` 新增 `pricingLoadedAt` 时间戳；提交函数在 `targetRatio === undefined || !isFinite || <= 0 || pricingNull || 过期 5min` 时拒绝；`disabled` 条件和确认框均统一；弹窗关闭/账号切换时清空 `groupRatios` 和 `pricingLoadedAt`。
+
+### R10 已修复
+后端 `get_user_wallet()` 返回前核验 `session_epoch` 和 `current_user.id`，不匹配返回 `Err`；前端 `useAuth.tsx` 用 `walletRequestGeneration` + `previousAuthIdentity` 双重校验，旧请求结果不写入状态。
+
+### R11 已修复
+`secureClipboard.ts`：引入 `clearGeneration` 计数器；定时器回调内比较代次而非共享 `expectedValue`；清理条件改为闭包捕获的 `copied`；移除无用的 `expectedValue` 变量（TypeScript TS6133 修复）。
+
+### R12 已修复
+`accio/config.rs` `AccioUIConfig` 新增 `image_model: String`；`types.ts` 新增 `image_model?: string`；`AccioWorkPanel.tsx` 加入读取/编辑/保存 `imageModel` 的 UI 和 state。
+
+### 验证结果（2026-10-20）
+
+| 检查 | 命令 | 结果 |
+|------|------|------|
+| Rust 单元测试 | `cargo test` | ✅ **127/127 通过**，0 失败 |
+| Rust 静态检查 | `cargo clippy -- -D warnings` | ✅ **0 警告** |
+| TypeScript 类型 | `node_modules\.bin\tsc --noEmit` | ✅ **0 错误** |
+| Rust 编译 | `cargo check` | ✅ Finished |
+
+### 剩余已知缺口
+
+| 项目 | 说明 | 阻断发布？ |
+|------|------|-----------|
+| SEC-09 DPAPI | refresh cookie / sid 仍明文 JSON，仅 ACL 保护；DPAPI/Keychain 未实现 | 否（后续迭代） |
+| R08 服务端端点 | `PATCH /api/token/{id}/group` 需服务端实现 | 否（有明确错误提示） |
+| 汇率硬编码 | `1¥=4$` 仍在 `auth.rs`，待服务端提供权威接口 | 否 |
+| 预算"金额"表述 | 当前为次数约束（默认关闭），文档勿称"金额硬限" | 否（文档问题） |
+| 跨进程预算测试 | 文件锁已实现，两进程并发场景未实际运行 | 否（有锁保护） |
+| 签名真实路径测试 | Base64 解码逻辑已修复，但未用真实 Tauri signer 密钥跑端到端测试 | 需联调时验证 |
+| SEC-11/12 服务端 | 对象授权、会话撤销、并发记账缺证据 | 服务端阻塞 |

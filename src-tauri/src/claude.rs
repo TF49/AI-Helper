@@ -165,20 +165,13 @@ pub fn set_claude_config(
     api_key: String,
     model: Option<String>,
 ) -> Result<(), AppError> {
-    if crate::credential_policy::is_managed_key(&api_key) {
-        crate::credential_policy::assert_managed_key_destination(
-            &url,
-            &crate::credential_policy::default_managed_origins(),
-            crate::credential_policy::loopback_http_allowed(),
-        )
-        .map_err(|e| AppError::Other(e.to_string()))?;
-    } else {
-        crate::credential_policy::validate_endpoint(
-            &url,
-            crate::credential_policy::loopback_http_allowed(),
-        )
-        .map_err(|e| AppError::Other(e.to_string()))?;
-    }
+    crate::credential_policy::validate_key_destination(
+        &api_key,
+        &url,
+        &crate::credential_policy::default_managed_origins(),
+        crate::credential_policy::loopback_http_allowed(),
+    )
+    .map_err(|e| AppError::Other(e.to_string()))?;
 
     let path = claude_config_path()?;
     if let Some(parent) = path.parent() {

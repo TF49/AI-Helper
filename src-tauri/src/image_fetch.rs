@@ -41,7 +41,7 @@ pub fn validate_image_url(raw: &str) -> Result<Url, ImageFetchError> {
     Ok(url)
 }
 
-pub fn resolve_and_check_host(url: &Url) -> Result<(), ImageFetchError> {
+pub fn resolve_public_host(url: &Url) -> Result<IpAddr, ImageFetchError> {
     let host = url.host_str().ok_or(ImageFetchError::InvalidUrl)?;
     if looks_like_blocked_host(host) {
         return Err(ImageFetchError::BlockedAddress);
@@ -50,17 +50,19 @@ pub fn resolve_and_check_host(url: &Url) -> Result<(), ImageFetchError> {
     let addrs = (host, port)
         .to_socket_addrs()
         .map_err(|_| ImageFetchError::BlockedAddress)?;
-    let mut saw_addr = false;
-    for addr in addrs {
-        saw_addr = true;
+    // Check every resolved address: if any is blocked, reject the whole host.
+    // After the scan, return the first address for connection pinning.
+    let collected: Vec<_> = addrs.collect();
+    for addr in &collected {
         if is_blocked_ip(addr.ip()) {
             return Err(ImageFetchError::BlockedAddress);
         }
     }
-    if !saw_addr {
-        return Err(ImageFetchError::BlockedAddress);
-    }
-    Ok(())
+    collected
+        .into_iter()
+        .next()
+        .map(|a| a.ip())
+        .ok_or(ImageFetchError::BlockedAddress)
 }
 
 pub fn looks_like_blocked_host(host: &str) -> bool {

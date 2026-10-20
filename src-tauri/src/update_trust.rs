@@ -234,7 +234,15 @@ pub fn verify_minisign(data: &[u8], signature: &str, pubkey_b64: &str) -> Result
         return Err(TrustError::MissingSignature);
     }
     let pk = decode_embedded_pubkey(pubkey_b64)?;
-    let sig = Signature::decode(signature).map_err(|_| TrustError::InvalidSignature)?;
+    // Tauri updater stores the complete minisign text as an outer Base64 value.
+    // Decode that envelope before handing the four-line payload to minisign-verify.
+    // Accepting the raw four-line form would make the release format ambiguous.
+    let encoded = signature.trim();
+    let decoded = base64::engine::general_purpose::STANDARD
+        .decode(encoded)
+        .map_err(|_| TrustError::InvalidSignature)?;
+    let signature_text = String::from_utf8(decoded).map_err(|_| TrustError::InvalidSignature)?;
+    let sig = Signature::decode(&signature_text).map_err(|_| TrustError::InvalidSignature)?;
     pk.verify(data, &sig, false)
         .map_err(|_| TrustError::InvalidSignature)
 }

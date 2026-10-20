@@ -366,20 +366,13 @@ pub fn get_workbuddy_config() -> Result<WorkbuddyUIConfig, AppError> {
 }
 
 pub fn set_workbuddy_config(payload: WorkbuddySavePayload) -> Result<(), AppError> {
-    if crate::credential_policy::is_managed_key(&payload.api_key) {
-        crate::credential_policy::assert_managed_key_destination(
-            &payload.url,
-            &crate::credential_policy::default_managed_origins(),
-            crate::credential_policy::loopback_http_allowed(),
-        )
-        .map_err(|e| AppError::Other(e.to_string()))?;
-    } else {
-        crate::credential_policy::validate_endpoint(
-            payload.url.trim(),
-            crate::credential_policy::loopback_http_allowed(),
-        )
-        .map_err(|e| AppError::Other(e.to_string()))?;
-    }
+    crate::credential_policy::validate_key_destination(
+        &payload.api_key,
+        payload.url.trim(),
+        &crate::credential_policy::default_managed_origins(),
+        crate::credential_policy::loopback_http_allowed(),
+    )
+    .map_err(|e| AppError::Other(e.to_string()))?;
     let (mut entries, primary_path, _) = read_all_workbuddy_entries()?;
     let all_paths = get_all_workbuddy_config_paths();
 

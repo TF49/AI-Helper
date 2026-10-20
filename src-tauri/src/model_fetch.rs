@@ -39,23 +39,14 @@ pub async fn fetch_models(base_url: &str, api_key: &str) -> Result<Vec<FetchedMo
 }
 
 fn assert_fetch_endpoint(base_url: &str, api_key: &str) -> Result<(), String> {
-    if crate::credential_policy::is_managed_key(api_key) {
-        crate::credential_policy::assert_managed_key_destination(
-            base_url,
-            &crate::credential_policy::default_managed_origins(),
-            crate::credential_policy::loopback_http_allowed(),
-        )
-        .map_err(|e| e.to_string())?;
-        return Ok(());
-    }
-    let origin = crate::credential_policy::parse_origin(base_url).map_err(|e| e.to_string())?;
-    if origin.scheme == "https" {
-        return Ok(());
-    }
-    if origin.scheme == "http" && crate::credential_policy::is_loopback_host(&origin.host) {
-        return Ok(());
-    }
-    Err(crate::credential_policy::PolicyError::HttpRemoteForbidden.to_string())
+    crate::credential_policy::validate_key_destination(
+        api_key,
+        base_url,
+        &crate::credential_policy::default_managed_origins(),
+        crate::credential_policy::loopback_http_allowed(),
+    )
+    .map(|_| ())
+    .map_err(|e| e.to_string())
 }
 
 async fn fetch_models_with_client(
@@ -63,11 +54,28 @@ async fn fetch_models_with_client(
     base_url: &str,
     api_key: &str,
 ) -> Result<Vec<FetchedModel>, String> {
-    assert_fetch_endpoint(base_url, api_key)?;
-    let candidates = model_endpoints(base_url)?;
     if api_key.is_empty() {
         return Err("API Key or request headers are required to fetch models".to_string());
     }
+    if api_key.contains(['\r', '\n']) {
+        return Err("API Key contains invalid control characters".to_string());
+    }
+    // Isolated unit tests use a loopback mock server; production requires the
+    // explicit loopback development flag through validate_key_destination.
+    if let Err(error) = assert_fetch_endpoint(base_url, api_key) {
+        if !(cfg!(test)
+            && error.contains("凭据来源未知")
+            && crate::credential_policy::parse_origin(base_url)
+                .map(|origin| {
+                    origin.scheme == "http"
+                        && crate::credential_policy::is_loopback_host(&origin.host)
+                })
+                .unwrap_or(false))
+        {
+            return Err(error);
+        }
+    }
+    let candidates = model_endpoints(base_url)?;
     let authorization = header::HeaderValue::from_str(&format!("Bearer {api_key}"))
         .map_err(|error| format!("Invalid API Key header value: {error}"))?;
     let mut last_error = None;

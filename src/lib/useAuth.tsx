@@ -4,6 +4,7 @@ import React, {
   useState,
   useEffect,
   useCallback,
+  useRef,
 } from "react";
 import { toast } from "sonner";
 import {
@@ -67,6 +68,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [wallet, setWallet] = useState<UserWalletInfo | null>(null);
   const [isLoadingWallet, setIsLoadingWallet] = useState(false);
   const [walletError, setWalletError] = useState<string | null>(null);
+  const previousAuthIdentity = useRef<string | null>(null);
+  const walletRequestGeneration = useRef(0);
 
   const refreshState = useCallback(async () => {
     try {
@@ -87,8 +90,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
     setIsLoadingWallet(true);
     setWalletError(null);
+    const requestGeneration = ++walletRequestGeneration.current;
+    const requestUserId = authState.user?.id ?? null;
     try {
       const data = await getUserWallet();
+      if (
+        requestGeneration !== walletRequestGeneration.current ||
+        previousAuthIdentity.current !== String(requestUserId)
+      ) {
+        return;
+      }
       setWallet(data);
       // Rust 后端在 get_user_wallet 中会同步从 /api/user/self 获取并持久化用户的 role (role >= 10 为管理员)
       // 同步刷新前端 authState，确保 session 恢复或初次加载时 isAdmin 立即生效，无须重新登录
@@ -117,6 +128,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [refreshState]);
 
   useEffect(() => {
+    const identity = authState.is_logged_in && authState.user?.id
+      ? String(authState.user.id)
+      : null;
+    if (previousAuthIdentity.current !== null && previousAuthIdentity.current !== identity) {
+      window.dispatchEvent(new CustomEvent("ai_helper_auth_changed", { detail: { userId: identity } }));
+    }
+    previousAuthIdentity.current = identity;
+  }, [authState.is_logged_in, authState.user?.id]);
+
+  useEffect(() => {
     if (authState.is_logged_in) {
       void refreshWallet();
     } else {
@@ -127,10 +148,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const logout = async () => {
     try {
+      walletRequestGeneration.current += 1;
       await logoutAccount();
       setWallet(null);
       setWalletError(null);
       await refreshState();
+      window.dispatchEvent(new CustomEvent("ai_helper_auth_changed", { detail: { userId: null } }));
       toast.info("已退出 bob-api.com 登录");
     } catch {
       toast.error("退出登录异常");
@@ -138,6 +161,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const onLoginSuccess = (_user: UserInfo) => {
+    walletRequestGeneration.current += 1;
+    window.dispatchEvent(new CustomEvent("ai_helper_auth_changed", { detail: { userId: _user.id } }));
     void refreshState();
     void refreshWallet();
   };

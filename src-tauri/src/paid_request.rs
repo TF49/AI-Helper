@@ -22,7 +22,9 @@ pub fn may_fallback_to_other_provider(state: PaidAttemptState, status: Option<u1
 }
 
 use serde::{Deserialize, Serialize};
+use std::fs::{self, OpenOptions};
 use std::path::PathBuf;
+use std::time::Duration;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct IntegerBudget {
@@ -64,28 +66,52 @@ fn budget_ledger_path() -> PathBuf {
         .join("image_budget_ledger.json")
 }
 
-fn load_ledger(default_cap: u64) -> IntegerBudget {
-    let path = budget_ledger_path();
-    if let Ok(content) = std::fs::read_to_string(&path) {
-        if let Ok(mut ledger) = serde_json::from_str::<IntegerBudget>(&content) {
-            ledger.cap = default_cap;
-            return ledger;
-        }
-    }
-    IntegerBudget {
-        settled: 0,
-        pending: 0,
-        cap: default_cap,
-    }
+fn lock_path() -> PathBuf {
+    budget_ledger_path().with_file_name(".image_budget_ledger.lock")
 }
 
-fn save_ledger(budget: &IntegerBudget) {
-    let path = budget_ledger_path();
-    if let Ok(content) = serde_json::to_string_pretty(budget) {
-        if let Err(e) = crate::safe_fs::safe_write_file(&path, content.as_bytes()) {
-            log::error!("生图预算账本持久化失败（崩溃后预留可能丢失）: {}", e);
+fn with_ledger_lock<T>(f: impl FnOnce() -> Result<T, String>) -> Result<T, String> {
+    let path = lock_path();
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent).map_err(|e| format!("创建预算目录失败: {e}"))?;
+    }
+    let mut handle = None;
+    for _ in 0..100 {
+        match OpenOptions::new().write(true).create_new(true).open(&path) {
+            Ok(file) => {
+                handle = Some(file);
+                break;
+            }
+            Err(_) => std::thread::sleep(Duration::from_millis(10)),
         }
     }
+    let _handle = handle.ok_or_else(|| "预算账本正被其他进程使用，已阻止付费请求".to_string())?;
+    let result = f();
+    let _ = fs::remove_file(path);
+    result
+}
+
+fn load_ledger(default_cap: u64) -> Result<IntegerBudget, String> {
+    let path = budget_ledger_path();
+    if !path.exists() {
+        return Ok(IntegerBudget {
+            settled: 0,
+            pending: 0,
+            cap: default_cap,
+        });
+    }
+    let content = fs::read_to_string(&path).map_err(|e| format!("读取预算账本失败: {e}"))?;
+    let mut ledger = serde_json::from_str::<IntegerBudget>(&content)
+        .map_err(|e| format!("预算账本损坏，已禁用生图直到恢复: {e}"))?;
+    ledger.cap = default_cap;
+    Ok(ledger)
+}
+
+fn save_ledger(budget: &IntegerBudget) -> Result<(), String> {
+    let path = budget_ledger_path();
+    let content =
+        serde_json::to_vec_pretty(budget).map_err(|e| format!("序列化预算账本失败: {e}"))?;
+    crate::safe_fs::safe_write_file(&path, content).map_err(|e| format!("写入预算账本失败: {e}"))
 }
 
 static IMAGE_BUDGET: std::sync::Mutex<IntegerBudget> = std::sync::Mutex::new(IntegerBudget {
@@ -94,37 +120,69 @@ static IMAGE_BUDGET: std::sync::Mutex<IntegerBudget> = std::sync::Mutex::new(Int
     cap: 0,
 });
 
-pub fn reset_image_budget(cap: u64) {
-    if let Ok(mut guard) = IMAGE_BUDGET.lock() {
-        let mut loaded = load_ledger(cap);
+pub fn reset_image_budget(cap: u64) -> Result<(), String> {
+    let mut guard = IMAGE_BUDGET
+        .lock()
+        .map_err(|_| "生图预算锁不可用".to_string())?;
+    with_ledger_lock(|| {
+        let mut loaded = load_ledger(cap)?;
         loaded.cap = cap;
+        save_ledger(&loaded)?;
         *guard = loaded;
-        save_ledger(&guard);
-    }
+        Ok(())
+    })
 }
 
 pub fn reserve_image_unit() -> Result<(), String> {
     let mut guard = IMAGE_BUDGET
         .lock()
         .map_err(|_| "生图预算锁不可用".to_string())?;
-    guard.try_reserve(1).map_err(|e| e.to_string())?;
-    save_ledger(&guard);
-    Ok(())
+    with_ledger_lock(|| {
+        let cap = guard.cap;
+        if cap == 0 {
+            return Err("未配置生图次数预算，已禁用受管生图功能".to_string());
+        }
+        let mut ledger = load_ledger(cap)?;
+        ledger.try_reserve(1).map_err(str::to_string)?;
+        save_ledger(&ledger)?;
+        *guard = ledger;
+        Ok(())
+    })
 }
 
 #[allow(dead_code)]
-pub fn release_image_unit() {
-    if let Ok(mut guard) = IMAGE_BUDGET.lock() {
-        guard.release_unsent(1);
-        save_ledger(&guard);
-    }
+pub fn release_image_unit() -> Result<(), String> {
+    let mut guard = IMAGE_BUDGET
+        .lock()
+        .map_err(|_| "生图预算锁不可用".to_string())?;
+    with_ledger_lock(|| {
+        let cap = guard.cap;
+        if cap == 0 {
+            return Err("未配置生图预算，无法释放预留".to_string());
+        }
+        let mut ledger = load_ledger(cap)?;
+        ledger.release_unsent(1);
+        save_ledger(&ledger)?;
+        *guard = ledger;
+        Ok(())
+    })
 }
 
-pub fn settle_image_unit() {
-    if let Ok(mut guard) = IMAGE_BUDGET.lock() {
-        guard.settle(1, 1);
-        save_ledger(&guard);
-    }
+pub fn settle_image_unit() -> Result<(), String> {
+    let mut guard = IMAGE_BUDGET
+        .lock()
+        .map_err(|_| "生图预算锁不可用".to_string())?;
+    with_ledger_lock(|| {
+        let cap = guard.cap;
+        if cap == 0 {
+            return Err("未配置生图预算，无法结算".to_string());
+        }
+        let mut ledger = load_ledger(cap)?;
+        ledger.settle(1, 1);
+        save_ledger(&ledger)?;
+        *guard = ledger;
+        Ok(())
+    })
 }
 
 #[cfg(test)]
