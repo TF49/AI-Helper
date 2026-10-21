@@ -39,6 +39,8 @@ Codex 的直接 bearer 配置方式已核对 [OpenAI 配置参考](https://learn
 
 上轮 `002e312c` 的 [CI 失败记录](https://github.com/TF49/AI-Helper/actions/runs/39551138541)中，三个 Windows ACL 测试把内置管理员 SID 的 SDDL 别名 `LA` 错判成其他用户。`519adaef` 已修正断言，同时仍要求当前进程 SID 的唯一完整访问 ACE；`491cc3fb` 的 [基线 CI 已成功](https://github.com/TF49/AI-Helper/actions/runs/39559046204)。这不代表本轮新增代码已经通过远端检查。
 
+本轮扩展三平台后，远端原生凭据编译均通过，并发现此前仅 Windows 检查未覆盖的 Unix Clippy 问题：Windows 专属常量/监控函数未限定平台，Linux 不支持的启动分支声明了未使用变量，macOS 分支末尾多余 return。已按实际调用平台限定代码并修正分支表达式，保留 `-D warnings` 严格检查。
+
 平台凭据单元测试使用隔离内存后端，不能替代原生 Keychain/Secret Service 联调。Windows 原生 DPAPI 回归以显式命令运行，使用合成值，不读取个人会话或注册表；CI 的 Windows job 也显式运行这两项。
 
 ## 验证记录
