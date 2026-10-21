@@ -215,87 +215,100 @@ pub fn set_codex_config(
     let normalized = url.trim_end_matches('/');
     let base_url = format!("{}/v1", normalized);
 
-    if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent)?;
-    }
+    crate::safe_fs::with_file_lock(&path, || {
+        // Do not mutate a credential whose previous value cannot be read.
+        let previous_env = read_registry_env("CUSTOM_OPENAI_API_KEY")?;
+        let mut env_changed = false;
+        let result = crate::safe_fs::update_file_locked(&path, |previous| {
+            let raw = std::str::from_utf8(previous.unwrap_or_default())
+                .map_err(|_| AppError::Toml("现有 Codex 配置不是 UTF-8，已停止写入".into()))?;
+            let mut doc = if raw.trim().is_empty() {
+                DocumentMut::new()
+            } else {
+                raw.parse::<DocumentMut>().map_err(|_| {
+                    AppError::Toml("现有 Codex 配置损坏，已停止写入以免丢失安全规则".into())
+                })?
+            };
+            merge_codex_managed_fields(&mut doc, &base_url, model.as_deref());
+            let doc_str = doc.to_string();
+            let final_env_key = doc
+                .get("model_providers")
+                .and_then(|providers| providers.get("custom"))
+                .and_then(|custom| custom.get("env_key"))
+                .and_then(|value| value.as_str());
+            if final_env_key != Some("CUSTOM_OPENAI_API_KEY") {
+                return Err(AppError::Other(
+                    "Codex 凭据引用未指向实际写入的 CUSTOM_OPENAI_API_KEY，已停止保存".into(),
+                ));
+            }
 
-    let mut doc = if path.exists() {
-        let raw = std::fs::read_to_string(&path)?;
-        if raw.trim().is_empty() {
-            DocumentMut::new()
-        } else {
-            raw.parse::<DocumentMut>().map_err(|_| {
-                AppError::Toml("现有 Codex 配置损坏，已停止写入以免丢失安全规则".into())
-            })?
+            let parsed_check = parse_codex_content(&doc_str, "", true, String::new(), false, None);
+            let parsed_clean = parsed_check
+                .base_url
+                .trim_end_matches('/')
+                .strip_suffix("/v1")
+                .unwrap_or(&parsed_check.base_url)
+                .trim_end_matches('/');
+            if parsed_clean != normalized {
+                return Err(AppError::Other(format!(
+                    "Codex 目标校验失败: 最终解析的地址 '{}' 与目标 '{}' 不匹配，已停止写 Key",
+                    parsed_check.base_url, normalized
+                )));
+            }
+
+            env_changed = true;
+            if api_key.trim().is_empty() {
+                delete_registry_env("CUSTOM_OPENAI_API_KEY")?;
+            } else {
+                write_registry_env("CUSTOM_OPENAI_API_KEY", &api_key)?;
+            }
+            if read_registry_env("CUSTOM_OPENAI_API_KEY")? != api_key {
+                return Err(AppError::Other(
+                    "Codex 凭据未能写入实际 CLI 环境位置，已停止保存配置".into(),
+                ));
+            }
+            Ok(doc_str.into_bytes())
+        });
+        if env_changed
+            && result
+                .as_ref()
+                .err()
+                .is_some_and(|error| !error.file_was_committed(&path))
+        {
+            let rollback = if previous_env.is_empty() {
+                delete_registry_env("CUSTOM_OPENAI_API_KEY")
+            } else {
+                write_registry_env("CUSTOM_OPENAI_API_KEY", &previous_env)
+            };
+            if rollback.is_err() {
+                return Err(AppError::Other(
+                    "Codex 配置未保存，且凭据回滚失败；请重新关联 Key 后再启动 CLI".into(),
+                ));
+            }
         }
-    } else {
-        DocumentMut::new()
-    };
-    merge_codex_managed_fields(&mut doc, &base_url, model.as_deref());
-    let doc_str = doc.to_string();
+        result
+    })
+}
 
-    let final_env_key = doc
-        .get("model_providers")
-        .and_then(|providers| providers.get("custom"))
-        .and_then(|custom| custom.get("env_key"))
-        .and_then(|value| value.as_str());
-    if final_env_key != Some("CUSTOM_OPENAI_API_KEY") {
-        return Err(AppError::Other(
-            "Codex 凭据引用未指向实际写入的 CUSTOM_OPENAI_API_KEY，已停止保存".into(),
-        ));
+#[cfg(any(target_os = "windows", test))]
+fn checked_environment_read(value: std::io::Result<String>) -> Result<String, AppError> {
+    match value {
+        Ok(value) => Ok(value),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(String::new()),
+        Err(error) => Err(AppError::Registry(error.to_string())),
     }
-
-    // 关键加固：在写 Key 之前，核对最终解析出的目标地址是否与目标一致！
-    let parsed_check = parse_codex_content(&doc_str, "", true, String::new(), false, None);
-    let parsed_clean = parsed_check
-        .base_url
-        .trim_end_matches('/')
-        .strip_suffix("/v1")
-        .unwrap_or(&parsed_check.base_url)
-        .trim_end_matches('/');
-    if parsed_clean != normalized {
-        return Err(AppError::Other(format!(
-            "Codex 目标校验失败: 最终解析的地址 '{}' 与目标 '{}' 不匹配，已停止写 Key",
-            parsed_check.base_url, normalized
-        )));
-    }
-
-    let previous_env = read_registry_env("CUSTOM_OPENAI_API_KEY").ok();
-    if api_key.trim().is_empty() {
-        delete_registry_env("CUSTOM_OPENAI_API_KEY")?;
-    } else {
-        write_registry_env("CUSTOM_OPENAI_API_KEY", &api_key)?;
-    }
-    let actual_env = read_registry_env("CUSTOM_OPENAI_API_KEY").unwrap_or_default();
-    if actual_env != api_key {
-        if let Some(previous) = previous_env {
-            let _ = write_registry_env("CUSTOM_OPENAI_API_KEY", &previous);
-        } else {
-            let _ = delete_registry_env("CUSTOM_OPENAI_API_KEY");
-        }
-        return Err(AppError::Other(
-            "Codex 凭据未能写入实际 CLI 环境位置，已停止保存配置".into(),
-        ));
-    }
-    if let Err(error) = crate::safe_fs::backup_then_atomic_write(&path, doc_str) {
-        if let Some(previous) = previous_env {
-            let _ = write_registry_env("CUSTOM_OPENAI_API_KEY", &previous);
-        } else {
-            let _ = delete_registry_env("CUSTOM_OPENAI_API_KEY");
-        }
-        return Err(error);
-    }
-    Ok(())
 }
 
 #[cfg(target_os = "windows")]
 fn read_registry_env(name: &str) -> Result<String, AppError> {
     use winreg::{enums::HKEY_CURRENT_USER, RegKey};
     let hkcu = RegKey::predef(HKEY_CURRENT_USER);
-    let env = hkcu
-        .open_subkey("Environment")
-        .map_err(|e| AppError::Registry(e.to_string()))?;
-    Ok(env.get_value(name).unwrap_or_default())
+    let env = match hkcu.open_subkey("Environment") {
+        Ok(env) => env,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(String::new()),
+        Err(error) => return Err(AppError::Registry(error.to_string())),
+    };
+    checked_environment_read(env.get_value(name))
 }
 
 #[cfg(not(target_os = "windows"))]
@@ -326,8 +339,16 @@ fn write_registry_env(name: &str, value: &str) -> Result<(), AppError> {
 pub fn delete_registry_env(name: &str) -> Result<(), AppError> {
     use winreg::{enums::HKEY_CURRENT_USER, RegKey};
     let hkcu = RegKey::predef(HKEY_CURRENT_USER);
-    if let Ok(env) = hkcu.open_subkey_with_flags("Environment", winreg::enums::KEY_SET_VALUE) {
-        let _ = env.delete_value(name);
+    match hkcu.open_subkey_with_flags("Environment", winreg::enums::KEY_SET_VALUE) {
+        Ok(env) => {
+            if let Err(error) = env.delete_value(name) {
+                if error.kind() != std::io::ErrorKind::NotFound {
+                    return Err(AppError::Registry(error.to_string()));
+                }
+            }
+        }
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+        Err(error) => return Err(AppError::Registry(error.to_string())),
     }
     std::env::remove_var(name);
     Ok(())
@@ -342,6 +363,23 @@ pub fn delete_registry_env(name: &str) -> Result<(), AppError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn unreadable_old_credentials_are_not_treated_as_missing() {
+        assert!(checked_environment_read(Err(std::io::Error::from(
+            std::io::ErrorKind::PermissionDenied,
+        )))
+        .is_err());
+        assert!(checked_environment_read(Err(std::io::Error::from(
+            std::io::ErrorKind::InvalidData,
+        )))
+        .is_err());
+        assert_eq!(
+            checked_environment_read(Err(std::io::Error::from(std::io::ErrorKind::NotFound)))
+                .unwrap(),
+            ""
+        );
+    }
 
     #[test]
     fn test_parse_codex_content_empty_string() {

@@ -32,3 +32,4 @@ copilot-api
 *.key.pub
 updater.key*
 .pnpm-store/
+.tooling/

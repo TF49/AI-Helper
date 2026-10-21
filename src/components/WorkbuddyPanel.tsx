@@ -668,6 +668,7 @@ export function WorkbuddyPanel() {
                     title="OpenAI API Key"
                     badgeText="models.json"
                     value={apiKey}
+                    destinationUrl={url}
                     onChange={setApiKey}
                     placeholder="sk-... (填入 API Key)"
                     storageLocation={

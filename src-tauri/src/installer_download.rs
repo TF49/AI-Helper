@@ -562,7 +562,7 @@ pub async fn download_installer_file(
     });
 
     // 使用 .downloading 临时扩展名进行原子写入，确保下载中断不会留存破损可执行文件
-    let temp_part_path = download_dir.join(format!("{}.downloading", &file_name));
+    let temp_part_path = download_dir.join(format!("{}.downloading", file_name));
     let final_dest_path = download_dir.join(&file_name);
 
     log::info!(

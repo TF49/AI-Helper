@@ -566,6 +566,17 @@ mod tests {
     use super::*;
     use chrono::TimeZone;
 
+    // Generated with the pinned Tauri CLI 2.8.1 using a disposable test key.
+    // Only the public key, signed bytes, and Base64 signatures are retained.
+    const SIGNED_PAYLOAD: &[u8] = include_bytes!("../tests/fixtures/update-signature/payload.txt");
+    const PAYLOAD_SIGNATURE: &str =
+        include_str!("../tests/fixtures/update-signature/payload.txt.sig");
+    const SIGNED_MANIFEST: &[u8] =
+        include_bytes!("../tests/fixtures/update-signature/manifest.json");
+    const MANIFEST_SIGNATURE: &str =
+        include_str!("../tests/fixtures/update-signature/manifest.json.sig");
+    const FIXTURE_PUBKEY: &str = include_str!("../tests/fixtures/update-signature/pubkey.txt");
+
     fn now() -> chrono::DateTime<Utc> {
         Utc.with_ymd_and_hms(2026, 10, 19, 12, 0, 0).unwrap()
     }
@@ -742,14 +753,62 @@ mod tests {
     }
 
     #[test]
-    fn hash_mismatch_is_rejected_after_placeholder_sig_fails() {
+    fn tauri_signed_installer_verifies_actual_bytes() {
         let artifact = PlatformArtifact {
-            signature: "not-a-real-signature".into(),
+            signature: PAYLOAD_SIGNATURE.trim().into(),
+            url: "https://example.invalid/a.exe".into(),
+            sha256: Some(sha256_hex(SIGNED_PAYLOAD)),
+        };
+        let digest = verify_installer_bytes(SIGNED_PAYLOAD, &artifact, FIXTURE_PUBKEY).unwrap();
+        assert_eq!(digest, sha256_hex(SIGNED_PAYLOAD));
+    }
+
+    #[test]
+    fn tauri_signed_manifest_verifies_and_binds_platform() {
+        let verified = verify_signed_manifest(
+            SIGNED_MANIFEST,
+            Some(MANIFEST_SIGNATURE),
+            FIXTURE_PUBKEY,
+            "windows-x86_64",
+            now(),
+        )
+        .unwrap();
+        assert_eq!(verified.manifest.version, "1.0.71");
+        assert_eq!(verified.platform_key, "windows-x86_64");
+        assert_eq!(
+            verify_signed_manifest(
+                SIGNED_MANIFEST,
+                Some(MANIFEST_SIGNATURE),
+                FIXTURE_PUBKEY,
+                "darwin-aarch64",
+                now(),
+            )
+            .unwrap_err(),
+            TrustError::MissingPlatformEntry("darwin-aarch64".into())
+        );
+    }
+
+    #[test]
+    fn tauri_signature_rejects_tampered_bytes_and_wrong_key() {
+        assert_eq!(
+            verify_minisign(b"tampered", PAYLOAD_SIGNATURE, FIXTURE_PUBKEY),
+            Err(TrustError::InvalidSignature)
+        );
+        assert_eq!(
+            verify_minisign(SIGNED_PAYLOAD, PAYLOAD_SIGNATURE, TAURI_UPDATER_PUBKEY_B64),
+            Err(TrustError::InvalidSignature)
+        );
+    }
+
+    #[test]
+    fn hash_mismatch_is_rejected_after_valid_tauri_signature() {
+        let artifact = PlatformArtifact {
+            signature: PAYLOAD_SIGNATURE.trim().into(),
             url: "https://example.invalid/a.exe".into(),
             sha256: Some("deadbeef".into()),
         };
-        let err = verify_installer_bytes(b"abc", &artifact, TAURI_UPDATER_PUBKEY_B64).unwrap_err();
-        assert_eq!(err, TrustError::InvalidSignature);
+        let err = verify_installer_bytes(SIGNED_PAYLOAD, &artifact, FIXTURE_PUBKEY).unwrap_err();
+        assert_eq!(err, TrustError::HashMismatch);
     }
 
     #[test]

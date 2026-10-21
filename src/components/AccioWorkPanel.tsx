@@ -394,6 +394,7 @@ export function AccioWorkPanel() {
                 title="API Key"
                 badgeText="accio_config.json"
                 value={apiKey}
+                destinationUrl={url}
                 onChange={setApiKey}
                 placeholder="sk-... (填入所选服务商的 API 密钥)"
                 storageLocation="~/.ai-helper/accio_config.json"
@@ -432,6 +433,9 @@ export function AccioWorkPanel() {
                   placeholder="例如 dall-e-3"
                   className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs outline-none focus:border-black dark:border-white/10 dark:bg-white/5 dark:text-white"
                 />
+                <p className="text-[11px] text-slate-500 dark:text-gray-400">
+                  生图还需要有效的次数预算；预算不可用时保持关闭。清空模型并保存即可关闭生图。
+                </p>
               </div>
             </SpotlightCard>
 

@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import {
   Eye,
   EyeOff,
@@ -16,7 +16,8 @@ import { cn } from "../lib/utils";
 import { useAuth } from "../lib/useAuth";
 import { TokenSelectModal } from "./auth/TokenSelectModal";
 import { ChannelGroupMonitor } from "./ChannelGroupMonitor";
-import { getUserTokens, getTokenKey } from "../lib/api";
+import { getUserTokens, getTokenKey, getCredentialStatus, confirmCredentialDestination } from "../lib/api";
+import type { CredentialStatus } from "../lib/api";
 import type { TokenItem } from "../types";
 import { isKeyMatch, type BoundTokenInfo } from "../lib/useBoundTokenGroup";
 import { scheduleClipboardClear } from "../lib/secureClipboard";
@@ -24,6 +25,7 @@ import { scheduleClipboardClear } from "../lib/secureClipboard";
 export interface ApiKeyInputProps {
   value: string;
   onChange: (v: string) => void;
+  destinationUrl?: string;
   placeholder?: string;
   envVarName?: string;
   hintText?: string;
@@ -47,6 +49,7 @@ export interface ApiKeyInputProps {
 export function ApiKeyInput({
   value,
   onChange,
+  destinationUrl = "",
   placeholder = "sk-...",
   envVarName,
   hintText,
@@ -67,8 +70,96 @@ export function ApiKeyInput({
 }: ApiKeyInputProps) {
   const [show, setShow] = useState(false);
   const [localTokenModalOpen, setLocalTokenModalOpen] = useState(false);
+  const [credentialStatus, setCredentialStatus] = useState<CredentialStatus | null>(null);
+  const [confirmingDestination, setConfirmingDestination] = useState(false);
+  const [credentialError, setCredentialError] = useState<string | null>(null);
+  const credentialRequest = useRef(0);
+  const syncRequest = useRef(0);
+  const inputRevision = useRef(0);
+  const mounted = useRef(true);
 
-  const { authState, setLoginModalOpen } = useAuth();
+  const { authState, authSessionGeneration, setLoginModalOpen } = useAuth();
+  const currentInput = useRef({ value, destinationUrl, authSessionGeneration, revision: 0 });
+  const credentialStatusInput = useRef<typeof currentInput.current | null>(null);
+  if (currentInput.current.value !== value || currentInput.current.destinationUrl !== destinationUrl ||
+    currentInput.current.authSessionGeneration !== authSessionGeneration) inputRevision.current += 1;
+  currentInput.current = { value, destinationUrl, authSessionGeneration, revision: inputRevision.current };
+  const isCurrentInput = (snapshot: typeof currentInput.current) =>
+    mounted.current && snapshot.revision === currentInput.current.revision &&
+    snapshot.value === currentInput.current.value &&
+    snapshot.destinationUrl === currentInput.current.destinationUrl &&
+    snapshot.authSessionGeneration === currentInput.current.authSessionGeneration;
+  const renderedCredentialInput = credentialStatusInput.current;
+  const activeCredentialStatus = renderedCredentialInput && isCurrentInput(renderedCredentialInput)
+    ? credentialStatus : null;
+
+  useEffect(() => {
+    mounted.current = true;
+    const invalidate = () => {
+      currentInput.current = { ...currentInput.current, revision: ++inputRevision.current };
+      credentialRequest.current += 1;
+      syncRequest.current += 1;
+      setShow(false);
+      setLocalTokenModalOpen(false);
+      credentialStatusInput.current = null;
+      setCredentialStatus(null);
+    };
+    window.addEventListener("ai_helper_auth_changed", invalidate);
+    return () => {
+      mounted.current = false;
+      credentialRequest.current += 1;
+      syncRequest.current += 1;
+      inputRevision.current += 1;
+      window.removeEventListener("ai_helper_auth_changed", invalidate);
+    };
+  }, []);
+
+  useEffect(() => {
+    const sequence = ++credentialRequest.current;
+    const snapshot = currentInput.current;
+    credentialStatusInput.current = null;
+    setCredentialStatus(null);
+    setCredentialError(null);
+    setConfirmingDestination(false);
+    if (!value.trim() || !destinationUrl.trim()) return;
+    let active = true;
+    const timer = window.setTimeout(() => {
+      void getCredentialStatus(value, destinationUrl).then((status) => {
+        if (active && sequence === credentialRequest.current && isCurrentInput(snapshot)) {
+          credentialStatusInput.current = snapshot;
+          setCredentialStatus(status);
+        }
+      }).catch(() => {
+        if (active && sequence === credentialRequest.current && isCurrentInput(snapshot)) setCredentialError("无法确认密钥使用目标，请稍后重试");
+      });
+    }, 150);
+    return () => { active = false; window.clearTimeout(timer); };
+  }, [value, destinationUrl, authSessionGeneration]);
+
+  const handleConfirmDestination = async () => {
+    // The displayed authorization offer must belong to this exact input,
+    // including when a click happens before the new input's effect runs.
+    if (!activeCredentialStatus?.can_confirm || !renderedCredentialInput ||
+      !isCurrentInput(renderedCredentialInput)) return;
+    const snapshot = renderedCredentialInput;
+    const sequence = ++credentialRequest.current;
+    setConfirmingDestination(true);
+    setCredentialError(null);
+    try {
+      const status = await confirmCredentialDestination(snapshot.value, snapshot.destinationUrl);
+      if (sequence !== credentialRequest.current || !isCurrentInput(snapshot)) return;
+      credentialStatusInput.current = snapshot;
+      setCredentialStatus(status);
+      window.dispatchEvent(new CustomEvent("ai_helper_credential_authorized"));
+      toast.success("已确认此密钥用于当前节点");
+    } catch (error) {
+      if (sequence === credentialRequest.current && isCurrentInput(snapshot)) {
+        setCredentialError(typeof error === "string" ? error : "密钥目标确认失败");
+      }
+    } finally {
+      if (sequence === credentialRequest.current && isCurrentInput(snapshot)) setConfirmingDestination(false);
+    }
+  };
 
   const effectiveToolId =
     toolId || toolName.toLowerCase().replace(/[^a-z0-9]/g, "") || "default";
@@ -109,9 +200,10 @@ export function ApiKeyInput({
     if (!authState.is_logged_in || !value.trim()) return;
 
     let isMounted = true;
+    const snapshot = currentInput.current;
     getUserTokens()
       .then((tokens) => {
-        if (!isMounted || !tokens || tokens.length === 0) return;
+        if (!isMounted || !isCurrentInput(snapshot) || !tokens || tokens.length === 0) return;
 
         const val = value.trim();
 
@@ -164,7 +256,7 @@ export function ApiKeyInput({
     return () => {
       isMounted = false;
     };
-  }, [authState.is_logged_in, value, boundToken, storageKey]);
+  }, [authState.is_logged_in, authState.user?.id, authSessionGeneration, value, boundToken, storageKey]);
 
   // 监听全套同步与分组变更事件
   useEffect(() => {
@@ -173,11 +265,16 @@ export function ApiKeyInput({
         id: number;
         name: string;
         group?: string | null;
+        toolIds?: string[];
       }>;
       if (customEvent.detail) {
+        if (customEvent.detail.toolIds && !customEvent.detail.toolIds.includes(effectiveToolId)) return;
+        const snapshot = currentInput.current;
+        const request = ++syncRequest.current;
         if (customEvent.detail.id) {
           void getTokenKey(customEvent.detail.id)
             .then((key) => {
+              if (request !== syncRequest.current || !isCurrentInput(snapshot)) return;
               if (key) onChange(key);
             })
             .catch(() => {});
@@ -233,11 +330,13 @@ export function ApiKeyInput({
       window.removeEventListener("ai_helper_sync_all_tokens", handleSyncEvent);
       window.removeEventListener("ai_helper_group_updated", handleGroupUpdated);
     };
-  }, [storageKey, effectiveToolId, onChange]);
+  }, [storageKey, effectiveToolId, onChange, authSessionGeneration]);
 
   const handlePaste = async () => {
+    const snapshot = currentInput.current;
     try {
       const text = await navigator.clipboard.readText();
+      if (!isCurrentInput(snapshot)) return;
       if (text) {
         onChange(text.trim());
         toast.success("已从剪贴板粘贴 API Key");
@@ -509,6 +608,25 @@ export function ApiKeyInput({
             </button>
           </div>
         </div>
+
+        {value.trim() && destinationUrl.trim() && (
+          <div className="rounded-xl border border-slate-200 dark:border-white/10 p-3 text-xs space-y-2" aria-live="polite">
+            {activeCredentialStatus?.authorized ? (
+              <p className="text-emerald-700 dark:text-emerald-300">密钥已允许用于当前节点</p>
+            ) : activeCredentialStatus?.can_confirm ? (
+              <>
+                <p>请确认这把密钥属于并允许用于 <strong className="break-all">{activeCredentialStatus.origin}</strong>。确认后才可测试、获取模型或保存。</p>
+                <button type="button" onClick={() => void handleConfirmDestination()} disabled={confirmingDestination}
+                  className="rounded-lg bg-slate-900 dark:bg-white text-white dark:text-black px-3 py-1.5 disabled:opacity-50">
+                  {confirmingDestination ? "正在确认…" : "确认用于此节点"}
+                </button>
+              </>
+            ) : (
+              <p>{activeCredentialStatus?.message ?? credentialError ?? "正在确认密钥使用目标…"}</p>
+            )}
+            {credentialError && activeCredentialStatus?.can_confirm && <p className="text-rose-600">{credentialError}</p>}
+          </div>
+        )}
       </div>
 
       {/* 底部存储位置与隐私安全提示条 */}
@@ -607,6 +725,7 @@ export function ApiKeyInput({
       {/* 当前工具专用的令牌选择弹窗（带有流畅 GSAP & React-Bits 动效） */}
       <TokenSelectModal
         open={localTokenModalOpen}
+        toolId={effectiveToolId}
         selectedTokenId={boundToken?.id ?? null}
         onSelectKey={handleKeySelected}
         onClose={() => setLocalTokenModalOpen(false)}

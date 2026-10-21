@@ -174,26 +174,18 @@ pub fn set_claude_config(
     .map_err(|e| AppError::Other(e.to_string()))?;
 
     let path = claude_config_path()?;
-    if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent)?;
-    }
-
-    let existing = if path.exists() {
-        let raw = std::fs::read_to_string(&path)?;
-        if raw.trim().is_empty() {
+    crate::safe_fs::update_file(&path, |previous| {
+        let raw = previous.unwrap_or_default();
+        let existing = if raw.iter().all(u8::is_ascii_whitespace) {
             Value::Object(serde_json::Map::new())
         } else {
-            serde_json::from_str(&raw).map_err(|_| {
+            serde_json::from_slice(raw).map_err(|_| {
                 AppError::Other("现有 Claude 配置损坏，已停止写入以免丢失安全规则".into())
             })?
-        }
-    } else {
-        Value::Object(serde_json::Map::new())
-    };
-
-    let json = merge_claude_settings(existing, &url, &api_key, model.as_deref())?;
-    crate::safe_fs::backup_then_atomic_write(&path, serde_json::to_string_pretty(&json)?)?;
-    Ok(())
+        };
+        let json = merge_claude_settings(existing, &url, &api_key, model.as_deref())?;
+        Ok(serde_json::to_vec_pretty(&json)?)
+    })
 }
 
 #[cfg(test)]

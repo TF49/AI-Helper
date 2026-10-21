@@ -23,6 +23,23 @@ mod updater;
 mod workbuddy;
 
 #[tauri::command]
+fn get_credential_status(
+    api_key: String,
+    destination: String,
+) -> credential_policy::CredentialStatus {
+    credential_policy::credential_status(&api_key, &destination)
+}
+
+#[tauri::command]
+fn confirm_credential_destination(
+    api_key: String,
+    destination: String,
+) -> Result<credential_policy::CredentialStatus, String> {
+    credential_policy::confirm_key_destination(&api_key, &destination)?;
+    Ok(credential_policy::credential_status(&api_key, &destination))
+}
+
+#[tauri::command]
 fn get_auto_start_status() -> Result<bool, String> {
     autostart::get_auto_start_status()
 }
@@ -250,8 +267,9 @@ fn get_accio_config() -> accio::AccioUIConfig {
 }
 
 #[tauri::command]
-fn set_accio_config(mut config: accio::AccioConfig) -> Result<(), error::AppError> {
+fn set_accio_config(config: serde_json::Value) -> Result<(), error::AppError> {
     let existing = accio::load_accio_config();
+    let mut config = accio::config::merge_config_update(config, &existing)?;
     let old_fp = accio::model_source_fingerprint(&existing.base_url, &existing.api_key);
     let new_fp = accio::model_source_fingerprint(&config.base_url, &config.api_key);
 
@@ -268,12 +286,6 @@ fn set_accio_config(mut config: accio::AccioConfig) -> Result<(), error::AppErro
     } else {
         config.cached_models_fingerprint = new_fp;
         accio::invalidate_model_list_cache();
-    }
-
-    // Older UI payloads omitted image_model. Preserve a manually configured
-    // value during ordinary saves; an empty model keeps the feature disabled.
-    if config.image_model.trim().is_empty() && !existing.image_model.trim().is_empty() {
-        config.image_model = existing.image_model;
     }
 
     accio::save_accio_config(&config)?;
@@ -652,6 +664,8 @@ pub fn run() {
             }
         })
         .invoke_handler(tauri::generate_handler![
+            get_credential_status,
+            confirm_credential_destination,
             get_codex_config,
             set_codex_config,
             get_claude_config,

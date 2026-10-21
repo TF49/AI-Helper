@@ -124,6 +124,18 @@ pub fn load_accio_config() -> AccioConfig {
     }
 }
 
+pub fn merge_config_update(
+    payload: serde_json::Value,
+    existing: &AccioConfig,
+) -> Result<AccioConfig, AppError> {
+    let has_image_model = payload.get("image_model").is_some();
+    let mut config: AccioConfig = serde_json::from_value(payload)?;
+    if !has_image_model {
+        config.image_model = existing.image_model.clone();
+    }
+    Ok(config)
+}
+
 pub fn save_accio_config(config: &AccioConfig) -> Result<(), AppError> {
     crate::credential_policy::validate_key_destination(
         &config.api_key,
@@ -168,5 +180,33 @@ pub fn get_accio_ui_config(bridge_running: bool, actual_port: Option<u16>) -> Ac
         },
         bridge_running,
         actual_port,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn explicitly_empty_image_model_disables_images() {
+        let existing = AccioConfig {
+            image_model: "test-image-model".into(),
+            ..Default::default()
+        };
+        let config =
+            merge_config_update(serde_json::json!({ "image_model": "" }), &existing).unwrap();
+        assert!(config.image_model.is_empty());
+    }
+
+    #[test]
+    fn legacy_payload_without_image_model_preserves_it() {
+        let existing = AccioConfig {
+            image_model: "test-image-model".into(),
+            ..Default::default()
+        };
+        let config =
+            merge_config_update(serde_json::json!({ "model": "test-text-model" }), &existing)
+                .unwrap();
+        assert_eq!(config.image_model, existing.image_model);
     }
 }

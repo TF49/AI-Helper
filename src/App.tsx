@@ -1396,6 +1396,7 @@ function AppContent() {
       {/* ── API Key 资产与关联弹窗 ── */}
       <TokenSelectModal
         open={tokenModalOpen}
+        toolId={activeTool}
         onSelectKey={(_plainKey, token) => {
           const tid = activeTool;
           const targetGroup = token.group?.trim() || "default";
@@ -1407,7 +1408,7 @@ function AppContent() {
           } catch {}
           window.dispatchEvent(
             new CustomEvent("ai_helper_sync_all_tokens", {
-              detail: { id: token.id, name: token.name, group: targetGroup },
+              detail: { id: token.id, name: token.name, group: targetGroup, toolIds: [tid] },
             }),
           );
           toast.success(

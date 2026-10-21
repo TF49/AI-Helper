@@ -402,6 +402,7 @@ export function ChatGPTPanel() {
                     title="OpenAI API Key"
                     badgeText="环境变量"
                     value={apiKey}
+                    destinationUrl={url}
                     onChange={setApiKey}
                     placeholder="sk-... (填入 BobAPI 密钥)"
                     envVarName="CUSTOM_OPENAI_API_KEY"

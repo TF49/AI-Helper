@@ -10,6 +10,9 @@ if (-not $Tag) { $Tag = "v$($package.version)" }
 if ($Tag -cne "v$($package.version)" -or $tauri.version -cne $package.version) {
     throw 'Release tag, package.json and tauri.conf.json versions must match.'
 }
+if ($env:GITHUB_REF_TYPE -ceq 'tag' -and $env:GITHUB_REF_NAME -cne $Tag) {
+    throw 'GitHub trigger tag must match the release tag and configured version.'
+}
 
 $buildRoot = Join-Path $repoRoot 'src-tauri/target/release'
 $installer = Join-Path $buildRoot "bundle/nsis/AI Helper_$($package.version)_x64-setup.exe"
@@ -83,18 +86,7 @@ $latestJsonContent = $latestManifest | ConvertTo-Json -Depth 5
 [System.IO.File]::WriteAllText($latestJsonPath, $latestJsonContent, $utf8NoBom)
 Write-Host "Generated update manifest: $latestJsonPath"
 
-Push-Location $repoRoot
-try {
-    & pnpm exec tauri signer sign $latestJsonPath
-    if ($LASTEXITCODE -ne 0) {
-        throw "Tauri signer failed for latest.json (exit code $LASTEXITCODE)."
-    }
-} finally {
-    Pop-Location
-}
-if (-not (Test-Path -LiteralPath "$latestJsonPath.sig" -PathType Leaf)) {
-    throw "Failed to sign latest.json. Unsigned manifests cannot be released."
-}
+& (Join-Path $PSScriptRoot 'sign-update-file.ps1') -FilePath $latestJsonPath
 
 $filesToCheck = @($installerName, $zipName, $sigName, 'latest.json', 'latest.json.sig')
 

@@ -11,6 +11,15 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  release-artifacts:
+    name: Release Artifact Regressions
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      - name: Test packaging and final manifests without production keys
+        shell: pwsh
+        run: ./scripts/test-release-artifacts.ps1
+
   changes:
     name: Detect changed areas
     runs-on: ubuntu-latest
@@ -32,6 +41,7 @@ jobs:
           filters: |
             frontend:
               - "src/**"
+              - "scripts/test-frontend-security.mjs"
               - "index.html"
               - "package.json"
               - "pnpm-lock.yaml"
@@ -84,6 +94,9 @@ jobs:
 
       - name: TypeScript type check
         run: pnpm typecheck
+
+      - name: Security behavior regressions
+        run: pnpm test:security
 
       - name: Build renderer
         run: pnpm build:renderer

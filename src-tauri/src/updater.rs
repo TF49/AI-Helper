@@ -296,12 +296,19 @@ fn compare_versions(latest: &str, current: &str) -> bool {
 }
 
 /// 获取全平台候选下载镜像源列表
+fn installer_name_for_platform(version: &str, platform: &str) -> String {
+    let clean_ver = version.trim_start_matches('v');
+    let suffix = match platform {
+        "darwin-aarch64" => "macOS-aarch64.dmg",
+        "darwin-x86_64" => "macOS-x64.dmg",
+        _ => "Windows-x64-Setup.exe",
+    };
+    format!("AI-Helper-v{}-{}", clean_ver, suffix)
+}
+
 pub fn get_candidate_mirrors(version: &str) -> Vec<CandidateMirror> {
     let clean_ver = version.trim_start_matches('v');
-    #[cfg(target_os = "macos")]
-    let installer_name = format!("AI-Helper-v{}-macOS.dmg", clean_ver);
-    #[cfg(not(target_os = "macos"))]
-    let installer_name = format!("AI-Helper-v{}-Windows-x64-Setup.exe", clean_ver);
+    let installer_name = installer_name_for_platform(version, current_platform_key());
 
     let local_mirror = CandidateMirror {
         name: "本站直链 (helper.bob-api.com)".to_string(),
@@ -812,10 +819,7 @@ pub async fn download_and_install_update(
             }
         };
 
-        #[cfg(target_os = "macos")]
-        let target_installer_name = format!("AI-Helper-v{}-macOS.dmg", clean_ver);
-        #[cfg(not(target_os = "macos"))]
-        let target_installer_name = format!("AI-Helper-v{}-Windows-x64-Setup.exe", clean_ver);
+        let target_installer_name = installer_name_for_platform(clean_ver, platform);
         if let Some(sums_text) = fetch_release_sha256sums(&client, clean_ver).await {
             if let Some(expected_hash) = parse_expected_hash(&sums_text, &target_installer_name) {
                 if !digest.eq_ignore_ascii_case(&expected_hash) {
@@ -969,9 +973,28 @@ mod tests {
         let mirrors = get_candidate_mirrors("1.0.32");
         assert_eq!(mirrors.len(), 6);
         for m in &mirrors {
-            assert!(m.url.contains("AI-Helper-v1.0.32-Windows-x64-Setup.exe"));
+            assert!(m.url.contains(&installer_name_for_platform(
+                "1.0.32",
+                current_platform_key()
+            )));
         }
         assert!(mirrors.iter().any(|m| m.name.contains("阿里云 OSS")));
+    }
+
+    #[test]
+    fn installer_names_match_signed_release_artifacts() {
+        assert_eq!(
+            installer_name_for_platform("v1.0.70", "darwin-aarch64"),
+            "AI-Helper-v1.0.70-macOS-aarch64.dmg"
+        );
+        assert_eq!(
+            installer_name_for_platform("1.0.70", "darwin-x86_64"),
+            "AI-Helper-v1.0.70-macOS-x64.dmg"
+        );
+        assert_eq!(
+            installer_name_for_platform("1.0.70", "windows-x86_64"),
+            "AI-Helper-v1.0.70-Windows-x64-Setup.exe"
+        );
     }
 
     #[test]

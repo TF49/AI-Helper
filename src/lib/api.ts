@@ -37,8 +37,27 @@ export const isTauri =
   typeof window !== "undefined" &&
   Boolean((window as unknown as { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__);
 
+export interface CredentialStatus {
+  source: "managed" | "external" | "unknown";
+  authorized: boolean;
+  can_confirm: boolean;
+  origin: string;
+  message: string | null;
+}
+
+export function getCredentialStatus(apiKey: string, destination: string): Promise<CredentialStatus> {
+  return invoke<CredentialStatus>("get_credential_status", { apiKey, destination });
+}
+
+export function confirmCredentialDestination(apiKey: string, destination: string): Promise<CredentialStatus> {
+  return invoke<CredentialStatus>("confirm_credential_destination", { apiKey, destination });
+}
+
 function getMockResponse<T>(cmd: string, _args?: Record<string, unknown>): T {
   switch (cmd) {
+    case "get_credential_status":
+    case "confirm_credential_destination":
+      return { source: "external", authorized: true, can_confirm: false, origin: String(_args?.destination ?? ""), message: null } as unknown as T;
     case "check_bob_api_network":
       return { reachable: true, latency_ms: 45, checked_at: Date.now() } as unknown as T;
     case "get_codex_config":

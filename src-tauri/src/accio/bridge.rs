@@ -602,7 +602,10 @@ pub async fn start_bridge(preferred_port: Option<u16>) -> Result<u16, String> {
         .ok()
         .and_then(|s| s.parse().ok())
         .unwrap_or(0);
-    crate::paid_request::reset_image_budget(image_cap)?;
+    if let Err(error) = crate::paid_request::reset_image_budget(image_cap) {
+        crate::paid_request::disable_image_budget();
+        log::error!("生图预算不可用，已关闭生图通道；文本与嵌入服务继续启动: {error}");
+    }
 
     // 若发现端口发生了递增避让，回写配置
     if target_port != config.bridge_port {

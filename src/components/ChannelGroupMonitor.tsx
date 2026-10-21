@@ -32,6 +32,7 @@ import { motion, AnimatePresence } from "motion/react";
 import { toast } from "sonner";
 import { cn } from "../lib/utils";
 import { useAuth } from "../lib/useAuth";
+import { normalizeApiKey } from "../lib/useBoundTokenGroup";
 import {
   getChannelGroupOverview,
   openUrl,
@@ -45,6 +46,49 @@ import type { ChannelGroupOverview, TokenItem } from "../types";
 import { HealthTrendVisualizer } from "./HealthTrendVisualizer";
 import { CircleToSearchBar } from "./ui/CircleToSearchBar";
 import { ButtonToLoaderToSuccess } from "./ui/ButtonToLoaderToSuccess";
+import {
+  createGroupPricing,
+  emptyGroupPricing,
+  getGroupSwitchError,
+  getValidGroupRatio,
+  GROUP_PRICING_MAX_AGE_MS,
+} from "../lib/groupPricing";
+
+interface GroupSwitchModalState {
+  open: boolean;
+  targetGroupName: string;
+  targetGroupItem?: ChannelGroupOverview | null;
+  selectedTokenId?: number;
+  tokensList: TokenItem[];
+  loadingTokens: boolean;
+  syncToAllAgents: boolean;
+  isSubmitting: boolean;
+  ackHighRatio: boolean;
+  errorMessage?: string | null;
+}
+
+function emptySwitchModal(): GroupSwitchModalState {
+  return {
+    open: false, targetGroupName: "", targetGroupItem: null, selectedTokenId: undefined,
+    tokensList: [], loadingTokens: false, syncToAllAgents: false,
+    isSubmitting: false, ackHighRatio: false, errorMessage: null,
+  };
+}
+
+interface ToolTokenBinding {
+  id?: number;
+  name?: string;
+  group?: string | null;
+}
+
+function readToolBinding(toolId: string): ToolTokenBinding | null {
+  try {
+    const saved = localStorage.getItem(`bound_token_${toolId}`);
+    return saved ? JSON.parse(saved) as ToolTokenBinding : null;
+  } catch {
+    return null;
+  }
+}
 
 export interface ChannelGroupMonitorProps {
   currentGroupName?: string | null;
@@ -227,18 +271,16 @@ export function ChannelGroupMonitor({
   onOpenTokenSelect,
   className,
 }: ChannelGroupMonitorProps) {
-  const { authState, setLoginModalOpen } = useAuth();
+  const { authState, authSessionGeneration, setLoginModalOpen } = useAuth();
+  const userId = authState.is_logged_in ? authState.user?.id ?? null : null;
 
   const [hours, setHours] = useState<number>(1);
   const [showDetails, setShowDetails] = useState<boolean>(defaultShowDetails ?? false);
   const [groups, setGroups] = useState<ChannelGroupOverview[]>([]);
-  const [pricingInfo, setPricingInfo] = useState<{
-    groupRatio: Record<string, number>;
-    usableGroup: Record<string, string>;
-  }>({
-    groupRatio: {},
-    usableGroup: {},
-  });
+  const [pricingInfo, setPricingInfo] = useState(emptyGroupPricing);
+  const pricingRef = useRef(pricingInfo);
+  const [pricingLoading, setPricingLoading] = useState(false);
+  const [switchModalState, setSwitchModalState] = useState(emptySwitchModal);
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [lastUpdated, setLastUpdated] = useState<string>("");
@@ -252,6 +294,11 @@ export function ChannelGroupMonitor({
   const [compareModalOpen, setCompareModalOpen] = useState(false);
 
   const refreshIconRef = useRef<SVGSVGElement>(null);
+  const mounted = useRef(true);
+  const lifecycleGeneration = useRef(0);
+  const dataRequest = useRef(0);
+  const modalRequest = useRef(0);
+  const modalOpen = useRef(false);
 
   // 计算归一化的 tool 标识
   const effectiveToolId = useMemo(() => {
@@ -264,19 +311,81 @@ export function ChannelGroupMonitor({
     return "default";
   }, [toolId, toolName]);
 
+  const contextRef = useRef({ userId, session: authSessionGeneration, toolId: effectiveToolId });
+  contextRef.current = { userId, session: authSessionGeneration, toolId: effectiveToolId };
+  const captureContext = useCallback(() => ({
+    ...contextRef.current, generation: lifecycleGeneration.current,
+  }), []);
+  const isContextCurrent = useCallback((request: ReturnType<typeof captureContext>) => {
+    const current = contextRef.current;
+    return mounted.current && current.userId !== null && request.userId === current.userId &&
+      request.session === current.session && request.toolId === current.toolId &&
+      request.generation === lifecycleGeneration.current;
+  }, []);
+  const setCurrentPricing = useCallback((snapshot: ReturnType<typeof emptyGroupPricing>) => {
+    pricingRef.current = snapshot;
+    setPricingInfo(snapshot);
+    setSwitchModalState((previous) => ({ ...previous, ackHighRatio: false }));
+  }, []);
+  const handleCloseSwitchModal = useCallback(() => {
+    modalOpen.current = false;
+    modalRequest.current += 1;
+    setSwitchModalState(emptySwitchModal());
+  }, []);
+
   // 从本地存储中尝试读取当前工具绑定的 token 记录
-  const [boundTokenInfo, setBoundTokenInfo] = useState<{
-    id?: number;
-    name?: string;
-    group?: string | null;
-  } | null>(() => {
-    try {
-      const storageKey = `bound_token_${effectiveToolId}`;
-      const saved = localStorage.getItem(storageKey);
-      if (saved) return JSON.parse(saved);
-    } catch {}
-    return null;
-  });
+  const [boundTokenInfo, setBoundTokenInfo] = useState<ToolTokenBinding | null>(
+    () => readToolBinding(effectiveToolId),
+  );
+  const bindingIdentity = useRef({ userId, session: authSessionGeneration, toolId: effectiveToolId });
+  const configuredKeyRef = useRef(configuredKey?.trim() ?? "");
+  configuredKeyRef.current = configuredKey?.trim() ?? "";
+
+  useEffect(() => {
+    mounted.current = true;
+    const clearAccountState = (clearBinding = true) => {
+      lifecycleGeneration.current += 1;
+      dataRequest.current += 1;
+      handleCloseSwitchModal();
+      setCurrentPricing(emptyGroupPricing());
+      setPricingLoading(false);
+      setGroups([]);
+      if (clearBinding) setBoundTokenInfo(null);
+      setSelectedGroupOverride(null);
+      setLastUpdated("");
+      setErrorMsg(null);
+      setLoading(false);
+      setExpandedGroup(null);
+      setCompareModalOpen(false);
+    };
+    const previousIdentity = bindingIdentity.current;
+    const sameIdentity = previousIdentity.userId === userId &&
+      previousIdentity.session === authSessionGeneration && previousIdentity.toolId === effectiveToolId;
+    bindingIdentity.current = { userId, session: authSessionGeneration, toolId: effectiveToolId };
+    // Initial mount and StrictMode's effect replay keep the same identity's
+    // binding. An actual account/session/tool change invalidates it.
+    clearAccountState(!sameIdentity);
+    const handleAuthChange = () => clearAccountState();
+    window.addEventListener("ai_helper_auth_changed", handleAuthChange);
+    return () => {
+      window.removeEventListener("ai_helper_auth_changed", handleAuthChange);
+      mounted.current = false;
+      lifecycleGeneration.current += 1;
+      modalRequest.current += 1;
+      modalOpen.current = false;
+    };
+  }, [userId, authSessionGeneration, effectiveToolId, handleCloseSwitchModal, setCurrentPricing]);
+
+  useEffect(() => {
+    handleCloseSwitchModal();
+  }, [configuredKey, handleCloseSwitchModal]);
+
+  useEffect(() => {
+    if (pricingInfo.loadedAt === null) return;
+    const timer = window.setTimeout(() => setCurrentPricing(emptyGroupPricing()),
+      Math.max(0, pricingInfo.loadedAt + GROUP_PRICING_MAX_AGE_MS - Date.now()));
+    return () => window.clearTimeout(timer);
+  }, [pricingInfo.loadedAt, setCurrentPricing]);
 
   // 监听并同步全局全套同步与分组变更事件
   useEffect(() => {
@@ -286,8 +395,10 @@ export function ChannelGroupMonitor({
         name: string;
         key?: string;
         group?: string | null;
+        toolIds?: string[];
       }>;
       if (customEvent.detail) {
+        if (customEvent.detail.toolIds && !customEvent.detail.toolIds.includes(effectiveToolId)) return;
         setBoundTokenInfo({
           id: customEvent.detail.id,
           name: customEvent.detail.name,
@@ -366,23 +477,23 @@ export function ChannelGroupMonitor({
   // 加载监控数据
   const loadData = useCallback(
     async (silent = false) => {
-      if (!authState.is_logged_in) {
-        return;
-      }
+      const request = captureContext();
+      const sequence = ++dataRequest.current;
+      const isCurrent = () => isContextCurrent(request) && sequence === dataRequest.current;
+      if (!isCurrent()) return;
       if (!silent) setLoading(true);
       setErrorMsg(null);
+      setCurrentPricing(emptyGroupPricing());
+      setPricingLoading(true);
       try {
-        const [data, pricing] = await Promise.all([
+        const [dataResult, pricingResult] = await Promise.allSettled([
           getChannelGroupOverview(hours),
-          getPricingData().catch(() => null),
+          getPricingData(),
         ]);
-        setGroups(data || []);
-        if (pricing && pricing.group_ratio) {
-          setPricingInfo({
-            groupRatio: pricing.group_ratio,
-            usableGroup: pricing.usable_group || {},
-          });
-        }
+        if (!isCurrent()) return;
+        setCurrentPricing(createGroupPricing(pricingResult.status === "fulfilled" ? pricingResult.value : null));
+        if (dataResult.status === "rejected") throw dataResult.reason;
+        setGroups(dataResult.value || []);
         setLastUpdated(
           new Date().toLocaleTimeString("zh-CN", {
             hour: "2-digit",
@@ -391,6 +502,7 @@ export function ChannelGroupMonitor({
           }),
         );
       } catch (err: unknown) {
+        if (!isCurrent()) return;
         const rawMsg =
           typeof err === "string" ? err : "加载分组监控数据失败，请确认网络或登录态";
         const msg = rawMsg.includes("Unauthorized") || rawMsg.includes("登录")
@@ -398,10 +510,13 @@ export function ChannelGroupMonitor({
           : rawMsg;
         setErrorMsg(msg);
       } finally {
-        if (!silent) setLoading(false);
+        if (isCurrent()) {
+          setLoading(false);
+          setPricingLoading(false);
+        }
       }
     },
-    [authState.is_logged_in, hours],
+    [userId, authSessionGeneration, effectiveToolId, hours, captureContext, isContextCurrent, setCurrentPricing],
   );
 
   useEffect(() => {
@@ -426,41 +541,25 @@ export function ChannelGroupMonitor({
   };
 
   // ── 改分组弹窗状态与核心操作逻辑 ──
-  const [switchModalState, setSwitchModalState] = useState<{
-    open: boolean;
-    targetGroupName: string;
-    targetGroupItem?: ChannelGroupOverview | null;
-    selectedTokenId?: number;
-    tokensList: TokenItem[];
-    loadingTokens: boolean;
-    syncToAllAgents: boolean;
-    isSubmitting: boolean;
-    ackHighRatio: boolean;
-    errorMessage?: string | null;
-  }>({
-    open: false,
-    targetGroupName: "",
-    targetGroupItem: null,
-    selectedTokenId: undefined,
-    tokensList: [],
-    loadingTokens: false,
-    syncToAllAgents: false,
-    isSubmitting: false,
-    ackHighRatio: false,
-    errorMessage: null,
-  });
-
   const handleInitiateSwitchGroup = async (groupName: string) => {
     if (!authState.is_logged_in) {
       toast.info("请先登录 bob-api 账号以管理 API Key 分组");
       setLoginModalOpen(true);
       return;
     }
+    const request = renderedContext;
+    if (!isContextCurrent(request)) return;
+    const sequence = ++modalRequest.current;
+    modalOpen.current = true;
+    const requestedKey = configuredKeyRef.current;
+    const isCurrent = () => isContextCurrent(request) && modalOpen.current && sequence === modalRequest.current &&
+      requestedKey === configuredKeyRef.current;
+    if (!isCurrent()) return;
 
     const targetItem = groups.find((g) => g.group_name === groupName) || null;
 
-    setSwitchModalState((prev) => ({
-      ...prev,
+    setSwitchModalState({
+      ...emptySwitchModal(),
       open: true,
       targetGroupName: groupName,
       targetGroupItem: targetItem,
@@ -468,12 +567,38 @@ export function ChannelGroupMonitor({
       errorMessage: null,
       isSubmitting: false,
       ackHighRatio: false,
-    }));
+    });
+    void loadData(true);
 
     try {
       const userTokens = await getUserTokens();
-      let defaultId = boundTokenInfo?.id;
-      if (!defaultId || !userTokens.some((t) => t.id === defaultId)) {
+      if (!isCurrent()) return;
+      const binding = boundTokenInfo ?? readToolBinding(effectiveToolId);
+      const normalizedKey = normalizeApiKey(requestedKey);
+      let matchingToken = normalizedKey
+        ? userTokens.find((token) => normalizeApiKey(token.key) === normalizedKey)
+        : undefined;
+      const boundToken = userTokens.find((token) => token.id === binding?.id);
+      if (!matchingToken && boundToken) {
+        if (!normalizedKey) {
+          matchingToken = boundToken;
+        } else {
+          try {
+            const plainKey = await getTokenKey(boundToken.id);
+            if (!isCurrent()) return;
+            if (normalizeApiKey(plainKey) === normalizedKey) matchingToken = boundToken;
+          } catch {
+            if (!isCurrent()) return;
+          }
+        }
+      }
+      let defaultId = matchingToken?.id;
+      let bindingError: string | null = null;
+      if (matchingToken) {
+        setBoundTokenInfo({ id: matchingToken.id, name: matchingToken.name, group: matchingToken.group });
+      } else if (requestedKey || hasConfiguredKey || binding?.id) {
+        bindingError = "当前工具的密钥未匹配到此账号的凭据，请明确选择要修改的 Key，或重新关联当前工具";
+      } else {
         if (
           authState.selected_token_id &&
           userTokens.some((t) => t.id === authState.selected_token_id)
@@ -489,8 +614,10 @@ export function ChannelGroupMonitor({
         tokensList: userTokens,
         selectedTokenId: defaultId,
         loadingTokens: false,
+        errorMessage: bindingError,
       }));
     } catch (err: unknown) {
+      if (!isCurrent()) return;
       setSwitchModalState((prev) => ({
         ...prev,
         loadingTokens: false,
@@ -500,6 +627,12 @@ export function ChannelGroupMonitor({
   };
 
   const handleConfirmSwitchGroup = async () => {
+    const request = renderedContext;
+    const sequence = renderedModalRequest;
+    const requestedKey = configuredKey?.trim() ?? "";
+    const isCurrent = () => isContextCurrent(request) && modalOpen.current && sequence === modalRequest.current &&
+      requestedKey === configuredKeyRef.current;
+    if (!isCurrent()) throw new Error("窗口或登录状态已变化，请重新打开");
     const { targetGroupName, selectedTokenId, tokensList, syncToAllAgents } = switchModalState;
     if (!selectedTokenId) {
       toast.error("请选择要切换分组的 API Key");
@@ -507,77 +640,78 @@ export function ChannelGroupMonitor({
     }
 
     const tokenToUpdate = tokensList.find((t) => t.id === selectedTokenId);
+    if (!tokenToUpdate) throw new Error("该凭据不在当前账号列表中，请重新打开");
     const tokenName = tokenToUpdate?.name || "当前 API Key";
 
     setSwitchModalState((prev) => ({ ...prev, errorMessage: null }));
 
-    const targetRatio = pricingInfo.groupRatio[targetGroupName];
-    if (typeof targetRatio !== "number" || !Number.isFinite(targetRatio)) {
-      const message = "无法核实目标分组费率，已阻止切换";
+    const pricingError = pricingInfo !== pricingRef.current
+      ? "费率正在刷新，请确认最新费率后再提交"
+      : getGroupSwitchError(pricingRef.current, targetGroupName, switchModalState.ackHighRatio);
+    if (pricingError) {
+      const message = pricingError;
       setSwitchModalState((prev) => ({ ...prev, errorMessage: message }));
       toast.error(message);
       throw new Error(message);
     }
-    if (targetRatio >= 2.0 && !switchModalState.ackHighRatio) {
-      const message = "高倍率通道需要显式确认后才能切换";
-      setSwitchModalState((prev) => ({ ...prev, errorMessage: message }));
-      throw new Error(message);
-    }
 
+    let updated: TokenItem;
     try {
-      const updated = await updateUserTokenGroup(selectedTokenId, targetGroupName);
+      updated = await updateUserTokenGroup(selectedTokenId, targetGroupName);
+    } catch (err: unknown) {
+      if (isCurrent()) {
+        const msg = typeof err === "string" ? err : "切换分组失败，请检查账号权限";
+        setSwitchModalState((prev) => ({ ...prev, errorMessage: msg }));
+      }
+      throw err;
+    }
+    // The cloud mutation has completed. Window invalidation only stops local follow-up work.
+    if (!isCurrent()) return;
 
-      // 更新当前工具的绑定状态
-      const newBound = {
-        id: updated.id,
-        name: updated.name,
-        group: targetGroupName,
-      };
-      localStorage.setItem(`bound_token_${effectiveToolId}`, JSON.stringify(newBound));
+    const newBound = { id: updated.id, name: updated.name, group: targetGroupName };
+    if (boundTokenInfo?.id === updated.id) {
+      try {
+        localStorage.setItem(`bound_token_${effectiveToolId}`, JSON.stringify(newBound));
+      } catch {}
       setBoundTokenInfo(newBound);
       setSelectedGroupOverride(null);
       if (onSelectGroup) onSelectGroup(targetGroupName);
+    }
+    window.dispatchEvent(new CustomEvent("ai_helper_group_updated", {
+      detail: { tokenId: updated.id, group: targetGroupName },
+    }));
 
-      // 如果勾选了同步到所有工具
-      if (syncToAllAgents) {
-        let plainKey = "";
-        try {
-          plainKey = await getTokenKey(selectedTokenId);
-          await applyApiKeyToAgents(plainKey);
-        } catch {}
+    if (syncToAllAgents) {
+      try {
+        if (!isCurrent()) return;
+        const plainKey = await getTokenKey(selectedTokenId);
+        if (!isCurrent()) return;
+        const results = await applyApiKeyToAgents(plainKey);
+        if (!isCurrent()) return;
+        const toolIds = ["chatgpt", "claude", "workbuddy", "acciowork"].filter((id) => results[id]);
 
-        ["chatgpt", "claude", "workbuddy", "acciowork", "default"].forEach((tid) => {
+        toolIds.forEach((tid) => {
           try {
             localStorage.setItem(`bound_token_${tid}`, JSON.stringify(newBound));
           } catch {}
         });
-        window.dispatchEvent(
-          new CustomEvent("ai_helper_sync_all_tokens", {
-            detail: {
-              id: updated.id,
-              name: updated.name,
-              group: targetGroupName,
-            },
-          }),
-        );
-      } else {
-        window.dispatchEvent(
-          new CustomEvent("ai_helper_group_updated", {
-            detail: {
-              toolId: effectiveToolId,
-              tokenId: updated.id,
-              group: targetGroupName,
-            },
-          }),
-        );
+        if (toolIds.length > 0) {
+          try { localStorage.setItem("bound_token_default", JSON.stringify(newBound)); } catch {}
+          window.dispatchEvent(new CustomEvent("ai_helper_sync_all_tokens", {
+            detail: { ...newBound, toolIds },
+          }));
+          if (toolIds.includes(effectiveToolId) && onSelectGroup) onSelectGroup(targetGroupName);
+        }
+        if (toolIds.length < 4) {
+          toast.warning(`云端分组已修改；本地同步成功 ${toolIds.length}/4，请检查其余工具配置`);
+          return;
+        }
+      } catch {
+        if (isCurrent()) toast.warning("云端分组已修改，本地 Agent 同步失败，请单独重试同步");
+        return;
       }
-
-      toast.success(`已成功将「${tokenName}」切换至「${targetGroupName}」分组！即时生效！`);
-    } catch (err: unknown) {
-      const msg = typeof err === "string" ? err : "切换分组失败，请检查账号权限";
-      setSwitchModalState((prev) => ({ ...prev, errorMessage: msg }));
-      throw err;
     }
+    if (isCurrent()) toast.success(`已成功将「${tokenName}」切换至「${targetGroupName}」分组！即时生效！`);
   };
 
   // 判定当前工具是否已配置 Key
@@ -721,6 +855,12 @@ export function ChannelGroupMonitor({
 
     return result;
   }, [groups, groupSearch, filterTab, sortBy, isGroupRecommended]);
+
+  const renderedContext = captureContext();
+  const renderedModalRequest = modalRequest.current;
+  const isRenderedModalCurrent = () => isContextCurrent(renderedContext) && modalOpen.current &&
+    renderedModalRequest === modalRequest.current;
+  const switchTargetRatio = getValidGroupRatio(pricingInfo, switchModalState.targetGroupName);
 
   return (
     <div
@@ -2052,7 +2192,7 @@ export function ChannelGroupMonitor({
             className="fixed inset-0 top-11 z-[90] flex items-center justify-center p-4 bg-slate-950/65 backdrop-blur-md select-none animate-in fade-in duration-200"
             onClick={(e) => {
               if (e.target === e.currentTarget && !switchModalState.isSubmitting) {
-                setSwitchModalState((prev) => ({ ...prev, open: false }));
+                handleCloseSwitchModal();
               }
             }}
           >
@@ -2084,7 +2224,7 @@ export function ChannelGroupMonitor({
                 <button
                   type="button"
                   disabled={switchModalState.isSubmitting}
-                  onClick={() => setSwitchModalState((prev) => ({ ...prev, open: false }))}
+                  onClick={handleCloseSwitchModal}
                   className="p-1.5 rounded-xl text-slate-400 hover:text-slate-700 dark:hover:text-gray-200 hover:bg-slate-100 dark:hover:bg-white/10 transition-colors cursor-pointer"
                 >
                   <X size={16} />
@@ -2093,6 +2233,15 @@ export function ChannelGroupMonitor({
 
               {/* 弹窗内容 */}
               <div className="p-6 space-y-4">
+                <div className="flex items-center justify-between gap-3 text-xs">
+                  <span className={switchTargetRatio === null ? "text-amber-700 dark:text-amber-300" : "text-slate-500"}>
+                    {switchTargetRatio === null ? "费率未知、正在刷新或已过期，暂不可提交" : "已取得有效费率（有效期 5 分钟）"}
+                  </span>
+                  <button type="button" disabled={pricingLoading || switchModalState.isSubmitting}
+                    onClick={() => void loadData(true)} className="text-blue-500 whitespace-nowrap disabled:opacity-50">
+                    {pricingLoading ? "刷新中…" : "刷新费率"}
+                  </button>
+                </div>
                 {/* 目标分组预览卡片 */}
                 <div className="p-3.5 rounded-2xl bg-neutral-100 dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 flex items-center justify-between gap-3">
                   <div className="min-w-0">
@@ -2123,7 +2272,7 @@ export function ChannelGroupMonitor({
                       </span>
                     )}
                     {(() => {
-                      const badge = getGroupRatioBadge(pricingInfo.groupRatio[switchModalState.targetGroupName]);
+                      const badge = getGroupRatioBadge(switchTargetRatio ?? undefined);
                       if (!badge) return null;
                       return (
                         <span className={cn("px-2 py-0.5 rounded-full text-[10px] font-mono border", badge.className)}>
@@ -2136,7 +2285,7 @@ export function ChannelGroupMonitor({
 
                 {/* 费率与额度风险警告条 */}
                 {(() => {
-                  const targetRatio = pricingInfo.groupRatio[switchModalState.targetGroupName];
+                  const targetRatio = switchTargetRatio;
                   if (typeof targetRatio !== "number" || !Number.isFinite(targetRatio) || targetRatio <= 1.0) return null;
                   const isVeryHigh = targetRatio >= 2.0;
                   return (
@@ -2261,7 +2410,7 @@ export function ChannelGroupMonitor({
 
                 {/* 超高倍率通道强制二次确认勾选 */}
                 {(() => {
-                  const targetRatio = pricingInfo.groupRatio[switchModalState.targetGroupName];
+                  const targetRatio = switchTargetRatio;
                   if (typeof targetRatio !== "number" || !Number.isFinite(targetRatio) || targetRatio < 2.0) return null;
                   return (
                     <label className="flex items-start gap-2.5 p-3 rounded-xl bg-rose-50/80 dark:bg-rose-500/10 border border-rose-300 dark:border-rose-500/30 text-xs text-rose-950 dark:text-rose-200 cursor-pointer select-none">
@@ -2316,21 +2465,19 @@ export function ChannelGroupMonitor({
                 <button
                   type="button"
                   disabled={switchModalState.isSubmitting}
-                  onClick={() => setSwitchModalState((prev) => ({ ...prev, open: false }))}
+                  onClick={handleCloseSwitchModal}
                   className="px-4 py-2 rounded-xl text-xs font-medium text-slate-600 hover:text-slate-900 dark:text-gray-300 dark:hover:text-white bg-slate-100 hover:bg-slate-200 dark:bg-white/5 dark:hover:bg-white/10 transition-colors cursor-pointer disabled:opacity-50"
                 >
                   取消
                 </button>
 
                 <ButtonToLoaderToSuccess
+                  key={renderedModalRequest}
                   accent="mono"
                   disabled={
-                    switchModalState.isSubmitting ||
+                    switchModalState.isSubmitting || pricingLoading ||
                     switchModalState.tokensList.length === 0 ||
-                    typeof pricingInfo.groupRatio[switchModalState.targetGroupName] !== "number" ||
-                    !Number.isFinite(pricingInfo.groupRatio[switchModalState.targetGroupName]) ||
-                    (pricingInfo.groupRatio[switchModalState.targetGroupName] >= 2.0 &&
-                      !switchModalState.ackHighRatio)
+                    getGroupSwitchError(pricingInfo, switchModalState.targetGroupName, switchModalState.ackHighRatio) !== null
                   }
                   className="px-5 py-2 min-w-[180px]"
                   idleLabel={
@@ -2343,16 +2490,10 @@ export function ChannelGroupMonitor({
                   resetAfterMs={null}
                   holdMs={800}
                   onAction={handleConfirmSwitchGroup}
-                  onBusyChange={(busy) =>
-                    setSwitchModalState((prev) => ({ ...prev, isSubmitting: busy }))
-                  }
-                  onComplete={() =>
-                    setSwitchModalState((prev) => ({
-                      ...prev,
-                      open: false,
-                      isSubmitting: false,
-                    }))
-                  }
+                  onBusyChange={(busy) => {
+                    if (isRenderedModalCurrent()) setSwitchModalState((prev) => ({ ...prev, isSubmitting: busy }));
+                  }}
+                  onComplete={() => { if (isRenderedModalCurrent()) handleCloseSwitchModal(); }}
                 />
               </div>
             </div>

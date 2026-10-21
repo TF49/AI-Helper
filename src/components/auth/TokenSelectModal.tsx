@@ -39,6 +39,20 @@ import { CircleToSearchBar } from "../ui/CircleToSearchBar";
 import { ShinyText } from "../react-bits/ShinyText";
 import { DecryptedText } from "../react-bits/DecryptedText";
 import { scheduleClipboardClear } from "../../lib/secureClipboard";
+import { useAuth } from "../../lib/useAuth";
+import {
+  createGroupPricing,
+  emptyGroupPricing,
+  getGroupSwitchError,
+  getValidGroupRatio,
+  GROUP_PRICING_MAX_AGE_MS,
+} from "../../lib/groupPricing";
+
+interface WindowRequest {
+  generation: number;
+  userId: number | null;
+  session: number;
+}
 
 export interface TokenSelectModalProps {
   open: boolean;
@@ -46,6 +60,7 @@ export interface TokenSelectModalProps {
   onSelectKey: (apiKey: string, token: TokenItem) => void;
   onClose: () => void;
   toolName?: string;
+  toolId?: string;
   accentColor?: "blue" | "purple" | "emerald" | "orange";
 }
 
@@ -55,8 +70,11 @@ export function TokenSelectModal({
   onSelectKey,
   onClose,
   toolName = "当前工具",
+  toolId,
   accentColor = "blue",
 }: TokenSelectModalProps) {
+  const { authState, authSessionGeneration } = useAuth();
+  const userId = authState.is_logged_in ? authState.user?.id ?? null : null;
   const [tokens, setTokens] = useState<TokenItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [fetchingKeyId, setFetchingKeyId] = useState<number | null>(null);
@@ -70,14 +88,13 @@ export function TokenSelectModal({
   // 查看真实明文 Key 缓存映射 (tokenId -> plainKey)
   const [revealedKeys, setRevealedKeys] = useState<Record<number, string>>({});
   const [revealingId, setRevealingId] = useState<number | null>(null);
-  const revealGeneration = useRef(0);
   const [copiedId, setCopiedId] = useState<number | null>(null);
 
   // 快速修改 Token 分组状态
   const [editingGroupToken, setEditingGroupToken] = useState<TokenItem | null>(null);
   const [availableGroups, setAvailableGroups] = useState<string[]>([]);
-  const [groupRatios, setGroupRatios] = useState<Record<string, number>>({});
-  const [pricingLoadedAt, setPricingLoadedAt] = useState<number | null>(null);
+  const [pricingInfo, setPricingInfo] = useState(emptyGroupPricing);
+  const [pricingLoading, setPricingLoading] = useState(false);
   const [selectedNewGroup, setSelectedNewGroup] = useState<string>("");
   const [rateConfirmed, setRateConfirmed] = useState(false);
   const [isUpdatingGroup, setIsUpdatingGroup] = useState(false);
@@ -91,6 +108,68 @@ export function TokenSelectModal({
   // 控制挂载生命周期以便于 GSAP 播放平滑退出动画
   const [isRendered, setIsRendered] = useState(open);
   const [isClosing, setIsClosing] = useState(false);
+  const contextRef = useRef({ open, userId, session: authSessionGeneration });
+  contextRef.current = { open, userId, session: authSessionGeneration };
+  const windowGeneration = useRef(0);
+  const activeWindow = useRef(false);
+  const closingRef = useRef(false);
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
+  const listRequest = useRef(0);
+  const keyRequest = useRef(0);
+  const copyRequest = useRef(0);
+  const revealRequest = useRef(0);
+  const groupRequest = useRef(0);
+  const copiedTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const captureWindow = useCallback((): WindowRequest => ({
+    generation: windowGeneration.current,
+    userId: contextRef.current.userId,
+    session: contextRef.current.session,
+  }), []);
+
+  const isWindowCurrent = useCallback((request: WindowRequest) => {
+    const context = contextRef.current;
+    return activeWindow.current && context.open && context.userId !== null &&
+      request.generation === windowGeneration.current && request.userId === context.userId &&
+      request.session === context.session;
+  }, []);
+
+  const clearWindowState = useCallback(() => {
+    activeWindow.current = false;
+    windowGeneration.current += 1;
+    groupRequest.current += 1;
+    if (copiedTimer.current !== null) clearTimeout(copiedTimer.current);
+    copiedTimer.current = null;
+    setRevealedKeys({});
+    setTokens([]);
+    setAvailableGroups([]);
+    setPricingInfo(emptyGroupPricing());
+    setPricingLoading(false);
+    setRateConfirmed(false);
+    setEditingGroupToken(null);
+    setSelectedNewGroup("");
+    setIsUpdatingGroup(false);
+    setFetchingKeyId(null);
+    setSyncingKeyId(null);
+    setRevealingId(null);
+    setCopiedId(null);
+    setLoading(false);
+    setErrorMsg(null);
+    setSearchQuery("");
+    setFilterMode("all");
+  }, []);
+
+  const handleCloseEditGroup = useCallback(() => {
+    groupRequest.current += 1;
+    setEditingGroupToken(null);
+    setAvailableGroups([]);
+    setPricingInfo(emptyGroupPricing());
+    setPricingLoading(false);
+    setSelectedNewGroup("");
+    setRateConfirmed(false);
+    setIsUpdatingGroup(false);
+  }, []);
 
   // 颜色主题配置映射
   const theme = useMemo(() => {
@@ -145,31 +224,44 @@ export function TokenSelectModal({
 
   // 加载令牌列表
   const loadTokens = useCallback(async () => {
+    const request = captureWindow();
+    const sequence = ++listRequest.current;
+    const isCurrent = () => isWindowCurrent(request) && sequence === listRequest.current;
+    if (!isCurrent()) return;
     setLoading(true);
     setErrorMsg(null);
     try {
       const items = await getUserTokens();
+      if (!isCurrent()) return;
       setTokens(items);
     } catch (err: unknown) {
+      if (!isCurrent()) return;
       const msg = typeof err === "string" ? err : "获取 API Key 列表失败，请确认是否已登录";
       setErrorMsg(msg);
     } finally {
-      setLoading(false);
+      if (isCurrent()) setLoading(false);
     }
-  }, []);
+  }, [captureWindow, isWindowCurrent]);
 
   // 平滑关闭弹窗动画
   const handleSmoothClose = useCallback(() => {
-    if (isClosing) return;
+    if (closingRef.current) return;
+    closingRef.current = true;
+    clearWindowState();
+    const generation = windowGeneration.current;
     setIsClosing(true);
+
+    const finish = () => {
+      if (generation !== windowGeneration.current || !closingRef.current) return;
+      closingRef.current = false;
+      setIsClosing(false);
+      setIsRendered(false);
+      onCloseRef.current();
+    };
 
     if (dialogRef.current && overlayRef.current) {
       const tl = gsap.timeline({
-        onComplete: () => {
-          setIsClosing(false);
-          setIsRendered(false);
-          onClose();
-        },
+        onComplete: finish,
       });
 
       tl.to(dialogRef.current, {
@@ -190,43 +282,49 @@ export function TokenSelectModal({
         "-=0.12",
       );
     } else {
-      setIsClosing(false);
-      setIsRendered(false);
-      onClose();
+      finish();
     }
-  }, [isClosing, onClose]);
+  }, [clearWindowState]);
 
   // 监听 open 变化，控制渲染与 GSAP 打开动画
   useEffect(() => {
-    if (open) {
+    if (open && userId !== null) {
+      clearWindowState();
+      activeWindow.current = true;
+      closingRef.current = false;
       setIsRendered(true);
       setIsClosing(false);
       void loadTokens();
-      setSearchQuery("");
-      setFilterMode("all");
     } else {
-      revealGeneration.current += 1;
-      setRevealedKeys({});
-      setGroupRatios({});
-      setPricingLoadedAt(null);
-      setRateConfirmed(false);
-      if (isRendered && !isClosing) {
-        handleSmoothClose();
-      }
+      clearWindowState();
+      closingRef.current = false;
+      setIsClosing(false);
+      setIsRendered(false);
     }
-  }, [open, loadTokens]);
+    return () => {
+      activeWindow.current = false;
+      windowGeneration.current += 1;
+      if (copiedTimer.current !== null) clearTimeout(copiedTimer.current);
+    };
+  }, [open, userId, authSessionGeneration, loadTokens, clearWindowState]);
 
   // 账号切换或退出登录时清空所有状态及明文 Key 缓存
   useEffect(() => {
     const handleAuthChange = () => {
-      revealGeneration.current += 1;
-      setRevealedKeys({});
-      setTokens([]);
-      setRateConfirmed(false);
+      clearWindowState();
     };
     window.addEventListener("ai_helper_auth_changed", handleAuthChange);
     return () => window.removeEventListener("ai_helper_auth_changed", handleAuthChange);
-  }, []);
+  }, [clearWindowState]);
+
+  useEffect(() => {
+    if (pricingInfo.loadedAt === null) return;
+    const timer = window.setTimeout(() => {
+      setPricingInfo(emptyGroupPricing());
+      setRateConfirmed(false);
+    }, Math.max(0, pricingInfo.loadedAt + GROUP_PRICING_MAX_AGE_MS - Date.now()));
+    return () => window.clearTimeout(timer);
+  }, [pricingInfo.loadedAt]);
 
   // 执行 GSAP 打开弹窗的平滑弹性动画
   useEffect(() => {
@@ -298,37 +396,55 @@ export function TokenSelectModal({
 
   // 选择某个 Token
   const handleSelectToken = async (token: TokenItem) => {
+    const request = renderedWindow;
+    if (!isWindowCurrent(request)) return;
+    const sequence = ++keyRequest.current;
+    const isCurrent = () => isWindowCurrent(request) && sequence === keyRequest.current;
+    if (!isCurrent()) return;
     setFetchingKeyId(token.id);
     try {
       // 1. 获取明文 Key
       const plainKey = await getTokenKey(token.id);
+      if (!isCurrent()) return;
 
       // 2. 记录当前选中状态
       await setSelectedToken(token.id, token.name);
+      if (!isCurrent()) return;
 
       toast.success(`已为「${toolName}」成功关联 API Key：${token.name}`);
       onSelectKey(plainKey, token);
       handleSmoothClose();
     } catch (err: unknown) {
+      if (!isCurrent()) return;
       const msg = typeof err === "string" ? err : "读取该 API Key 明文失败";
       toast.error(msg);
     } finally {
-      setFetchingKeyId(null);
+      if (isCurrent()) setFetchingKeyId(null);
     }
   };
 
   // 一键全套同步至所有 Agent
   const handleApplyToAll = async (token: TokenItem) => {
+    const request = renderedWindow;
+    if (!isWindowCurrent(request)) return;
+    const sequence = ++keyRequest.current;
+    const isCurrent = () => isWindowCurrent(request) && sequence === keyRequest.current;
+    if (!isCurrent()) return;
     setSyncingKeyId(token.id);
     try {
       const plainKey = await getTokenKey(token.id);
+      if (!isCurrent()) return;
       await setSelectedToken(token.id, token.name);
+      if (!isCurrent()) return;
 
       const results = await applyApiKeyToAgents(plainKey);
-      const successCount = Object.values(results).filter(Boolean).length;
-      toast.success(
-        `全套同步成功！已将「${token.name}」配置到 ${successCount} 个本地 Agent！`,
-      );
+      // Already dispatched IPC writes cannot be cancelled; stale results cannot start more work.
+      if (!isCurrent()) return;
+      const toolIds = ["chatgpt", "claude", "workbuddy", "acciowork"].filter((id) => results[id]);
+      const successCount = toolIds.length;
+      if (successCount === 0) throw new Error("未能同步到任何本地 Agent");
+      if (successCount === 4) toast.success(`已将「${token.name}」同步到全部 4 个本地 Agent`);
+      else toast.warning(`本地同步成功 ${successCount}/4，请检查其余工具配置`);
 
       // 核心安全修复：仅对实际写入成功的工具更新本地 boundToken 记录，失败工具绝不伪造绑定
       ["chatgpt", "claude", "workbuddy", "acciowork"].forEach((tid) => {
@@ -353,40 +469,60 @@ export function TokenSelectModal({
       // 广播全局全套同步事件 (仅广播安全元数据，杜绝在全局 DOM 事件中泄露明文 Key)
       window.dispatchEvent(
         new CustomEvent("ai_helper_sync_all_tokens", {
-          detail: { id: token.id, name: token.name, group: token.group ?? undefined },
+          detail: {
+            id: token.id, name: token.name, group: token.group ?? undefined,
+            toolIds,
+          },
         }),
       );
 
-      onSelectKey(plainKey, token);
+      if (!isCurrent()) return;
+      if (toolId ? results[toolId.toLowerCase()] : successCount === 4) onSelectKey(plainKey, token);
       handleSmoothClose();
     } catch (err: unknown) {
-      const msg = typeof err === "string" ? err : "全套同步失败";
+      if (!isCurrent()) return;
+      const msg = typeof err === "string" ? err : err instanceof Error ? err.message : "全套同步失败";
       toast.error(msg);
     } finally {
-      setSyncingKeyId(null);
+      if (isCurrent()) setSyncingKeyId(null);
     }
   };
 
   // 快速复制 Key 明文
   const handleCopyKey = async (token: TokenItem) => {
+    const request = renderedWindow;
+    if (!isWindowCurrent(request)) return;
+    const sequence = ++copyRequest.current;
+    const isCurrent = () => isWindowCurrent(request) && sequence === copyRequest.current;
+    if (!isCurrent()) return;
     try {
       let keyToCopy = revealedKeys[token.id];
       if (!keyToCopy) {
         keyToCopy = await getTokenKey(token.id);
-        setRevealedKeys((prev) => ({ ...prev, [token.id]: keyToCopy }));
       }
+      if (!isCurrent()) return;
       await navigator.clipboard.writeText(keyToCopy);
+      // A clipboard write already dispatched cannot be recalled. Keep its expiry cleanup.
       scheduleClipboardClear(keyToCopy);
+      if (!isCurrent()) return;
       setCopiedId(token.id);
-      setTimeout(() => setCopiedId(null), 1800);
+      if (copiedTimer.current !== null) clearTimeout(copiedTimer.current);
+      copiedTimer.current = setTimeout(() => {
+        if (isCurrent()) setCopiedId(null);
+      }, 1800);
       toast.success(`已复制 ${token.name} 的 API Key`);
     } catch {
-      toast.error("复制 API Key 失败");
+      if (isCurrent()) toast.error("复制 API Key 失败");
     }
   };
 
   // 预览/隐藏明文 Key
   const handleToggleReveal = async (token: TokenItem) => {
+    const request = renderedWindow;
+    if (!isWindowCurrent(request)) return;
+    const sequence = ++revealRequest.current;
+    const isCurrent = () => isWindowCurrent(request) && sequence === revealRequest.current;
+    if (!isCurrent()) return;
     if (revealedKeys[token.id]) {
       setRevealedKeys((prev) => {
         const next = { ...prev };
@@ -397,39 +533,36 @@ export function TokenSelectModal({
     }
 
     setRevealingId(token.id);
-    const generation = ++revealGeneration.current;
     try {
       const plainKey = await getTokenKey(token.id);
-      if (generation === revealGeneration.current && open) {
+      if (isCurrent()) {
         setRevealedKeys((prev) => ({ ...prev, [token.id]: plainKey }));
       }
     } catch {
-      toast.error("获取明文失败");
+      if (isCurrent()) toast.error("获取明文失败");
     } finally {
-      setRevealingId(null);
+      if (isCurrent()) setRevealingId(null);
     }
   };
 
   const handleOpenEditGroup = async (token: TokenItem) => {
+    const request = renderedWindow;
+    if (!isWindowCurrent(request)) return;
+    const sequence = ++groupRequest.current;
+    const isCurrent = () => isWindowCurrent(request) && sequence === groupRequest.current;
+    if (!isCurrent()) return;
     setEditingGroupToken(token);
     setSelectedNewGroup(token.group || "default");
     setRateConfirmed(false);
-    setGroupRatios({});
-    setPricingLoadedAt(null);
+    setAvailableGroups([]);
+    setPricingInfo(emptyGroupPricing());
+    setPricingLoading(true);
     try {
       const pricing = await getPricingData();
+      if (!isCurrent()) return;
       if (pricing) {
-        const ratios: Record<string, number> = {};
-        if (pricing.group_ratio) {
-          Object.assign(ratios, pricing.group_ratio);
-        }
-        if (pricing.svip_group_ratio) {
-          Object.assign(ratios, pricing.svip_group_ratio);
-        }
-        setGroupRatios(ratios);
-        if (Object.keys(ratios).some((key) => Number.isFinite(ratios[key]) && ratios[key] > 0)) {
-          setPricingLoadedAt(Date.now());
-        }
+        const snapshot = createGroupPricing(pricing);
+        setPricingInfo(snapshot);
 
         const groupsSet = new Set<string>();
         if (pricing.user_available_groups && pricing.user_available_groups.length > 0) {
@@ -437,33 +570,40 @@ export function TokenSelectModal({
         } else if (pricing.usable_group) {
           Object.keys(pricing.usable_group).forEach((g) => groupsSet.add(g));
         }
-        if (Object.keys(ratios).length > 0) {
-          Object.keys(ratios).forEach((g) => groupsSet.add(g));
-        }
+        Object.keys(snapshot.groupRatio).forEach((g) => groupsSet.add(g));
         if (groupsSet.size > 0) {
           setAvailableGroups(Array.from(groupsSet));
         }
       }
     } catch {
-      setGroupRatios({});
-      setPricingLoadedAt(null);
+      if (!isCurrent()) return;
+      setPricingInfo(emptyGroupPricing());
       try {
         const userGroups = await getUserAvailableGroups();
+        if (!isCurrent()) return;
         if (userGroups && userGroups.length > 0) {
           setAvailableGroups(userGroups);
         }
       } catch {
+        if (!isCurrent()) return;
         try {
           const overview = await getChannelGroupOverview(1);
+          if (!isCurrent()) return;
           if (overview && overview.length > 0) {
             setAvailableGroups(overview.map((g) => g.group_name));
           }
         } catch {}
       }
+    } finally {
+      if (isCurrent()) setPricingLoading(false);
     }
   };
 
   const handleSaveTokenGroup = async () => {
+    const request = renderedWindow;
+    const sequence = renderedGroupRequest;
+    const isCurrent = () => isWindowCurrent(request) && sequence === groupRequest.current;
+    if (!isCurrent()) throw new Error("窗口或登录状态已变化，请重新打开");
     if (!editingGroupToken) {
       throw new Error("未选择要修改的 API Key");
     }
@@ -477,24 +617,16 @@ export function TokenSelectModal({
       throw new Error("noop");
     }
 
-    const targetRatio = groupRatios[targetGroup];
-    if (
-      targetRatio === undefined ||
-      !Number.isFinite(targetRatio) ||
-      targetRatio <= 0 ||
-      pricingLoadedAt === null ||
-      Date.now() - pricingLoadedAt > 5 * 60 * 1000
-    ) {
-      toast.warning("目标分组费率尚未取得有效权威数据，请刷新后再提交");
-      throw new Error("费率未知或已过期");
-    }
-    if (targetRatio >= 2.0 && !rateConfirmed) {
-      toast.warning(`目标分组费率倍率为 ${targetRatio}x，请勾选确认已知悉费率后再提交`);
-      throw new Error("请确认费率");
+    const pricingError = getGroupSwitchError(pricingInfo, targetGroup, rateConfirmed);
+    if (pricingError) {
+      toast.warning(pricingError);
+      throw new Error(pricingError);
     }
 
     try {
       await updateUserTokenGroup(editingGroupToken.id, targetGroup);
+      // The server mutation may have succeeded even after this window was closed.
+      if (!isCurrent()) return;
       toast.success(`已成功将「${editingGroupToken.name}」的分组修改为「${targetGroup}」！即时生效！`);
 
       // 更新本地 tokens 列表
@@ -527,6 +659,7 @@ export function TokenSelectModal({
       );
 
     } catch (err: unknown) {
+      if (!isCurrent()) throw err;
       if (err instanceof Error && (err.message === "noop" || err.message === "请确认费率")) throw err;
       const msg = typeof err === "string" ? err : "更新分组失败";
       toast.error(msg);
@@ -577,6 +710,12 @@ export function TokenSelectModal({
     () => tokens.filter((token) => selectedTokenId === token.id).length,
     [tokens, selectedTokenId],
   );
+
+  const renderedWindow = captureWindow();
+  const renderedGroupRequest = groupRequest.current;
+  const isRenderedGroupCurrent = () => isWindowCurrent(renderedWindow) &&
+    renderedGroupRequest === groupRequest.current;
+  const selectedGroupRatio = getValidGroupRatio(pricingInfo, selectedNewGroup);
 
   if (!isRendered || typeof document === "undefined") return null;
 
@@ -1032,7 +1171,7 @@ export function TokenSelectModal({
         className="fixed inset-0 z-[120] flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-md animate-in fade-in duration-200"
         onClick={(e) => {
           if (e.target === e.currentTarget && !isUpdatingGroup) {
-            setEditingGroupToken(null);
+            handleCloseEditGroup();
           }
         }}
       >
@@ -1055,7 +1194,7 @@ export function TokenSelectModal({
             <button
               type="button"
               disabled={isUpdatingGroup}
-              onClick={() => setEditingGroupToken(null)}
+              onClick={handleCloseEditGroup}
               className="p-1 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-gray-200 hover:bg-slate-100 dark:hover:bg-white/10 transition-colors cursor-pointer"
             >
               <X size={16} />
@@ -1075,14 +1214,22 @@ export function TokenSelectModal({
 
           {/* 候选系统分组 */}
           <div className="space-y-2">
-            <label className="text-xs font-semibold text-slate-700 dark:text-gray-300">
-              选择目标分组:
-            </label>
+            <div className="flex items-center justify-between">
+              <label className="text-xs font-semibold text-slate-700 dark:text-gray-300">选择目标分组:</label>
+              <button type="button" disabled={pricingLoading || isUpdatingGroup}
+                onClick={() => void handleOpenEditGroup(editingGroupToken)}
+                className="text-xs text-blue-500 disabled:opacity-50">
+                {pricingLoading ? "正在刷新费率…" : "刷新费率"}
+              </button>
+            </div>
+            {selectedGroupRatio === null && (
+              <p className="text-[11px] text-amber-700 dark:text-amber-300">费率未知、正在刷新或已过期，取得有效费率后才能修改分组。</p>
+            )}
             <div className="flex flex-wrap gap-1.5 max-h-56 overflow-y-auto pr-1">
               {groupOptions.map((grp) => {
                 const isChosen = selectedNewGroup === grp;
                 const isCurrent = (editingGroupToken.group || "default") === grp;
-                const ratio = groupRatios[grp];
+                const ratio = getValidGroupRatio(pricingInfo, grp);
                 return (
                   <button
                     key={grp}
@@ -1099,7 +1246,7 @@ export function TokenSelectModal({
                     )}
                   >
                     <span>{grp}</span>
-                    {ratio !== undefined && (
+                    {ratio !== null && (
                       <span
                         className={cn(
                           "text-[10px] px-1 py-0.5 rounded font-mono leading-none",
@@ -1123,14 +1270,14 @@ export function TokenSelectModal({
           </div>
 
           {/* 高倍率费率确认 */}
-          {Number.isFinite(groupRatios[selectedNewGroup]) && groupRatios[selectedNewGroup] >= 2.0 && (
+          {selectedGroupRatio !== null && selectedGroupRatio >= 2.0 && (
             <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-800 dark:text-amber-200 space-y-2">
               <div className="flex items-center gap-1.5 text-xs font-semibold">
                 <AlertTriangle size={14} className="text-amber-600 dark:text-amber-400 flex-shrink-0" />
                 <span>高倍率费率确认</span>
               </div>
               <p className="text-[11px] leading-relaxed text-amber-700 dark:text-amber-300">
-                目标分组「{selectedNewGroup}」的官方计费倍率为 <strong>{groupRatios[selectedNewGroup]}x</strong>，在该分组下调用模型将以较高费率扣减额度。
+                目标分组「{selectedNewGroup}」的官方计费倍率为 <strong>{selectedGroupRatio}x</strong>，在该分组下调用模型将以较高费率扣减额度。
               </p>
               <label className="flex items-center gap-2 cursor-pointer text-xs select-none pt-1">
                 <input
@@ -1159,22 +1306,18 @@ export function TokenSelectModal({
               <button
                 type="button"
                 disabled={isUpdatingGroup}
-                onClick={() => setEditingGroupToken(null)}
+                onClick={handleCloseEditGroup}
                 className="px-3 py-1.5 rounded-xl text-xs font-medium text-slate-600 dark:text-gray-400 hover:bg-slate-100 dark:hover:bg-white/5 transition-colors cursor-pointer"
               >
                 取消
               </button>
               <ButtonToLoaderToSuccess
+                key={renderedGroupRequest}
                 accent="blue"
                 disabled={
-                  isUpdatingGroup ||
+                  isUpdatingGroup || pricingLoading ||
                   !selectedNewGroup.trim() ||
-                  groupRatios[selectedNewGroup] === undefined ||
-                  !Number.isFinite(groupRatios[selectedNewGroup]) ||
-                  groupRatios[selectedNewGroup] <= 0 ||
-                  pricingLoadedAt === null ||
-                  Date.now() - pricingLoadedAt > 5 * 60 * 1000 ||
-                  (groupRatios[selectedNewGroup] >= 2.0 && !rateConfirmed)
+                  getGroupSwitchError(pricingInfo, selectedNewGroup, rateConfirmed) !== null
                 }
                 className="px-4 py-1.5 min-w-[120px] shadow-md shadow-blue-600/20"
                 idleLabel={<span>确认修改</span>}
@@ -1182,8 +1325,8 @@ export function TokenSelectModal({
                 resetAfterMs={null}
                 holdMs={800}
                 onAction={handleSaveTokenGroup}
-                onBusyChange={setIsUpdatingGroup}
-                onComplete={() => setEditingGroupToken(null)}
+                onBusyChange={(busy) => { if (isRenderedGroupCurrent()) setIsUpdatingGroup(busy); }}
+                onComplete={() => { if (isRenderedGroupCurrent()) handleCloseEditGroup(); }}
               />
             </div>
           </div>

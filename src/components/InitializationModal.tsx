@@ -2458,6 +2458,7 @@ export function InitializationModal({
                                       : "环境变量"
                               }
                               value={editApiKey}
+                              destinationUrl={editUrl}
                               onChange={setEditApiKey}
                               placeholder="sk-..."
                               storageLocation={

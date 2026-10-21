@@ -97,6 +97,9 @@ jobs:
         run: pnpm tauri build --target ${{ matrix.target }} --bundles dmg
       - name: Package macOS release
         id: package
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         run: |
           chmod +x ./scripts/package-macos.sh
           ./scripts/package-macos.sh "" "${{ matrix.target }}"

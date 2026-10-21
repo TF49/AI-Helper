@@ -10,6 +10,7 @@
     "dev:renderer": "vite",
     "build:renderer": "vite build",
     "typecheck": "tsc --noEmit",
+    "test:security": "node scripts/test-frontend-security.mjs",
     "format": "prettier --write \"src/**/*.{js,jsx,ts,tsx,css,json}\" && cargo fmt --manifest-path src-tauri/Cargo.toml",
     "format:rs": "cargo fmt --manifest-path src-tauri/Cargo.toml",
     "lint:rs": "cargo clippy --manifest-path src-tauri/Cargo.toml -- -D warnings",

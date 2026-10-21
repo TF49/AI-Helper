@@ -22,9 +22,8 @@ pub fn may_fallback_to_other_provider(state: PaidAttemptState, status: Option<u1
 }
 
 use serde::{Deserialize, Serialize};
-use std::fs::{self, OpenOptions};
+use std::fs;
 use std::path::PathBuf;
-use std::time::Duration;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct IntegerBudget {
@@ -60,47 +59,46 @@ impl IntegerBudget {
 }
 
 fn budget_ledger_path() -> PathBuf {
+    #[cfg(test)]
+    {
+        if let Some(path) = std::env::var_os("AI_HELPER_TEST_LEDGER_PATH") {
+            return PathBuf::from(path);
+        }
+        static TEST_DIRECTORY: once_cell::sync::Lazy<tempfile::TempDir> =
+            once_cell::sync::Lazy::new(|| tempfile::tempdir().expect("isolated budget tests"));
+        return TEST_DIRECTORY.path().join("image_budget_ledger.json");
+    }
+    #[cfg(not(test))]
     dirs::home_dir()
         .unwrap_or_else(std::env::temp_dir)
         .join(".ai-helper")
         .join("image_budget_ledger.json")
 }
 
-fn lock_path() -> PathBuf {
-    budget_ledger_path().with_file_name(".image_budget_ledger.lock")
-}
-
 fn with_ledger_lock<T>(f: impl FnOnce() -> Result<T, String>) -> Result<T, String> {
-    let path = lock_path();
-    if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent).map_err(|e| format!("创建预算目录失败: {e}"))?;
-    }
-    let mut handle = None;
-    for _ in 0..100 {
-        match OpenOptions::new().write(true).create_new(true).open(&path) {
-            Ok(file) => {
-                handle = Some(file);
-                break;
-            }
-            Err(_) => std::thread::sleep(Duration::from_millis(10)),
-        }
-    }
-    let _handle = handle.ok_or_else(|| "预算账本正被其他进程使用，已阻止付费请求".to_string())?;
-    let result = f();
-    let _ = fs::remove_file(path);
-    result
+    crate::safe_fs::with_file_lock(&budget_ledger_path(), || {
+        f().map_err(crate::error::AppError::Other)
+    })
+    .map_err(|error| error.to_string())
 }
 
 fn load_ledger(default_cap: u64) -> Result<IntegerBudget, String> {
     let path = budget_ledger_path();
-    if !path.exists() {
-        return Ok(IntegerBudget {
-            settled: 0,
-            pending: 0,
-            cap: default_cap,
-        });
-    }
-    let content = fs::read_to_string(&path).map_err(|e| format!("读取预算账本失败: {e}"))?;
+    load_ledger_at(&path, default_cap)
+}
+
+fn load_ledger_at(path: &std::path::Path, default_cap: u64) -> Result<IntegerBudget, String> {
+    let content = match fs::read_to_string(path) {
+        Ok(content) => content,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            return Ok(IntegerBudget {
+                settled: 0,
+                pending: 0,
+                cap: default_cap,
+            });
+        }
+        Err(error) => return Err(format!("读取预算账本失败: {error}")),
+    };
     let mut ledger = serde_json::from_str::<IntegerBudget>(&content)
         .map_err(|e| format!("预算账本损坏，已禁用生图直到恢复: {e}"))?;
     ledger.cap = default_cap;
@@ -111,7 +109,9 @@ fn save_ledger(budget: &IntegerBudget) -> Result<(), String> {
     let path = budget_ledger_path();
     let content =
         serde_json::to_vec_pretty(budget).map_err(|e| format!("序列化预算账本失败: {e}"))?;
-    crate::safe_fs::safe_write_file(&path, content).map_err(|e| format!("写入预算账本失败: {e}"))
+    // All callers hold the ledger's OS lock throughout load/reserve/commit.
+    crate::safe_fs::atomic_write_locked(&path, content)
+        .map_err(|e| format!("写入预算账本失败: {e}"))
 }
 
 static IMAGE_BUDGET: std::sync::Mutex<IntegerBudget> = std::sync::Mutex::new(IntegerBudget {
@@ -131,6 +131,12 @@ pub fn reset_image_budget(cap: u64) -> Result<(), String> {
         *guard = loaded;
         Ok(())
     })
+}
+
+pub fn disable_image_budget() {
+    if let Ok(mut budget) = IMAGE_BUDGET.lock() {
+        budget.cap = 0;
+    }
 }
 
 pub fn reserve_image_unit() -> Result<(), String> {
@@ -188,6 +194,85 @@ pub fn settle_image_unit() -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    #[ignore = "subprocess helper; executed by cross-process budget tests"]
+    fn budget_reservation_child() {
+        if std::env::var_os("AI_HELPER_TEST_LEDGER_PATH").is_none() {
+            return;
+        }
+        if reset_image_budget(1).is_err() {
+            std::process::exit(24);
+        }
+        match reserve_image_unit() {
+            Ok(()) => std::process::exit(0),
+            Err(error) if error.contains("超出预算") => std::process::exit(23),
+            Err(_) => std::process::exit(24),
+        }
+    }
+
+    fn reservation_child(path: &std::path::Path) -> std::process::Child {
+        std::process::Command::new(std::env::current_exe().unwrap())
+            .args([
+                "--exact",
+                "paid_request::tests::budget_reservation_child",
+                "--ignored",
+            ])
+            .env("AI_HELPER_TEST_LEDGER_PATH", path)
+            .stdout(std::process::Stdio::null())
+            .spawn()
+            .unwrap()
+    }
+
+    #[test]
+    fn two_processes_cannot_reserve_the_same_last_unit() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("ledger.json");
+        let mut first = reservation_child(&path);
+        let mut second = reservation_child(&path);
+        let mut results = [
+            first.wait().unwrap().code().unwrap(),
+            second.wait().unwrap().code().unwrap(),
+        ];
+        results.sort();
+        assert_eq!(results, [0, 23]);
+        let ledger = load_ledger_at(&path, 1).unwrap();
+        assert_eq!(ledger.pending, 1);
+        assert_eq!(ledger.settled, 0);
+        // A restarted third process must observe the pending reservation too.
+        assert_eq!(reservation_child(&path).wait().unwrap().code(), Some(23));
+    }
+
+    #[test]
+    fn corrupt_ledger_blocks_new_process_without_erasing_it() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("ledger.json");
+        fs::write(&path, b"broken ledger").unwrap();
+        assert_eq!(reservation_child(&path).wait().unwrap().code(), Some(24));
+        assert_eq!(fs::read(&path).unwrap(), b"broken ledger");
+    }
+
+    #[test]
+    fn corrupt_or_unreadable_ledger_is_not_reset() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("ledger.json");
+        fs::write(&path, b"broken ledger").unwrap();
+        assert!(load_ledger_at(&path, 3).is_err());
+        assert_eq!(fs::read(&path).unwrap(), b"broken ledger");
+        assert!(load_ledger_at(dir.path(), 3).is_err());
+    }
+
+    #[test]
+    fn reopening_ledger_keeps_pending_and_settled_counts() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("ledger.json");
+        fs::write(&path, br#"{"settled":2,"pending":1,"cap":4}"#).unwrap();
+        let mut budget = load_ledger_at(&path, 4).unwrap();
+        budget.try_reserve(1).unwrap();
+        assert!(budget.try_reserve(1).is_err());
+        assert_eq!(budget.settled, 2);
+        assert_eq!(budget.pending, 2);
+    }
 
     #[test]
     fn dispatched_or_unknown_never_retries_second_provider() {

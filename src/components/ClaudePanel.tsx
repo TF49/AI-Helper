@@ -403,6 +403,7 @@ export function ClaudePanel() {
                     title="Anthropic Auth Token / API Key"
                     badgeText="settings.json"
                     value={apiKey}
+                    destinationUrl={url}
                     onChange={setApiKey}
                     placeholder="sk-ant-... (填入 BobAPI 密钥)"
                     storageLocation="~/.claude/settings.json"
