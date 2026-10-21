@@ -637,13 +637,40 @@ mod platform {
             }
         }
 
+        fn current_user_sddl_ace(sid: &str) -> Option<String> {
+            let desc = descriptor(&format!("D:(A;;FA;;;{sid})")).ok()?;
+            let mut text = std::ptr::null_mut();
+            if unsafe {
+                ConvertSecurityDescriptorToStringSecurityDescriptorW(
+                    desc.0,
+                    1,
+                    0x4,
+                    &mut text,
+                    std::ptr::null_mut(),
+                )
+            } == 0
+            {
+                return None;
+            }
+            let _allocation = LocalAllocation(text.cast());
+            let mut count = 0;
+            unsafe {
+                while *text.add(count) != 0 {
+                    count += 1;
+                }
+                let sddl = String::from_utf16_lossy(std::slice::from_raw_parts(text, count));
+                sddl.strip_prefix("D:").map(ToOwned::to_owned)
+            }
+        }
+
         fn assert_current_user_only(path: &Path) {
             let acl = dacl(path);
             assert_eq!(acl.matches('(').count(), 1, "unexpected ACL: {acl}");
-            assert!(
-                acl.contains(&sid_string().unwrap()),
-                "unexpected ACL: {acl}"
-            );
+            let sid = sid_string().unwrap();
+            let matches_current_user = acl.contains(&sid)
+                || (sid.ends_with("-500") && acl.contains(";;;LA)"))
+                || current_user_sddl_ace(&sid).map_or(false, |ace| acl.contains(&ace));
+            assert!(matches_current_user, "unexpected ACL: {acl}");
             assert!(!acl.contains(";;;WD)"), "Everyone still has access: {acl}");
         }
 
