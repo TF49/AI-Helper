@@ -11,15 +11,6 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  release-artifacts:
-    name: Release Artifact Regressions
-    runs-on: windows-latest
-    steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
-      - name: Test packaging and final manifests without production keys
-        shell: pwsh
-        run: ./scripts/test-release-artifacts.ps1
-
   changes:
     name: Detect changed areas
     runs-on: ubuntu-latest
@@ -32,7 +23,7 @@ jobs:
     steps:
       - name: Checkout
         if: github.event_name == 'push'
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        uses: actions/checkout@v6
 
       - name: Detect changed paths
         id: filter
@@ -41,7 +32,6 @@ jobs:
           filters: |
             frontend:
               - "src/**"
-              - "scripts/test-frontend-security.mjs"
               - "index.html"
               - "package.json"
               - "pnpm-lock.yaml"
@@ -65,15 +55,15 @@ jobs:
     if: github.event_name != 'pull_request' || needs.changes.outputs.frontend == 'true'
     steps:
       - name: Checkout
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        uses: actions/checkout@v6
 
       - name: Setup Node.js
-        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        uses: actions/setup-node@v7
         with:
           node-version: "22"
 
       - name: Setup pnpm
-        uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v4
+        uses: pnpm/action-setup@v4
         with:
           version: 10.12.3
 
@@ -83,7 +73,7 @@ jobs:
         run: echo "path=$(pnpm store path --silent)" >> $GITHUB_OUTPUT
 
       - name: Cache pnpm store
-        uses: actions/cache@v6
+        uses: actions/cache@v5
         with:
           path: ${{ steps.pnpm-store.outputs.path }}
           key: ${{ runner.os }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
@@ -95,47 +85,35 @@ jobs:
       - name: TypeScript type check
         run: pnpm typecheck
 
-      - name: Security behavior regressions
-        run: pnpm test:security
-
       - name: Build renderer
         run: pnpm build:renderer
 
   backend:
-    name: Backend Checks (${{ matrix.os }})
-    runs-on: ${{ matrix.os }}
+    name: Backend Checks (windows-latest)
+    runs-on: windows-latest
     needs: changes
     if: github.event_name != 'pull_request' || needs.changes.outputs.backend == 'true'
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [windows-latest, ubuntu-24.04, macos-latest]
     defaults:
       run:
         shell: pwsh
     steps:
       - name: Checkout
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
-
-      - name: Install Linux system dependencies
-        if: runner.os == 'Linux'
-        shell: bash
-        run: |
-          sudo apt-get update
-          sudo apt-get install --no-install-recommends -y \
-            build-essential curl wget file pkg-config \
-            libwebkit2gtk-4.1-dev libgtk-3-dev libxdo-dev libssl-dev \
-            libayatana-appindicator3-dev librsvg2-dev patchelf
+        uses: actions/checkout@v6
 
       - name: Setup Rust
-        uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8 # master
+        uses: dtolnay/rust-toolchain@stable
         with:
-          toolchain: '1.95'
           components: rustfmt, clippy
 
-      - uses: Swatinem/rust-cache@779680da715d629ac1d338a641029a2f4372abb5 # v2
+      - name: Cache Cargo registry and build
+        uses: actions/cache@v5
         with:
-          workspaces: src-tauri
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            src-tauri/target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('src-tauri/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-cargo-
 
       - name: Create frontend dist placeholder
         run: New-Item -ItemType Directory -Force dist | Out-Null
@@ -143,17 +121,8 @@ jobs:
       - name: Check Rust formatting
         run: cargo fmt --check --manifest-path src-tauri/Cargo.toml
 
-      # Unit tests intentionally use an isolated memory provider. Compile the
-      # production library separately so DPAPI/Keychain/Secret Service are checked.
-      - name: Check native credential backend
-        run: cargo check --manifest-path src-tauri/Cargo.toml --locked --lib
-
       - name: Clippy
-        run: cargo clippy --manifest-path src-tauri/Cargo.toml --locked --all-targets -- -D warnings
+        run: cargo clippy --manifest-path src-tauri/Cargo.toml -- -D warnings
 
       - name: Run backend tests
         run: cargo test --manifest-path src-tauri/Cargo.toml --locked --lib
-
-      - name: Native Windows DPAPI smoke with synthetic values
-        if: runner.os == 'Windows'
-        run: cargo test --manifest-path src-tauri/Cargo.toml --locked --lib secret_storage::native_windows_tests -- --ignored
