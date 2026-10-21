@@ -55,8 +55,9 @@ Codex 的直接 bearer 配置方式已核对 [OpenAI 配置参考](https://learn
 | Unix 实际文件/WorkBuddy 源码隔离回归 | 29 通过、0 失败；2 个 helper 由父测试调用 |
 | 发布资产回归 | 通过，覆盖 DMG-only、应用元数据、版本/架构/tag、签名失败及最终哈希 |
 | 工作流静态检查 | YAML、平台矩阵、固定 action SHA、PowerShell AST 与 Linux shell 命令检查通过 |
+| 新远端三平台 CI | 见 [PR #22 的实时检查结果](https://github.com/TF49/AI-Helper/pull/22/checks)，以对应提交的各 job 结论为准 |
 
-新远端 CI 结果在运行后补入本表。Unix 结果来自 WSL 独立源码测试，不是完整 Linux Tauri 构建。发布回归使用模拟工具和资产，不等同 macOS 实机安装。
+本轮代码已推送到 `codex/security-closure-20261021` 并创建草稿 PR #22；未合并 main 或发布版本。Unix 结果来自 WSL 独立源码测试，不是完整 Linux Tauri 构建。发布回归使用模拟工具和资产，不等同 macOS 实机安装。
 
 ## 外部验收依赖
 
