@@ -373,132 +373,139 @@ pub fn set_workbuddy_config(payload: WorkbuddySavePayload) -> Result<(), AppErro
         crate::credential_policy::loopback_http_allowed(),
     )
     .map_err(|e| AppError::Other(e.to_string()))?;
-    let (mut entries, primary_path, _) = read_all_workbuddy_entries()?;
-    let all_paths = get_all_workbuddy_config_paths();
 
-    // 规范化后端请求 URL
-    // 当 useCustomProtocol 为 false 时，WorkBuddy 会自动补全 /chat/completions，因此 base_url 应传入形如 https://bob-api.com/v1
-    let normalized_url = if payload.use_custom_protocol {
-        payload.url.trim().to_string()
-    } else {
-        let trimmed = payload.url.trim().trim_end_matches('/');
-        if trimmed.ends_with("/v1") {
-            trimmed.to_string()
+    let primary_path = workbuddy_primary_config_path()?;
+    crate::safe_fs::with_file_lock(&primary_path, || {
+        let (mut entries, _, _) = read_all_workbuddy_entries()?;
+        let all_paths = get_all_workbuddy_config_paths();
+
+        // 规范化后端请求 URL
+        // 当 useCustomProtocol 为 false 时，WorkBuddy 会自动补全 /chat/completions，因此 base_url 应传入形如 https://bob-api.com/v1
+        let normalized_url = if payload.use_custom_protocol {
+            payload.url.trim().to_string()
         } else {
-            format!("{}/v1", trimmed)
-        }
-    };
+            let trimmed = payload.url.trim().trim_end_matches('/');
+            if trimmed.ends_with("/v1") {
+                trimmed.to_string()
+            } else {
+                format!("{}/v1", trimmed)
+            }
+        };
 
-    let model_id = payload.model.trim().to_string();
+        let model_id = payload.model.trim().to_string();
 
-    let reasoning_config = if payload.supports_reasoning {
-        Some(WorkbuddyReasoning {
-            supported_efforts: if payload.supported_efforts.is_empty() {
+        let reasoning_config = if payload.supports_reasoning {
+            Some(WorkbuddyReasoning {
+                supported_efforts: if payload.supported_efforts.is_empty() {
+                    None
+                } else {
+                    Some(payload.supported_efforts)
+                },
+                default_effort: if payload.default_effort.as_deref().unwrap_or("").is_empty() {
+                    None
+                } else {
+                    payload.default_effort
+                },
+                can_disable_thinking: if payload.can_disable_thinking {
+                    None // WorkBuddy 默认为 true
+                } else {
+                    Some(false)
+                },
+                extra: serde_json::Map::new(),
+            })
+        } else {
+            None
+        };
+
+        let new_entry = WorkbuddyModelEntry {
+            id: model_id.clone(),
+            name: model_id.clone(),
+            vendor: "Custom".to_string(),
+            url: normalized_url,
+            api: Some("openai-responses".to_string()),
+            api_key: if payload.api_key.trim().is_empty() {
                 None
             } else {
-                Some(payload.supported_efforts)
+                Some(payload.api_key.trim().to_string())
             },
-            default_effort: if payload.default_effort.as_deref().unwrap_or("").is_empty() {
+            supports_tool_call: payload.supports_tool_call,
+            supports_images: payload.supports_images,
+            supports_reasoning: payload.supports_reasoning,
+            only_reasoning: if payload.only_reasoning {
+                Some(true)
+            } else {
                 None
-            } else {
-                payload.default_effort
             },
-            can_disable_thinking: if payload.can_disable_thinking {
-                None // WorkBuddy 默认为 true
-            } else {
-                Some(false)
-            },
+            use_custom_protocol: payload.use_custom_protocol,
+            reasoning: reasoning_config,
+            max_input_tokens: payload.max_input_tokens,
+            max_output_tokens: payload.max_output_tokens,
+            temperature: None,
+            disabled: None,
             extra: serde_json::Map::new(),
-        })
-    } else {
-        None
-    };
+        };
 
-    let new_entry = WorkbuddyModelEntry {
-        id: model_id.clone(),
-        name: model_id.clone(),
-        vendor: "Custom".to_string(),
-        url: normalized_url,
-        api: Some("openai-responses".to_string()),
-        api_key: if payload.api_key.trim().is_empty() {
-            None
+        // 核心变更：仅当在已配置模型中存在完全相同 model_id 时更新该项；
+        // 否则直接作为新模型追加（拼接）至模型数组末尾，绝不覆盖已有模型
+        if let Some(idx) = entries.iter().position(|e| e.id == model_id) {
+            let mut updated = new_entry;
+            updated.extra = entries[idx].extra.clone();
+            if entries[idx].api.is_some() {
+                updated.api = entries[idx].api.clone();
+            }
+            entries[idx] = updated;
         } else {
-            Some(payload.api_key.trim().to_string())
-        },
-        supports_tool_call: payload.supports_tool_call,
-        supports_images: payload.supports_images,
-        supports_reasoning: payload.supports_reasoning,
-        only_reasoning: if payload.only_reasoning {
-            Some(true)
-        } else {
-            None
-        },
-        use_custom_protocol: payload.use_custom_protocol,
-        reasoning: reasoning_config,
-        max_input_tokens: payload.max_input_tokens,
-        max_output_tokens: payload.max_output_tokens,
-        temperature: None,
-        disabled: None,
-        extra: serde_json::Map::new(),
-    };
-
-    // 核心变更：仅当在已配置模型中存在完全相同 model_id 时更新该项；
-    // 否则直接作为新模型追加（拼接）至模型数组末尾，绝不覆盖已有模型
-    if let Some(idx) = entries.iter().position(|e| e.id == model_id) {
-        let mut updated = new_entry;
-        updated.extra = entries[idx].extra.clone();
-        if entries[idx].api.is_some() {
-            updated.api = entries[idx].api.clone();
+            entries.push(new_entry);
         }
-        entries[idx] = updated;
-    } else {
-        entries.push(new_entry);
-    }
 
-    let json_text = serde_json::to_string_pretty(&entries)?;
-
-    // 核心保证：
-    // 1. 优先保证官方标准主路径 (~/.workbuddy/models.json) 原子安全写入
-    crate::safe_fs::safe_write_file(&primary_path, json_text.as_bytes())?;
-
-    // 2. 双向原子级同步写入所有其他候选兼容路径（~/.workbuddy-ai/models.json 等）
-    // 若兼容路径存在或其父目录已存在，必须安全写入；写入失败必须阻断并报错，不可静默吞掉
-    for path in all_paths {
-        if path == primary_path {
-            continue;
-        }
-        if path.exists() || path.parent().map(|p| p.exists()).unwrap_or(false) {
-            crate::safe_fs::safe_write_file(&path, json_text.as_bytes())?;
-        }
-    }
-
-    Ok(())
-}
-
-pub fn delete_workbuddy_model(model_id: String) -> Result<Vec<WorkbuddyModelEntry>, AppError> {
-    let (mut entries, primary_path, _) = read_all_workbuddy_entries()?;
-    let all_paths = get_all_workbuddy_config_paths();
-    let original_len = entries.len();
-    entries.retain(|e| e.id != model_id.trim());
-
-    if entries.len() != original_len {
         let json_text = serde_json::to_string_pretty(&entries)?;
 
-        // 1. 原子写入主路径
+        // 核心保证：
+        // 1. 优先保证官方标准主路径 (~/.workbuddy/models.json) 原子安全写入
         crate::safe_fs::safe_write_file(&primary_path, json_text.as_bytes())?;
 
-        // 2. 同步清理其他兼容路径
+        // 2. 双向原子级同步写入所有其他候选兼容路径（~/.workbuddy-ai/models.json 等）
+        // 若兼容路径存在或其父目录已存在，必须安全写入；写入失败必须阻断并报错，不可静默吞掉
         for path in all_paths {
             if path == primary_path {
                 continue;
             }
-            if path.exists() {
+            if path.exists() || path.parent().map(|p| p.exists()).unwrap_or(false) {
                 crate::safe_fs::safe_write_file(&path, json_text.as_bytes())?;
             }
         }
-    }
 
-    Ok(entries)
+        Ok(())
+    })
+}
+
+pub fn delete_workbuddy_model(model_id: String) -> Result<Vec<WorkbuddyModelEntry>, AppError> {
+    let primary_path = workbuddy_primary_config_path()?;
+    crate::safe_fs::with_file_lock(&primary_path, || {
+        let (mut entries, _, _) = read_all_workbuddy_entries()?;
+        let all_paths = get_all_workbuddy_config_paths();
+        let original_len = entries.len();
+        entries.retain(|e| e.id != model_id.trim());
+
+        if entries.len() != original_len {
+            let json_text = serde_json::to_string_pretty(&entries)?;
+
+            // 1. 原子写入主路径
+            crate::safe_fs::safe_write_file(&primary_path, json_text.as_bytes())?;
+
+            // 2. 同步清理其他兼容路径
+            for path in all_paths {
+                if path == primary_path {
+                    continue;
+                }
+                if path.exists() {
+                    crate::safe_fs::safe_write_file(&path, json_text.as_bytes())?;
+                }
+            }
+        }
+
+        Ok(entries)
+    })
 }
 
 #[cfg(test)]

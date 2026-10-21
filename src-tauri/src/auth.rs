@@ -49,6 +49,7 @@ pub struct CaptchaGenerateData {
 pub struct UserInfo {
     pub id: i64,
     pub username: String,
+    #[serde(default)]
     pub display_name: Option<String>,
     #[serde(default)]
     pub role: Option<i32>,
@@ -428,6 +429,12 @@ impl AuthManager {
     }
 
     fn storage_path() -> PathBuf {
+        #[cfg(test)]
+        {
+            if let Some(path) = std::env::var_os("AI_HELPER_TEST_SESSION_PATH") {
+                return PathBuf::from(path);
+            }
+        }
         let dir = dirs::home_dir()
             .unwrap_or_else(|| PathBuf::from("."))
             .join(".ai-helper");
@@ -453,14 +460,56 @@ impl AuthManager {
         if let Ok(data) = fs::read_to_string(&path) {
             if let Ok(storage) = serde_json::from_str::<AuthSessionStorage>(&data) {
                 self.current_user = storage.user;
-                self.session_sid = storage.session_sid;
                 self.selected_token_id = storage.selected_token_id;
                 self.selected_token_name = storage.selected_token_name;
 
-                // 若有 Refresh Cookie，注入到 CookieJar 中
-                if let Some(cookie) = storage.refresh_cookie {
-                    if let Ok(url) = Url::parse(&format!("{}/api/user/auth", BASE_URL)) {
-                        self.cookie_jar.add_cookie_str(&cookie, &url);
+                let mut needs_migration = false;
+
+                // 解密或读取 session_sid
+                if let Some(ref enc_sid) = storage.session_sid {
+                    match crate::secret_storage::unprotect_secret(enc_sid) {
+                        Ok((sid, was_legacy)) => {
+                            self.session_sid = Some(sid);
+                            if was_legacy {
+                                needs_migration = true;
+                            }
+                        }
+                        Err(e) => {
+                            log::warn!("解密 session_sid 失败，丢弃已损坏字段: {e}");
+                            self.session_sid = None;
+                        }
+                    }
+                } else {
+                    self.session_sid = None;
+                }
+
+                // 解密或读取 refresh_cookie 并注入 CookieJar
+                let mut plain_refresh_cookie = None;
+                if let Some(ref enc_cookie) = storage.refresh_cookie {
+                    match crate::secret_storage::unprotect_secret(enc_cookie) {
+                        Ok((cookie, was_legacy)) => {
+                            if let Ok(url) = Url::parse(&format!("{}/api/user/auth", BASE_URL)) {
+                                self.cookie_jar.add_cookie_str(&cookie, &url);
+                            }
+                            plain_refresh_cookie = Some(cookie);
+                            if was_legacy {
+                                needs_migration = true;
+                            }
+                        }
+                        Err(e) => {
+                            log::warn!("解密 refresh_cookie 失败，丢弃已损坏字段: {e}");
+                        }
+                    }
+                }
+
+                // 若发现历史旧版明文格式，立即在内存中转换为加密格式并原子回写，完成平滑迁移
+                if needs_migration && (self.session_sid.is_some() || plain_refresh_cookie.is_some())
+                {
+                    log::info!("检测到旧版明文会话凭据，正在自动迁移为平台加密存储...");
+                    if let Err(e) = self.persist_session(plain_refresh_cookie.as_deref()) {
+                        log::warn!("自动迁移会话加密失败: {e}");
+                    } else {
+                        log::info!("旧版明文会话已成功迁移为平台加密存储");
                     }
                 }
             }
@@ -478,12 +527,32 @@ impl AuthManager {
             AuthSessionStorage::default()
         };
 
+        // refresh_cookie 加密处理
+        let encrypted_refresh_cookie = match refresh_cookie {
+            Some(cookie) => {
+                Some(crate::secret_storage::protect_secret(cookie).map_err(|e| e.to_string())?)
+            }
+            None => match existing.refresh_cookie {
+                Some(ref old) if crate::secret_storage::is_encrypted(old) => Some(old.clone()),
+                Some(ref plain) => {
+                    Some(crate::secret_storage::protect_secret(plain).map_err(|e| e.to_string())?)
+                }
+                None => None,
+            },
+        };
+
+        // session_sid 加密处理（内存中保持明文，存储前加密）
+        let encrypted_session_sid = match &self.session_sid {
+            Some(sid) => {
+                Some(crate::secret_storage::protect_secret(sid).map_err(|e| e.to_string())?)
+            }
+            None => None,
+        };
+
         let storage = AuthSessionStorage {
             user: self.current_user.clone(),
-            refresh_cookie: refresh_cookie
-                .map(|s| s.to_string())
-                .or(existing.refresh_cookie),
-            session_sid: self.session_sid.clone(),
+            refresh_cookie: encrypted_refresh_cookie,
+            session_sid: encrypted_session_sid,
             selected_token_id: self.selected_token_id,
             selected_token_name: self.selected_token_name.clone(),
         };
@@ -2059,4 +2128,77 @@ pub async fn get_pricing_data() -> Result<PricingResponse, String> {
     }
 
     Ok(parsed)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_auth_session_storage_encryption_and_migration() {
+        let temp_dir = tempfile::tempdir().expect("tempdir");
+        let session_file = temp_dir.path().join("auth_session.json");
+        std::env::set_var("AI_HELPER_TEST_SESSION_PATH", &session_file);
+
+        // 1. 模拟写入旧版明文 session.json
+        let legacy_json = r#"{
+  "user": {
+    "id": 42,
+    "username": "alice",
+    "display_name": "Alice",
+    "role": 1
+  },
+  "refresh_cookie": "new_api_refresh=plain_secret_cookie_token; Path=/api/user/auth",
+  "session_sid": "plain_session_sid_string_12345",
+  "selected_token_id": 10,
+  "selected_token_name": "Test Token"
+}"#;
+        fs::write(&session_file, legacy_json).expect("write legacy session");
+
+        // 2. 加载旧版会话，应当解出明文并自动触发加密回写
+        let mut mgr = AuthManager::new();
+        mgr.load_persisted_session();
+
+        assert_eq!(
+            mgr.session_sid.as_deref(),
+            Some("plain_session_sid_string_12345")
+        );
+        assert_eq!(mgr.current_user.as_ref().map(|u| u.id), Some(42));
+        assert_eq!(mgr.selected_token_id, Some(10));
+
+        // 3. 读取磁盘上回写后的内容，验证敏感字段已被加密，且磁盘中不再包含明文字符串
+        let migrated_data = fs::read_to_string(&session_file).expect("read migrated session");
+        assert!(
+            !migrated_data.contains("plain_secret_cookie_token"),
+            "磁盘文件中绝不能再出现明文 cookie"
+        );
+        assert!(
+            !migrated_data.contains("plain_session_sid_string_12345"),
+            "磁盘文件中绝不能再出现明文 sid"
+        );
+        assert!(
+            migrated_data.contains("enc:v1:"),
+            "回写后的字段必须包含加密前缀 enc:v1:"
+        );
+
+        let parsed_storage: AuthSessionStorage =
+            serde_json::from_str(&migrated_data).expect("parse storage");
+        assert!(crate::secret_storage::is_encrypted(
+            parsed_storage.refresh_cookie.as_ref().unwrap()
+        ));
+        assert!(crate::secret_storage::is_encrypted(
+            parsed_storage.session_sid.as_ref().unwrap()
+        ));
+
+        // 4. 重启加载已加密的会话，验证可以正常解密且无需再次迁移
+        let mut new_mgr = AuthManager::new();
+        new_mgr.load_persisted_session();
+        assert_eq!(
+            new_mgr.session_sid.as_deref(),
+            Some("plain_session_sid_string_12345")
+        );
+        assert_eq!(new_mgr.current_user.as_ref().map(|u| u.id), Some(42));
+
+        std::env::remove_var("AI_HELPER_TEST_SESSION_PATH");
+    }
 }

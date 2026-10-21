@@ -18,6 +18,7 @@ mod network;
 mod paid_request;
 mod process_manager;
 mod safe_fs;
+mod secret_storage;
 mod update_trust;
 mod updater;
 mod workbuddy;
