@@ -27,6 +27,7 @@ const UPDATER_JSON_OFFICIAL_URL: &str =
     "https://github.com/TF49/AI-Helper/releases/latest/download/latest.json";
 
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(5);
+#[cfg(any(target_os = "windows", test))]
 const WINDOWS_UPDATE_INSTALLER_ARGS: [&str; 4] = ["/P", "/R", "/UPDATE", "/ARGS"];
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

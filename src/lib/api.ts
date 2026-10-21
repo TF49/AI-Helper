@@ -250,14 +250,14 @@ function getMockResponse<T>(cmd: string, _args?: Record<string, unknown>): T {
       return {
         quota: 227002749,
         used_quota: 302207438,
-        quota_usd: 454.01,
-        quota_cny: 113.50,
-        used_quota_usd: 604.41,
-        used_quota_cny: 151.10,
+        quota_usd: null,
+        quota_cny: null,
+        used_quota_usd: null,
+        used_quota_cny: null,
         request_count: 20540,
         group: "svip",
-        quota_per_unit: 500000,
-        rmb_to_usd_rate: 4.0,
+        quota_per_unit: null,
+        rmb_to_usd_rate: null,
       } as unknown as T;
     case "open_url":
       if (_args && typeof _args.url === "string") {

@@ -66,7 +66,7 @@ fn budget_ledger_path() -> PathBuf {
         }
         static TEST_DIRECTORY: once_cell::sync::Lazy<tempfile::TempDir> =
             once_cell::sync::Lazy::new(|| tempfile::tempdir().expect("isolated budget tests"));
-        return TEST_DIRECTORY.path().join("image_budget_ledger.json");
+        TEST_DIRECTORY.path().join("image_budget_ledger.json")
     }
     #[cfg(not(test))]
     dirs::home_dir()

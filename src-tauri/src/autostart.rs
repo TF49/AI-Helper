@@ -1,7 +1,9 @@
 #[cfg(target_os = "windows")]
 use winreg::{enums::HKEY_CURRENT_USER, RegKey};
 
+#[cfg(target_os = "windows")]
 const REG_RUN_SUBKEY: &str = r"Software\Microsoft\Windows\CurrentVersion\Run";
+#[cfg(target_os = "windows")]
 const REG_APP_NAME: &str = "AIHelper";
 
 #[cfg(target_os = "windows")]

@@ -143,6 +143,8 @@ pub fn resolve_app_path(app_type: &str, custom_path: Option<&str>) -> Option<Str
 /// 拉起目标客户端或 CLI 工具
 pub fn launch_app(app_type: &str, custom_path: Option<&str>) -> Result<String, String> {
     let resolved_path = resolve_app_path(app_type, custom_path);
+    #[cfg(not(any(target_os = "windows", target_os = "macos")))]
+    let _ = &resolved_path;
 
     match app_type {
         "chatgpt" => {
@@ -213,7 +215,7 @@ pub fn launch_app(app_type: &str, custom_path: Option<&str>) -> Result<String, S
                 }
                 cmd.spawn()
                     .map_err(|e| format!("启动 ChatGPT 客户端失败: {}", e))?;
-                return Ok("ChatGPT 桌面客户端已启动".to_string());
+                Ok("ChatGPT 桌面客户端已启动".to_string())
             }
 
             #[cfg(not(any(target_os = "windows", target_os = "macos")))]
@@ -223,6 +225,7 @@ pub fn launch_app(app_type: &str, custom_path: Option<&str>) -> Result<String, S
         }
         "claude" => {
             // Claude CLI 终端启动方案
+            #[cfg(any(target_os = "windows", target_os = "macos"))]
             let path_str = resolved_path.ok_or_else(|| {
                 "未找到 Claude CLI 安装路径，请先在路径管理中配置或执行自动探测".to_string()
             })?;
@@ -269,6 +272,7 @@ end tell"#,
         }
         "codex" => {
             // Codex CLI 终端启动方案
+            #[cfg(any(target_os = "windows", target_os = "macos"))]
             let path_str = resolved_path.ok_or_else(|| {
                 "未找到 Codex CLI 安装路径，请先在路径管理中配置或执行自动探测".to_string()
             })?;
@@ -278,12 +282,6 @@ end tell"#,
                 // 在独立 CMD 窗口中启动 Codex CLI (追加 --no-daemon 避免在 Windows 管理员提权环境下触发 Daemon 安全限制)
                 let comspec = std::env::var("COMSPEC").unwrap_or_else(|_| "cmd.exe".to_string());
                 let mut cmd = Command::new(&comspec);
-                let codex_key = crate::codex::get_codex_config()
-                    .map(|c| c.api_key)
-                    .unwrap_or_default();
-                if !codex_key.trim().is_empty() {
-                    cmd.env("CUSTOM_OPENAI_API_KEY", &codex_key);
-                }
                 cmd.args([
                     "/c",
                     "start",
@@ -329,6 +327,7 @@ end tell"#,
         }
 
         "workbuddy" => {
+            #[cfg(any(target_os = "windows", target_os = "macos"))]
             let path_str = resolved_path.ok_or_else(|| {
                 "未找到 WorkBuddy 安装路径，请先在路径管理中配置或执行自动探测".to_string()
             })?;
@@ -364,6 +363,7 @@ end tell"#,
         }
 
         "acciowork" => {
+            #[cfg(any(target_os = "windows", target_os = "macos"))]
             let path_str = resolved_path.ok_or_else(|| {
                 "未找到 Accio Work 安装路径，请先在路径管理中配置或执行自动探测".to_string()
             })?;
@@ -465,10 +465,10 @@ end tell"#,
                 );
                 cmd.spawn()
                     .map_err(|e| format!("启动 Accio Work 客户端失败: {}", e))?;
-                return Ok(format!(
+                Ok(format!(
                     "Accio Work 客户端已成功注入本地网关 (127.0.0.1:{}) 并拉起: {}",
                     bridge_port, path_str
-                ));
+                ))
             }
 
             #[cfg(not(any(target_os = "windows", target_os = "macos")))]
@@ -481,6 +481,7 @@ end tell"#,
 }
 
 /// 监控 Accio Work 日志，检测是否漏跑阿里官方网关；若违规直连官方则触发熔断强杀
+#[cfg(target_os = "windows")]
 pub async fn verify_accio_gateway_safety(
     expected_port: u16,
     launched_at_ms: i64,
@@ -662,6 +663,7 @@ end tell"#,
 
     #[cfg(not(any(target_os = "windows", target_os = "macos")))]
     {
+        let _ = trimmed;
         Err("当前操作系统暂不支持自动唤起外部终端，请手动复制命令到终端中执行".to_string())
     }
 }

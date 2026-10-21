@@ -1,11 +1,14 @@
+use crate::error::AppError;
+use crate::secret_storage::CredentialPurpose;
 use log::error;
-use reqwest::cookie::Jar;
+use reqwest::cookie::{CookieStore, Jar};
 use reqwest::header::{AUTHORIZATION, CONTENT_TYPE, ORIGIN};
 use reqwest::{Client, Url};
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tokio::sync::Mutex;
@@ -110,7 +113,7 @@ pub struct TokenItem {
     #[serde(default)]
     pub unlimited_quota: bool,
     #[serde(default)]
-    pub remain_quota: i64,
+    pub remain_quota: Option<i64>,
     #[serde(default)]
     pub group: Option<String>,
     #[serde(default)]
@@ -161,14 +164,14 @@ fn default_neg_one() -> i64 {
 pub struct UserWalletInfo {
     pub quota: i64,
     pub used_quota: i64,
-    pub quota_usd: f64,
-    pub quota_cny: f64,
-    pub used_quota_usd: f64,
-    pub used_quota_cny: f64,
-    pub request_count: i64,
+    pub quota_usd: Option<f64>,
+    pub quota_cny: Option<f64>,
+    pub used_quota_usd: Option<f64>,
+    pub used_quota_cny: Option<f64>,
+    pub request_count: Option<i64>,
     pub group: Option<String>,
-    pub quota_per_unit: i64,
-    pub rmb_to_usd_rate: f64,
+    pub quota_per_unit: Option<i64>,
+    pub rmb_to_usd_rate: Option<f64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -178,6 +181,10 @@ pub struct AuthSessionStorage {
     pub session_sid: Option<String>,
     pub selected_token_id: Option<i64>,
     pub selected_token_name: Option<String>,
+    #[serde(default)]
+    pub session_generation: Option<String>,
+    #[serde(default)]
+    pub storage_revision: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -187,6 +194,7 @@ pub struct CurrentAuthState {
     pub selected_token_id: Option<i64>,
     pub selected_token_name: Option<String>,
     pub access_token_expires_at: Option<i64>,
+    pub session_restore_error: Option<String>,
 }
 
 // ── 使用日志模型 ──
@@ -206,7 +214,7 @@ pub struct UsageLogItem {
     #[serde(default)]
     pub model_name: String,
     #[serde(default)]
-    pub quota: i64,
+    pub quota: Option<i64>,
     #[serde(default)]
     pub prompt_tokens: i64,
     #[serde(default)]
@@ -251,7 +259,7 @@ pub struct UsageLogQueryParams {
 #[allow(dead_code)]
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct UsageStatData {
-    pub quota: i64,
+    pub quota: Option<i64>,
     pub prompt_tokens: i64,
     pub completion_tokens: i64,
     pub request_count: i64,
@@ -374,6 +382,365 @@ fn parse_api_response_body<T: serde::de::DeserializeOwned>(
 
 // ── 内部认证状态管理器 ──
 
+#[derive(Clone)]
+struct SessionStore {
+    path: PathBuf,
+}
+
+#[derive(Clone, Copy)]
+enum SessionWrite {
+    ExplicitLogin(SessionRevision),
+    Existing,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+struct SessionRevision {
+    session: Option<[u8; 32]>,
+    marker: Option<[u8; 32]>,
+}
+
+#[derive(Serialize, Deserialize)]
+struct LogoutMarker {
+    reason: String,
+    revision: String,
+}
+
+impl SessionStore {
+    fn marker_path(&self) -> PathBuf {
+        self.path.with_file_name("auth_logout.marker")
+    }
+
+    fn backup_path(&self) -> PathBuf {
+        self.path.with_extension("json.bak")
+    }
+
+    // These helpers are only called while holding the session file lock. The
+    // marker deliberately shares that lock, rather than having its own lock.
+    fn read_optional_locked(path: &Path) -> Result<Option<Vec<u8>>, AppError> {
+        match fs::symlink_metadata(path) {
+            Ok(metadata) => {
+                #[cfg(windows)]
+                let is_link = {
+                    use std::os::windows::fs::MetadataExt;
+                    metadata.file_attributes() & 0x400 != 0
+                };
+                #[cfg(not(windows))]
+                let is_link = metadata.file_type().is_symlink();
+                if is_link || !metadata.is_file() {
+                    return Err(AppError::Other("会话存储不是普通文件".into()));
+                }
+            }
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+            Err(error) => return Err(error.into()),
+        }
+        Ok(Some(fs::read(path)?))
+    }
+
+    fn read_locked(&self) -> Result<Option<AuthSessionStorage>, AppError> {
+        Self::read_optional_locked(&self.path)?
+            .map(|bytes| {
+                serde_json::from_slice(&bytes)
+                    .map_err(|_| AppError::Other("会话文件已损坏，请重新登录".into()))
+            })
+            .transpose()
+    }
+
+    fn blocked_locked(&self) -> Result<bool, AppError> {
+        Ok(Self::read_optional_locked(&self.marker_path())?.is_some())
+    }
+
+    fn revision_locked(&self) -> Result<SessionRevision, AppError> {
+        fn digest(bytes: Vec<u8>) -> [u8; 32] {
+            Sha256::digest(bytes).into()
+        }
+        Ok(SessionRevision {
+            session: Self::read_optional_locked(&self.path)?.map(digest),
+            marker: Self::read_optional_locked(&self.marker_path())?.map(digest),
+        })
+    }
+
+    fn revision(&self) -> Result<SessionRevision, AppError> {
+        crate::safe_fs::with_file_lock(&self.path, || self.revision_locked())
+    }
+
+    fn remove_optional_locked(path: &Path) -> Result<(), AppError> {
+        crate::safe_fs::remove_file_locked(path)
+    }
+
+    fn delete_references(storage: &AuthSessionStorage) {
+        for (purpose, value) in [
+            (CredentialPurpose::SessionId, storage.session_sid.as_deref()),
+            (
+                CredentialPurpose::RefreshCookie,
+                storage.refresh_cookie.as_deref(),
+            ),
+        ] {
+            if let Some(value) = value {
+                if let Err(error) = crate::secret_storage::delete_secret_for(purpose, value) {
+                    log::warn!("清理系统凭据条目失败: {error}");
+                }
+            }
+        }
+    }
+
+    fn protect(storage: &AuthSessionStorage) -> Result<AuthSessionStorage, AppError> {
+        let mut protected = storage.clone();
+        protected.session_sid = storage
+            .session_sid
+            .as_deref()
+            .map(|value| {
+                crate::secret_storage::protect_secret_for(CredentialPurpose::SessionId, value)
+            })
+            .transpose()?;
+        protected.refresh_cookie = match storage
+            .refresh_cookie
+            .as_deref()
+            .map(|value| {
+                crate::secret_storage::protect_secret_for(CredentialPurpose::RefreshCookie, value)
+            })
+            .transpose()
+        {
+            Ok(value) => value,
+            Err(error) => {
+                // A new platform entry may already exist for the first field.
+                protected.refresh_cookie = None;
+                Self::delete_references(&protected);
+                return Err(error);
+            }
+        };
+        Ok(protected)
+    }
+
+    fn unprotect(storage: &AuthSessionStorage) -> Result<AuthSessionStorage, AppError> {
+        let mut plain = storage.clone();
+        plain.session_sid = storage
+            .session_sid
+            .as_deref()
+            .map(|value| {
+                crate::secret_storage::unprotect_secret_for(CredentialPurpose::SessionId, value)
+                    .map(|(value, _)| value)
+            })
+            .transpose()?;
+        plain.refresh_cookie = storage
+            .refresh_cookie
+            .as_deref()
+            .map(|value| {
+                crate::secret_storage::unprotect_secret_for(CredentialPurpose::RefreshCookie, value)
+                    .map(|(value, _)| value)
+            })
+            .transpose()?;
+        if plain.user.is_none()
+            || (plain.session_sid.as_deref().unwrap_or("").is_empty()
+                && plain.refresh_cookie.as_deref().unwrap_or("").is_empty())
+        {
+            return Err(AppError::Other("会话凭据不完整，请重新登录".into()));
+        }
+        Ok(plain)
+    }
+
+    fn new_generation() -> Result<String, AppError> {
+        let mut bytes = [0u8; 16];
+        getrandom::getrandom(&mut bytes)
+            .map_err(|error| AppError::Other(format!("生成会话代次失败: {error}")))?;
+        Ok(bytes.iter().map(|byte| format!("{byte:02x}")).collect())
+    }
+
+    fn same_session(left: &AuthSessionStorage, right: &AuthSessionStorage) -> bool {
+        left.session_generation == right.session_generation
+            && left.user.as_ref().map(|user| user.id) == right.user.as_ref().map(|user| user.id)
+    }
+
+    fn write_verified_locked(&self, plain: &AuthSessionStorage) -> Result<(), AppError> {
+        let protected = Self::protect(plain)?;
+        let staging = self.path.with_extension("json.pending");
+        let mut committed = false;
+        let result = (|| {
+            let bytes = serde_json::to_vec_pretty(&protected)
+                .map_err(|_| AppError::Other("序列化会话失败".into()))?;
+            // Verify a protected staging file first, preserving the sole old
+            // copy if the platform service or the new write cannot be read back.
+            crate::safe_fs::atomic_write_locked(&staging, &bytes)?;
+            let staged_bytes = Self::read_optional_locked(&staging)?
+                .ok_or_else(|| AppError::Other("安全会话暂存文件丢失".into()))?;
+            let staged: AuthSessionStorage = serde_json::from_slice(&staged_bytes)
+                .map_err(|_| AppError::Other("安全会话暂存文件已损坏".into()))?;
+            let verified = Self::unprotect(&staged)?;
+            if serde_json::to_value(&verified).ok() != serde_json::to_value(plain).ok() {
+                return Err(AppError::Other("会话安全存储暂存验证失败".into()));
+            }
+            match crate::safe_fs::atomic_write_locked(&self.path, &bytes) {
+                Ok(()) => committed = true,
+                Err(error) => {
+                    committed = error.file_was_committed(&self.path);
+                    return Err(error);
+                }
+            }
+            let stored = self
+                .read_locked()?
+                .ok_or_else(|| AppError::Other("会话写入后丢失".into()))?;
+            // Verify both the durable file and the platform-protected entries.
+            let actual = Self::unprotect(&stored)?;
+            if serde_json::to_value(&actual).ok() != serde_json::to_value(plain).ok() {
+                return Err(AppError::Other("会话安全存储读回验证失败".into()));
+            }
+            Ok(())
+        })();
+        let staging_cleanup = Self::remove_optional_locked(&staging);
+        if result.is_err() && !committed {
+            Self::delete_references(&protected);
+        }
+        result?;
+        staging_cleanup
+    }
+
+    fn block_locked(&self) -> Result<(), AppError> {
+        self.write_marker_locked("logged-out")
+    }
+
+    fn write_marker_locked(&self, reason: &str) -> Result<(), AppError> {
+        let marker = LogoutMarker {
+            reason: reason.to_owned(),
+            revision: Self::new_generation()?,
+        };
+        crate::safe_fs::atomic_write_locked(&self.marker_path(), serde_json::to_vec(&marker)?)
+    }
+
+    fn quarantine_locked(&self) -> Result<(), AppError> {
+        // Keep the only old credential for manual recovery when possible, but
+        // persistently forbid automatic recovery until a successful login.
+        if let Err(marker_error) = self.write_marker_locked("relogin-required") {
+            Self::remove_optional_locked(&self.path).map_err(|delete_error| {
+                AppError::Other(format!(
+                    "无法阻断旧会话恢复: {marker_error}; 无法清理会话: {delete_error}"
+                ))
+            })?;
+        }
+        Ok(())
+    }
+
+    fn restore(&self) -> Result<Option<AuthSessionStorage>, AppError> {
+        crate::safe_fs::with_file_lock(&self.path, || {
+            if let Some(marker) = Self::read_optional_locked(&self.marker_path())? {
+                if marker == b"relogin-required"
+                    || serde_json::from_slice::<LogoutMarker>(&marker)
+                        .is_ok_and(|marker| marker.reason == "relogin-required")
+                {
+                    return Err(AppError::Other("上次会话安全恢复未完成，请重新登录".into()));
+                }
+                return Ok(None);
+            }
+            let restored = (|| {
+                let Some(previous) = self.read_locked()? else {
+                    return Ok(None);
+                };
+                let mut plain = Self::unprotect(&previous)?;
+                plain.session_generation = Some(Self::new_generation()?);
+                plain.storage_revision = Some(Self::new_generation()?);
+                // Even an already protected session must pass a fresh protected
+                // write/read cycle before any credential enters the CookieJar.
+                self.write_verified_locked(&plain)?;
+                Self::delete_references(&previous);
+                Self::remove_optional_locked(&self.backup_path())?;
+                Ok(Some(plain))
+            })();
+            if let Err(error) = restored {
+                self.quarantine_locked()?;
+                return Err(error);
+            }
+            restored
+        })
+    }
+
+    fn save(&self, storage: &AuthSessionStorage, mode: SessionWrite) -> Result<(), AppError> {
+        crate::safe_fs::with_file_lock(&self.path, || {
+            if let SessionWrite::ExplicitLogin(expected) = mode {
+                if self.revision_locked()? != expected {
+                    // A late password/2FA result is not a new login operation:
+                    // leave the other process's session and marker untouched.
+                    return Err(AppError::Other(
+                        "会话状态已变化，已丢弃过期登录响应，请重试登录".into(),
+                    ));
+                }
+            }
+            let blocked = self.blocked_locked()?;
+            let previous = match self.read_locked() {
+                Ok(previous) => previous,
+                Err(_) if matches!(mode, SessionWrite::ExplicitLogin(_)) => None,
+                Err(error) => return Err(error),
+            };
+            if matches!(mode, SessionWrite::Existing)
+                && (blocked
+                    || !previous
+                        .as_ref()
+                        .is_some_and(|old| Self::same_session(old, storage)))
+            {
+                return Err(AppError::Other("会话已退出或已切换，请重新登录".into()));
+            }
+            let mut storage = storage.clone();
+            storage.storage_revision = Some(Self::new_generation()?);
+            if let Err(error) = self.write_verified_locked(&storage) {
+                self.quarantine_locked()?;
+                return Err(error);
+            }
+            if let Err(error) = Self::remove_optional_locked(&self.backup_path()) {
+                self.quarantine_locked()?;
+                return Err(error);
+            }
+            // A normal migration, refresh, or profile update never clears this.
+            if matches!(mode, SessionWrite::ExplicitLogin(_)) {
+                if let Err(error) = Self::remove_optional_locked(&self.marker_path()) {
+                    self.quarantine_locked()?;
+                    return Err(error);
+                }
+            }
+            if let Some(previous) = previous {
+                Self::delete_references(&previous);
+            }
+            Ok(())
+        })
+    }
+
+    fn validate(&self, generation: Option<&str>, user_id: Option<i64>) -> Result<(), AppError> {
+        crate::safe_fs::with_file_lock(&self.path, || {
+            let current = self.read_locked()?;
+            if self.blocked_locked()?
+                || !current.as_ref().is_some_and(|current| {
+                    current.session_generation.as_deref() == generation
+                        && current.user.as_ref().map(|user| user.id) == user_id
+                })
+            {
+                return Err(AppError::Other("会话已退出或已切换，请重新登录".into()));
+            }
+            Ok(())
+        })
+    }
+
+    fn invalidate(&self, generation: Option<&str>, explicit: bool) -> Result<(), AppError> {
+        crate::safe_fs::with_file_lock(&self.path, || {
+            let previous = self.read_locked();
+            if let Ok(Some(previous)) = &previous {
+                if (!explicit || generation.is_some())
+                    && previous.session_generation.as_deref() != generation
+                {
+                    return Ok(());
+                }
+            }
+            // Attempt both steps even if one fails. Either durable blocking or
+            // deletion stops recovery; surface any incomplete cleanup.
+            let blocked = self.block_locked();
+            let removed = Self::remove_optional_locked(&self.path);
+            let backup_removed = Self::remove_optional_locked(&self.backup_path());
+            if let Ok(Some(previous)) = previous {
+                Self::delete_references(&previous);
+            }
+            blocked?;
+            removed?;
+            backup_removed?;
+            Ok(())
+        })
+    }
+}
+
 pub struct AuthManager {
     client: Client,
     cookie_jar: Arc<Jar>,
@@ -385,32 +752,58 @@ pub struct AuthManager {
     selected_token_name: Option<String>,
     session_epoch: u64,
     auto_refresh_blocked: bool,
+    storage: SessionStore,
+    refresh_cookie: Option<String>,
+    session_generation: Option<String>,
+    session_restore_error: Option<String>,
+    #[cfg(test)]
+    _test_directory: Option<tempfile::TempDir>,
 }
 
 impl AuthManager {
-    pub fn new() -> Self {
-        let cookie_jar = Arc::new(Jar::default());
-        let mut builder = Client::builder()
-            .cookie_provider(cookie_jar.clone())
+    fn build_client(cookie_jar: Arc<Jar>) -> Result<Client, String> {
+        #[cfg(not(test))]
+        let proxy = reqwest::Proxy::custom(|_url| {
+            crate::updater::get_cached_upstream_proxy_url()
+                .and_then(|proxy| Url::parse(&proxy).ok())
+        });
+        let builder = Client::builder()
+            .cookie_provider(cookie_jar)
             .user_agent(USER_AGENT)
             .timeout(Duration::from_secs(15))
             .redirect(crate::credential_policy::credentialed_redirect_policy())
             .no_proxy();
-
-        let proxy = reqwest::Proxy::custom(|_url| {
-            if let Some(proxy_str) = crate::updater::get_cached_upstream_proxy_url() {
-                Url::parse(&proxy_str).ok()
-            } else {
-                None
-            }
-        });
-        builder = builder.proxy(proxy);
-
-        let client = builder
+        #[cfg(not(test))]
+        let builder = builder.proxy(proxy);
+        builder
             .build()
-            .expect("Failed to build reqwest client for auth");
+            .map_err(|error| format!("创建认证客户端失败: {error}"))
+    }
 
-        let mut mgr = Self {
+    pub fn new() -> Self {
+        #[cfg(not(test))]
+        let path = dirs::home_dir()
+            .unwrap_or_else(|| PathBuf::from("."))
+            .join(".ai-helper/auth_session.json");
+        // No unit test, including callers outside this module, may touch HOME.
+        #[cfg(test)]
+        let directory = tempfile::tempdir().expect("isolated authentication test directory");
+        #[cfg(test)]
+        let path = directory.path().join("auth_session.json");
+        let manager = Self::with_storage_path(path);
+        #[cfg(test)]
+        let manager = Self {
+            _test_directory: Some(directory),
+            ..manager
+        };
+        manager
+    }
+
+    fn with_storage_path(path: PathBuf) -> Self {
+        let cookie_jar = Arc::new(Jar::default());
+        let client = Self::build_client(cookie_jar.clone())
+            .expect("Failed to build reqwest client for auth");
+        let mut manager = Self {
             client,
             cookie_jar,
             access_token: None,
@@ -420,162 +813,255 @@ impl AuthManager {
             selected_token_id: None,
             selected_token_name: None,
             session_epoch: 0,
-            auto_refresh_blocked: false,
+            auto_refresh_blocked: true,
+            storage: SessionStore { path },
+            refresh_cookie: None,
+            session_generation: None,
+            session_restore_error: None,
+            #[cfg(test)]
+            _test_directory: None,
         };
-
-        // 尝试从本地恢复凭据
-        mgr.load_persisted_session();
-        mgr
+        manager.load_persisted_session();
+        manager
     }
 
-    fn storage_path() -> PathBuf {
-        #[cfg(test)]
-        {
-            if let Some(path) = std::env::var_os("AI_HELPER_TEST_SESSION_PATH") {
-                return PathBuf::from(path);
-            }
+    fn install_cookie_jar(&mut self, refresh_cookie: Option<&str>) -> Result<(), String> {
+        let jar = Arc::new(Jar::default());
+        if let Some(cookie) = refresh_cookie {
+            let url = Url::parse(&format!("{BASE_URL}/api/user/auth"))
+                .map_err(|error| format!("认证地址无效: {error}"))?;
+            jar.add_cookie_str(cookie, &url);
         }
-        let dir = dirs::home_dir()
-            .unwrap_or_else(|| PathBuf::from("."))
-            .join(".ai-helper");
-        let _ = fs::create_dir_all(&dir);
-        dir.join("auth_session.json")
-    }
-
-    fn logout_marker_path() -> PathBuf {
-        Self::storage_path().with_file_name("auth_logout.marker")
-    }
-
-    fn load_persisted_session(&mut self) {
-        if Self::logout_marker_path().exists() {
-            self.auto_refresh_blocked = true;
-            let _ = fs::remove_file(Self::storage_path());
-            return;
-        }
-        let path = Self::storage_path();
-        if !path.exists() {
-            return;
-        }
-
-        if let Ok(data) = fs::read_to_string(&path) {
-            if let Ok(storage) = serde_json::from_str::<AuthSessionStorage>(&data) {
-                self.current_user = storage.user;
-                self.selected_token_id = storage.selected_token_id;
-                self.selected_token_name = storage.selected_token_name;
-
-                let mut needs_migration = false;
-
-                // 解密或读取 session_sid
-                if let Some(ref enc_sid) = storage.session_sid {
-                    match crate::secret_storage::unprotect_secret(enc_sid) {
-                        Ok((sid, was_legacy)) => {
-                            self.session_sid = Some(sid);
-                            if was_legacy {
-                                needs_migration = true;
-                            }
-                        }
-                        Err(e) => {
-                            log::warn!("解密 session_sid 失败，丢弃已损坏字段: {e}");
-                            self.session_sid = None;
-                        }
-                    }
-                } else {
-                    self.session_sid = None;
-                }
-
-                // 解密或读取 refresh_cookie 并注入 CookieJar
-                let mut plain_refresh_cookie = None;
-                if let Some(ref enc_cookie) = storage.refresh_cookie {
-                    match crate::secret_storage::unprotect_secret(enc_cookie) {
-                        Ok((cookie, was_legacy)) => {
-                            if let Ok(url) = Url::parse(&format!("{}/api/user/auth", BASE_URL)) {
-                                self.cookie_jar.add_cookie_str(&cookie, &url);
-                            }
-                            plain_refresh_cookie = Some(cookie);
-                            if was_legacy {
-                                needs_migration = true;
-                            }
-                        }
-                        Err(e) => {
-                            log::warn!("解密 refresh_cookie 失败，丢弃已损坏字段: {e}");
-                        }
-                    }
-                }
-
-                // 若发现历史旧版明文格式，立即在内存中转换为加密格式并原子回写，完成平滑迁移
-                if needs_migration && (self.session_sid.is_some() || plain_refresh_cookie.is_some())
-                {
-                    log::info!("检测到旧版明文会话凭据，正在自动迁移为平台加密存储...");
-                    if let Err(e) = self.persist_session(plain_refresh_cookie.as_deref()) {
-                        log::warn!("自动迁移会话加密失败: {e}");
-                    } else {
-                        log::info!("旧版明文会话已成功迁移为平台加密存储");
-                    }
-                }
-            }
-        }
-    }
-
-    fn persist_session(&self, refresh_cookie: Option<&str>) -> Result<(), String> {
-        let path = Self::storage_path();
-        let existing = if path.exists() {
-            fs::read_to_string(&path)
-                .ok()
-                .and_then(|s| serde_json::from_str::<AuthSessionStorage>(&s).ok())
-                .unwrap_or_default()
-        } else {
-            AuthSessionStorage::default()
-        };
-
-        // refresh_cookie 加密处理
-        let encrypted_refresh_cookie = match refresh_cookie {
-            Some(cookie) => {
-                Some(crate::secret_storage::protect_secret(cookie).map_err(|e| e.to_string())?)
-            }
-            None => match existing.refresh_cookie {
-                Some(ref old) if crate::secret_storage::is_encrypted(old) => Some(old.clone()),
-                Some(ref plain) => {
-                    Some(crate::secret_storage::protect_secret(plain).map_err(|e| e.to_string())?)
-                }
-                None => None,
-            },
-        };
-
-        // session_sid 加密处理（内存中保持明文，存储前加密）
-        let encrypted_session_sid = match &self.session_sid {
-            Some(sid) => {
-                Some(crate::secret_storage::protect_secret(sid).map_err(|e| e.to_string())?)
-            }
-            None => None,
-        };
-
-        let storage = AuthSessionStorage {
-            user: self.current_user.clone(),
-            refresh_cookie: encrypted_refresh_cookie,
-            session_sid: encrypted_session_sid,
-            selected_token_id: self.selected_token_id,
-            selected_token_name: self.selected_token_name.clone(),
-        };
-
-        let json_str = serde_json::to_string_pretty(&storage)
-            .map_err(|e| format!("序列化会话数据失败: {e}"))?;
-
-        // 核心加固：先通过 safe_fs 安全原子写入新会话
-        crate::safe_fs::safe_write_file(&path, json_str.as_bytes())
-            .map_err(|e| format!("保存会话文件失败: {e}"))?;
-
-        // 仅在会话安全落盘确认成功之后，才清理主动登出标记
-        let _ = fs::remove_file(Self::logout_marker_path());
+        let client = Self::build_client(jar.clone())?;
+        self.cookie_jar = jar;
+        self.client = client;
         Ok(())
     }
 
-    fn clear_persisted_session(&mut self) {
+    fn reset_memory(&mut self) {
         self.access_token = None;
         self.access_expires_at = 0;
         self.current_user = None;
         self.session_sid = None;
-        let path = Self::storage_path();
-        let _ = fs::remove_file(path);
+        self.refresh_cookie = None;
+        self.selected_token_id = None;
+        self.selected_token_name = None;
+        self.session_generation = None;
+        self.auto_refresh_blocked = true;
+        self.session_epoch = self.session_epoch.wrapping_add(1);
+        if let Err(error) = self.install_cookie_jar(None) {
+            log::error!("清理认证 CookieJar 失败: {error}");
+        }
+    }
+
+    fn load_persisted_session(&mut self) {
+        self.reset_memory();
+        match self.storage.restore() {
+            Ok(Some(storage)) => {
+                if let Err(error) = self.install_cookie_jar(storage.refresh_cookie.as_deref()) {
+                    self.session_restore_error = Some(error);
+                    return;
+                }
+                self.current_user = storage.user;
+                self.session_sid = storage.session_sid;
+                self.refresh_cookie = storage.refresh_cookie;
+                self.selected_token_id = storage.selected_token_id;
+                self.selected_token_name = storage.selected_token_name;
+                self.session_generation = storage.session_generation;
+                self.auto_refresh_blocked = false;
+                self.session_restore_error = None;
+            }
+            Ok(None) => {}
+            Err(error) => {
+                log::warn!("安全恢复会话失败，已禁止自动刷新: {error}");
+                self.session_restore_error =
+                    Some(format!("无法安全恢复本地会话，请重新登录: {error}"));
+            }
+        }
+    }
+
+    fn session_storage(&self, refresh_cookie: Option<&str>) -> AuthSessionStorage {
+        AuthSessionStorage {
+            user: self.current_user.clone(),
+            refresh_cookie: refresh_cookie
+                .map(str::to_owned)
+                .or_else(|| self.refresh_cookie.clone()),
+            session_sid: self.session_sid.clone(),
+            selected_token_id: self.selected_token_id,
+            selected_token_name: self.selected_token_name.clone(),
+            session_generation: self.session_generation.clone(),
+            storage_revision: None,
+        }
+    }
+
+    fn persist_session(&self, refresh_cookie: Option<&str>) -> Result<(), String> {
+        if self.auto_refresh_blocked {
+            return Err("本地已退出，已禁止保存旧会话".into());
+        }
+        self.storage
+            .save(
+                &self.session_storage(refresh_cookie),
+                SessionWrite::Existing,
+            )
+            .map_err(|error| error.to_string())
+    }
+
+    #[cfg(test)]
+    fn complete_login(
+        &mut self,
+        data: &LoginSuccessData,
+        refresh_cookie: Option<&str>,
+    ) -> Result<(), String> {
+        let revision = self.storage.revision().map_err(|error| error.to_string())?;
+        self.complete_login_at_revision(data, refresh_cookie, revision)
+    }
+
+    fn complete_login_at_revision(
+        &mut self,
+        data: &LoginSuccessData,
+        refresh_cookie: Option<&str>,
+        revision: SessionRevision,
+    ) -> Result<(), String> {
+        let storage = AuthSessionStorage {
+            user: Some(data.user.clone()),
+            refresh_cookie: refresh_cookie.map(str::to_owned),
+            session_sid: data.session_sid.clone(),
+            selected_token_id: None,
+            selected_token_name: None,
+            session_generation: Some(
+                SessionStore::new_generation().map_err(|error| error.to_string())?,
+            ),
+            storage_revision: None,
+        };
+        if let Err(error) = self
+            .storage
+            .save(&storage, SessionWrite::ExplicitLogin(revision))
+        {
+            self.reset_memory();
+            // save() quarantines failures under the same file transaction. Do
+            // not delete a replacement whose durability/readback is uncertain.
+            let message = format!("无法安全保存登录会话，请重新登录: {error}");
+            self.session_restore_error = Some(message.clone());
+            return Err(message);
+        }
+        self.install_cookie_jar(refresh_cookie)?;
+        self.session_epoch = self.session_epoch.wrapping_add(1);
+        self.access_token = Some(data.access_token.clone());
+        self.access_expires_at = data.access_expires_at;
+        self.current_user = storage.user;
+        self.session_sid = storage.session_sid;
+        self.refresh_cookie = storage.refresh_cookie;
+        self.selected_token_id = None;
+        self.selected_token_name = None;
+        self.session_generation = storage.session_generation;
+        self.auto_refresh_blocked = false;
+        self.session_restore_error = None;
+        Ok(())
+    }
+
+    fn refresh_request(&self, url: &str) -> Result<reqwest::RequestBuilder, String> {
+        self.validate_current_session()?;
+        // A response may arrive after logout. Its Set-Cookie must belong to an
+        // isolated Jar until the session generation has been checked again.
+        let jar = Arc::new(Jar::default());
+        if let Some(cookie) = &self.refresh_cookie {
+            jar.add_cookie_str(
+                cookie,
+                &Url::parse(&format!("{BASE_URL}/api/user/auth")).unwrap(),
+            );
+        }
+        let client = Self::build_client(jar)?;
+        let mut request = client
+            .post(url)
+            .header(ORIGIN, AUTH_ORIGIN)
+            .header(CONTENT_TYPE, "application/json");
+        if let Some(sid) = &self.session_sid {
+            request = request.header("X-Auth-Session", sid);
+        }
+        Ok(request)
+    }
+
+    fn isolated_login_client(&self, url: &str) -> Result<Client, String> {
+        let url = Url::parse(url).map_err(|error| format!("认证地址无效: {error}"))?;
+        Self::build_client(self.login_cookie_jar(&url)?)
+    }
+
+    fn login_cookie_jar(&self, url: &Url) -> Result<Arc<Jar>, String> {
+        let jar = Arc::new(Jar::default());
+        if let Some(cookies) = self.cookie_jar.cookies(url) {
+            let cookies = cookies
+                .to_str()
+                .map_err(|_| "验证码 Cookie 格式无效".to_string())?;
+            for cookie in cookies.split(';') {
+                let Some((name, value)) = cookie.trim().split_once('=') else {
+                    continue;
+                };
+                // Preserve CAPTCHA state while withholding old authentication.
+                if name != "new_api_refresh" {
+                    jar.add_cookie_str(&format!("{name}={value}; Path=/; Secure; HttpOnly"), url);
+                }
+            }
+        }
+        Ok(jar)
+    }
+
+    fn complete_refresh(
+        &mut self,
+        data: &LoginSuccessData,
+        refresh_cookie: Option<&str>,
+        expected_epoch: u64,
+        expected_user_id: Option<i64>,
+    ) -> Result<(), String> {
+        if self.auto_refresh_blocked
+            || self.session_epoch != expected_epoch
+            || self.current_user.as_ref().map(|user| user.id) != expected_user_id
+        {
+            return Err("会话已切换，已丢弃过期刷新响应".into());
+        }
+        if expected_user_id != Some(data.user.id) {
+            self.clear_persisted_session();
+            return Err("刷新响应账号与当前会话不符，请重新登录".into());
+        }
+        let refresh_cookie = refresh_cookie
+            .map(str::to_owned)
+            .or_else(|| self.refresh_cookie.clone());
+        let mut storage = self.session_storage(refresh_cookie.as_deref());
+        storage.user = Some(data.user.clone());
+        storage.session_sid = data.session_sid.clone();
+        if let Err(error) = self.storage.save(&storage, SessionWrite::Existing) {
+            self.reset_memory();
+            let message = format!("无法安全保存刷新会话，请重新登录: {error}");
+            self.session_restore_error = Some(message.clone());
+            return Err(message);
+        }
+        self.install_cookie_jar(refresh_cookie.as_deref())?;
+        self.access_token = Some(data.access_token.clone());
+        self.access_expires_at = data.access_expires_at;
+        self.current_user = storage.user;
+        self.session_sid = storage.session_sid;
+        self.refresh_cookie = refresh_cookie;
+        Ok(())
+    }
+
+    fn clear_persisted_session(&mut self) {
+        let generation = self.session_generation.clone();
+        self.reset_memory();
+        if let Err(error) = self.storage.invalidate(generation.as_deref(), false) {
+            self.session_restore_error = Some(format!("本地会话清理未完成，请重新登录: {error}"));
+            log::error!("清理失效会话失败: {error}");
+        }
+    }
+
+    fn validate_current_session(&self) -> Result<(), String> {
+        if self.auto_refresh_blocked {
+            return Err("本地已退出，已禁止自动刷新旧会话".into());
+        }
+        self.storage
+            .validate(
+                self.session_generation.as_deref(),
+                self.current_user.as_ref().map(|user| user.id),
+            )
+            .map_err(|error| error.to_string())
     }
 
     pub fn get_state(&self) -> CurrentAuthState {
@@ -587,6 +1073,7 @@ impl AuthManager {
 
         CurrentAuthState {
             is_logged_in,
+            session_restore_error: self.session_restore_error.clone(),
             user: self.current_user.clone(),
             selected_token_id: self.selected_token_id,
             selected_token_name: self.selected_token_name.clone(),
@@ -598,23 +1085,25 @@ impl AuthManager {
         }
     }
 
-    #[allow(dead_code)]
     fn has_persisted_refresh_cookie(&self) -> bool {
-        let path = Self::storage_path();
-        if let Ok(data) = fs::read_to_string(path) {
-            if let Ok(storage) = serde_json::from_str::<AuthSessionStorage>(&data) {
-                return storage.refresh_cookie.is_some();
-            }
-        }
-        false
+        !self.auto_refresh_blocked && (self.refresh_cookie.is_some() || self.session_sid.is_some())
     }
 
-    pub fn set_selected_token(&mut self, token_id: Option<i64>, token_name: Option<String>) {
+    pub fn set_selected_token(
+        &mut self,
+        token_id: Option<i64>,
+        token_name: Option<String>,
+    ) -> Result<(), String> {
+        let previous_id = self.selected_token_id;
+        let previous_name = self.selected_token_name.clone();
         self.selected_token_id = token_id;
         self.selected_token_name = token_name;
-        if let Err(e) = self.persist_session(None) {
-            log::warn!("保存选定 Token 状态失败: {e}");
+        if let Err(error) = self.persist_session(None) {
+            self.selected_token_id = previous_id;
+            self.selected_token_name = previous_name;
+            return Err(format!("保存选定 Token 状态失败: {error}"));
         }
+        Ok(())
     }
 }
 
@@ -622,15 +1111,16 @@ impl AuthManager {
 
 static AUTH_MGR: once_cell::sync::Lazy<Mutex<AuthManager>> =
     once_cell::sync::Lazy::new(|| Mutex::new(AuthManager::new()));
+// Serialize refresh rotation without preventing logout or an explicit login.
+static REFRESH_GATE: Mutex<()> = Mutex::const_new(());
 
 // ── 接口实现 ──
 
 /// 获取站点基本状态（密码登录开关、验证码配置等）
 pub async fn get_site_status() -> Result<SiteStatus, String> {
-    let mgr = AUTH_MGR.lock().await;
+    let client = AUTH_MGR.lock().await.client.clone();
     let url = format!("{}/api/status", BASE_URL);
-    let resp = mgr
-        .client
+    let resp = client
         .get(&url)
         .header(reqwest::header::ACCEPT, "application/json")
         .header(ORIGIN, AUTH_ORIGIN)
@@ -677,10 +1167,9 @@ pub async fn get_site_status() -> Result<SiteStatus, String> {
 
 /// 获取密码加密公钥
 pub async fn get_encryption_key() -> Result<EncryptionKeyData, String> {
-    let mgr = AUTH_MGR.lock().await;
+    let client = AUTH_MGR.lock().await.client.clone();
     let url = format!("{}/api/user/login/encryption-key", BASE_URL);
-    let resp = mgr
-        .client
+    let resp = client
         .get(&url)
         .header(reqwest::header::ACCEPT, "application/json")
         .header(ORIGIN, AUTH_ORIGIN)
@@ -706,10 +1195,9 @@ pub async fn get_encryption_key() -> Result<EncryptionKeyData, String> {
 
 /// 获取 GO 滑块图片与挑战 ID
 pub async fn generate_captcha() -> Result<CaptchaGenerateData, String> {
-    let mgr = AUTH_MGR.lock().await;
+    let client = AUTH_MGR.lock().await.client.clone();
     let url = format!("{}/api/captcha/generate", BASE_URL);
-    let resp = mgr
-        .client
+    let resp = client
         .get(&url)
         .header(reqwest::header::ACCEPT, "application/json")
         .header(ORIGIN, AUTH_ORIGIN)
@@ -735,7 +1223,7 @@ pub async fn generate_captcha() -> Result<CaptchaGenerateData, String> {
 
 /// 提交滑块校验（成功后会将 new_api_slide_captcha 写入统一 CookieJar）
 pub async fn verify_captcha(captcha_id: String, x: i32, y: i32) -> Result<(), String> {
-    let mgr = AUTH_MGR.lock().await;
+    let client = AUTH_MGR.lock().await.client.clone();
     let url = format!("{}/api/captcha/verify", BASE_URL);
 
     let body = serde_json::json!({
@@ -744,8 +1232,7 @@ pub async fn verify_captcha(captcha_id: String, x: i32, y: i32) -> Result<(), St
         "y": y,
     });
 
-    let resp = mgr
-        .client
+    let resp = client
         .post(&url)
         .header(reqwest::header::ACCEPT, "application/json")
         .header(ORIGIN, AUTH_ORIGIN)
@@ -777,8 +1264,18 @@ pub async fn verify_captcha(captcha_id: String, x: i32, y: i32) -> Result<(), St
 
 /// 提交账号密码登录
 pub async fn login(payload: LoginPayload) -> Result<LoginResult, String> {
-    let mut mgr = AUTH_MGR.lock().await;
     let url = format!("{}/api/user/login", BASE_URL);
+    let (client, epoch, revision) = {
+        let manager = AUTH_MGR.lock().await;
+        (
+            manager.isolated_login_client(&url)?,
+            manager.session_epoch,
+            manager
+                .storage
+                .revision()
+                .map_err(|error| error.to_string())?,
+        )
+    };
 
     let mut body = serde_json::Map::new();
     body.insert("username".to_string(), serde_json::json!(payload.username));
@@ -794,8 +1291,7 @@ pub async fn login(payload: LoginPayload) -> Result<LoginResult, String> {
         return Err("必须提供密码或加密密码".to_string());
     }
 
-    let resp = mgr
-        .client
+    let resp = client
         .post(&url)
         .header(reqwest::header::ACCEPT, "application/json")
         .header(ORIGIN, AUTH_ORIGIN)
@@ -859,30 +1355,36 @@ pub async fn login(payload: LoginPayload) -> Result<LoginResult, String> {
 
     // 完整登录成功
     let success_data = parse_login_success_data(&data)?;
-    mgr.auto_refresh_blocked = false;
-    mgr.session_epoch = mgr.session_epoch.wrapping_add(1);
-    mgr.access_token = Some(success_data.access_token.clone());
-    mgr.access_expires_at = success_data.access_expires_at;
-    mgr.current_user = Some(success_data.user.clone());
-    mgr.session_sid = success_data.session_sid.clone();
-    mgr.persist_session(extracted_refresh_cookie.as_deref())
-        .map_err(|e| format!("持久化登录会话失败: {e}"))?;
+    let mut mgr = AUTH_MGR.lock().await;
+    if mgr.session_epoch != epoch {
+        return Err("会话已切换，已丢弃过期登录响应".into());
+    }
+    mgr.complete_login_at_revision(&success_data, extracted_refresh_cookie.as_deref(), revision)?;
 
     Ok(LoginResult::Success(success_data))
 }
 
 /// 提交 2FA 动态码
 pub async fn login_2fa(flow_token: String, code: String) -> Result<LoginSuccessData, String> {
-    let mut mgr = AUTH_MGR.lock().await;
     let url = format!("{}/api/user/login/2fa", BASE_URL);
+    let (client, epoch, revision) = {
+        let manager = AUTH_MGR.lock().await;
+        (
+            manager.isolated_login_client(&url)?,
+            manager.session_epoch,
+            manager
+                .storage
+                .revision()
+                .map_err(|error| error.to_string())?,
+        )
+    };
 
     let body = serde_json::json!({
         "flow_token": flow_token,
         "code": code.trim(),
     });
 
-    let resp = mgr
-        .client
+    let resp = client
         .post(&url)
         .header(reqwest::header::ACCEPT, "application/json")
         .header(ORIGIN, AUTH_ORIGIN)
@@ -924,14 +1426,11 @@ pub async fn login_2fa(flow_token: String, code: String) -> Result<LoginSuccessD
         .ok_or_else(|| "2FA 成功但未返回数据".to_string())?;
     let success_data = parse_login_success_data(&data)?;
 
-    mgr.auto_refresh_blocked = false;
-    mgr.session_epoch = mgr.session_epoch.wrapping_add(1);
-    mgr.access_token = Some(success_data.access_token.clone());
-    mgr.access_expires_at = success_data.access_expires_at;
-    mgr.current_user = Some(success_data.user.clone());
-    mgr.session_sid = success_data.session_sid.clone();
-    mgr.persist_session(extracted_refresh_cookie.as_deref())
-        .map_err(|e| format!("持久化 2FA 登录会话失败: {e}"))?;
+    let mut mgr = AUTH_MGR.lock().await;
+    if mgr.session_epoch != epoch {
+        return Err("会话已切换，已丢弃过期登录响应".into());
+    }
+    mgr.complete_login_at_revision(&success_data, extracted_refresh_cookie.as_deref(), revision)?;
 
     Ok(success_data)
 }
@@ -998,98 +1497,87 @@ fn parse_login_success_data(data: &serde_json::Value) -> Result<LoginSuccessData
     })
 }
 
-/// 刷新当前登录凭据
-pub async fn refresh_session() -> Result<LoginSuccessData, String> {
-    let mut mgr = AUTH_MGR.lock().await;
-    if mgr.auto_refresh_blocked {
-        return Err("本地已退出，已禁止自动刷新旧会话".to_string());
-    }
-    let epoch = mgr.session_epoch;
-    let url = format!("{}/api/user/auth/refresh", BASE_URL);
+#[derive(Debug)]
+enum RefreshFailure {
+    Retryable(String),
+    Expired(String),
+}
 
-    let mut req = mgr
-        .client
-        .post(&url)
-        .header(ORIGIN, AUTH_ORIGIN)
-        .header(CONTENT_TYPE, "application/json");
-
-    if let Some(sid) = &mgr.session_sid {
-        req = req.header("X-Auth-Session", sid);
-    }
-
-    let resp = match req.send().await {
-        Ok(r) => r,
-        Err(e) => {
-            return Err(format!("刷新会话网络请求异常: {e}"));
-        }
-    };
-
-    let status = resp.status();
+async fn fetch_refreshed_session(
+    request: reqwest::RequestBuilder,
+) -> Result<(LoginSuccessData, Option<String>), RefreshFailure> {
+    let response = request
+        .send()
+        .await
+        .map_err(|error| RefreshFailure::Retryable(format!("刷新会话网络请求异常: {error}")))?;
+    let status = response.status();
     if status == reqwest::StatusCode::UNAUTHORIZED || status == reqwest::StatusCode::FORBIDDEN {
-        mgr.clear_persisted_session();
-        return Err("登录状态已过期，请重新登录".to_string());
+        return Err(RefreshFailure::Expired("登录状态已过期，请重新登录".into()));
     }
-
-    let mut extracted_refresh_cookie: Option<String> = None;
-    for cookie in resp.cookies() {
-        if cookie.name() == "new_api_refresh" {
-            extracted_refresh_cookie = Some(format!(
+    let refresh_cookie = response
+        .cookies()
+        .find(|cookie| cookie.name() == "new_api_refresh")
+        .map(|cookie| {
+            format!(
                 "new_api_refresh={}; Path=/api/user/auth; HttpOnly; Secure; SameSite=Strict",
                 cookie.value()
-            ));
-            break;
-        }
-    }
-
-    let text = match resp.text().await {
-        Ok(t) => t,
-        Err(e) => {
-            mgr.clear_persisted_session();
-            return Err(format!("读取会话刷新响应失败: {e}"));
-        }
-    };
-
+            )
+        });
+    let text = response
+        .text()
+        .await
+        .map_err(|error| RefreshFailure::Expired(format!("读取会话刷新响应失败: {error}")))?;
     let parsed: ApiResponse<serde_json::Value> =
-        match parse_api_response_body(status, &text, "刷新会话") {
-            Ok(p) => p,
-            Err(e) => {
-                mgr.clear_persisted_session();
-                return Err(e);
+        parse_api_response_body(status, &text, "刷新会话").map_err(RefreshFailure::Expired)?;
+    if !status.is_success() || !parsed.success {
+        return Err(RefreshFailure::Expired("登录状态已失效，请重新登录".into()));
+    }
+    let data = parsed
+        .data
+        .ok_or_else(|| RefreshFailure::Expired("刷新会话返回数据为空".into()))?;
+    let data = parse_login_success_data(&data).map_err(RefreshFailure::Expired)?;
+    Ok((data, refresh_cookie))
+}
+
+/// 刷新当前登录凭据
+pub async fn refresh_session() -> Result<LoginSuccessData, String> {
+    let _refresh = REFRESH_GATE.lock().await;
+    let (request, epoch, user_id) = {
+        let mut manager = AUTH_MGR.lock().await;
+        let url = format!("{BASE_URL}/api/user/auth/refresh");
+        let request = match manager.refresh_request(&url) {
+            Ok(request) => request,
+            Err(error) => {
+                manager.reset_memory();
+                manager.session_restore_error = Some(error.clone());
+                return Err(error);
             }
         };
-
-    if !status.is_success() || !parsed.success {
-        mgr.clear_persisted_session();
-        return Err("登录状态已失效，请重新登录".to_string());
-    }
-
-    let data = match parsed.data {
-        Some(d) => d,
-        None => {
-            mgr.clear_persisted_session();
-            return Err("刷新会话返回数据为空".to_string());
-        }
+        (
+            request,
+            manager.session_epoch,
+            manager.current_user.as_ref().map(|user| user.id),
+        )
     };
-
-    let success_data = match parse_login_success_data(&data) {
-        Ok(d) => d,
-        Err(e) => {
-            mgr.clear_persisted_session();
-            return Err(e);
-        }
-    };
-
-    if mgr.auto_refresh_blocked || mgr.session_epoch != epoch {
-        return Err("会话已切换，已丢弃过期刷新响应".to_string());
+    let response = fetch_refreshed_session(request).await;
+    let mut manager = AUTH_MGR.lock().await;
+    if manager.auto_refresh_blocked
+        || manager.session_epoch != epoch
+        || manager.current_user.as_ref().map(|user| user.id) != user_id
+    {
+        return Err("会话已切换，已丢弃过期刷新响应".into());
     }
-    mgr.access_token = Some(success_data.access_token.clone());
-    mgr.access_expires_at = success_data.access_expires_at;
-    mgr.current_user = Some(success_data.user.clone());
-    mgr.session_sid = success_data.session_sid.clone();
-    mgr.persist_session(extracted_refresh_cookie.as_deref())
-        .map_err(|e| format!("持久化刷新会话失败: {e}"))?;
-
-    Ok(success_data)
+    match response {
+        Ok((data, refresh_cookie)) => {
+            manager.complete_refresh(&data, refresh_cookie.as_deref(), epoch, user_id)?;
+            Ok(data)
+        }
+        Err(RefreshFailure::Expired(error)) => {
+            manager.clear_persisted_session();
+            Err(error)
+        }
+        Err(RefreshFailure::Retryable(error)) => Err(error),
+    }
 }
 
 /// 确保拥有可用的 access_token
@@ -1102,9 +1590,7 @@ async fn ensure_access_token() -> Result<String, String> {
     // 先在只读锁下判断
     {
         let mgr = AUTH_MGR.lock().await;
-        if mgr.auto_refresh_blocked {
-            return Err("本地已退出，已禁止自动刷新旧会话".to_string());
-        }
+        mgr.validate_current_session()?;
         if let Some(token) = &mgr.access_token {
             if mgr.access_expires_at > now + 30 {
                 return Ok(token.clone());
@@ -1123,51 +1609,40 @@ async fn ensure_access_token() -> Result<String, String> {
 pub async fn logout() -> Result<(), String> {
     let mut mgr = AUTH_MGR.lock().await;
     let url = format!("{}/api/user/auth/logout", BASE_URL);
-
-    let mut req = mgr.client.post(&url).header(ORIGIN, AUTH_ORIGIN);
-
+    let mut request = mgr.client.post(&url).header(ORIGIN, AUTH_ORIGIN);
     if let Some(token) = &mgr.access_token {
-        req = req.header(AUTHORIZATION, format!("Bearer {}", token));
+        request = request.header(AUTHORIZATION, format!("Bearer {token}"));
     }
     if let Some(sid) = &mgr.session_sid {
-        req = req.header("X-Auth-Session", sid);
+        request = request.header("X-Auth-Session", sid);
     }
 
-    let _ = req.send().await;
-    mgr.auto_refresh_blocked = true;
-    mgr.session_epoch = mgr.session_epoch.wrapping_add(1);
-    if fs::write(AuthManager::logout_marker_path(), b"logged-out").is_err() {
-        mgr.clear_persisted_session();
-        return Err("本地退出未完成: 无法写入退出标记".to_string());
+    // Clear local credentials before waiting for the network. The old request
+    // owns the old client/Jar, so its response cannot repopulate the new Jar.
+    let generation = mgr.session_generation.clone();
+    mgr.reset_memory();
+    let local_result = mgr.storage.invalidate(generation.as_deref(), true);
+    if let Err(error) = &local_result {
+        mgr.session_restore_error = Some(format!("本地退出未完成: {error}"));
     }
-    mgr.clear_persisted_session();
-    if AuthManager::storage_path().exists() {
-        return Err("本地退出未完成: 会话文件仍存在".to_string());
+    drop(mgr);
+    let remote_result = request.send().await;
+    local_result.map_err(|error| format!("本地退出未完成: {error}"))?;
+    match remote_result {
+        Ok(response) if response.status().is_success() => Ok(()),
+        Ok(_) => Err("本地已退出；远程会话吊销未确认".into()),
+        Err(_) => Err("本地已退出；网络不可用，远程会话吊销未确认".into()),
     }
-    mgr.cookie_jar = Arc::new(Jar::default());
-    let mut builder = Client::builder()
-        .cookie_provider(mgr.cookie_jar.clone())
-        .user_agent(USER_AGENT)
-        .timeout(Duration::from_secs(15))
-        .redirect(crate::credential_policy::credentialed_redirect_policy())
-        .no_proxy();
-    let proxy = reqwest::Proxy::custom(|_url| {
-        if let Some(proxy_str) = crate::updater::get_cached_upstream_proxy_url() {
-            Url::parse(&proxy_str).ok()
-        } else {
-            None
-        }
-    });
-    builder = builder.proxy(proxy);
-    mgr.client = builder
-        .build()
-        .map_err(|e| format!("重建认证客户端失败: {e}"))?;
-    Ok(())
 }
 
-/// 获取当前登录态
 pub async fn get_auth_state() -> CurrentAuthState {
-    let mgr = AUTH_MGR.lock().await;
+    let mut mgr = AUTH_MGR.lock().await;
+    if !mgr.auto_refresh_blocked {
+        if let Err(error) = mgr.validate_current_session() {
+            mgr.reset_memory();
+            mgr.session_restore_error = Some(error);
+        }
+    }
     let now = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .unwrap_or_default()
@@ -1182,11 +1657,8 @@ pub async fn get_auth_state() -> CurrentAuthState {
     // 如果 access_token 已经过期但有 refresh cookie，尝试在后台恢复一次
     if mgr.current_user.is_some() && token_expired && mgr.has_persisted_refresh_cookie() {
         drop(mgr);
-        let res = refresh_session().await;
-        let mut mgr = AUTH_MGR.lock().await;
-        if res.is_err() {
-            mgr.clear_persisted_session();
-        }
+        let _ = refresh_session().await;
+        let mgr = AUTH_MGR.lock().await;
         return mgr.get_state();
     }
 
@@ -1194,9 +1666,12 @@ pub async fn get_auth_state() -> CurrentAuthState {
 }
 
 /// 切换当前选中的 API Key 记录
-pub async fn set_selected_token(token_id: Option<i64>, token_name: Option<String>) {
+pub async fn set_selected_token(
+    token_id: Option<i64>,
+    token_name: Option<String>,
+) -> Result<(), String> {
     let mut mgr = AUTH_MGR.lock().await;
-    mgr.set_selected_token(token_id, token_name);
+    mgr.set_selected_token(token_id, token_name)
 }
 
 // ── 令牌管理接口（关键：获取用户在 bob-api 创建的 API Key 列表） ──
@@ -1204,7 +1679,7 @@ pub async fn set_selected_token(token_id: Option<i64>, token_name: Option<String
 /// 获取用户在 https://bob-api.com 创建的 API Key 列表
 pub async fn get_user_tokens(all: Option<bool>) -> Result<Vec<TokenItem>, String> {
     let token = ensure_access_token().await?;
-    let mgr = AUTH_MGR.lock().await;
+    let client = AUTH_MGR.lock().await.client.clone();
 
     let is_all = all.unwrap_or(false);
     // 优先调用 search 接口获取完整列表，若为全部则追加 all=true
@@ -1216,8 +1691,7 @@ pub async fn get_user_tokens(all: Option<bool>) -> Result<Vec<TokenItem>, String
     } else {
         format!("{}/api/token/search?keyword=&p=1&size=100", BASE_URL)
     };
-    let resp = mgr
-        .client
+    let resp = client
         .get(&url)
         .header(AUTHORIZATION, format!("Bearer {}", token))
         .send()
@@ -1270,11 +1744,10 @@ pub async fn get_user_tokens(all: Option<bool>) -> Result<Vec<TokenItem>, String
 /// 获取某个 Token 的真实明文 API Key (调用 POST /api/token/:id/key)
 pub async fn get_token_key(token_id: i64) -> Result<String, String> {
     let token = ensure_access_token().await?;
-    let mgr = AUTH_MGR.lock().await;
+    let client = AUTH_MGR.lock().await.client.clone();
 
     let url = format!("{}/api/token/{}/key", BASE_URL, token_id);
-    let resp = mgr
-        .client
+    let resp = client
         .post(&url)
         .header(AUTHORIZATION, format!("Bearer {}", token))
         .send()
@@ -1528,15 +2001,14 @@ pub async fn get_channel_group_overview(
     hours: Option<u32>,
 ) -> Result<Vec<ChannelGroupOverview>, String> {
     let token = ensure_access_token().await?;
-    let mgr = AUTH_MGR.lock().await;
+    let client = AUTH_MGR.lock().await.client.clone();
 
     let h = hours.unwrap_or(1);
     let url = format!(
         "{}/api/channel/monitor/group-overview?hours={}",
         BASE_URL, h
     );
-    let resp = mgr
-        .client
+    let resp = client
         .get(&url)
         .header(AUTHORIZATION, format!("Bearer {}", token))
         .send()
@@ -1571,10 +2043,44 @@ pub async fn get_channel_group_overview(
     Ok(items)
 }
 
+fn parse_wallet_info(data: &serde_json::Value) -> Result<UserWalletInfo, String> {
+    let quota = data
+        .get("quota")
+        .and_then(serde_json::Value::as_i64)
+        .ok_or_else(|| "服务端未返回有效原始平台余额，无法确认余额".to_string())?;
+    let used_quota = data
+        .get("used_quota")
+        .and_then(serde_json::Value::as_i64)
+        .ok_or_else(|| "服务端未返回有效原始已用额度，无法确认用量".to_string())?;
+    Ok(UserWalletInfo {
+        quota,
+        used_quota,
+        // TODO(SEC-08, backend): confirm the authenticated wallet's currency,
+        // quota unit, conversion direction, provenance and validity contract.
+        // No currency/unit contract has been confirmed for this endpoint.
+        // Similar-looking JSON fields are not evidence of a conversion rate.
+        quota_usd: None,
+        quota_cny: None,
+        used_quota_usd: None,
+        used_quota_cny: None,
+        request_count: data
+            .get("request_count")
+            .and_then(serde_json::Value::as_i64)
+            .filter(|count| *count >= 0),
+        group: data
+            .get("group")
+            .and_then(serde_json::Value::as_str)
+            .map(str::to_owned),
+        quota_per_unit: None,
+        rmb_to_usd_rate: None,
+    })
+}
+
 /// 获取用户在 bob-api 的钱包与额度余额信息 (调用 GET /api/user/self)
 pub async fn get_user_wallet() -> Result<UserWalletInfo, String> {
-    let (mut token, expected_user_id, expected_epoch) = {
+    let (mut token, expected_user_id, expected_epoch, client) = {
         let mgr = AUTH_MGR.lock().await;
+        mgr.validate_current_session()?;
         let token = mgr
             .access_token
             .clone()
@@ -1585,27 +2091,31 @@ pub async fn get_user_wallet() -> Result<UserWalletInfo, String> {
             .map(|u| u.id)
             .ok_or_else(|| "未登录".to_string())?;
         let epoch = mgr.session_epoch;
-        (token, user_id, epoch)
+        (token, user_id, epoch, mgr.client.clone())
     };
     let url = format!("{}/api/user/self", BASE_URL);
 
-    let mut resp = {
-        let mgr = AUTH_MGR.lock().await;
-        mgr.client
-            .get(&url)
-            .header(AUTHORIZATION, format!("Bearer {}", token))
-            .send()
-            .await
-            .map_err(|e| format!("获取账号额度网络异常: {e}"))?
-    };
+    let mut resp = client
+        .get(&url)
+        .header(AUTHORIZATION, format!("Bearer {}", token))
+        .send()
+        .await
+        .map_err(|e| format!("获取账号额度网络异常: {e}"))?;
 
     // 若 access_token 在服务端已失效 (401)，自动刷新一次会话凭据重试
     if resp.status() == reqwest::StatusCode::UNAUTHORIZED {
         if let Ok(refreshed) = refresh_session().await {
             token = refreshed.access_token;
-            let mgr = AUTH_MGR.lock().await;
-            if let Ok(retry_resp) = mgr
-                .client
+            let client = {
+                let mgr = AUTH_MGR.lock().await;
+                if mgr.session_epoch != expected_epoch
+                    || mgr.current_user.as_ref().map(|user| user.id) != Some(expected_user_id)
+                {
+                    return Err("账号已切换，已丢弃旧钱包请求".into());
+                }
+                mgr.client.clone()
+            };
+            if let Ok(retry_resp) = client
                 .get(&url)
                 .header(AUTHORIZATION, format!("Bearer {}", token))
                 .send()
@@ -1615,7 +2125,11 @@ pub async fn get_user_wallet() -> Result<UserWalletInfo, String> {
             }
         } else {
             let mut mgr = AUTH_MGR.lock().await;
-            mgr.clear_persisted_session();
+            if mgr.session_epoch == expected_epoch
+                && mgr.current_user.as_ref().map(|user| user.id) == Some(expected_user_id)
+            {
+                mgr.clear_persisted_session();
+            }
             return Err("登录状态已过期，请重新登录".to_string());
         }
     }
@@ -1654,16 +2168,7 @@ pub async fn get_user_wallet() -> Result<UserWalletInfo, String> {
         }
     }
 
-    let quota = data.get("quota").and_then(|v| v.as_i64()).unwrap_or(0);
-    let used_quota = data.get("used_quota").and_then(|v| v.as_i64()).unwrap_or(0);
-    let request_count = data
-        .get("request_count")
-        .and_then(|v| v.as_i64())
-        .unwrap_or(0);
-    let group = data
-        .get("group")
-        .and_then(|v| v.as_str())
-        .map(|s| s.to_string());
+    let wallet = parse_wallet_info(&data)?;
 
     // 同步提取并更新当前用户的 role 角色（管理员 role >= 10）以及 email 邮箱
     let role = data.get("role").and_then(|v| v.as_i64()).map(|r| r as i32);
@@ -1688,7 +2193,8 @@ pub async fn get_user_wallet() -> Result<UserWalletInfo, String> {
                     u.email = Some(em);
                 }
             }
-            let _ = mgr.persist_session(None);
+            mgr.persist_session(None)
+                .map_err(|error| format!("保存账号资料失败: {error}"))?;
         } else {
             log::warn!(
                 "会话已切换或已退出，丢弃在途钱包资料响应: expected_user={}, expected_epoch={}",
@@ -1698,38 +2204,17 @@ pub async fn get_user_wallet() -> Result<UserWalletInfo, String> {
         }
     }
 
-    let quota_per_unit: i64 = 500000;
-    let rmb_to_usd_rate: f64 = 4.0; // 充值比例 1￥ = 4$
-
-    let quota_usd = quota as f64 / quota_per_unit as f64;
-    let quota_cny = quota_usd / rmb_to_usd_rate;
-
-    let used_quota_usd = used_quota as f64 / quota_per_unit as f64;
-    let used_quota_cny = used_quota_usd / rmb_to_usd_rate;
-
-    Ok(UserWalletInfo {
-        quota,
-        used_quota,
-        quota_usd,
-        quota_cny,
-        used_quota_usd,
-        used_quota_cny,
-        request_count,
-        group,
-        quota_per_unit,
-        rmb_to_usd_rate,
-    })
+    Ok(wallet)
 }
 
 /// 删除指定 API Key (调用 DELETE /api/token/:id)
 #[allow(dead_code)]
 pub async fn delete_user_token(token_id: i64) -> Result<(), String> {
     let token = ensure_access_token().await?;
-    let mgr = AUTH_MGR.lock().await;
+    let client = AUTH_MGR.lock().await.client.clone();
 
     let url = format!("{}/api/token/{}", BASE_URL, token_id);
-    let resp = mgr
-        .client
+    let resp = client
         .delete(&url)
         .header(AUTHORIZATION, format!("Bearer {}", token))
         .send()
@@ -1760,7 +2245,7 @@ pub async fn delete_user_token(token_id: i64) -> Result<(), String> {
 #[allow(dead_code)]
 pub async fn update_user_token_status(token_id: i64, status: i32) -> Result<(), String> {
     let token = ensure_access_token().await?;
-    let mgr = AUTH_MGR.lock().await;
+    let client = AUTH_MGR.lock().await.client.clone();
 
     let url = format!("{}/api/token/?status_only=true", BASE_URL);
     let body = serde_json::json!({
@@ -1768,8 +2253,7 @@ pub async fn update_user_token_status(token_id: i64, status: i32) -> Result<(), 
         "status": status,
     });
 
-    let resp = mgr
-        .client
+    let resp = client
         .put(&url)
         .header(AUTHORIZATION, format!("Bearer {}", token))
         .json(&body)
@@ -1801,11 +2285,10 @@ pub async fn update_user_token_status(token_id: i64, status: i32) -> Result<(), 
 #[allow(dead_code)]
 pub async fn get_token_auto_groups() -> Result<Vec<String>, String> {
     let token = ensure_access_token().await?;
-    let mgr = AUTH_MGR.lock().await;
+    let client = AUTH_MGR.lock().await.client.clone();
 
     let url = format!("{}/api/token/auto-groups", BASE_URL);
-    let resp = mgr
-        .client
+    let resp = client
         .get(&url)
         .header(AUTHORIZATION, format!("Bearer {}", token))
         .send()
@@ -1844,11 +2327,10 @@ pub async fn get_user_available_groups() -> Result<Vec<String>, String> {
         Ok(t) => t,
         Err(_) => return Ok(vec![]),
     };
-    let mgr = AUTH_MGR.lock().await;
+    let client = AUTH_MGR.lock().await.client.clone();
 
     let url = format!("{}/api/user/self/groups", BASE_URL);
-    let resp = match mgr
-        .client
+    let resp = match client
         .get(&url)
         .header(AUTHORIZATION, format!("Bearer {}", token))
         .send()
@@ -1893,7 +2375,7 @@ pub async fn get_user_available_groups() -> Result<Vec<String>, String> {
 #[allow(dead_code)]
 pub async fn get_user_usage_logs(params: UsageLogQueryParams) -> Result<UsageLogsResponse, String> {
     let token = ensure_access_token().await?;
-    let mgr = AUTH_MGR.lock().await;
+    let client = AUTH_MGR.lock().await.client.clone();
 
     let p = params.p.unwrap_or(1);
     let size = params.page_size.unwrap_or(20);
@@ -1938,8 +2420,7 @@ pub async fn get_user_usage_logs(params: UsageLogQueryParams) -> Result<UsageLog
     } else {
         format!("{}/api/log/self", BASE_URL)
     };
-    let resp = mgr
-        .client
+    let resp = client
         .get(&url)
         .header(AUTHORIZATION, format!("Bearer {}", token))
         .query(&query_params)
@@ -1969,22 +2450,27 @@ pub async fn get_user_usage_logs(params: UsageLogQueryParams) -> Result<UsageLog
         .data
         .ok_or_else(|| "使用日志响应中无 data".to_string())?;
 
-    let mut items: Vec<UsageLogItem> = Vec::new();
-    let mut total: i64 = 0;
-
-    if let Some(arr) = data.as_array() {
-        items = serde_json::from_value(serde_json::Value::Array(arr.clone())).unwrap_or_default();
-        total = items.len() as i64;
+    let (items, total) = if let Some(arr) = data.as_array() {
+        let items: Vec<UsageLogItem> =
+            serde_json::from_value(serde_json::Value::Array(arr.clone()))
+                .map_err(|_| "使用日志额度数据无效，无法确认用量".to_string())?;
+        let total = items.len() as i64;
+        (items, total)
     } else if let Some(items_val) = data.get("items").or_else(|| data.get("data")) {
-        if let Some(arr) = items_val.as_array() {
-            items =
-                serde_json::from_value(serde_json::Value::Array(arr.clone())).unwrap_or_default();
-        }
-        total = data
+        let arr = items_val
+            .as_array()
+            .ok_or_else(|| "使用日志列表数据无效，无法确认用量".to_string())?;
+        let items: Vec<UsageLogItem> =
+            serde_json::from_value(serde_json::Value::Array(arr.clone()))
+                .map_err(|_| "使用日志额度数据无效，无法确认用量".to_string())?;
+        let total = data
             .get("total")
             .and_then(|v| v.as_i64())
             .unwrap_or(items.len() as i64);
-    }
+        (items, total)
+    } else {
+        return Err("使用日志响应格式无效，无法确认用量".into());
+    };
 
     Ok(UsageLogsResponse {
         items,
@@ -1998,7 +2484,7 @@ pub async fn get_user_usage_logs(params: UsageLogQueryParams) -> Result<UsageLog
 #[allow(dead_code)]
 pub async fn get_user_usage_stat(params: UsageLogQueryParams) -> Result<UsageStatData, String> {
     let token = ensure_access_token().await?;
-    let mgr = AUTH_MGR.lock().await;
+    let client = AUTH_MGR.lock().await.client.clone();
 
     let mut query_params: Vec<(String, String)> = Vec::new();
 
@@ -2037,8 +2523,7 @@ pub async fn get_user_usage_stat(params: UsageLogQueryParams) -> Result<UsageSta
     } else {
         format!("{}/api/log/self/stat", BASE_URL)
     };
-    let resp = mgr
-        .client
+    let resp = client
         .get(&url)
         .header(AUTHORIZATION, format!("Bearer {}", token))
         .query(&query_params)
@@ -2060,7 +2545,7 @@ pub async fn get_user_usage_stat(params: UsageLogQueryParams) -> Result<UsageSta
     }
 
     let data = parsed.data.unwrap_or_default();
-    let quota = data.get("quota").and_then(|v| v.as_i64()).unwrap_or(0);
+    let quota = data.get("quota").and_then(|v| v.as_i64());
     let prompt_tokens = data
         .get("prompt_tokens")
         .and_then(|v| v.as_i64())
@@ -2133,72 +2618,681 @@ pub async fn get_pricing_data() -> Result<PricingResponse, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::secret_storage::test_support::TestScope;
+    use reqwest::cookie::CookieStore;
+    use std::io::{Read, Write};
+    use std::net::TcpListener;
+    use std::sync::Barrier;
+
+    fn user(id: i64) -> UserInfo {
+        UserInfo {
+            id,
+            username: format!("test-user-{id}"),
+            display_name: None,
+            role: Some(1),
+            email: None,
+        }
+    }
+
+    fn legacy(id: i64) -> AuthSessionStorage {
+        AuthSessionStorage {
+            user: Some(user(id)),
+            refresh_cookie: Some(format!(
+                "new_api_refresh=fake-cookie-{id}; Path=/api/user/auth; Secure; HttpOnly"
+            )),
+            session_sid: Some(format!("fake-sid-{id}")),
+            selected_token_id: Some(10),
+            selected_token_name: Some("fake-token".into()),
+            session_generation: None,
+            storage_revision: None,
+        }
+    }
+
+    fn login_data(id: i64) -> LoginSuccessData {
+        LoginSuccessData {
+            user: user(id),
+            access_token: format!("fake-access-{id}"),
+            access_expires_at: i64::MAX,
+            session_sid: Some(format!("fake-sid-{id}")),
+        }
+    }
+
+    fn fixture() -> (tempfile::TempDir, SessionStore) {
+        let directory = tempfile::tempdir().unwrap();
+        let store = SessionStore {
+            path: directory.path().join("auth_session.json"),
+        };
+        (directory, store)
+    }
+
+    fn write_fixture(store: &SessionStore, storage: &AuthSessionStorage) {
+        crate::safe_fs::with_file_lock(&store.path, || {
+            crate::safe_fs::atomic_write_locked(&store.path, serde_json::to_vec(storage).unwrap())
+        })
+        .unwrap();
+    }
+
+    fn read_fixture(store: &SessionStore) -> AuthSessionStorage {
+        crate::safe_fs::with_file_lock(&store.path, || store.read_locked())
+            .unwrap()
+            .unwrap()
+    }
+
+    fn cookies(manager: &AuthManager) -> Option<String> {
+        manager
+            .cookie_jar
+            .cookies(&Url::parse(&format!("{BASE_URL}/api/user/auth/refresh")).unwrap())
+            .map(|value| value.to_str().unwrap().to_owned())
+    }
 
     #[test]
-    fn test_auth_session_storage_encryption_and_migration() {
-        let temp_dir = tempfile::tempdir().expect("tempdir");
-        let session_file = temp_dir.path().join("auth_session.json");
-        std::env::set_var("AI_HELPER_TEST_SESSION_PATH", &session_file);
+    fn wallet_preserves_raw_quota_without_guessing_unconfirmed_currency_fields() {
+        for conversion in [
+            serde_json::json!({}),
+            serde_json::json!({"quota_per_unit":0,"rmb_to_usd_rate":-4,"quota_usd":99999}),
+            serde_json::json!({"quota_per_unit":500000,"rmb_to_usd_rate":4,"quota_usd":2,"quota_cny":0.5}),
+        ] {
+            let mut data = serde_json::json!({"quota":1234567,"used_quota":42});
+            data.as_object_mut()
+                .unwrap()
+                .extend(conversion.as_object().unwrap().clone());
+            let wallet = parse_wallet_info(&data).unwrap();
+            assert_eq!(wallet.quota, 1234567);
+            assert_eq!(wallet.used_quota, 42);
+            assert!(wallet.quota_usd.is_none());
+            assert!(wallet.quota_cny.is_none());
+            assert!(wallet.used_quota_usd.is_none());
+            assert!(wallet.used_quota_cny.is_none());
+            assert!(wallet.quota_per_unit.is_none());
+            assert!(wallet.rmb_to_usd_rate.is_none());
+            assert!(wallet.request_count.is_none());
+        }
+        let zero = parse_wallet_info(&serde_json::json!({"quota":0,"used_quota":0})).unwrap();
+        assert_eq!(zero.quota, 0);
+    }
 
-        // 1. 模拟写入旧版明文 session.json
-        let legacy_json = r#"{
-  "user": {
-    "id": 42,
-    "username": "alice",
-    "display_name": "Alice",
-    "role": 1
-  },
-  "refresh_cookie": "new_api_refresh=plain_secret_cookie_token; Path=/api/user/auth",
-  "session_sid": "plain_session_sid_string_12345",
-  "selected_token_id": 10,
-  "selected_token_name": "Test Token"
-}"#;
-        fs::write(&session_file, legacy_json).expect("write legacy session");
+    #[test]
+    fn missing_or_invalid_raw_wallet_quota_never_defaults_to_zero() {
+        for invalid in [
+            serde_json::Value::Null,
+            serde_json::json!("0"),
+            serde_json::json!(1.5),
+        ] {
+            assert!(
+                parse_wallet_info(&serde_json::json!({"quota":invalid,"used_quota":0})).is_err()
+            );
+            assert!(
+                parse_wallet_info(&serde_json::json!({"quota":0,"used_quota":invalid})).is_err()
+            );
+        }
+        assert!(parse_wallet_info(&serde_json::json!({"used_quota":1})).is_err());
+        let token: TokenItem =
+            serde_json::from_value(serde_json::json!({"id":1,"name":"fake"})).unwrap();
+        assert!(token.remain_quota.is_none());
+        let log: UsageLogItem = serde_json::from_value(serde_json::json!({"id":1})).unwrap();
+        assert!(log.quota.is_none());
+    }
 
-        // 2. 加载旧版会话，应当解出明文并自动触发加密回写
-        let mut mgr = AuthManager::new();
-        mgr.load_persisted_session();
+    fn delayed_login_server(
+        endpoint: &str,
+        user_id: i64,
+    ) -> (
+        String,
+        tokio::sync::oneshot::Receiver<()>,
+        std::sync::mpsc::Sender<()>,
+        std::thread::JoinHandle<()>,
+    ) {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let url = format!("http://{}{endpoint}", listener.local_addr().unwrap());
+        let endpoint = endpoint.to_owned();
+        let (seen, started) = tokio::sync::oneshot::channel();
+        let (release, released) = std::sync::mpsc::channel();
+        let server = std::thread::spawn(move || {
+            let (mut socket, _) = listener.accept().unwrap();
+            socket
+                .set_read_timeout(Some(Duration::from_secs(5)))
+                .unwrap();
+            let mut request = Vec::new();
+            while !request.windows(4).any(|bytes| bytes == b"\r\n\r\n") {
+                let mut chunk = [0u8; 1024];
+                let amount = socket.read(&mut chunk).unwrap();
+                assert!(amount > 0);
+                request.extend_from_slice(&chunk[..amount]);
+                assert!(request.len() < 32 * 1024);
+            }
+            assert!(String::from_utf8_lossy(&request).starts_with(&format!("POST {endpoint} ")));
+            seen.send(()).unwrap();
+            released.recv_timeout(Duration::from_secs(10)).unwrap();
+            let body = serde_json::json!({ "success": true, "data": {
+                "access_token": format!("fake-late-access-{user_id}"), "access_expires_at": i64::MAX,
+                "user": { "id": user_id, "username": format!("test-user-{user_id}") },
+                "session": { "sid": format!("fake-late-sid-{user_id}") }
+            }}).to_string();
+            write!(socket, "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nSet-Cookie: new_api_refresh=fake-late-cookie-{user_id}; Path=/api/user/auth\r\nConnection: close\r\n\r\n{}", body.len(), body).unwrap();
+        });
+        (url, started, release, server)
+    }
 
+    async fn synthetic_login_response(
+        request: reqwest::RequestBuilder,
+    ) -> (LoginSuccessData, Option<String>) {
+        let response = request.send().await.unwrap();
+        let refresh_cookie = response
+            .cookies()
+            .find(|cookie| cookie.name() == "new_api_refresh")
+            .map(|cookie| {
+                format!(
+                    "new_api_refresh={}; Path=/api/user/auth; Secure; HttpOnly",
+                    cookie.value()
+                )
+            });
+        let status = response.status();
+        let body = response.text().await.unwrap();
+        let parsed: ApiResponse<serde_json::Value> =
+            parse_api_response_body(status, &body, "test login").unwrap();
+        (
+            parse_login_success_data(&parsed.data.unwrap()).unwrap(),
+            refresh_cookie,
+        )
+    }
+
+    #[test]
+    fn legacy_migration_commits_and_verifies_before_activation() {
+        let _scope = TestScope::new().enter();
+        let (_directory, store) = fixture();
+        write_fixture(&store, &legacy(42));
+        let manager = AuthManager::with_storage_path(store.path.clone());
+        assert_eq!(manager.current_user.as_ref().map(|user| user.id), Some(42));
+        assert_eq!(manager.session_sid.as_deref(), Some("fake-sid-42"));
         assert_eq!(
-            mgr.session_sid.as_deref(),
-            Some("plain_session_sid_string_12345")
+            cookies(&manager).as_deref(),
+            Some("new_api_refresh=fake-cookie-42")
         );
-        assert_eq!(mgr.current_user.as_ref().map(|u| u.id), Some(42));
-        assert_eq!(mgr.selected_token_id, Some(10));
+        assert_eq!(manager.selected_token_id, Some(10));
+        assert!(manager.session_restore_error.is_none());
+        let stored = read_fixture(&store);
+        assert!(stored.storage_revision.is_some());
+        assert!(stored.session_sid.as_ref().unwrap().starts_with("enc:v2:"));
+        assert!(stored
+            .refresh_cookie
+            .as_ref()
+            .unwrap()
+            .starts_with("enc:v2:"));
+        let bytes = fs::read_to_string(&store.path).unwrap();
+        assert!(!bytes.contains("fake-sid-42"));
+        assert!(!bytes.contains("fake-cookie-42"));
+        assert!(!store.backup_path().exists());
+        let restored = AuthManager::with_storage_path(store.path.clone());
+        assert_eq!(restored.session_sid, manager.session_sid);
+        assert_ne!(restored.session_generation, manager.session_generation);
+        assert!(!restored.auto_refresh_blocked);
+    }
 
-        // 3. 读取磁盘上回写后的内容，验证敏感字段已被加密，且磁盘中不再包含明文字符串
-        let migrated_data = fs::read_to_string(&session_file).expect("read migrated session");
-        assert!(
-            !migrated_data.contains("plain_secret_cookie_token"),
-            "磁盘文件中绝不能再出现明文 cookie"
-        );
-        assert!(
-            !migrated_data.contains("plain_session_sid_string_12345"),
-            "磁盘文件中绝不能再出现明文 sid"
-        );
-        assert!(
-            migrated_data.contains("enc:v1:"),
-            "回写后的字段必须包含加密前缀 enc:v1:"
-        );
-
-        let parsed_storage: AuthSessionStorage =
-            serde_json::from_str(&migrated_data).expect("parse storage");
-        assert!(crate::secret_storage::is_encrypted(
-            parsed_storage.refresh_cookie.as_ref().unwrap()
-        ));
-        assert!(crate::secret_storage::is_encrypted(
-            parsed_storage.session_sid.as_ref().unwrap()
-        ));
-
-        // 4. 重启加载已加密的会话，验证可以正常解密且无需再次迁移
-        let mut new_mgr = AuthManager::new();
-        new_mgr.load_persisted_session();
+    #[test]
+    fn unavailable_migration_never_activates_and_remains_blocked_after_restart() {
+        let scope = TestScope::unavailable();
+        let _guard = scope.enter();
+        let (_directory, store) = fixture();
+        write_fixture(&store, &legacy(42));
+        let manager = AuthManager::with_storage_path(store.path.clone());
+        assert!(manager.auto_refresh_blocked);
+        assert!(manager.current_user.is_none());
+        assert!(manager.session_sid.is_none());
+        assert!(cookies(&manager).is_none());
+        assert!(manager.get_state().session_restore_error.is_some());
+        assert!(store.marker_path().exists());
+        // Retain the sole old copy for recovery, guarded by the durable marker.
         assert_eq!(
-            new_mgr.session_sid.as_deref(),
-            Some("plain_session_sid_string_12345")
+            read_fixture(&store).session_sid.as_deref(),
+            Some("fake-sid-42")
         );
-        assert_eq!(new_mgr.current_user.as_ref().map(|u| u.id), Some(42));
+        scope.set_available(true);
+        let restarted = AuthManager::with_storage_path(store.path.clone());
+        assert!(restarted.auto_refresh_blocked);
+        assert!(restarted.current_user.is_none());
+        assert!(restarted.validate_current_session().is_err());
+    }
 
-        std::env::remove_var("AI_HELPER_TEST_SESSION_PATH");
+    #[test]
+    fn protected_restore_also_requires_the_system_service() {
+        let scope = TestScope::new();
+        let _guard = scope.enter();
+        let (_directory, store) = fixture();
+        let mut original = AuthManager::with_storage_path(store.path.clone());
+        original
+            .complete_login(&login_data(42), legacy(42).refresh_cookie.as_deref())
+            .unwrap();
+        scope.set_available(false);
+        let restarted = AuthManager::with_storage_path(store.path.clone());
+        assert!(restarted.auto_refresh_blocked);
+        assert!(restarted.session_restore_error.is_some());
+        assert!(cookies(&restarted).is_none());
+        assert!(store.marker_path().exists());
+    }
+
+    #[test]
+    fn corrupt_json_or_one_corrupt_credential_never_partially_restores() {
+        let _scope = TestScope::new().enter();
+        for corrupt_json in [false, true] {
+            let (_directory, store) = fixture();
+            let mut storage = legacy(42);
+            storage.session_sid = Some("enc:v2:invalid-purpose:malformed".into());
+            write_fixture(&store, &storage);
+            if corrupt_json {
+                fs::write(&store.path, b"{broken").unwrap();
+            }
+            let manager = AuthManager::with_storage_path(store.path.clone());
+            assert!(manager.current_user.is_none());
+            assert!(manager.refresh_cookie.is_none());
+            assert!(manager.session_restore_error.is_some());
+            assert!(cookies(&manager).is_none());
+            assert!(store.marker_path().exists());
+        }
+    }
+
+    #[test]
+    fn migration_cleanup_failure_blocks_activation() {
+        let _scope = TestScope::new().enter();
+        let (_directory, store) = fixture();
+        write_fixture(&store, &legacy(42));
+        fs::create_dir(store.backup_path()).unwrap();
+        let manager = AuthManager::with_storage_path(store.path.clone());
+        assert!(manager.current_user.is_none());
+        assert!(manager.session_restore_error.is_some());
+        assert!(store.marker_path().exists());
+    }
+
+    #[test]
+    fn failed_login_write_never_enables_memory_or_removes_logout_marker() {
+        let scope = TestScope::unavailable();
+        let _guard = scope.enter();
+        let (_directory, store) = fixture();
+        store.invalidate(None, true).unwrap();
+        let mut manager = AuthManager::with_storage_path(store.path.clone());
+        assert!(manager
+            .complete_login(&login_data(42), legacy(42).refresh_cookie.as_deref())
+            .is_err());
+        assert!(!manager.get_state().is_logged_in);
+        assert!(manager.access_token.is_none());
+        assert!(cookies(&manager).is_none());
+        assert!(store.marker_path().exists());
+        scope.set_available(true);
+        manager
+            .complete_login(&login_data(42), legacy(42).refresh_cookie.as_deref())
+            .unwrap();
+        assert!(manager.get_state().is_logged_in);
+        assert!(!store.marker_path().exists());
+    }
+
+    #[test]
+    fn invalid_session_path_reports_failure_without_touching_home() {
+        let _scope = TestScope::new().enter();
+        let (directory, _store) = fixture();
+        let parent_file = directory.path().join("blocked-parent");
+        fs::write(&parent_file, b"not a directory").unwrap();
+        let mut manager = AuthManager::with_storage_path(parent_file.join("session.json"));
+        assert!(manager.session_restore_error.is_some());
+        assert!(manager.complete_login(&login_data(42), None).is_err());
+        assert!(!manager.get_state().is_logged_in);
+        assert!(manager.auto_refresh_blocked);
+        assert_eq!(fs::read(&parent_file).unwrap(), b"not a directory");
+    }
+
+    #[test]
+    fn ordinary_save_cannot_remove_an_explicit_logout_marker() {
+        let _scope = TestScope::new().enter();
+        let (_directory, store) = fixture();
+        let mut manager = AuthManager::with_storage_path(store.path.clone());
+        manager
+            .complete_login(&login_data(42), legacy(42).refresh_cookie.as_deref())
+            .unwrap();
+        let stale = manager.session_storage(None);
+        store.invalidate(None, true).unwrap();
+        assert!(store.save(&stale, SessionWrite::Existing).is_err());
+        assert!(store.marker_path().exists());
+        assert!(!store.path.exists());
+        let restarted = AuthManager::with_storage_path(store.path.clone());
+        assert!(restarted.current_user.is_none());
+        assert!(restarted.auto_refresh_blocked);
+    }
+
+    #[test]
+    fn concurrent_logout_and_refresh_never_resurrect_a_session() {
+        let scope = TestScope::new();
+        let _guard = scope.enter();
+        let (_directory, store) = fixture();
+        for _ in 0..12 {
+            let mut storage = legacy(42);
+            storage.session_generation = Some(SessionStore::new_generation().unwrap());
+            store
+                .save(
+                    &storage,
+                    SessionWrite::ExplicitLogin(store.revision().unwrap()),
+                )
+                .unwrap();
+            let barrier = Arc::new(Barrier::new(2));
+            let save = {
+                let store = store.clone();
+                let scope = scope.clone();
+                let barrier = barrier.clone();
+                std::thread::spawn(move || {
+                    let _guard = scope.enter();
+                    barrier.wait();
+                    store.save(&storage, SessionWrite::Existing)
+                })
+            };
+            let logout = {
+                let store = store.clone();
+                let scope = scope.clone();
+                std::thread::spawn(move || {
+                    let _guard = scope.enter();
+                    barrier.wait();
+                    store.invalidate(None, true)
+                })
+            };
+            let _ = save.join().unwrap();
+            logout.join().unwrap().unwrap();
+            assert!(store.marker_path().exists());
+            assert!(!store.path.exists());
+            assert!(store.restore().unwrap().is_none());
+        }
+    }
+
+    #[test]
+    fn account_switch_never_inherits_refresh_cookie_or_token_selection() {
+        let _scope = TestScope::new().enter();
+        let (_directory, store) = fixture();
+        let mut manager = AuthManager::with_storage_path(store.path.clone());
+        manager
+            .complete_login(&login_data(42), legacy(42).refresh_cookie.as_deref())
+            .unwrap();
+        manager
+            .set_selected_token(Some(10), Some("fake-token".into()))
+            .unwrap();
+        let old = manager.session_storage(None);
+        manager.complete_login(&login_data(84), None).unwrap();
+        assert_eq!(manager.current_user.as_ref().map(|user| user.id), Some(84));
+        assert!(manager.refresh_cookie.is_none());
+        assert!(cookies(&manager).is_none());
+        assert!(manager.selected_token_id.is_none());
+        assert!(read_fixture(&store).refresh_cookie.is_none());
+        assert!(store.save(&old, SessionWrite::Existing).is_err());
+        store
+            .invalidate(old.session_generation.as_deref(), false)
+            .unwrap();
+        store
+            .invalidate(old.session_generation.as_deref(), true)
+            .unwrap();
+        assert_eq!(read_fixture(&store).user.unwrap().id, 84);
+        assert!(!store.marker_path().exists());
+    }
+
+    #[test]
+    fn reauthentication_to_same_account_rejects_old_generation() {
+        let _scope = TestScope::new().enter();
+        let (_directory, store) = fixture();
+        let mut manager = AuthManager::with_storage_path(store.path.clone());
+        manager
+            .complete_login(&login_data(42), legacy(42).refresh_cookie.as_deref())
+            .unwrap();
+        let old = manager.session_storage(None);
+        manager.complete_login(&login_data(42), None).unwrap();
+        assert_ne!(manager.session_generation, old.session_generation);
+        assert!(store.save(&old, SessionWrite::Existing).is_err());
+        assert!(read_fixture(&store).refresh_cookie.is_none());
+    }
+
+    #[test]
+    fn selected_token_is_rolled_back_when_persistence_is_blocked() {
+        let _scope = TestScope::new().enter();
+        let (_directory, store) = fixture();
+        let mut manager = AuthManager::with_storage_path(store.path.clone());
+        manager.complete_login(&login_data(42), None).unwrap();
+        store.invalidate(None, true).unwrap();
+        assert!(manager
+            .set_selected_token(Some(10), Some("fake-token".into()))
+            .is_err());
+        assert!(manager.selected_token_id.is_none());
+        assert!(store.marker_path().exists());
+    }
+
+    #[test]
+    fn failed_postcommit_readback_preserves_durable_credential_references() {
+        let scope = TestScope::new();
+        let _guard = scope.enter();
+        let (_directory, store) = fixture();
+        let mut manager = AuthManager::with_storage_path(store.path.clone());
+        // The two staged fields verify successfully; the first primary-file
+        // verification read then fails while protection/deletion remain usable.
+        scope.fail_reads_after(2);
+        assert!(manager
+            .complete_login(&login_data(42), legacy(42).refresh_cookie.as_deref())
+            .is_err());
+        assert!(manager.auto_refresh_blocked);
+        assert!(!manager.get_state().is_logged_in);
+        assert!(store.marker_path().exists());
+        scope.clear_read_failure();
+        let protected = read_fixture(&store);
+        let recovered = SessionStore::unprotect(&protected).unwrap();
+        assert_eq!(recovered.session_sid.as_deref(), Some("fake-sid-42"));
+        assert_eq!(recovered.user.unwrap().id, 42);
+        // The file remains usable for explicit recovery, never automatic login.
+        assert!(store.restore().is_err());
+    }
+
+    #[test]
+    fn login_jar_keeps_captcha_but_cannot_mutate_the_active_refresh_cookie() {
+        let _scope = TestScope::new().enter();
+        let (_directory, store) = fixture();
+        let mut manager = AuthManager::with_storage_path(store.path.clone());
+        manager
+            .complete_login(&login_data(42), legacy(42).refresh_cookie.as_deref())
+            .unwrap();
+        let url = Url::parse(&format!("{BASE_URL}/api/user/login")).unwrap();
+        manager
+            .cookie_jar
+            .add_cookie_str("new_api_slide_captcha=fake-captcha; Path=/; Secure", &url);
+        manager
+            .cookie_jar
+            .add_cookie_str("new_api_refresh=fake-wide-cookie; Path=/; Secure", &url);
+        let isolated = manager.login_cookie_jar(&url).unwrap();
+        let login_cookies = isolated.cookies(&url).unwrap().to_str().unwrap().to_owned();
+        assert!(login_cookies.contains("new_api_slide_captcha=fake-captcha"));
+        assert!(!login_cookies.contains("new_api_refresh"));
+        isolated.add_cookie_str("new_api_refresh=fake-uncommitted; Path=/; Secure", &url);
+        let active = manager
+            .cookie_jar
+            .cookies(&url)
+            .unwrap()
+            .to_str()
+            .unwrap()
+            .to_owned();
+        assert!(active.contains("fake-wide-cookie"));
+        assert!(!active.contains("fake-uncommitted"));
+    }
+
+    #[test]
+    fn unreadable_marker_blocks_restore_even_when_session_is_valid() {
+        let _scope = TestScope::new().enter();
+        let (_directory, store) = fixture();
+        write_fixture(&store, &legacy(42));
+        fs::create_dir(store.marker_path()).unwrap();
+        let manager = AuthManager::with_storage_path(store.path.clone());
+        assert!(manager.auto_refresh_blocked);
+        assert!(manager.session_restore_error.is_some());
+        assert!(cookies(&manager).is_none());
+    }
+
+    #[tokio::test]
+    async fn late_password_login_cannot_replace_another_instances_new_account() {
+        let _scope = TestScope::new().enter();
+        let (_directory, store) = fixture();
+        let mut first = AuthManager::with_storage_path(store.path.clone());
+        let revision = first.storage.revision().unwrap();
+        let (url, started, release, server) = delayed_login_server("/api/user/login", 42);
+        let request = first.isolated_login_client(&url).unwrap().post(url);
+        let response = tokio::spawn(synthetic_login_response(request));
+        started.await.unwrap();
+        let mut second = AuthManager::with_storage_path(store.path.clone());
+        second
+            .complete_login(&login_data(84), legacy(84).refresh_cookie.as_deref())
+            .unwrap();
+        let committed = store.revision().unwrap();
+        release.send(()).unwrap();
+        let (data, cookie) = response.await.unwrap();
+        assert!(first
+            .complete_login_at_revision(&data, cookie.as_deref(), revision)
+            .is_err());
+        assert_eq!(store.revision().unwrap(), committed);
+        assert_eq!(read_fixture(&store).user.unwrap().id, 84);
+        assert!(!store.marker_path().exists());
+        assert!(second.validate_current_session().is_ok());
+        assert!(!first.get_state().is_logged_in);
+        server.join().unwrap();
+    }
+
+    #[tokio::test]
+    async fn late_two_factor_login_cannot_clear_another_instances_new_logout_marker() {
+        let _scope = TestScope::new().enter();
+        let (_directory, store) = fixture();
+        store.invalidate(None, true).unwrap();
+        let mut first = AuthManager::with_storage_path(store.path.clone());
+        let revision = first.storage.revision().unwrap();
+        let (url, started, release, server) = delayed_login_server("/api/user/login/2fa", 42);
+        let request = first.isolated_login_client(&url).unwrap().post(url);
+        let response = tokio::spawn(synthetic_login_response(request));
+        started.await.unwrap();
+        let second = AuthManager::with_storage_path(store.path.clone());
+        second.storage.invalidate(None, true).unwrap();
+        let logged_out = store.revision().unwrap();
+        assert_ne!(logged_out.marker, revision.marker);
+        release.send(()).unwrap();
+        let (data, cookie) = response.await.unwrap();
+        assert!(first
+            .complete_login_at_revision(&data, cookie.as_deref(), revision)
+            .is_err());
+        assert_eq!(store.revision().unwrap(), logged_out);
+        assert!(store.marker_path().exists());
+        assert!(!store.path.exists());
+        let restarted = AuthManager::with_storage_path(store.path.clone());
+        assert!(restarted.auto_refresh_blocked);
+        assert!(restarted.current_user.is_none());
+        assert!(cookies(&restarted).is_none());
+        server.join().unwrap();
+    }
+
+    #[tokio::test]
+    async fn delayed_refresh_response_cannot_restore_a_logged_out_or_replaced_account() {
+        let _scope = TestScope::new().enter();
+        let (_directory, store) = fixture();
+        let mut manager = AuthManager::with_storage_path(store.path.clone());
+        manager
+            .complete_login(&login_data(42), legacy(42).refresh_cookie.as_deref())
+            .unwrap();
+        let epoch = manager.session_epoch;
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let url = format!(
+            "http://{}/api/user/auth/refresh",
+            listener.local_addr().unwrap()
+        );
+        let (seen, started) = tokio::sync::oneshot::channel();
+        let (release, released) = std::sync::mpsc::channel();
+        let server = std::thread::spawn(move || {
+            let (mut socket, _) = listener.accept().unwrap();
+            socket
+                .set_read_timeout(Some(Duration::from_secs(5)))
+                .unwrap();
+            let mut request = [0u8; 4096];
+            let size = socket.read(&mut request).unwrap();
+            assert!(String::from_utf8_lossy(&request[..size]).contains("fake-sid-42"));
+            seen.send(()).unwrap();
+            released.recv_timeout(Duration::from_secs(5)).unwrap();
+            let body = serde_json::json!({
+                "success": true,
+                "data": { "access_token": "fake-late-access", "access_expires_at": i64::MAX,
+                    "user": { "id": 42, "username": "test-user-42" },
+                    "session": { "sid": "fake-late-sid" } }
+            })
+            .to_string();
+            write!(socket, "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nSet-Cookie: new_api_refresh=fake-late-cookie; Path=/\r\nConnection: close\r\n\r\n{}", body.len(), body).unwrap();
+        });
+        let request = manager.refresh_request(&url).unwrap();
+        let response = tokio::spawn(fetch_refreshed_session(request));
+        started.await.unwrap();
+        manager.reset_memory();
+        store.invalidate(None, true).unwrap();
+        manager.complete_login(&login_data(84), None).unwrap();
+        release.send(()).unwrap();
+        let (data, cookie) = response.await.unwrap().unwrap();
+        assert!(manager
+            .complete_refresh(&data, cookie.as_deref(), epoch, Some(42))
+            .is_err());
+        assert_eq!(manager.current_user.as_ref().map(|user| user.id), Some(84));
+        assert_eq!(manager.access_token.as_deref(), Some("fake-access-84"));
+        assert!(manager.refresh_cookie.is_none());
+        assert!(cookies(&manager).is_none());
+        assert_eq!(read_fixture(&store).user.unwrap().id, 84);
+        server.join().unwrap();
+    }
+
+    #[tokio::test]
+    async fn simulated_login_response_is_committed_without_real_account_requests() {
+        let _scope = TestScope::new().enter();
+        let (_directory, store) = fixture();
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = listener.local_addr().unwrap();
+        let server = std::thread::spawn(move || {
+            let (mut socket, _) = listener.accept().unwrap();
+            socket
+                .set_read_timeout(Some(Duration::from_secs(5)))
+                .unwrap();
+            let mut request = [0u8; 4096];
+            let amount = socket.read(&mut request).unwrap();
+            assert!(amount > 0);
+            let body = serde_json::json!({
+                "success": true,
+                "data": {
+                    "access_token": "fake-http-access",
+                    "access_expires_at": i64::MAX,
+                    "user": { "id": 42, "username": "test-user-42" },
+                    "session": { "sid": "fake-http-sid" }
+                }
+            })
+            .to_string();
+            write!(socket, "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nSet-Cookie: new_api_refresh=fake-http-cookie; Path=/api/user/auth; HttpOnly\r\nConnection: close\r\n\r\n{}", body.len(), body).unwrap();
+        });
+        let response = Client::builder()
+            .no_proxy()
+            .build()
+            .unwrap()
+            .post(format!("http://{address}/api/user/login"))
+            .send()
+            .await
+            .unwrap();
+        let cookie = response
+            .cookies()
+            .find(|cookie| cookie.name() == "new_api_refresh")
+            .map(|cookie| {
+                format!(
+                    "new_api_refresh={}; Path=/api/user/auth; Secure; HttpOnly",
+                    cookie.value()
+                )
+            });
+        let status = response.status();
+        let text = response.text().await.unwrap();
+        let parsed: ApiResponse<serde_json::Value> =
+            parse_api_response_body(status, &text, "test login").unwrap();
+        let data = parse_login_success_data(&parsed.data.unwrap()).unwrap();
+        let mut manager = AuthManager::with_storage_path(store.path.clone());
+        manager.complete_login(&data, cookie.as_deref()).unwrap();
+        assert_eq!(manager.access_token.as_deref(), Some("fake-http-access"));
+        assert_eq!(
+            cookies(&manager).as_deref(),
+            Some("new_api_refresh=fake-http-cookie")
+        );
+        assert!(!fs::read_to_string(&store.path)
+            .unwrap()
+            .contains("fake-http-cookie"));
+        server.join().unwrap();
     }
 }

@@ -105,7 +105,7 @@ fn read_optional(path: &Path) -> Result<Option<Vec<u8>>, AppError> {
     }
 }
 
-fn recover_missing_file_locked(path: &Path) -> Result<(), AppError> {
+pub(crate) fn recover_missing_file_locked(path: &Path) -> Result<(), AppError> {
     if read_optional(path)?.is_none() {
         if let Some(contents) = read_optional(&backup_path(path))? {
             atomic_write_locked(path, contents)?;
@@ -121,10 +121,48 @@ pub fn recover_missing_file(path: &Path) -> Result<(), AppError> {
 
 /// Caller must already hold `with_file_lock(path, ...)`.
 pub(crate) fn atomic_write_locked(path: &Path, contents: impl AsRef<[u8]>) -> Result<(), AppError> {
+    prepare_write_locked(path, contents)?.commit()
+}
+
+pub(crate) struct PreparedWrite {
+    target: PathBuf,
+    temporary: TemporaryFile,
+}
+
+impl PreparedWrite {
+    /// The caller must keep the target's lock through preparation and commit.
+    pub(crate) fn commit(self) -> Result<(), AppError> {
+        platform::replace(&self.temporary.0, &self.target)
+    }
+}
+
+/// Prewrite and sync all transaction files before replacing the first target.
+/// Caller must already hold the target's file lock.
+pub(crate) fn prepare_write_locked(
+    path: &Path,
+    contents: impl AsRef<[u8]>,
+) -> Result<PreparedWrite, AppError> {
     reject_link(path)?;
-    let tmp = write_temp(path, contents.as_ref())?;
-    platform::replace(&tmp.0, path)?;
-    Ok(())
+    #[cfg(unix)]
+    {
+        // Detect a non-readable directory before a multi-file transaction
+        // commits any target; replace also opens it before rename.
+        File::open(prepare_parent(path)?)?;
+    }
+    Ok(PreparedWrite {
+        target: path.to_path_buf(),
+        temporary: write_temp(path, contents.as_ref())?,
+    })
+}
+
+/// Caller must already hold `with_file_lock(path, ...)`.
+pub(crate) fn remove_file_locked(path: &Path) -> Result<(), AppError> {
+    reject_link(path)?;
+    match fs::symlink_metadata(path) {
+        Ok(_) => platform::remove(path),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(error) => Err(error.into()),
+    }
 }
 
 pub fn atomic_write(path: &Path, contents: impl AsRef<[u8]>) -> Result<(), AppError> {
@@ -231,6 +269,17 @@ mod platform {
             path: target.to_path_buf(),
             source,
         })
+    }
+
+    pub(super) fn remove(target: &Path) -> Result<(), AppError> {
+        let directory = File::open(target.parent().expect("target has parent"))?;
+        fs::remove_file(target)?;
+        directory
+            .sync_all()
+            .map_err(|source| AppError::FileCommittedButNotDurable {
+                path: target.to_path_buf(),
+                source,
+            })
     }
 
     #[cfg(test)]
@@ -510,6 +559,11 @@ mod platform {
         Ok(())
     }
 
+    pub(super) fn remove(target: &Path) -> Result<(), AppError> {
+        fs::remove_file(target)?;
+        Ok(())
+    }
+
     #[link(name = "kernel32")]
     unsafe extern "system" {
         fn CreateFileW(
@@ -669,7 +723,7 @@ mod platform {
             let sid = sid_string().unwrap();
             let matches_current_user = acl.contains(&sid)
                 || (sid.ends_with("-500") && acl.contains(";;;LA)"))
-                || current_user_sddl_ace(&sid).map_or(false, |ace| acl.contains(&ace));
+                || current_user_sddl_ace(&sid).is_some_and(|ace| acl.contains(&ace));
             assert!(matches_current_user, "unexpected ACL: {acl}");
             assert!(!acl.contains(";;;WD)"), "Everyone still has access: {acl}");
         }

@@ -2583,9 +2583,10 @@ async fn forward_to_official_result(
         ));
     }
 
-    let url = format!("{}{}", config.official_gateway.trim_end_matches('/'), path);
+    let url = crate::accio::config::official_request_url(&config, path)
+        .map_err(|error| (StatusCode::FORBIDDEN, error))?;
 
-    let mut req = client.request(method, &url).body(body);
+    let mut req = client.request(method, url).body(body);
     for (name, val) in &headers {
         if is_end_to_end_request_header(name.as_str()) {
             req = req.header(name, val);
@@ -2621,9 +2622,9 @@ async fn proxy_official_stream(
     tx: tokio::sync::mpsc::Sender<Result<Bytes, std::convert::Infallible>>,
 ) -> Result<(), String> {
     use futures_util::StreamExt;
-    let url = format!("{}{}", config.official_gateway.trim_end_matches('/'), path);
+    let url = crate::accio::config::official_request_url(config, path)?;
 
-    let mut req = client.request(method, &url).body(body);
+    let mut req = client.request(method, url).body(body);
     for (name, val) in &headers {
         if is_end_to_end_request_header(name.as_str()) {
             req = req.header(name, val);

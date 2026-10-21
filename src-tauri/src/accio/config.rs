@@ -47,6 +47,43 @@ fn default_official_gateway() -> String {
     "https://phoenix-gw.alibaba.com".to_string()
 }
 
+/// Business cookies and authorization may only be forwarded to this official origin.
+pub fn validate_official_gateway(value: &str) -> Result<reqwest::Url, String> {
+    let url = reqwest::Url::parse(value.trim()).map_err(|_| "官方网关地址无效".to_string())?;
+    if url.scheme() != "https"
+        || url.host_str() != Some("phoenix-gw.alibaba.com")
+        || url.port_or_known_default() != Some(443)
+        || !url.username().is_empty()
+        || url.password().is_some()
+        || url.path() != "/"
+        || url.query().is_some()
+        || url.fragment().is_some()
+    {
+        return Err("官方网关仅允许 https://phoenix-gw.alibaba.com".to_string());
+    }
+    Ok(url)
+}
+
+pub fn official_request_url(config: &AccioConfig, path: &str) -> Result<reqwest::Url, String> {
+    if config.prevent_official_leak {
+        return Err("防官方泄露已开启，已阻止官方网关转发".to_string());
+    }
+    let origin = validate_official_gateway(&config.official_gateway)?;
+    if !path.starts_with('/') || path.starts_with("//") || path.contains('\\') {
+        return Err("官方网关请求路径无效".to_string());
+    }
+    let target = reqwest::Url::parse(&format!(
+        "{}{}",
+        origin.as_str().trim_end_matches('/'),
+        path
+    ))
+    .map_err(|_| "官方网关请求路径无效".to_string())?;
+    if target.origin() != origin.origin() || target.fragment().is_some() {
+        return Err("官方网关请求目标无效".to_string());
+    }
+    Ok(target)
+}
+
 fn default_true() -> bool {
     true
 }
@@ -137,6 +174,7 @@ pub fn merge_config_update(
 }
 
 pub fn save_accio_config(config: &AccioConfig) -> Result<(), AppError> {
+    validate_official_gateway(&config.official_gateway).map_err(AppError::Other)?;
     crate::credential_policy::validate_key_destination(
         &config.api_key,
         &config.base_url,
@@ -186,6 +224,47 @@ pub fn get_accio_ui_config(bridge_running: bool, actual_port: Option<u16>) -> Ac
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn official_gateway_rejects_untrusted_credential_destinations() {
+        assert!(validate_official_gateway("https://phoenix-gw.alibaba.com").is_ok());
+        assert!(validate_official_gateway("https://phoenix-gw.alibaba.com:443/").is_ok());
+        for value in [
+            "http://phoenix-gw.alibaba.com",
+            "https://phoenix-gw.alibaba.com.evil.example",
+            "https://phoenix-gw.alibaba.com@evil.example",
+            "https://user@phoenix-gw.alibaba.com",
+            "https://phoenix-gw.alibaba.com:8443",
+            "https://phoenix-gw.alibaba.com/custom",
+            "https://phoenix-gw.alibaba.com?redirect=evil",
+            "https://phoenix-gw.alibaba.com/#fragment",
+        ] {
+            assert!(validate_official_gateway(value).is_err(), "{value}");
+        }
+    }
+
+    #[test]
+    fn official_forwarding_checks_protection_destination_and_path() {
+        let mut config = AccioConfig::default();
+        assert!(official_request_url(&config, "/api/test").is_err());
+        config.prevent_official_leak = false;
+        assert_eq!(
+            official_request_url(&config, "/api/test?q=1")
+                .unwrap()
+                .as_str(),
+            "https://phoenix-gw.alibaba.com/api/test?q=1"
+        );
+        for path in [
+            "//evil.example/test",
+            "@evil.example",
+            "/\\evil.example",
+            "/x#fragment",
+        ] {
+            assert!(official_request_url(&config, path).is_err(), "{path}");
+        }
+        config.official_gateway = "https://evil.example".into();
+        assert!(official_request_url(&config, "/api/test").is_err());
+    }
 
     #[test]
     fn explicitly_empty_image_model_disables_images() {

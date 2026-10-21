@@ -116,7 +116,7 @@ export const TOOL_EXCLUSIVE_GUIDES: Record<string, ToolExclusiveGuide> = {
     title: "ChatGPT (Codex) 专属分组与密钥规则",
     tag: "Codex 流式专用",
     desc: "Codex 命令行终端深度依赖高并发流式代码补全与特定上游模型（如 gpt-5-codex、gpt-4o、o3-mini）。必须关联拥有 Codex 专项通道权限的分组。",
-    technicalNote: "若关联普通低频或非代码分组，可能因上游并发限频或缺少 Codex 路由权限导致补全超时。配置将写入系统环境变量 CUSTOM_OPENAI_API_KEY 直连网关。",
+    technicalNote: "若关联普通低频或非代码分组，可能因上游并发限频或缺少 Codex 路由权限导致补全超时。网关地址与对应 Key 将一起保存到当前用户私有的 ~/.codex/config.toml，CLI 重新加载后生效。",
     recommendedKeywords: ["codex", "svip-codex", "openai", "gpt"],
   },
   claude: {

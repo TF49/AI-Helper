@@ -497,7 +497,10 @@ async fn update_user_token_group(
 }
 
 #[tauri::command]
-async fn set_selected_token(token_id: Option<i64>, token_name: Option<String>) {
+async fn set_selected_token(
+    token_id: Option<i64>,
+    token_name: Option<String>,
+) -> Result<(), String> {
     auth::set_selected_token(token_id, token_name).await
 }
 
