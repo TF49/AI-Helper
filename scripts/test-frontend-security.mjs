@@ -27,7 +27,7 @@ const fields = {
   ChannelGroupMonitor: ["groups", "loading", "pricingInfo", "pricingLoading", "switchModalState", "boundTokenInfo",
     "setSwitchModalState", "loadData", "handleInitiateSwitchGroup", "handleConfirmSwitchGroup", "handleCloseSwitchModal"],
   AuthProvider: ["authState", "wallet", "walletError", "isLoadingWallet", "authSessionGeneration", "isAuthReady",
-    "refreshState", "refreshWallet", "logout", "onLoginSuccess", "onTokenSelected"],
+    "refreshState", "refreshWallet", "logout", "onLoginSuccess", "onTokenSelected", "loginModalOpen"],
   ApiKeyInput: ["credentialStatus", "confirmingDestination", "credentialError", "boundToken", "handleConfirmDestination"],
   BoundTokenGroupHost: ["group", "onBoundTokenChange"],
 };
@@ -53,7 +53,9 @@ function captureTransformer(component) {
 function environment() {
   const env = { now: 1_000_000, calls: new Map(), impl: {}, storage: new Map(), events: [], notices: [],
     clipboard: [], clipboardCleanup: [], timers: new Map(), nextTimer: 1,
-    authContext: { authState: auth(1), authSessionGeneration: 1, setLoginModalOpen() {} } };
+    authContext: { authState: auth(1), authSessionGeneration: 1, setLoginModalOpen() {},
+      wallet: null, walletError: null, isLoadingWallet: false,
+      refreshWallet: async () => true, refreshState: async () => {}, logout: async () => {} } };
   const listeners = new Map();
   const schedule = (callback, ms, interval = false) => {
     const id = env.nextTimer++;
@@ -89,6 +91,9 @@ function environment() {
     getPricingData: () => pricing(), getChannelGroupOverview: () => [], getUserAvailableGroups: () => ["target"],
     updateUserTokenGroup: (id, group) => ({ ...fakeToken, id, group }), getAuthState: () => auth(null),
     getUserWallet: () => ({ balance: "fake-wallet" }), logoutAccount: () => undefined, openUrl: () => undefined,
+    checkBobApiNetwork: () => ({ reachable: true }),
+    getUserUsageLogs: () => ({ items: [], total: 0, page: 1, page_size: 20 }),
+    getUserUsageStat: () => null,
     getCredentialStatus: () => ({ source: "unknown", authorized: false, can_confirm: true,
       origin: "https://fake.example", message: null }),
     confirmCredentialDestination: () => ({ source: "external", authorized: true, can_confirm: false,
@@ -183,6 +188,7 @@ class Harness {
         if (name.endsWith("/api") || name === "./api") return env.api;
         if (name.endsWith("/useAuth")) return { useAuth: () => env.authContext };
         if (name.endsWith("/groupPricing")) return load("src/lib/groupPricing.ts");
+        if (name.endsWith("/quotaDisplay")) return load("src/lib/quotaDisplay.ts");
         if (name.endsWith("/useBoundTokenGroup")) return load("src/lib/useBoundTokenGroup.ts");
         if (name.endsWith("/secureClipboard")) return { scheduleClipboardClear: (key) => env.clipboardCleanup.push(key) };
         if (name.endsWith("/utils")) return { cn: (...args) => args.filter((arg) => typeof arg === "string").join(" ") };
@@ -204,7 +210,10 @@ class Harness {
       modules.set(relative, exports);
       return exports;
     };
-    const filename = component === "BoundTokenGroupHost" ? "src/lib/useBoundTokenGroup.ts"
+    const filename = component === "AccountBalanceCard" ? "src/components/AccountBalanceCard.tsx"
+      : component === "PersonalCenterPanel" ? "src/components/account/PersonalCenterPanel.tsx"
+      : component === "UsageLogsPanel" ? "src/components/account/UsageLogsPanel.tsx"
+      : component === "BoundTokenGroupHost" ? "src/lib/useBoundTokenGroup.ts"
       : component === "AuthProvider" ? "src/lib/useAuth.tsx"
       : component === "TokenSelectModal" ? "src/components/auth/TokenSelectModal.tsx"
         : component === "ApiKeyInput" ? "src/components/ApiKeyInput.tsx" : "src/components/ChannelGroupMonitor.tsx";
@@ -281,8 +290,90 @@ function findButton(tree, text) {
   return findButton(tree.props?.children, text);
 }
 
+function findByTitle(tree, title) {
+  if (Array.isArray(tree)) return tree.map((node) => findByTitle(node, title)).find(Boolean);
+  if (!tree || typeof tree !== "object") return undefined;
+  if (tree.props?.title === title) return tree;
+  return findByTitle(tree.props?.children, title);
+}
+
 const tests = [];
 const test = (name, run) => tests.push({ name, run });
+
+const rawWallet = (extra = {}) => ({ quota: 1234567, used_quota: 42, request_count: null,
+  quota_usd: null, quota_cny: null, used_quota_usd: null, used_quota_cny: null,
+  quota_per_unit: null, rmb_to_usd_rate: null, group: "test", ...extra });
+
+test("wallet cards keep raw platform quota visible without unconfirmed or invalid currency amounts", async () => {
+  for (const component of ["AccountBalanceCard", "PersonalCenterPanel"]) {
+    for (const conversion of [null, undefined, 0, -1, NaN, Infinity, 3.5]) {
+      const env = environment();
+      env.authContext.wallet = rawWallet({ quota_usd: conversion, quota_cny: conversion,
+        used_quota_usd: conversion, used_quota_cny: conversion,
+        quota_per_unit: 500000, rmb_to_usd_rate: 4 });
+      const h = await ready(component, env);
+      const text = textOf(h.tree);
+      assert.ok(text.includes("1,234,567"), `${component} lost the raw quota`);
+      assert.ok(text.includes("换算不可用"));
+      assert.equal(/[$¥￥]/.test(text), false, `${component} showed an unconfirmed currency amount`);
+    }
+  }
+});
+
+test("unknown wallet quota stays unknown and raw quota copying preserves the integer", async () => {
+  for (const value of [null, undefined, NaN, Infinity, "0", 0.5, Number.MAX_SAFE_INTEGER + 1]) {
+    const env = environment(); env.authContext.wallet = rawWallet({ quota: value });
+    const h = await ready("AccountBalanceCard", env);
+    assert.ok(textOf(h.tree).includes("未知"));
+    const copy = findByTitle(h.tree, "复制原始平台额度");
+    assert.equal(copy.props.disabled, true);
+    await copy.props.onClick();
+    assert.equal(env.clipboard.length, 0);
+  }
+  const env = environment(); env.authContext.wallet = rawWallet();
+  const h = await ready("AccountBalanceCard", env);
+  await findByTitle(h.tree, "复制原始平台额度").props.onClick();
+  assert.deepEqual(env.clipboard, ["1234567"]);
+  env.authContext.wallet = rawWallet({ quota: 0 }); h.render();
+  await findByTitle(h.tree, "复制原始平台额度").props.onClick();
+  assert.deepEqual(env.clipboard, ["1234567", "0"]);
+});
+
+test("failed wallet refresh clears unknown balance and cannot announce successful synchronization", async () => {
+  const env = environment(); env.authContext.refreshWallet = async () => false;
+  const h = await ready("AccountBalanceCard", env);
+  findByTitle(h.tree, "刷新额度").props.onClick(); await settle(h);
+  assert.equal(env.notices.some(([kind]) => kind === "success"), false);
+  assert.ok(env.notices.some(([kind]) => kind === "error"));
+  const provider = await ready("AuthProvider");
+  provider.env.impl.getAuthState = () => auth(1);
+  provider.env.impl.getUserWallet = () => rawWallet();
+  provider.capture.onLoginSuccess(auth(1).user); await settle(provider);
+  provider.env.impl.getUserWallet = () => { throw "Test wallet unavailable"; };
+  assert.equal(await provider.capture.refreshWallet(), false); await settle(provider);
+  assert.equal(provider.capture.wallet, null);
+  assert.ok(provider.capture.walletError.includes("unavailable"));
+});
+
+test("usage logs show raw points, preserve unknown cost, and do not invent a zero after failure", async () => {
+  const env = environment();
+  const log = { id: 1, created_at: 1, model_name: "test-model", token_name: "fake-token",
+    quota: 1250, prompt_tokens: 1, completion_tokens: 2, use_time: 1 };
+  env.impl.getUserUsageLogs = () => ({ items: [log], total: 1, page: 1, page_size: 20 });
+  const h = await ready("UsageLogsPanel", env);
+  assert.ok(textOf(h.tree).includes("1,250"));
+  assert.ok(textOf(h.tree).includes("换算不可用"));
+  assert.equal(/[$¥￥]/.test(textOf(h.tree)), false);
+  const unknownEnv = environment();
+  unknownEnv.impl.getUserUsageLogs = () => ({ items: [{ ...log, quota: null }], total: 1 });
+  const unknown = await ready("UsageLogsPanel", unknownEnv);
+  assert.ok(textOf(unknown.tree).includes("当前页消耗额度未知"));
+  const failedEnv = environment(); failedEnv.impl.getUserUsageLogs = () => { throw "Test log failure"; };
+  const failed = await ready("UsageLogsPanel", failedEnv);
+  assert.ok(textOf(failed.tree).includes("当前页消耗额度未知"));
+  assert.ok(textOf(failed.tree).includes("Test log failure"));
+  assert.equal(/[$¥￥]/.test(textOf(failed.tree)), false);
+});
 
 test("shared pricing rejects missing/invalid/expired/future rates and requires high-rate acknowledgement", async () => {
   const h = await ready("TokenSelectModal");
@@ -567,6 +658,25 @@ test("monitor partial local-sync failure preserves cloud success and only binds 
   assert.equal(h.env.count("updateUserTokenGroup"), 1);
   assert.ok(h.env.storage.has("bound_token_chatgpt")); assert.equal(h.env.storage.has("bound_token_claude"), false);
   assert.ok(h.env.notices.some(([kind, message]) => kind === "warning" && message.includes("云端分组已修改")));
+});
+
+test("failed session restore prompts relogin once and never displays a logged-in account", async () => {
+  const h = await ready("AuthProvider");
+  const failure = { ...auth(null), session_restore_error: "Test session restore requires login" };
+  h.env.impl.getAuthState = () => failure;
+  await h.capture.refreshState(); await settle(h);
+  await h.capture.refreshState(); await settle(h);
+  assert.equal(h.capture.authState.is_logged_in, false);
+  assert.equal(h.env.notices.length, 1);
+  const [kind, message, options] = h.env.notices[0];
+  assert.equal(kind, "error"); assert.equal(message, failure.session_restore_error);
+  options.action.onClick(); h.flush();
+  assert.equal(h.capture.loginModalOpen, true);
+  h.env.impl.getAuthState = () => auth(null);
+  await h.capture.refreshState(); await settle(h);
+  h.env.impl.getAuthState = () => failure;
+  await h.capture.refreshState(); await settle(h);
+  assert.equal(h.env.notices.length, 2);
 });
 
 test("A-to-B login with logged_in unchanged fetches and accepts B wallet", async () => {

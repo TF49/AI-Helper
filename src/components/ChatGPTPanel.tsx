@@ -400,12 +400,13 @@ export function ChatGPTPanel() {
                 >
                   <ApiKeyInput
                     title="OpenAI API Key"
-                    badgeText="环境变量"
+                    badgeText="config.toml"
                     value={apiKey}
                     destinationUrl={url}
                     onChange={setApiKey}
                     placeholder="sk-... (填入 BobAPI 密钥)"
-                    envVarName="CUSTOM_OPENAI_API_KEY"
+                    storageLocation="~/.codex/config.toml"
+                    configKey="model_providers.custom.experimental_bearer_token"
                     toolName="ChatGPT (Codex)"
                     toolId="chatgpt"
                     onBoundTokenChange={onBoundTokenChange}

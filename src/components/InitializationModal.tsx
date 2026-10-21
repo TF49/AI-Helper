@@ -827,7 +827,7 @@ export function InitializationModal({
           model: editModel.trim(),
           bridge_port: existing?.bridge_port ?? 51740,
           official_gateway:
-            existing?.official_gateway ?? "https://work.alibabacloud.com",
+            existing?.official_gateway ?? "https://phoenix-gw.alibaba.com",
           fallback_official: existing?.fallback_official ?? true,
           prevent_official_leak: existing?.prevent_official_leak ?? true,
         });
@@ -2455,7 +2455,7 @@ export function InitializationModal({
                                     ? "models.json"
                                     : editTab === "acciowork"
                                       ? "accio_config.json"
-                                      : "环境变量"
+                                      : "config.toml"
                               }
                               value={editApiKey}
                               destinationUrl={editUrl}
@@ -2472,17 +2472,14 @@ export function InitializationModal({
                                       : "~/.workbuddy/models.json")
                                     : editTab === "acciowork"
                                       ? "~/.ai-helper/accio_config.json"
-                                      : undefined
+                                      : "~/.codex/config.toml"
                               }
                               configKey={
                                 editTab === "claude"
                                   ? "env.ANTHROPIC_AUTH_TOKEN"
-                                  : undefined
-                              }
-                              envVarName={
-                                editTab === "chatgpt"
-                                  ? "CUSTOM_OPENAI_API_KEY"
-                                  : undefined
+                                  : editTab === "chatgpt"
+                                    ? "model_providers.custom.experimental_bearer_token"
+                                    : undefined
                               }
                               accentColor={
                                 editTab === "claude"

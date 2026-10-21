@@ -25,6 +25,7 @@ import { toast } from "sonner";
 import { useAuth } from "../../lib/useAuth";
 import { openUrl, checkBobApiNetwork } from "../../lib/api";
 import { cn } from "../../lib/utils";
+import { formatPlatformQuota, quotaUsageRatio, sumPlatformQuota, QUOTA_CONVERSION_UNAVAILABLE } from "../../lib/quotaDisplay";
 import type { MainNav, NetworkStatus } from "../../types";
 import { ButtonToLoaderToSuccess } from "../ui/ButtonToLoaderToSuccess";
 
@@ -68,13 +69,13 @@ export const PersonalCenterPanel: React.FC<PersonalCenterPanelProps> = ({
   const handleRefresh = async () => {
     setIsRefreshing(true);
     try {
-      const [, , netRes] = await Promise.all([
+      const [walletUpdated, , netRes] = await Promise.all([
         refreshWallet(),
         refreshState(),
         checkBobApiNetwork(),
       ]);
       setNetworkStatus(netRes);
-      if (!netRes.reachable) {
+      if (!walletUpdated || !netRes.reachable) {
         throw new Error(netRes.error_message || "连接超时");
       }
       toast.success("账号资产与状态已同步最新");
@@ -128,7 +129,7 @@ export const PersonalCenterPanel: React.FC<PersonalCenterPanelProps> = ({
                 <span>实时资产看板</span>
               </div>
               <p className="text-[11px] text-slate-400">
-                精确到小数点后 4 位的美元与人民币余额实时展示。
+                同步原始平台额度、已用额度与请求统计。
               </p>
             </div>
 
@@ -191,16 +192,14 @@ export const PersonalCenterPanel: React.FC<PersonalCenterPanelProps> = ({
         : "标准用户";
 
   // 额度与计算
-  const quotaUsd = wallet ? wallet.quota_usd : 0;
-  const quotaCny = wallet ? wallet.quota_cny : 0;
-  const usedUsd = wallet ? wallet.used_quota_usd : 0;
-  const usedCny = wallet ? wallet.used_quota_cny : 0;
-  const requestCount = wallet ? wallet.request_count : 0;
+  const quota = wallet?.quota;
+  const usedQuota = wallet?.used_quota;
+  const requestCount = wallet?.request_count;
 
   // 资金总池与百分比进度
-  const totalPoolUsd = quotaUsd + usedUsd;
-  const usedRatio = totalPoolUsd > 0 ? Math.min(100, (usedUsd / totalPoolUsd) * 100) : 0;
-  const remainRatio = Math.max(0, 100 - usedRatio);
+  const totalPoolQuota = sumPlatformQuota([quota, usedQuota]);
+  const usedRatio = quotaUsageRatio(quota, usedQuota);
+  const remainRatio = usedRatio === null ? null : 100 - usedRatio;
 
   return (
     <div className={cn("w-full max-w-7xl mx-auto space-y-6 select-none pb-8", className)}>
@@ -404,15 +403,14 @@ export const PersonalCenterPanel: React.FC<PersonalCenterPanelProps> = ({
                     剩余可用额度
                   </span>
                   <span className="text-[10px] font-mono text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 px-1.5 py-0.5 rounded font-medium">
-                    充沛
+                    原始额度
                   </span>
                 </div>
                 <div className="text-2xl font-bold font-mono text-indigo-600 dark:text-indigo-400 tracking-tight pt-0.5 truncate">
-                  ${quotaUsd.toFixed(4)}
+                  {formatPlatformQuota(quota)}
                 </div>
                 <div className="text-[11px] text-slate-500 dark:text-gray-400 font-mono flex items-center justify-between">
-                  <span>≈ ¥{quotaCny.toFixed(4)}</span>
-                  <span className="text-[10px] text-slate-400 opacity-80">1¥ = $4.00</span>
+                  <span>平台额度 · {QUOTA_CONVERSION_UNAVAILABLE}</span>
                 </div>
               </div>
 
@@ -428,10 +426,10 @@ export const PersonalCenterPanel: React.FC<PersonalCenterPanelProps> = ({
                   </span>
                 </div>
                 <div className="text-2xl font-bold font-mono text-slate-800 dark:text-gray-100 tracking-tight pt-0.5 truncate">
-                  ${usedUsd.toFixed(4)}
+                  {formatPlatformQuota(usedQuota)}
                 </div>
                 <div className="text-[11px] text-slate-500 dark:text-gray-400 font-mono">
-                  ≈ ¥{usedCny.toFixed(4)}
+                  平台额度 · {QUOTA_CONVERSION_UNAVAILABLE}
                 </div>
               </div>
 
@@ -447,7 +445,7 @@ export const PersonalCenterPanel: React.FC<PersonalCenterPanelProps> = ({
                   </span>
                 </div>
                 <div className="text-2xl font-bold font-mono text-emerald-600 dark:text-emerald-400 tracking-tight pt-0.5 truncate">
-                  {requestCount.toLocaleString()}
+                  {formatPlatformQuota(requestCount)}
                 </div>
                 <div className="text-[11px] text-slate-500 dark:text-gray-400">
                   全生命周期总请求记录
@@ -463,9 +461,9 @@ export const PersonalCenterPanel: React.FC<PersonalCenterPanelProps> = ({
                   <span>额度使用健康度</span>
                 </div>
                 <div className="text-[11px] font-mono text-slate-500 dark:text-gray-400">
-                  剩余可用 <span className="font-semibold text-indigo-600 dark:text-indigo-400">{remainRatio.toFixed(1)}%</span>
+                  剩余可用 <span className="font-semibold text-indigo-600 dark:text-indigo-400">{remainRatio === null ? "未知" : `${remainRatio.toFixed(1)}%`}</span>
                   {" · "}
-                  已使用 <span className="font-semibold text-slate-700 dark:text-gray-300">{usedRatio.toFixed(1)}%</span>
+                  已使用 <span className="font-semibold text-slate-700 dark:text-gray-300">{usedRatio === null ? "未知" : `${usedRatio.toFixed(1)}%`}</span>
                 </div>
               </div>
 
@@ -473,20 +471,20 @@ export const PersonalCenterPanel: React.FC<PersonalCenterPanelProps> = ({
               <div className="w-full h-2.5 rounded-full bg-slate-200 dark:bg-white/10 overflow-hidden flex shadow-inner">
                 <div
                   className="h-full bg-gradient-to-r from-indigo-500 to-blue-500 transition-all duration-500"
-                  style={{ width: `${remainRatio}%` }}
-                  title={`剩余可用: ${remainRatio.toFixed(1)}%`}
+                  style={{ width: `${remainRatio ?? 0}%` }}
+                  title={remainRatio === null ? "剩余占比未知" : `剩余可用: ${remainRatio.toFixed(1)}%`}
                 />
                 <div
                   className="h-full bg-slate-400/60 dark:bg-slate-600 transition-all duration-500"
-                  style={{ width: `${usedRatio}%` }}
-                  title={`已消耗: ${usedRatio.toFixed(1)}%`}
+                  style={{ width: `${usedRatio ?? 0}%` }}
+                  title={usedRatio === null ? "已用占比未知" : `已消耗: ${usedRatio.toFixed(1)}%`}
                 />
               </div>
 
               <div className="flex items-center justify-between text-[11px] text-slate-400">
-                <span>总额度池: ${totalPoolUsd.toFixed(4)} USD</span>
+                <span>总平台额度: {formatPlatformQuota(totalPoolQuota)}</span>
                 <span className="text-emerald-600 dark:text-emerald-400 font-medium">
-                  ✓ 额度充沛，支持高并发生产调用
+                  原始平台额度
                 </span>
               </div>
             </div>
@@ -495,10 +493,10 @@ export const PersonalCenterPanel: React.FC<PersonalCenterPanelProps> = ({
             <div className="p-3.5 rounded-2xl bg-white/60 dark:bg-white/[0.03] border border-white/40 dark:border-white/5 text-xs space-y-1.5 text-slate-600 dark:text-gray-300">
               <div className="flex items-center gap-1.5 font-semibold text-slate-800 dark:text-gray-200">
                 <Sparkles size={14} className="text-amber-500 flex-shrink-0" />
-                <span>额度与兑换比例说明</span>
+                <span>额度说明</span>
               </div>
               <p className="text-[11px] text-slate-500 dark:text-gray-400 leading-relaxed">
-                Bob API 采用 1 元人民币 (¥1) = 4 美元额度 ($4.00) 充值结算机制（500,000 点数 = $1）。所消耗额度根据不同模型（如 Claude 3.7 / GPT-5 / DeepSeek）的实际倍率按 Token 精确扣费，超高性价比。
+                当前展示平台返回的原始额度，换算不可用。充值和计费金额请查看平台账单。
               </p>
             </div>
           </div>

@@ -31,7 +31,7 @@ fn key_store_path() -> std::path::PathBuf {
     {
         static TEST_DIRECTORY: Lazy<tempfile::TempDir> =
             Lazy::new(|| tempfile::tempdir().expect("isolated credential tests"));
-        return TEST_DIRECTORY.path().join("managed_keys.json");
+        TEST_DIRECTORY.path().join("managed_keys.json")
     }
     #[cfg(not(test))]
     dirs::home_dir()

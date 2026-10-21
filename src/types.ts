@@ -299,7 +299,7 @@ export interface TokenItem {
   status: number; // 1: 正常可用, 2: 已禁用, 3: 已过期, 4: 额度耗尽
   expired_time: number;
   unlimited_quota: boolean;
-  remain_quota: number;
+  remain_quota: number | null;
   group?: string | null;
   user_id?: number | null;
 }
@@ -310,6 +310,7 @@ export interface CurrentAuthState {
   selected_token_id?: number | null;
   selected_token_name?: string | null;
   access_token_expires_at?: number | null;
+  session_restore_error?: string | null;
 }
 
 export interface ChannelTrendPoint {
@@ -332,16 +333,16 @@ export interface ChannelGroupOverview {
 }
 
 export interface UserWalletInfo {
-  quota: number;              // 剩余额度点数 (500000 = $1)
-  used_quota: number;         // 已用额度点数
-  quota_usd: number;          // 美元余额 ($)
-  quota_cny: number;          // 人民币余额 (按 1￥ = 4$ 计算，即 ￥ = $ / 4)
-  used_quota_usd: number;     // 已消耗美元 ($)
-  used_quota_cny: number;     // 已消耗人民币 (￥)
-  request_count: number;      // 请求次数
+  quota: number;              // 服务端原始平台额度
+  used_quota: number;         // 服务端原始已用额度
+  quota_usd: number | null;
+  quota_cny: number | null;
+  used_quota_usd: number | null;
+  used_quota_cny: number | null;
+  request_count: number | null;
   group?: string | null;      // 用户分组 (如 "svip", "default")
-  quota_per_unit: number;     // 每单位额度 (500000)
-  rmb_to_usd_rate: number;    // 充值比例 (默认 4，即 1￥ = 4$)
+  quota_per_unit: number | null; // 仅在确认服务端换算契约后提供
+  rmb_to_usd_rate: number | null;
 }
 
 // ── 意见反馈相关类型定义 ──
@@ -394,7 +395,7 @@ export interface UsageLogItem {
   username: string;
   token_name: string;
   model_name: string;
-  quota: number;
+  quota: number | null;
   prompt_tokens: number;
   completion_tokens: number;
   use_time: number;
@@ -425,7 +426,7 @@ export interface UsageLogQueryParams {
 }
 
 export interface UsageStatData {
-  quota: number;
+  quota: number | null;
   prompt_tokens: number;
   completion_tokens: number;
   request_count: number;

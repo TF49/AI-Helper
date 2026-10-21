@@ -197,9 +197,9 @@ export function QuickToolsModal({
                 <strong className="text-slate-800 dark:text-gray-200">
                   ChatGPT (Codex)
                 </strong>
-                : API Key 会自动保存至 Windows 当前用户环境变量{" "}
+                : API Key 与对应网关地址一起保存在当前用户的私有配置文件{" "}
                 <code className="text-blue-600 dark:text-blue-300 font-mono font-medium">
-                  CUSTOM_OPENAI_API_KEY
+                  ~/.codex/config.toml
                 </code>
                 。
               </p>

@@ -25,7 +25,7 @@ interface AuthContextType {
   wallet: UserWalletInfo | null;
   isLoadingWallet: boolean;
   walletError: string | null;
-  refreshWallet: () => Promise<void>;
+  refreshWallet: () => Promise<boolean>;
   loginModalOpen: boolean;
   setLoginModalOpen: (open: boolean) => void;
   tokenModalOpen: boolean;
@@ -41,6 +41,7 @@ const defaultState: CurrentAuthState = {
   selected_token_id: null,
   selected_token_name: null,
   access_token_expires_at: null,
+  session_restore_error: null,
 };
 
 const AuthContext = createContext<AuthContextType>({
@@ -52,7 +53,7 @@ const AuthContext = createContext<AuthContextType>({
   wallet: null,
   isLoadingWallet: false,
   walletError: null,
-  refreshWallet: async () => {},
+  refreshWallet: async () => false,
   loginModalOpen: false,
   setLoginModalOpen: () => {},
   tokenModalOpen: false,
@@ -78,6 +79,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const authMutationGeneration = useRef(0);
   const authMutationPending = useRef(false);
   const walletRequestGeneration = useRef(0);
+  const lastRestoreError = useRef<string | null>(null);
 
   // Invalidate before notifying consumers, including a fresh login to the same account.
   const invalidateSession = useCallback((userId: number | null) => {
@@ -103,6 +105,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       invalidateSession(nextId);
     }
     setAuthState(state);
+    const restoreError = state.session_restore_error ?? null;
+    if (restoreError && restoreError !== lastRestoreError.current) {
+      toast.error(restoreError, {
+        action: { label: "重新登录", onClick: () => setLoginModalOpen(true) },
+      });
+    }
+    lastRestoreError.current = restoreError;
   }, [invalidateSession]);
 
   const refreshState = useCallback(async () => {
@@ -128,7 +137,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const session = authSessionGeneration;
     if (!authState.is_logged_in || requestUserId === null ||
       session !== sessionGeneration.current ||
-      authStateRef.current.user?.id !== requestUserId || !authStateRef.current.is_logged_in) return;
+      authStateRef.current.user?.id !== requestUserId || !authStateRef.current.is_logged_in) return false;
     const requestGeneration = ++walletRequestGeneration.current;
     const isCurrent = () => mounted.current && session === sessionGeneration.current &&
       requestGeneration === walletRequestGeneration.current &&
@@ -137,14 +146,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setWalletError(null);
     try {
       const data = await getUserWallet();
-      if (!isCurrent()) return;
+      if (!isCurrent()) return false;
       setWallet(data);
       // Role refresh uses the same session and latest-request protections as other auth reads.
       await refreshState();
+      return isCurrent();
     } catch (err: unknown) {
-      if (!isCurrent()) return;
+      if (!isCurrent()) return false;
       const msg = typeof err === "string" ? err : (err as Error)?.message || "获取账号余额失败";
       setWalletError(msg);
+      setWallet(null);
       if (
         msg.includes("登录") ||
         msg.includes("Unauthorized") ||
@@ -155,6 +166,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         void refreshState();
       }
       console.warn("Failed to get wallet balance:", err);
+      return false;
     } finally {
       if (isCurrent()) setIsLoadingWallet(false);
     }

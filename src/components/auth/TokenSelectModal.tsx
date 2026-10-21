@@ -40,6 +40,7 @@ import { ShinyText } from "../react-bits/ShinyText";
 import { DecryptedText } from "../react-bits/DecryptedText";
 import { scheduleClipboardClear } from "../../lib/secureClipboard";
 import { useAuth } from "../../lib/useAuth";
+import { formatPlatformQuota } from "../../lib/quotaDisplay";
 import {
   createGroupPricing,
   emptyGroupPricing,
@@ -1012,13 +1013,13 @@ export function TokenSelectModal({
                           <Coins size={12} className="text-amber-500" />
                           {token.unlimited_quota ? (
                             <span className="text-emerald-600 dark:text-emerald-400 font-semibold">
-                              无限额度 ♾️
+                              密钥未设额度上限
                             </span>
                           ) : (
                             <span>
                               剩余:{" "}
                               <strong className="text-slate-800 dark:text-white font-semibold">
-                                ${(token.remain_quota / 500000).toFixed(2)}
+                                {formatPlatformQuota(token.remain_quota)} 平台额度
                               </strong>
                             </span>
                           )}
