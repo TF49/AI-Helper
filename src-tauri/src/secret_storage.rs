@@ -175,11 +175,20 @@ fn invalid_credential() -> AppError {
 }
 
 fn unavailable() -> AppError {
-    AppError::Other("系统凭据保护服务不可用或拒绝访问；请解锁系统凭据库后重试".into())
+    #[cfg(target_os = "macos")]
+    let hint =
+        "系统钥匙串不可用或拒绝访问。请在系统设置-隐私与安全性中允许访问，或解锁钥匙串后重试";
+    #[cfg(target_os = "linux")]
+    let hint = "Secret Service 不可用或拒绝访问。请确认 gnome-keyring 或 KWallet 正在运行，或检查系统权限设置";
+    #[cfg(target_os = "windows")]
+    let hint = "系统凭据保护服务不可用或拒绝访问；请确认当前 Windows 用户配置文件可用并在同一用户上下文运行";
+    #[cfg(not(any(target_os = "macos", target_os = "linux", target_os = "windows")))]
+    let hint = "系统凭据保护服务不可用或拒绝访问；请重试";
+    AppError::Other(hint.into())
 }
 
-#[cfg(all(not(test), any(target_os = "macos", target_os = "linux")))]
-mod platform {
+#[cfg(any(target_os = "macos", target_os = "linux"))]
+mod native_keyring {
     use super::*;
     use std::sync::Mutex;
 
@@ -241,6 +250,9 @@ mod platform {
         Err(AppError::Other("旧版凭据无法安全迁移，请重新登录".into()))
     }
 }
+
+#[cfg(all(not(test), any(target_os = "macos", target_os = "linux")))]
+use native_keyring as platform;
 
 #[cfg(all(target_os = "windows", not(test)))]
 use native_windows as platform;
@@ -771,4 +783,117 @@ mod tests {
         assert!(unprotect_secret("enc:v1:not-a-native-dpapi-blob").is_err());
         assert!(is_encrypted("enc:v1:historical"));
     }
+}
+
+#[cfg(any(target_os = "macos", target_os = "linux"))]
+struct NativeCleanup {
+    purpose: CredentialPurpose,
+    reference: String,
+}
+
+#[cfg(any(target_os = "macos", target_os = "linux"))]
+impl NativeCleanup {
+    fn new(purpose: CredentialPurpose, reference: String) -> Self {
+        Self { purpose, reference }
+    }
+}
+
+#[cfg(any(target_os = "macos", target_os = "linux"))]
+impl Drop for NativeCleanup {
+    fn drop(&mut self) {
+        let _ = native_keyring::delete(self.purpose, &self.reference);
+    }
+}
+
+// macOS Keychain 实机集成测试（需要显式运行）
+#[cfg(target_os = "macos")]
+#[test]
+#[ignore = "requires actual macOS Keychain access; run with: cargo test native_keychain -- --ignored --nocapture"]
+fn native_keychain_roundtrip_and_cleanup() {
+    use std::process::Command;
+
+    let reference = format!("{:064x}", std::process::id());
+    let payload = b"native-keychain-test-secret";
+    let _cleanup = NativeCleanup::new(CredentialPurpose::SessionId, reference.clone());
+    let _ = native_keyring::delete(CredentialPurpose::SessionId, &reference);
+
+    let token = native_keyring::protect(CredentialPurpose::SessionId, &reference, payload).unwrap();
+    assert_eq!(token, reference);
+
+    let service = format!(
+        "com.ai-helper.credentials.v2.{}",
+        CredentialPurpose::SessionId.label()
+    );
+    let verify = Command::new("security")
+        .args([
+            "find-generic-password",
+            "-s",
+            &service,
+            "-a",
+            &reference,
+            "-w",
+        ])
+        .output()
+        .expect("security command failed");
+    assert!(verify.status.success(), "Keychain entry not found");
+
+    let read_back = native_keyring::unprotect(CredentialPurpose::SessionId, &reference).unwrap();
+    assert_eq!(read_back, payload);
+
+    assert!(native_keyring::unprotect(CredentialPurpose::RefreshCookie, &reference).is_err());
+    drop(_cleanup);
+
+    let deleted = Command::new("security")
+        .args(["find-generic-password", "-s", &service, "-a", &reference])
+        .output()
+        .unwrap();
+    assert!(
+        !deleted.status.success(),
+        "Keychain entry should be deleted"
+    );
+
+    println!("✅ macOS Keychain integration test passed");
+}
+
+// Linux Secret Service 实机集成测试（需要显式运行）
+#[cfg(target_os = "linux")]
+#[test]
+#[ignore = "requires actual Secret Service; run with: cargo test native_secret_service -- --ignored --nocapture"]
+fn native_secret_service_roundtrip_and_cleanup() {
+    use std::process::Command;
+
+    let reference = format!("{:064x}", std::process::id());
+    let payload = b"native-secret-service-test";
+    let _cleanup = NativeCleanup::new(CredentialPurpose::SessionId, reference.clone());
+    let _ = native_keyring::delete(CredentialPurpose::SessionId, &reference);
+
+    let token = native_keyring::protect(CredentialPurpose::SessionId, &reference, payload).unwrap();
+    assert_eq!(token, reference);
+
+    let service = format!(
+        "com.ai-helper.credentials.v2.{}",
+        CredentialPurpose::SessionId.label()
+    );
+    let verify = Command::new("secret-tool")
+        .args(["lookup", "service", &service, "account", &reference])
+        .output()
+        .expect("secret-tool command failed");
+    assert!(verify.status.success(), "Secret Service entry not found");
+
+    let read_back = native_keyring::unprotect(CredentialPurpose::SessionId, &reference).unwrap();
+    assert_eq!(read_back, payload);
+
+    assert!(native_keyring::unprotect(CredentialPurpose::RefreshCookie, &reference).is_err());
+    drop(_cleanup);
+
+    let deleted = Command::new("secret-tool")
+        .args(["lookup", "service", &service, "account", &reference])
+        .output()
+        .expect("secret-tool lookup failed");
+    assert!(
+        !deleted.status.success(),
+        "Secret Service entry should be deleted"
+    );
+
+    println!("✅ Linux Secret Service integration test passed");
 }

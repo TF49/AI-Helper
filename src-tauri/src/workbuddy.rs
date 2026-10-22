@@ -400,6 +400,21 @@ fn recover_transaction(
     Ok(())
 }
 
+fn remove_broken_symlink_locked(path: &std::path::Path) -> Result<(), AppError> {
+    let metadata = match std::fs::symlink_metadata(path) {
+        Ok(metadata) => metadata,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+        Err(error) => return Err(error.into()),
+    };
+    if metadata.file_type().is_symlink()
+        && matches!(std::fs::metadata(path), Err(ref e)
+            if e.kind() == std::io::ErrorKind::NotFound)
+    {
+        std::fs::remove_file(path)?;
+    }
+    Ok(())
+}
+
 fn with_workbuddy_transaction<T>(
     paths: &WorkbuddyPaths,
     operation: impl FnOnce(&[PathBuf]) -> Result<T, AppError>,
@@ -408,6 +423,11 @@ fn with_workbuddy_transaction<T>(
     // locks are acquired in one stable order, including paths in a crash journal.
     crate::safe_fs::with_file_lock(&paths.journal, || {
         let pending = read_transaction(&paths.journal)?;
+        for path in &paths.candidates {
+            if let Some(parent) = path.parent() {
+                remove_broken_symlink_locked(parent)?;
+            }
+        }
         let active = paths
             .candidates
             .iter()
@@ -434,6 +454,7 @@ fn with_workbuddy_transaction<T>(
             }
             // Recovery must precede the read/merge snapshot, not the final write.
             for path in &active {
+                remove_broken_symlink_locked(path)?;
                 crate::safe_fs::recover_missing_file_locked(path)?;
             }
             operation(&active)
@@ -1598,5 +1619,231 @@ mod tests {
                 "Primary path should have been auto-synced"
             );
         }
+    }
+
+    #[test]
+    fn deterministic_lock_contention_blocks_competing_writer_until_release() {
+        let directory = tempfile::tempdir().unwrap();
+        fixture(directory.path());
+        // Child 1 holds the lock at transaction checkpoint (paused)
+        let mut holder = child(directory.path(), "save", "first-holder", Some(2));
+        wait_ready(&mut holder, directory.path());
+
+        // Child 2 attempts to write while Child 1 holds the transaction locks
+        let mut competing = child(directory.path(), "save", "second-competing", None);
+
+        // Competing writer must be blocked waiting for the locks held by Child 1
+        std::thread::sleep(std::time::Duration::from_millis(200));
+        assert!(
+            competing.0.try_wait().unwrap().is_none(),
+            "Competing writer must be blocked by the lock held by the first writer"
+        );
+
+        // Terminate the holder (which drops its OS locks)
+        holder.0.kill().unwrap();
+        holder.0.wait().unwrap();
+
+        // Competing writer must now acquire the locks, recover any uncommitted state, and complete
+        assert!(wait_child(&mut competing).success());
+
+        // Verify the competing write completed and is readable
+        for path in profiles(directory.path()) {
+            assert!(ids(&path).contains(&"second-competing".into()));
+        }
+    }
+}
+
+#[cfg(all(test, not(target_os = "windows")))]
+mod unix_filesystem_tests {
+    use super::*;
+    use std::os::unix::fs::PermissionsExt;
+
+    #[test]
+    fn symlink_to_readonly_mount_fails_gracefully() {
+        let directory = tempfile::tempdir().unwrap();
+        let readonly_target = directory.path().join("readonly_target");
+        let readonly_models = readonly_target.join("models.json");
+        std::fs::create_dir_all(&readonly_target).unwrap();
+        std::fs::write(&readonly_models, b"[]").unwrap();
+
+        // 模拟只读：设置文件和目录为只读
+        let mut perms = std::fs::metadata(&readonly_target).unwrap().permissions();
+        perms.set_mode(0o555); // r-xr-xr-x
+        std::fs::set_permissions(&readonly_target, perms).unwrap();
+
+        let symlink_dir = directory.path().join(".workbuddy");
+        std::fs::create_dir_all(&symlink_dir).unwrap();
+        let symlink_path = symlink_dir.join("models.json");
+        std::os::unix::fs::symlink(&readonly_models, &symlink_path).unwrap();
+
+        in_profile(directory.path(), || {
+            // 尝试写入应该失败并提供清晰错误（拒绝符号链接或只读权限错误）
+            let result = set_workbuddy_config(payload("test-readonly"));
+            assert!(result.is_err());
+            let error_msg = result.unwrap_err().to_string();
+            assert!(
+                error_msg.contains("符号链接")
+                    || error_msg.contains("Permission denied")
+                    || error_msg.contains("只读"),
+                "错误信息应说明符号链接或权限问题: {}",
+                error_msg
+            );
+        });
+
+        // 清理：恢复可写权限以便删除
+        let mut perms = std::fs::metadata(&readonly_target).unwrap().permissions();
+        perms.set_mode(0o755);
+        std::fs::set_permissions(&readonly_target, perms).unwrap();
+    }
+
+    #[test]
+    fn broken_symlink_is_treated_as_nonexistent() {
+        let directory = tempfile::tempdir().unwrap();
+        let config_dir = directory.path().join(".workbuddy");
+        std::fs::create_dir_all(&config_dir).unwrap();
+
+        let broken_symlink = config_dir.join("models.json");
+        let nonexistent_target = directory.path().join("deleted/models.json");
+        std::os::unix::fs::symlink(&nonexistent_target, &broken_symlink).unwrap();
+
+        in_profile(directory.path(), || {
+            // 损坏的符号链接应被自愈移除并视为不存在，允许创建新文件
+            let result = set_workbuddy_config(payload("test-new"));
+            assert!(result.is_ok(), "应该能创建新配置: {:?}", result);
+
+            // 验证实际创建了普通文件（而非符号链接）
+            let metadata = std::fs::symlink_metadata(&broken_symlink).unwrap();
+            assert!(
+                !metadata.file_type().is_symlink(),
+                "应创建普通文件而非符号链接"
+            );
+        });
+    }
+
+    #[test]
+    fn nested_symlink_parent_directories_follow_correctly() {
+        let directory = tempfile::tempdir().unwrap();
+        let actual_config = directory.path().join("actual_config");
+        std::fs::create_dir_all(&actual_config).unwrap();
+
+        let link_parent = directory.path().join(".workbuddy");
+        std::os::unix::fs::symlink(&actual_config, &link_parent).unwrap();
+
+        in_profile(directory.path(), || {
+            set_workbuddy_config(payload("test-symlink-parent")).unwrap();
+
+            // 验证文件实际写入到符号链接目录目标
+            let actual_file = actual_config.join("models.json");
+            assert!(actual_file.exists(), "应写入符号链接目标位置");
+
+            let content = std::fs::read_to_string(&actual_file).unwrap();
+            assert!(content.contains("test-symlink-parent"));
+        });
+    }
+
+    #[test]
+    fn concurrent_writers_with_file_locks_prevent_corruption() {
+        let directory = tempfile::tempdir().unwrap();
+        fixture(directory.path());
+        let barrier = std::sync::Arc::new(std::sync::Barrier::new(4));
+
+        let handles: Vec<_> = (0..4)
+            .map(|index| {
+                let dir = directory.path().to_owned();
+                let b = barrier.clone();
+                std::thread::spawn(move || {
+                    b.wait();
+                    in_profile(&dir, || {
+                        let model_id = format!("concurrent-{}", index);
+                        set_workbuddy_config(payload(&model_id)).unwrap();
+                        let entries = read_all_workbuddy_entries().unwrap().0;
+                        assert!(
+                            entries.iter().any(|e| e.id == model_id),
+                            "写入的模型应可读取"
+                        );
+                    });
+                })
+            })
+            .collect();
+
+        for handle in handles {
+            handle.join().unwrap();
+        }
+
+        // 验证最终状态包含所有并发写入
+        in_profile(directory.path(), || {
+            let entries = read_all_workbuddy_entries().unwrap().0;
+            let ids: Vec<_> = entries.iter().map(|e| &e.id).collect();
+            for index in 0..4 {
+                let expected = format!("concurrent-{}", index);
+                assert!(
+                    ids.iter().any(|id| id.as_str() == expected),
+                    "并发写入的模型 {} 应存在于最终结果",
+                    expected
+                );
+            }
+        });
+    }
+
+    #[test]
+    fn broken_parent_directory_symlink_heals_and_allows_write() {
+        let directory = tempfile::tempdir().unwrap();
+        let nonexistent_parent = directory.path().join("deleted_parent_dir");
+        let broken_parent = directory.path().join(".workbuddy");
+        std::os::unix::fs::symlink(&nonexistent_parent, &broken_parent).unwrap();
+
+        in_profile(directory.path(), || {
+            // Broken parent symlink should be auto-healed so writing succeeds
+            let result = set_workbuddy_config(payload("test-parent-healed"));
+            assert!(result.is_ok(), "损坏的父目录软链应被自愈: {:?}", result);
+
+            // Verify .workbuddy is now a valid directory and models.json was created
+            let metadata = std::fs::symlink_metadata(&broken_parent).unwrap();
+            assert!(
+                !metadata.file_type().is_symlink(),
+                "自愈后应为普通目录而非断损软链"
+            );
+            let models_file = broken_parent.join("models.json");
+            assert!(models_file.exists());
+        });
+    }
+
+    #[test]
+    fn readonly_directory_for_regular_file_fails_gracefully() {
+        unsafe extern "C" {
+            fn geteuid() -> u32;
+        }
+        if unsafe { geteuid() } == 0 {
+            // Root user bypasses standard Unix file permissions; skip in container/root environments
+            return;
+        }
+        let directory = tempfile::tempdir().unwrap();
+        let config_dir = directory.path().join(".workbuddy");
+        std::fs::create_dir_all(&config_dir).unwrap();
+        let models_path = config_dir.join("models.json");
+        std::fs::write(&models_path, b"[]").unwrap();
+
+        // 模拟普通文件位于只读目录：把父目录设为 0555
+        let mut perms = std::fs::metadata(&config_dir).unwrap().permissions();
+        perms.set_mode(0o555);
+        std::fs::set_permissions(&config_dir, perms).unwrap();
+
+        in_profile(directory.path(), || {
+            let result = set_workbuddy_config(payload("test-readonly-dir"));
+            assert!(result.is_err(), "向只读目录更新普通文件应失败");
+            let error_msg = result.unwrap_err().to_string();
+            assert!(
+                error_msg.contains("Permission denied")
+                    || error_msg.contains("拒绝")
+                    || error_msg.contains("IO 错误"),
+                "错误信息应反映目录写权限问题: {}",
+                error_msg
+            );
+        });
+
+        // 清理：恢复可写权限
+        let mut perms = std::fs::metadata(&config_dir).unwrap().permissions();
+        perms.set_mode(0o755);
+        let _ = std::fs::set_permissions(&config_dir, perms);
     }
 }
