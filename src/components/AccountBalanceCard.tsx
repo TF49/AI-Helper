@@ -120,6 +120,9 @@ export const AccountBalanceCard: React.FC<AccountBalanceCardProps> = ({
           <div className="text-[10px] font-mono text-slate-500 dark:text-gray-400 mt-1">
             平台额度 · {QUOTA_CONVERSION_UNAVAILABLE}
           </div>
+          <div className="text-[10px] text-slate-400 dark:text-gray-500 mt-1 leading-relaxed">
+            💡 无权威转换契约时显示原始额度，避免推测币值误导
+          </div>
           {walletError && <div className="text-[10px] text-amber-600 mt-1">余额未确认，请重试刷新</div>}
         </div>
 

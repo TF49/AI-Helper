@@ -2455,7 +2455,7 @@ export function InitializationModal({
                                     ? "models.json"
                                     : editTab === "acciowork"
                                       ? "accio_config.json"
-                                      : "config.toml"
+                                      : "环境变量"
                               }
                               value={editApiKey}
                               destinationUrl={editUrl}
@@ -2472,14 +2472,17 @@ export function InitializationModal({
                                       : "~/.workbuddy/models.json")
                                     : editTab === "acciowork"
                                       ? "~/.ai-helper/accio_config.json"
-                                      : "~/.codex/config.toml"
+                                      : undefined
                               }
                               configKey={
                                 editTab === "claude"
                                   ? "env.ANTHROPIC_AUTH_TOKEN"
-                                  : editTab === "chatgpt"
-                                    ? "model_providers.custom.experimental_bearer_token"
-                                    : undefined
+                                  : undefined
+                              }
+                              envVarName={
+                                editTab === "chatgpt"
+                                  ? "CUSTOM_OPENAI_API_KEY"
+                                  : undefined
                               }
                               accentColor={
                                 editTab === "claude"
