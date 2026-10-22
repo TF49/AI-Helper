@@ -193,6 +193,48 @@ mod native_keyring {
     use super::*;
     use std::sync::Mutex;
 
+    #[cfg(test)]
+    thread_local! {
+        static TEST_NAMESPACE: std::cell::RefCell<Option<String>> = const {
+            std::cell::RefCell::new(None)
+        };
+    }
+
+    #[cfg(test)]
+    pub(super) struct NativeTestScope {
+        previous: Option<String>,
+        _thread_bound: std::marker::PhantomData<std::rc::Rc<()>>,
+    }
+
+    #[cfg(test)]
+    impl NativeTestScope {
+        pub(super) fn enter() -> Self {
+            assert_eq!(
+                std::env::var("AI_HELPER_NATIVE_CREDENTIAL_TESTS").as_deref(),
+                Ok("1"),
+                "native credential tests require an explicitly isolated OS service"
+            );
+            let namespace = new_reference().expect("generate a unique native test namespace");
+            let previous = TEST_NAMESPACE.with(|current| current.replace(Some(namespace)));
+            Self {
+                previous,
+                _thread_bound: std::marker::PhantomData,
+            }
+        }
+    }
+
+    #[cfg(test)]
+    impl Drop for NativeTestScope {
+        fn drop(&mut self) {
+            TEST_NAMESPACE.with(|current| current.replace(self.previous.take()));
+        }
+    }
+
+    #[cfg(test)]
+    pub(super) fn test_backend_active() -> bool {
+        TEST_NAMESPACE.with(|current| current.borrow().is_some())
+    }
+
     // Backends have different concurrency semantics. Serialize complete accesses
     // without ever switching keyring's global backend or falling back to a file.
     static KEYRING_ACCESS: Mutex<()> = Mutex::new(());
@@ -202,8 +244,32 @@ mod native_keyring {
         "keyring"
     }
 
+    pub(super) fn service(purpose: CredentialPurpose) -> Result<String, AppError> {
+        #[cfg(not(test))]
+        {
+            Ok(format!("com.ai-helper.credentials.v2.{}", purpose.label()))
+        }
+        #[cfg(test)]
+        {
+            // Native tests cannot address the production namespace, even when
+            // someone accidentally calls this module without an explicit scope.
+            TEST_NAMESPACE.with(|current| {
+                current
+                    .borrow()
+                    .as_ref()
+                    .map(|namespace| {
+                        format!(
+                            "com.ai-helper.tests.credentials.v2.{namespace}.{}",
+                            purpose.label()
+                        )
+                    })
+                    .ok_or_else(unavailable)
+            })
+        }
+    }
+
     fn entry(purpose: CredentialPurpose, reference: &str) -> Result<keyring::Entry, AppError> {
-        let service = format!("com.ai-helper.credentials.v2.{}", purpose.label());
+        let service = service(purpose)?;
         // Select the OS store explicitly. Missing native features must produce a
         // compile error rather than keyring's default mock/in-memory fallback.
         #[cfg(target_os = "macos")]
@@ -243,6 +309,19 @@ mod native_keyring {
         let _guard = KEYRING_ACCESS.lock().map_err(|_| unavailable())?;
         match entry(purpose, reference)?.delete_credential() {
             Ok(()) | Err(keyring::Error::NoEntry) => Ok(()),
+            Err(_) => Err(unavailable()),
+        }
+    }
+
+    #[cfg(test)]
+    pub(super) fn test_entry_is_missing(
+        purpose: CredentialPurpose,
+        reference: &str,
+    ) -> Result<bool, AppError> {
+        let _guard = KEYRING_ACCESS.lock().map_err(|_| unavailable())?;
+        match entry(purpose, reference)?.get_secret() {
+            Err(keyring::Error::NoEntry) => Ok(true),
+            Ok(_) => Ok(false),
             Err(_) => Err(unavailable()),
         }
     }
@@ -433,12 +512,39 @@ mod platform {
 
 // Default unit tests never call a native provider. Threads use separate memory
 // stores, with explicit TestScope sharing across a test's chosen worker threads.
-// The ignored Windows smoke tests below opt in to synthetic DPAPI calls only.
+// Ignored native tests opt in to synthetic DPAPI calls or a unique test-only
+// Keychain/Secret Service namespace. Public APIs use memory unless scoped in.
 #[cfg(test)]
 pub(crate) mod test_support {
     use std::cell::RefCell;
     use std::collections::HashMap;
     use std::sync::{Arc, Mutex};
+
+    /// Test-only access to a random native namespace, never the production namespace.
+    /// The inner scope is thread-bound and still requires explicit opt-in.
+    #[cfg(any(target_os = "macos", target_os = "linux"))]
+    pub(crate) struct NativeTestScope {
+        _scope: super::native_keyring::NativeTestScope,
+    }
+
+    #[cfg(any(target_os = "macos", target_os = "linux"))]
+    impl NativeTestScope {
+        pub(crate) fn enter() -> Self {
+            Self {
+                _scope: super::native_keyring::NativeTestScope::enter(),
+            }
+        }
+
+        /// Distinguish a confirmed OS NoEntry from an unavailable/locked store.
+        pub(crate) fn entry_is_missing(
+            &self,
+            purpose: super::CredentialPurpose,
+            protected: &str,
+        ) -> Result<bool, crate::error::AppError> {
+            let reference = super::parse_reference(purpose, protected)?;
+            super::native_keyring::test_entry_is_missing(purpose, reference)
+        }
+    }
 
     #[derive(Default)]
     pub(super) struct MemoryBackend {
@@ -524,6 +630,10 @@ mod platform {
         reference: &str,
         payload: &[u8],
     ) -> Result<String, AppError> {
+        #[cfg(any(target_os = "macos", target_os = "linux"))]
+        if native_keyring::test_backend_active() {
+            return native_keyring::protect(purpose, reference, payload);
+        }
         with_backend(|backend| {
             backend.values.insert(
                 (purpose.label().to_owned(), reference.to_owned()),
@@ -537,6 +647,10 @@ mod platform {
         purpose: CredentialPurpose,
         reference: &str,
     ) -> Result<Vec<u8>, AppError> {
+        #[cfg(any(target_os = "macos", target_os = "linux"))]
+        if native_keyring::test_backend_active() {
+            return native_keyring::unprotect(purpose, reference);
+        }
         with_backend(|backend| {
             if let Some(remaining) = &mut backend.successful_reads_remaining {
                 if *remaining == 0 {
@@ -553,6 +667,10 @@ mod platform {
     }
 
     pub(super) fn delete(purpose: CredentialPurpose, reference: &str) -> Result<(), AppError> {
+        #[cfg(any(target_os = "macos", target_os = "linux"))]
+        if native_keyring::test_backend_active() {
+            return native_keyring::delete(purpose, reference);
+        }
         with_backend(|backend| {
             backend
                 .values
@@ -562,7 +680,12 @@ mod platform {
     }
 
     #[allow(dead_code)]
-    pub(super) fn unprotect_legacy(_legacy: &str) -> Result<String, AppError> {
+    pub(super) fn unprotect_legacy(legacy: &str) -> Result<String, AppError> {
+        #[cfg(any(target_os = "macos", target_os = "linux"))]
+        if native_keyring::test_backend_active() {
+            return native_keyring::unprotect_legacy(legacy);
+        }
+        let _ = legacy;
         Err(invalid_credential())
     }
 }
@@ -793,120 +916,172 @@ mod tests {
     fn native_keyring_contract() {
         assert_eq!(native_keyring::kind(), "keyring");
         assert!(native_keyring::unprotect_legacy("any-legacy-string").is_err());
+        assert!(!native_keyring::test_backend_active());
+        assert!(native_keyring::service(CredentialPurpose::SessionId).is_err());
     }
 }
 
 #[cfg(all(test, any(target_os = "macos", target_os = "linux")))]
-#[allow(dead_code)]
-struct NativeCleanup {
-    purpose: CredentialPurpose,
-    reference: String,
-}
+mod native_keyring_tests {
+    use super::*;
+    use std::process::{Command, Output};
 
-#[cfg(all(test, any(target_os = "macos", target_os = "linux")))]
-#[allow(dead_code)]
-impl NativeCleanup {
-    fn new(purpose: CredentialPurpose, reference: String) -> Self {
-        Self { purpose, reference }
+    struct NativeCleanup<'scope> {
+        purpose: CredentialPurpose,
+        protected: Option<String>,
+        _scope: &'scope native_keyring::NativeTestScope,
     }
-}
 
-#[cfg(all(test, any(target_os = "macos", target_os = "linux")))]
-impl Drop for NativeCleanup {
-    fn drop(&mut self) {
-        let _ = native_keyring::delete(self.purpose, &self.reference);
+    impl<'scope> NativeCleanup<'scope> {
+        // Only called after protect_secret_for successfully creates this entry.
+        fn new(
+            scope: &'scope native_keyring::NativeTestScope,
+            purpose: CredentialPurpose,
+            protected: String,
+        ) -> Self {
+            Self {
+                purpose,
+                protected: Some(protected),
+                _scope: scope,
+            }
+        }
+
+        fn remove(&mut self) -> Result<(), AppError> {
+            if let Some(protected) = &self.protected {
+                delete_secret_for(self.purpose, protected)?;
+                self.protected = None;
+            }
+            Ok(())
+        }
     }
-}
 
-// macOS Keychain 实机集成测试（需要显式运行）
-#[cfg(target_os = "macos")]
-#[test]
-#[ignore = "requires actual macOS Keychain access; run with: cargo test native_keychain -- --ignored --nocapture"]
-fn native_keychain_roundtrip_and_cleanup() {
-    use std::process::Command;
+    impl Drop for NativeCleanup<'_> {
+        fn drop(&mut self) {
+            let _ = self.remove();
+        }
+    }
 
-    let reference = format!("{:064x}", std::process::id());
-    let payload = b"native-keychain-test-secret";
-    let _cleanup = NativeCleanup::new(CredentialPurpose::SessionId, reference.clone());
-    let _ = native_keyring::delete(CredentialPurpose::SessionId, &reference);
+    fn read_with_os_tool(service: &str, reference: &str) -> Output {
+        #[cfg(target_os = "macos")]
+        let output = Command::new("security")
+            // Metadata lookup needs no cross-application secret-read grant.
+            // The creating test executable reads the actual secret below.
+            .args(["find-generic-password", "-s", service, "-a", reference])
+            .output()
+            .expect("security command failed");
+        #[cfg(target_os = "linux")]
+        let output = Command::new("secret-tool")
+            .args([
+                "lookup", "service", service, "username", reference, "target", "default",
+            ])
+            .output()
+            .expect("secret-tool command failed");
+        output
+    }
 
-    let token = native_keyring::protect(CredentialPurpose::SessionId, &reference, payload).unwrap();
-    assert_eq!(token, reference);
+    fn native_v2_envelope_roundtrip_and_cleanup() {
+        // Scope outlives every cleanup guard. It changes this test thread only;
+        // other unit tests continue to use their isolated memory backends.
+        let scope = native_keyring::NativeTestScope::enter();
+        let purpose = CredentialPurpose::SessionId;
+        let plaintext = "ai-helper-synthetic-native-v2-session";
+        let protected = protect_secret_for(purpose, plaintext).unwrap();
+        let mut cleanup = NativeCleanup::new(&scope, purpose, protected.clone());
+        let reference = parse_reference(purpose, &protected).unwrap();
+        let service = native_keyring::service(purpose).unwrap();
+        assert!(service.starts_with("com.ai-helper.tests.credentials.v2."));
+        assert!(valid_reference_id(reference));
+        assert!(!protected.contains(plaintext));
+        assert_eq!(
+            unprotect_secret_for(purpose, &protected).unwrap(),
+            (plaintext.to_owned(), false)
+        );
+        let refresh_purpose = CredentialPurpose::RefreshCookie;
+        let refresh =
+            protect_secret_for(refresh_purpose, "synthetic-native-refresh-cookie").unwrap();
+        let mut refresh_cleanup = NativeCleanup::new(&scope, refresh_purpose, refresh.clone());
+        let refresh_reference = parse_reference(refresh_purpose, &refresh).unwrap();
+        assert_ne!(reference, refresh_reference);
+        assert_eq!(
+            unprotect_secret_for(refresh_purpose, &refresh).unwrap(),
+            ("synthetic-native-refresh-cookie".to_owned(), false)
+        );
+        assert!(
+            !native_keyring::test_entry_is_missing(refresh_purpose, refresh_reference).unwrap()
+        );
 
-    let service = format!(
-        "com.ai-helper.credentials.v2.{}",
-        CredentialPurpose::SessionId.label()
-    );
-    let verify = Command::new("security")
-        .args([
-            "find-generic-password",
-            "-s",
-            &service,
-            "-a",
-            &reference,
-            "-w",
-        ])
-        .output()
-        .expect("security command failed");
-    assert!(verify.status.success(), "Keychain entry not found");
+        // Independent OS lookup proves this public-API roundtrip reached the
+        // native store rather than the unit-test MemoryBackend.
+        let original = native_keyring::unprotect(purpose, reference).unwrap();
+        let verify = read_with_os_tool(&service, reference);
+        assert!(verify.status.success(), "native entry not found by OS tool");
+        #[cfg(target_os = "linux")]
+        assert_eq!(
+            verify.stdout.strip_suffix(b"\n").unwrap_or(&verify.stdout),
+            original
+        );
+        assert!(unprotect_secret_for(CredentialPurpose::RefreshCookie, &protected).is_err());
+        assert!(delete_secret_for(CredentialPurpose::RefreshCookie, &protected).is_err());
+        let relabeled = protected.replace(":session-id:", ":refresh-cookie:");
+        assert!(unprotect_secret_for(CredentialPurpose::RefreshCookie, &relabeled).is_err());
+        assert!(
+            unprotect_secret_for(purpose, &protected.replacen("enc:v2:", "enc:v3:", 1)).is_err()
+        );
+        assert!(unprotect_secret_for(purpose, "enc:v1:synthetic-legacy-unix").is_err());
 
-    let read_back = native_keyring::unprotect(CredentialPurpose::SessionId, &reference).unwrap();
-    assert_eq!(read_back, payload);
+        let missing_reference = new_reference().unwrap();
+        assert!(native_keyring::test_entry_is_missing(purpose, &missing_reference).unwrap());
+        let replaced_reference = protected.replace(reference, &missing_reference);
+        assert!(unprotect_secret_for(purpose, &replaced_reference).is_err());
 
-    assert!(native_keyring::unprotect(CredentialPurpose::RefreshCookie, &reference).is_err());
-    drop(_cleanup);
+        // Mutate only the entry this test successfully created. This covers the
+        // shared v2 parser as well as the native backend; it does not exercise
+        // SessionStore's file commit, migration or CookieJar activation.
+        for (field, value) in [
+            ("version", serde_json::json!(3)),
+            ("purpose", serde_json::json!("refresh-cookie")),
+            ("reference", serde_json::json!(missing_reference)),
+            ("unexpected", serde_json::json!(true)),
+        ] {
+            let mut tampered: serde_json::Value = serde_json::from_slice(&original).unwrap();
+            tampered[field] = value;
+            native_keyring::protect(purpose, reference, &serde_json::to_vec(&tampered).unwrap())
+                .unwrap();
+            assert!(unprotect_secret_for(purpose, &protected).is_err());
+        }
+        native_keyring::protect(purpose, reference, b"not-a-v2-envelope").unwrap();
+        assert!(unprotect_secret_for(purpose, &protected).is_err());
+        native_keyring::protect(purpose, reference, &original).unwrap();
+        assert_eq!(
+            unprotect_secret_for(purpose, &protected).unwrap(),
+            (plaintext.to_owned(), false)
+        );
 
-    let deleted = Command::new("security")
-        .args(["find-generic-password", "-s", &service, "-a", &reference])
-        .output()
-        .unwrap();
-    assert!(
-        !deleted.status.success(),
-        "Keychain entry should be deleted"
-    );
+        cleanup.remove().unwrap();
+        assert!(native_keyring::test_entry_is_missing(purpose, reference).unwrap());
+        assert!(unprotect_secret_for(purpose, &protected).is_err());
+        let deleted = read_with_os_tool(&service, reference);
+        assert!(!deleted.status.success(), "native entry should be deleted");
+        assert!(deleted.stdout.is_empty());
+        assert_eq!(
+            unprotect_secret_for(refresh_purpose, &refresh).unwrap(),
+            ("synthetic-native-refresh-cookie".to_owned(), false)
+        );
+        refresh_cleanup.remove().unwrap();
+        assert!(native_keyring::test_entry_is_missing(refresh_purpose, refresh_reference).unwrap());
+    }
 
-    println!("✅ macOS Keychain integration test passed");
-}
+    #[cfg(target_os = "macos")]
+    #[test]
+    #[ignore = "requires AI_HELPER_NATIVE_CREDENTIAL_TESTS=1 and a disposable user Keychain"]
+    fn native_keychain_roundtrip_and_cleanup() {
+        native_v2_envelope_roundtrip_and_cleanup();
+    }
 
-// Linux Secret Service 实机集成测试（需要显式运行）
-#[cfg(target_os = "linux")]
-#[test]
-#[ignore = "requires actual Secret Service; run with: cargo test native_secret_service -- --ignored --nocapture"]
-fn native_secret_service_roundtrip_and_cleanup() {
-    use std::process::Command;
-
-    let reference = format!("{:064x}", std::process::id());
-    let payload = b"native-secret-service-test";
-    let _cleanup = NativeCleanup::new(CredentialPurpose::SessionId, reference.clone());
-    let _ = native_keyring::delete(CredentialPurpose::SessionId, &reference);
-
-    let token = native_keyring::protect(CredentialPurpose::SessionId, &reference, payload).unwrap();
-    assert_eq!(token, reference);
-
-    let service = format!(
-        "com.ai-helper.credentials.v2.{}",
-        CredentialPurpose::SessionId.label()
-    );
-    let verify = Command::new("secret-tool")
-        .args(["lookup", "service", &service, "account", &reference])
-        .output()
-        .expect("secret-tool command failed");
-    assert!(verify.status.success(), "Secret Service entry not found");
-
-    let read_back = native_keyring::unprotect(CredentialPurpose::SessionId, &reference).unwrap();
-    assert_eq!(read_back, payload);
-
-    assert!(native_keyring::unprotect(CredentialPurpose::RefreshCookie, &reference).is_err());
-    drop(_cleanup);
-
-    let deleted = Command::new("secret-tool")
-        .args(["lookup", "service", &service, "account", &reference])
-        .output()
-        .expect("secret-tool lookup failed");
-    assert!(
-        !deleted.status.success(),
-        "Secret Service entry should be deleted"
-    );
-
-    println!("✅ Linux Secret Service integration test passed");
+    #[cfg(target_os = "linux")]
+    #[test]
+    #[ignore = "requires AI_HELPER_NATIVE_CREDENTIAL_TESTS=1 and an isolated Secret Service"]
+    fn native_secret_service_roundtrip_and_cleanup() {
+        native_v2_envelope_roundtrip_and_cleanup();
+    }
 }

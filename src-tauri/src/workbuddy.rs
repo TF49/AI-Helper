@@ -348,26 +348,112 @@ fn with_path_locks<T>(
     }
 }
 
-fn restore_transaction(
+fn transaction_conflict(path: &std::path::Path) -> AppError {
+    AppError::Other(format!(
+        "WorkBuddy 配置已被其他程序修改，已停止读写并保留事务记录，请先处理冲突: {}",
+        path.display()
+    ))
+}
+
+fn transaction_path_is_link(path: &std::path::Path) -> Result<bool, AppError> {
+    let metadata = match std::fs::symlink_metadata(path) {
+        Ok(metadata) => metadata,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(false),
+        Err(error) => return Err(error.into()),
+    };
+    #[cfg(windows)]
+    let is_link = {
+        use std::os::windows::fs::MetadataExt;
+        metadata.file_attributes() & 0x400 != 0
+    };
+    #[cfg(not(windows))]
+    let is_link = metadata.file_type().is_symlink();
+    Ok(is_link)
+}
+
+fn verify_file_snapshot(path: &std::path::Path, expected: Option<&[u8]>) -> Result<(), AppError> {
+    if transaction_path_is_link(path)? {
+        return Err(transaction_conflict(path));
+    }
+    if read_optional_bytes(path)?.as_deref() != expected {
+        return Err(transaction_conflict(path));
+    }
+    Ok(())
+}
+
+fn verify_transaction_snapshot(
     transaction: &WorkbuddyTransaction,
-    committed: bool,
+    committed_files: usize,
 ) -> Result<(), AppError> {
-    let mut failure = None;
-    for file in &transaction.files {
-        let contents = if committed {
+    for (index, file) in transaction.files.iter().enumerate() {
+        let expected = if index < committed_files {
             Some(file.after.as_slice())
         } else {
             file.before.as_deref()
         };
-        // A failed replacement may leave its old file intact (for example a
-        // read-only Windows profile). Do not require another write to restore
-        // bytes that already match the intended recovery state.
-        if let Ok(current) = read_optional_bytes(&file.path) {
-            if current.as_deref() == contents {
-                continue;
+        verify_file_snapshot(&file.path, expected)?;
+    }
+    Ok(())
+}
+
+fn restore_transaction(
+    transaction: &WorkbuddyTransaction,
+    committed: bool,
+) -> Result<(), AppError> {
+    if committed {
+        // A durable completion marker proves all replacements succeeded. Do
+        // not replay snapshots over later edits. Missing/unreadable targets
+        // retain the marker and stop before normal backup recovery could
+        // recreate a file that another program intentionally deleted.
+        for file in &transaction.files {
+            if !matches!(transaction_path_is_link(&file.path), Ok(false)) {
+                return Err(transaction_conflict(&file.path));
+            }
+            match read_optional_bytes(&file.path) {
+                Ok(Some(_)) => {}
+                _ => return Err(transaction_conflict(&file.path)),
             }
         }
-        let result = if let Some(contents) = contents {
+        return Ok(());
+    }
+    // Inspect the entire transaction before restoring its first file. An
+    // editor/WorkBuddy need not participate in our advisory lock protocol.
+    // Preserve every file and the journal if any readable file is a version
+    // that this transaction did not write or snapshot.
+    for file in &transaction.files {
+        if matches!(transaction_path_is_link(&file.path), Ok(true)) {
+            return Err(transaction_conflict(&file.path));
+        }
+    }
+    let snapshots = transaction
+        .files
+        .iter()
+        .map(|file| read_optional_bytes(&file.path))
+        .collect::<Vec<_>>();
+    for (file, snapshot) in transaction.files.iter().zip(&snapshots) {
+        if let Ok(current) = snapshot {
+            let is_after = current.as_deref() == Some(file.after.as_slice());
+            if !is_after && current.as_deref() != file.before.as_deref() {
+                return Err(transaction_conflict(&file.path));
+            }
+        }
+    }
+    let mut failure = None;
+    for (file, snapshot) in transaction.files.iter().zip(snapshots) {
+        let current = match snapshot {
+            Ok(current) => current,
+            Err(error) => {
+                if failure.is_none() {
+                    failure = Some(error);
+                }
+                continue;
+            }
+        };
+        if current.as_deref() == file.before.as_deref() {
+            continue;
+        }
+        verify_file_snapshot(&file.path, current.as_deref())?;
+        let result = if let Some(contents) = file.before.as_deref() {
             crate::safe_fs::atomic_write_locked(&file.path, contents)
         } else {
             crate::safe_fs::remove_file_locked(&file.path)
@@ -410,6 +496,16 @@ fn remove_broken_symlink_locked(path: &std::path::Path) -> Result<(), AppError> 
         && matches!(std::fs::metadata(path), Err(ref e)
             if e.kind() == std::io::ErrorKind::NotFound)
     {
+        #[cfg(windows)]
+        {
+            use std::os::windows::fs::FileTypeExt;
+            if metadata.file_type().is_symlink_dir() {
+                // Remove only the directory link itself; never recurse into
+                // or follow its target. DeleteFileW rejects directory links.
+                std::fs::remove_dir(path)?;
+                return Ok(());
+            }
+        }
         std::fs::remove_file(path)?;
     }
     Ok(())
@@ -557,6 +653,11 @@ fn transaction_checkpoint(_writes: usize) -> Result<(), AppError> {
             if let Some(ready) = std::env::var_os("AI_HELPER_TEST_WORKBUDDY_READY") {
                 std::fs::write(ready, b"ready")?;
                 loop {
+                    if std::env::var_os("AI_HELPER_TEST_WORKBUDDY_CONTINUE")
+                        .is_some_and(|path| std::path::Path::new(&path).exists())
+                    {
+                        break;
+                    }
                     std::thread::sleep(std::time::Duration::from_millis(100));
                 }
             }
@@ -620,19 +721,32 @@ fn commit_documents(
         .iter()
         .map(|file| crate::safe_fs::prepare_write_locked(&file.path, &file.after))
         .collect::<Result<Vec<_>, _>>()?;
+    verify_transaction_snapshot(&transaction, 0)?;
     crate::safe_fs::atomic_write_locked(&paths.journal, serde_json::to_vec(&transaction)?)?;
-    let result = staged
-        .into_iter()
-        .enumerate()
-        .try_for_each(|(index, staged)| {
-            staged
-                .commit()
-                .and_then(|_| transaction_checkpoint(index + 1))
-        });
-    // Drop every uncommitted staging file before allocating rollback files.
-    if let Err(error) = result {
+    if let Err(error) = transaction_checkpoint(0) {
+        drop(staged);
         return rollback_failed_transaction(paths, &transaction, error);
     }
+    // Byte checks detect non-cooperating writers during preparation and
+    // between replacements. Ordinary rename has no compare-and-swap form:
+    // such a writer can still race the final check and replacement.
+    let mut staged = staged.into_iter();
+    for (index, file) in transaction.files.iter().enumerate() {
+        verify_transaction_snapshot(&transaction, index)?;
+        verify_file_snapshot(&file.path, file.before.as_deref())?;
+        let result = staged
+            .next()
+            .expect("one prepared write per transaction file")
+            .commit()
+            .and_then(|_| transaction_checkpoint(index + 1));
+        if let Err(error) = result {
+            // Release every remaining staging file before rollback allocates
+            // replacements. A conflict detected above keeps the journal.
+            drop(staged);
+            return rollback_failed_transaction(paths, &transaction, error);
+        }
+    }
+    verify_transaction_snapshot(&transaction, transaction.files.len())?;
     transaction.phase = TransactionPhase::Committed;
     if let Err(error) =
         crate::safe_fs::atomic_write_locked(&paths.journal, serde_json::to_vec(&transaction)?)
@@ -646,8 +760,8 @@ fn commit_documents(
     }
     #[cfg(test)]
     transaction_checkpoint(usize::MAX)?;
-    // The complete new state and commit marker are durable. A leftover committed
-    // journal is safe to replay; cleanup failure does not undo a committed update.
+    // The complete new state and commit marker are durable. Recovery can
+    // validate and clean a leftover marker without replaying its old snapshot.
     if let Err(error) = crate::safe_fs::remove_file_locked(&paths.journal) {
         log::warn!("WorkBuddy 配置事务已提交，清理记录将在下次操作重试: {error}");
     }
@@ -995,12 +1109,12 @@ mod tests {
         }
     }
 
-    fn child(
+    fn child_command(
         root: &std::path::Path,
         action: &str,
         model: &str,
         pause: Option<usize>,
-    ) -> ChildGuard {
+    ) -> Command {
         let mut command = Command::new(std::env::current_exe().unwrap());
         command
             .args([
@@ -1011,13 +1125,35 @@ mod tests {
             .env("AI_HELPER_TEST_WORKBUDDY_ROOT", root)
             .env("AI_HELPER_TEST_WORKBUDDY_ACTION", action)
             .env("AI_HELPER_TEST_WORKBUDDY_MODEL", model)
+            .env_remove("AI_HELPER_TEST_WORKBUDDY_CONTINUE")
             .stdout(Stdio::null());
         if let Some(writes) = pause {
             command
                 .env("AI_HELPER_TEST_WORKBUDDY_PAUSE_AFTER", writes.to_string())
                 .env("AI_HELPER_TEST_WORKBUDDY_READY", root.join("child-ready"));
         }
-        ChildGuard(command.spawn().unwrap())
+        command
+    }
+
+    fn child(
+        root: &std::path::Path,
+        action: &str,
+        model: &str,
+        pause: Option<usize>,
+    ) -> ChildGuard {
+        ChildGuard(child_command(root, action, model, pause).spawn().unwrap())
+    }
+
+    fn resumable_child(root: &std::path::Path, pause: usize) -> ChildGuard {
+        ChildGuard(
+            child_command(root, "save-conflict", "conflicted", Some(pause))
+                .env(
+                    "AI_HELPER_TEST_WORKBUDDY_CONTINUE",
+                    root.join("child-continue"),
+                )
+                .spawn()
+                .unwrap(),
+        )
     }
 
     fn wait_child(child: &mut ChildGuard) -> std::process::ExitStatus {
@@ -1069,11 +1205,23 @@ mod tests {
         let model = std::env::var("AI_HELPER_TEST_WORKBUDDY_MODEL").unwrap();
         match action.as_str() {
             "save" => set_workbuddy_config(payload(&model)).unwrap(),
+            "save-conflict" => {
+                assert!(set_workbuddy_config(payload(&model))
+                    .unwrap_err()
+                    .to_string()
+                    .contains("其他程序修改"));
+            }
             "delete" => {
                 delete_workbuddy_model(model).unwrap();
             }
             "read" => {
                 read_all_workbuddy_entries().unwrap();
+            }
+            "read-conflict" => {
+                assert!(read_all_workbuddy_entries()
+                    .unwrap_err()
+                    .to_string()
+                    .contains("其他程序修改"));
             }
             _ => panic!("unknown child operation"),
         }
@@ -1239,6 +1387,9 @@ mod tests {
             assert!(delete_workbuddy_model("keep".into()).is_err());
             assert!(paths.journal.exists());
             std::fs::remove_dir(compatibility).unwrap();
+            // Restore a known transaction version after repairing the fault.
+            // An unexplained deletion must be treated as an external change.
+            std::fs::write(compatibility, b"[]").unwrap();
             read_all_workbuddy_entries().unwrap();
             assert!(!paths.journal.exists());
             for (index, path) in profiles(directory.path()).iter().enumerate() {
@@ -1385,6 +1536,168 @@ mod tests {
             .path()
             .join(".ai-helper/workbuddy-transaction.json")
             .exists());
+    }
+
+    fn external_policy_edit(path: &std::path::Path) -> Vec<u8> {
+        let mut value: serde_json::Value =
+            serde_json::from_slice(&std::fs::read(path).unwrap()).unwrap();
+        value["permissions"]["deny"] = serde_json::json!(["external-security-rule"]);
+        value["externalSecurityMarker"] = serde_json::json!(true);
+        let bytes = serde_json::to_vec(&value).unwrap();
+        std::fs::write(path, &bytes).unwrap();
+        bytes
+    }
+
+    fn profile_and_backup_snapshot(root: &std::path::Path) -> Vec<Option<Vec<u8>>> {
+        profiles(root)
+            .iter()
+            .flat_map(|path| [path.clone(), model_backup(path)])
+            .map(|path| read_optional_bytes(&path).unwrap())
+            .collect()
+    }
+
+    #[test]
+    fn prepared_recovery_preserves_external_change_before_restoring_any_file() {
+        let directory = tempfile::tempdir().unwrap();
+        fixture(directory.path());
+        let mut interrupted = child(directory.path(), "save", "uncommitted", Some(2));
+        wait_ready(&mut interrupted, directory.path());
+        interrupted.0.kill().unwrap();
+        interrupted.0.wait().unwrap();
+        // The conflict is in the last profile. Recovery must detect it before
+        // rolling back the already replaced primary or its backup.
+        external_policy_edit(&profiles(directory.path())[1]);
+        let snapshot = profile_and_backup_snapshot(directory.path());
+        let journal = directory
+            .path()
+            .join(".ai-helper/workbuddy-transaction.json");
+        let pending = std::fs::read(&journal).unwrap();
+        let mut reader = child(directory.path(), "read-conflict", "unused", None);
+        assert!(wait_child(&mut reader).success());
+        assert_eq!(profile_and_backup_snapshot(directory.path()), snapshot);
+        assert_eq!(std::fs::read(journal).unwrap(), pending);
+    }
+
+    #[test]
+    fn committed_recovery_keeps_later_external_policy_fields() {
+        let directory = tempfile::tempdir().unwrap();
+        fixture(directory.path());
+        let mut interrupted = child(directory.path(), "save", "committed", Some(usize::MAX));
+        wait_ready(&mut interrupted, directory.path());
+        interrupted.0.kill().unwrap();
+        interrupted.0.wait().unwrap();
+        external_policy_edit(&profiles(directory.path())[0]);
+        let snapshot = profile_and_backup_snapshot(directory.path());
+        let mut reader = child(directory.path(), "read", "unused", None);
+        assert!(wait_child(&mut reader).success());
+        assert_eq!(profile_and_backup_snapshot(directory.path()), snapshot);
+        assert!(!directory
+            .path()
+            .join(".ai-helper/workbuddy-transaction.json")
+            .exists());
+    }
+
+    #[test]
+    fn committed_recovery_does_not_resurrect_an_externally_deleted_profile() {
+        let directory = tempfile::tempdir().unwrap();
+        fixture(directory.path());
+        let mut interrupted = child(directory.path(), "save", "committed", Some(usize::MAX));
+        wait_ready(&mut interrupted, directory.path());
+        interrupted.0.kill().unwrap();
+        interrupted.0.wait().unwrap();
+        std::fs::remove_file(&profiles(directory.path())[0]).unwrap();
+        let snapshot = profile_and_backup_snapshot(directory.path());
+        let journal = directory
+            .path()
+            .join(".ai-helper/workbuddy-transaction.json");
+        let pending = std::fs::read(&journal).unwrap();
+        let mut reader = child(directory.path(), "read-conflict", "unused", None);
+        assert!(wait_child(&mut reader).success());
+        assert_eq!(profile_and_backup_snapshot(directory.path()), snapshot);
+        assert_eq!(std::fs::read(journal).unwrap(), pending);
+    }
+
+    #[test]
+    fn external_edits_during_staging_or_commit_preserve_every_file_and_journal() {
+        // Check before the first replacement, after replacing the primary,
+        // and after replacing every file but before writing Committed.
+        for checkpoint in [0, 2, 4] {
+            let directory = tempfile::tempdir().unwrap();
+            fixture(directory.path());
+            let mut saver = resumable_child(directory.path(), checkpoint);
+            wait_ready(&mut saver, directory.path());
+            external_policy_edit(&profiles(directory.path())[1]);
+            let snapshot = profile_and_backup_snapshot(directory.path());
+            let journal = directory
+                .path()
+                .join(".ai-helper/workbuddy-transaction.json");
+            let pending = std::fs::read(&journal).unwrap();
+            std::fs::write(directory.path().join("child-continue"), b"continue").unwrap();
+            assert!(wait_child(&mut saver).success());
+            assert_eq!(profile_and_backup_snapshot(directory.path()), snapshot);
+            assert_eq!(std::fs::read(journal).unwrap(), pending);
+        }
+    }
+
+    #[cfg(windows)]
+    fn directory_junction(target: &std::path::Path, link: &std::path::Path) {
+        use std::os::windows::process::CommandExt;
+        let output = Command::new("powershell.exe")
+            .args([
+                "-NoLogo",
+                "-NoProfile",
+                "-NonInteractive",
+                "-Command",
+                "New-Item -ItemType Junction -Path $env:AI_HELPER_TEST_JUNCTION_LINK -Target $env:AI_HELPER_TEST_JUNCTION_TARGET -ErrorAction Stop | Out-Null",
+            ])
+            .env("AI_HELPER_TEST_JUNCTION_LINK", link)
+            .env("AI_HELPER_TEST_JUNCTION_TARGET", target)
+            .creation_flags(0x08000000)
+            .output()
+            .unwrap();
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn broken_parent_directory_junction_heals_through_actual_save() {
+        let directory = tempfile::tempdir().unwrap();
+        let target = directory.path().join("deleted-target");
+        std::fs::create_dir(&target).unwrap();
+        let link = directory.path().join(".workbuddy");
+        directory_junction(&target, &link);
+        std::fs::remove_dir(&target).unwrap();
+        let mut saver = child(directory.path(), "save", "healed-junction", None);
+        assert!(wait_child(&mut saver).success());
+        let metadata = std::fs::symlink_metadata(&link).unwrap();
+        assert!(metadata.is_dir());
+        assert!(!metadata.file_type().is_symlink());
+        assert_eq!(ids(&link.join("models.json")), ["healed-junction"]);
+        assert!(!target.exists());
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn valid_parent_directory_junction_is_preserved_through_actual_save() {
+        let directory = tempfile::tempdir().unwrap();
+        let target = directory.path().join("actual-target");
+        std::fs::create_dir(&target).unwrap();
+        let sentinel = target.join("untouched-policy");
+        std::fs::write(&sentinel, b"keep").unwrap();
+        let link = directory.path().join(".workbuddy");
+        directory_junction(&target, &link);
+        let mut saver = child(directory.path(), "save", "linked-profile", None);
+        assert!(wait_child(&mut saver).success());
+        assert!(std::fs::symlink_metadata(&link)
+            .unwrap()
+            .file_type()
+            .is_symlink());
+        assert_eq!(ids(&target.join("models.json")), ["linked-profile"]);
+        assert_eq!(std::fs::read(sentinel).unwrap(), b"keep");
     }
 
     #[test]

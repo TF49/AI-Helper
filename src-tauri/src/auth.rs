@@ -2624,6 +2624,69 @@ mod tests {
     use std::net::TcpListener;
     use std::sync::Barrier;
 
+    #[cfg(any(target_os = "macos", target_os = "linux"))]
+    struct NativeSessionCleanup<'scope> {
+        scope: &'scope crate::secret_storage::test_support::NativeTestScope,
+        path: PathBuf,
+        references: Vec<(CredentialPurpose, String)>,
+    }
+
+    #[cfg(any(target_os = "macos", target_os = "linux"))]
+    impl<'scope> NativeSessionCleanup<'scope> {
+        fn new(
+            scope: &'scope crate::secret_storage::test_support::NativeTestScope,
+            store: &SessionStore,
+        ) -> Self {
+            Self {
+                scope,
+                path: store.path.clone(),
+                references: Vec::new(),
+            }
+        }
+
+        fn track(&mut self, storage: &AuthSessionStorage) {
+            for (purpose, protected) in [
+                (CredentialPurpose::SessionId, storage.session_sid.as_ref()),
+                (
+                    CredentialPurpose::RefreshCookie,
+                    storage.refresh_cookie.as_ref(),
+                ),
+            ] {
+                if let Some(protected) = protected
+                    .filter(|value| value.starts_with(crate::secret_storage::ENCRYPTED_PREFIX))
+                {
+                    let reference = (purpose, protected.clone());
+                    if !self.references.contains(&reference) {
+                        self.references.push(reference);
+                    }
+                }
+            }
+        }
+
+        fn assert_all_missing(&self) {
+            for (purpose, protected) in &self.references {
+                assert!(self.scope.entry_is_missing(*purpose, protected).unwrap());
+            }
+        }
+    }
+
+    #[cfg(any(target_os = "macos", target_os = "linux"))]
+    impl Drop for NativeSessionCleanup<'_> {
+        fn drop(&mut self) {
+            // On an assertion failure, also collect the current committed pair.
+            // Only this temporary file and this scope's random OS namespace are
+            // addressed; the scope outlives this guard, including unwinding.
+            if let Ok(bytes) = fs::read(&self.path) {
+                if let Ok(storage) = serde_json::from_slice::<AuthSessionStorage>(&bytes) {
+                    self.track(&storage);
+                }
+            }
+            for (purpose, protected) in &self.references {
+                let _ = crate::secret_storage::delete_secret_for(*purpose, protected);
+            }
+        }
+    }
+
     fn user(id: i64) -> UserInfo {
         UserInfo {
             id,
@@ -2826,6 +2889,179 @@ mod tests {
         assert_eq!(restored.session_sid, manager.session_sid);
         assert_ne!(restored.session_generation, manager.session_generation);
         assert!(!restored.auto_refresh_blocked);
+    }
+
+    #[cfg(any(target_os = "macos", target_os = "linux"))]
+    fn assert_native_session_snapshot(
+        scope: &crate::secret_storage::test_support::NativeTestScope,
+        store: &SessionStore,
+        expected: &AuthSessionStorage,
+    ) -> AuthSessionStorage {
+        let persisted = read_fixture(store);
+        let json = fs::read_to_string(&store.path).unwrap();
+        assert_eq!(
+            persisted.user.as_ref().map(|user| user.id),
+            expected.user.as_ref().map(|user| user.id)
+        );
+        assert!(persisted.session_generation.is_some());
+        assert!(persisted.storage_revision.is_some());
+        for (purpose, encoded, plaintext, prefix) in [
+            (
+                CredentialPurpose::SessionId,
+                persisted.session_sid.as_deref().unwrap(),
+                expected.session_sid.as_deref().unwrap(),
+                "enc:v2:keyring:session-id:",
+            ),
+            (
+                CredentialPurpose::RefreshCookie,
+                persisted.refresh_cookie.as_deref().unwrap(),
+                expected.refresh_cookie.as_deref().unwrap(),
+                "enc:v2:keyring:refresh-cookie:",
+            ),
+        ] {
+            assert!(encoded.starts_with(prefix));
+            assert!(!json.contains(plaintext));
+            assert!(!scope.entry_is_missing(purpose, encoded).unwrap());
+            assert_eq!(
+                crate::secret_storage::unprotect_secret_for(purpose, encoded).unwrap(),
+                (plaintext.to_owned(), false)
+            );
+        }
+        assert!(!store.backup_path().exists());
+        assert!(!store.path.with_extension("json.pending").exists());
+        persisted
+    }
+
+    #[cfg(any(target_os = "macos", target_os = "linux"))]
+    fn native_session_store_migration_restore_and_local_logout() {
+        let scope = crate::secret_storage::test_support::NativeTestScope::enter();
+        let (_directory, store) = fixture();
+        // Drop order guarantees cleanup runs before either the file disappears
+        // or the random native namespace is deactivated, including on panic.
+        let mut cleanup = NativeSessionCleanup::new(&scope, &store);
+        let old_plaintext = legacy(42621022);
+        write_fixture(&store, &old_plaintext);
+        assert!(fs::read_to_string(&store.path)
+            .unwrap()
+            .contains(old_plaintext.session_sid.as_deref().unwrap()));
+
+        let first = AuthManager::with_storage_path(store.path.clone());
+        // The actual SessionStore restore protects, stages, reads back, commits,
+        // and reads back again before enabling this manager's memory/CookieJar.
+        let first_protected = assert_native_session_snapshot(&scope, &store, &old_plaintext);
+        cleanup.track(&first_protected);
+        assert_eq!(first.session_sid, old_plaintext.session_sid);
+        assert_eq!(first.refresh_cookie, old_plaintext.refresh_cookie);
+        assert_eq!(
+            first.current_user.as_ref().map(|user| user.id),
+            Some(42621022)
+        );
+        assert_eq!(first.selected_token_id, Some(10));
+        assert_eq!(
+            cookies(&first).as_deref(),
+            Some("new_api_refresh=fake-cookie-42621022")
+        );
+        assert_eq!(first.session_generation, first_protected.session_generation);
+        assert!(!first.auto_refresh_blocked);
+        assert!(first.session_restore_error.is_none());
+
+        let mut restarted = AuthManager::with_storage_path(store.path.clone());
+        let second_protected = assert_native_session_snapshot(&scope, &store, &old_plaintext);
+        cleanup.track(&second_protected);
+        assert_ne!(first.session_generation, restarted.session_generation);
+        assert_ne!(first_protected.session_sid, second_protected.session_sid);
+        assert_ne!(
+            first_protected.refresh_cookie,
+            second_protected.refresh_cookie
+        );
+        assert_eq!(restarted.session_sid, old_plaintext.session_sid);
+        assert_eq!(
+            cookies(&restarted).as_deref(),
+            Some("new_api_refresh=fake-cookie-42621022")
+        );
+        assert!(first.validate_current_session().is_err());
+        for (purpose, encoded) in [
+            (
+                CredentialPurpose::SessionId,
+                first_protected.session_sid.as_deref().unwrap(),
+            ),
+            (
+                CredentialPurpose::RefreshCookie,
+                first_protected.refresh_cookie.as_deref().unwrap(),
+            ),
+        ] {
+            assert!(scope.entry_is_missing(purpose, encoded).unwrap());
+        }
+
+        // A new synthetic login exercises the real protected save/commit path,
+        // without using the global manager or issuing an HTTP request.
+        let replacement = legacy(42621023);
+        let previous_generation = restarted.session_generation.clone();
+        restarted
+            .complete_login(&login_data(42621023), replacement.refresh_cookie.as_deref())
+            .unwrap();
+        let replacement_protected = assert_native_session_snapshot(&scope, &store, &replacement);
+        cleanup.track(&replacement_protected);
+        assert_ne!(restarted.session_generation, previous_generation);
+        assert_eq!(
+            restarted.current_user.as_ref().map(|user| user.id),
+            Some(42621023)
+        );
+        assert_eq!(restarted.session_sid, replacement.session_sid);
+        assert_eq!(
+            restarted.access_token.as_deref(),
+            Some("fake-access-42621023")
+        );
+        assert_eq!(
+            cookies(&restarted).as_deref(),
+            Some("new_api_refresh=fake-cookie-42621023")
+        );
+        assert!(restarted.session_restore_error.is_none());
+        for (purpose, encoded) in [
+            (
+                CredentialPurpose::SessionId,
+                second_protected.session_sid.as_deref().unwrap(),
+            ),
+            (
+                CredentialPurpose::RefreshCookie,
+                second_protected.refresh_cookie.as_deref().unwrap(),
+            ),
+        ] {
+            assert!(scope.entry_is_missing(purpose, encoded).unwrap());
+        }
+
+        restarted.clear_persisted_session();
+        assert!(restarted.current_user.is_none());
+        assert!(restarted.session_sid.is_none());
+        assert!(restarted.refresh_cookie.is_none());
+        assert!(restarted.access_token.is_none());
+        assert!(cookies(&restarted).is_none());
+        assert!(restarted.auto_refresh_blocked);
+        assert!(restarted.session_restore_error.is_none());
+        assert!(!store.path.exists());
+        assert!(!store.backup_path().exists());
+        assert!(store.marker_path().exists());
+        cleanup.assert_all_missing();
+        assert!(store.restore().unwrap().is_none());
+        let after_logout = AuthManager::with_storage_path(store.path.clone());
+        assert!(after_logout.auto_refresh_blocked);
+        assert!(after_logout.current_user.is_none());
+        assert!(cookies(&after_logout).is_none());
+        cleanup.assert_all_missing();
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    #[ignore = "requires AI_HELPER_NATIVE_CREDENTIAL_TESTS=1 and a disposable user Keychain"]
+    fn native_keychain_session_store() {
+        native_session_store_migration_restore_and_local_logout();
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    #[ignore = "requires AI_HELPER_NATIVE_CREDENTIAL_TESTS=1 and an isolated Secret Service"]
+    fn native_secret_service_session_store() {
+        native_session_store_migration_restore_and_local_logout();
     }
 
     #[test]

@@ -183,9 +183,14 @@ exit $?
         } finally { Move-Item -LiteralPath "$armSource.held" -Destination $armSource }
         try {
             Write-MacosDmg $armSource arm64 '1.0.69' | Out-Null
+            $armSignature = Join-Path $assetRoot 'AI-Helper-v1.0.70-macOS-aarch64.dmg.sig'
+            Write-Fixture $armSignature 'stale signature before wrong-version retry'
             Assert-MacosRejected v1.0.70 aarch64-apple-darwin 'DMG application version/product identity'
+            Assert-Release (-not (Test-Path -LiteralPath $armSignature)) 'A stale signature survived wrong-version packaging.'
             Write-MacosDmg $armSource x86_64 | Out-Null
+            Write-Fixture $armSignature 'stale signature before wrong-architecture retry'
             Assert-MacosRejected v1.0.70 aarch64-apple-darwin 'DMG application binary does not match target architecture'
+            Assert-Release (-not (Test-Path -LiteralPath $armSignature)) 'A stale signature survived wrong-architecture packaging.'
             Write-MacosDmg $armSource arm64 '1.0.70' 'com.fake.other' | Out-Null
             Assert-MacosRejected v1.0.70 aarch64-apple-darwin 'DMG application version/product identity'
             Write-MacosDmg $armSource arm64 '1.0.70' 'com.aihelper.app' 'Other App' | Out-Null
@@ -202,6 +207,7 @@ exit $?
         try { Assert-MacosRejected v1.0.70 aarch64-apple-darwin 'versions must match' }
         finally { Write-Fixture $configPath '{"productName":"AI Helper","identifier":"com.aihelper.app","version":"1.0.70"}' }
         # A stale signature must never mask a failed DMG signer.
+        Write-Fixture (Join-Path $assetRoot 'AI-Helper-v1.0.70-macOS-aarch64.dmg.sig') 'stale signature before signer failure'
         $env:MOCK_SIGNER_FAIL = '1'
         try {
             & $BashPath './scripts/mock-package-driver.sh' v1.0.70 aarch64-apple-darwin 2>&1 | Out-Null

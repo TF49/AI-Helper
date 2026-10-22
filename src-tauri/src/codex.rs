@@ -120,16 +120,34 @@ fn validate_managed_binding(doc: &DocumentMut) -> Result<(), AppError> {
     let Some(providers) = doc.get("model_providers") else {
         return Ok(());
     };
-    let Some(custom_item) = providers.get(MANAGED_PROVIDER) else {
+    let providers = providers
+        .as_table_like()
+        .ok_or_else(|| AppError::Toml("Codex model_providers 不是表".into()))?;
+    let Some(custom) = providers.get(MANAGED_PROVIDER) else {
         return Ok(());
     };
-    let Some(custom) = custom_item.as_table_like() else {
-        return Err(AppError::Toml("Codex custom provider 配置损坏".into()));
-    };
-    if let Some(key) = custom.get("env_key") {
+    let custom = custom
+        .as_table_like()
+        .ok_or_else(|| AppError::Toml("Codex custom provider 配置损坏".into()))?;
+    if let Some(token) = custom.get("experimental_bearer_token") {
+        // A present token, including an empty one, owns this binding. Never
+        // replace it with an unrelated inherited or persisted environment key.
+        token
+            .as_str()
+            .ok_or_else(|| AppError::Toml("Codex bearer token 无效".into()))?;
+    } else if let Some(key) = custom.get("env_key") {
         if key.as_str() != Some(LEGACY_ENV_KEY) {
             return Err(AppError::Toml("Codex env_key 无效，请先修复配置".into()));
         }
+    }
+    if custom.get("experimental_bearer_token").is_some() || custom.get("env_key").is_some() {
+        let url = custom
+            .get("base_url")
+            .and_then(Item::as_str)
+            .filter(|url| !url.trim().is_empty())
+            .ok_or_else(|| AppError::Toml("Codex 凭据缺少明确的目标 URL".into()))?;
+        crate::credential_policy::parse_origin(url)
+            .map_err(|_| AppError::Toml("Codex 凭据的目标 URL 无效".into()))?;
     }
     Ok(())
 }
@@ -137,8 +155,8 @@ fn validate_managed_binding(doc: &DocumentMut) -> Result<(), AppError> {
 fn needs_legacy_environment(doc: &DocumentMut) -> bool {
     selected_provider(doc).is_ok_and(|provider| provider == MANAGED_PROVIDER)
         && custom_provider(doc).is_some_and(|provider| {
-            provider.get("env_key").and_then(Item::as_str) == Some(LEGACY_ENV_KEY)
-                || provider.get("env_key").is_none()
+            provider.get("experimental_bearer_token").is_none()
+                && provider.get("env_key").and_then(Item::as_str) == Some(LEGACY_ENV_KEY)
         })
 }
 
@@ -152,47 +170,39 @@ fn parse_codex_content(
 ) -> CodexConfig {
     let mut base_url = String::new();
     let mut model = String::new();
-    let mut api_key = if content.trim().is_empty() {
-        legacy_api_key.clone()
-    } else {
-        String::new()
-    };
+    let mut api_key = String::new();
     if config_exists {
-        let trimmed = content.trim();
-        if !trimmed.is_empty() {
-            if let Ok(doc) = trimmed.parse::<DocumentMut>() {
-                model = active_profile(&doc)
-                    .ok()
-                    .flatten()
-                    .and_then(|profile| profile.get("model"))
-                    .or_else(|| doc.get("model"))
-                    .and_then(Item::as_str)
-                    .or_else(|| {
-                        doc.get("profiles")?
-                            .get("thirdparty")?
-                            .get("model")?
-                            .as_str()
-                    })
-                    .unwrap_or_default()
-                    .to_string();
-                if let Some(custom) = custom_provider(&doc).filter(|_| {
-                    selected_provider(&doc).is_ok_and(|provider| provider == MANAGED_PROVIDER)
-                }) {
-                    if let Some(url) = custom.get("base_url").and_then(Item::as_str) {
-                        let trimmed = url.trim_end_matches('/');
-                        let stripped = trimmed.strip_suffix("/v1").unwrap_or(trimmed);
-                        if !stripped.is_empty() {
-                            base_url = format!("{stripped}/");
-                        }
+        if let Ok(doc) = content.trim().parse::<DocumentMut>() {
+            model = active_profile(&doc)
+                .ok()
+                .flatten()
+                .and_then(|profile| profile.get("model"))
+                .or_else(|| doc.get("model"))
+                .and_then(Item::as_str)
+                .or_else(|| {
+                    doc.get("profiles")?
+                        .get("thirdparty")?
+                        .get("model")?
+                        .as_str()
+                })
+                .unwrap_or_default()
+                .to_string();
+            if let Some(custom) = custom_provider(&doc).filter(|_| {
+                selected_provider(&doc).is_ok_and(|provider| provider == MANAGED_PROVIDER)
+            }) {
+                if let Some(url) = custom.get("base_url").and_then(Item::as_str) {
+                    let trimmed = url.trim_end_matches('/');
+                    let stripped = trimmed.strip_suffix("/v1").unwrap_or(trimmed);
+                    if !stripped.is_empty() {
+                        base_url = format!("{stripped}/");
                     }
-                    if custom.get("env_key").and_then(Item::as_str) == Some(LEGACY_ENV_KEY)
-                        || custom.get("env_key").is_none()
-                    {
-                        api_key = legacy_api_key.clone();
-                    }
-                } else if selected_provider(&doc).is_ok_and(|provider| provider != MANAGED_PROVIDER)
-                {
-                    api_key = String::new();
+                }
+                if let Some(token) = custom.get("experimental_bearer_token") {
+                    // Presence, including an explicit empty token, prevents a
+                    // stale global credential from being paired with this URL.
+                    api_key = token.as_str().unwrap_or_default().to_string();
+                } else if needs_legacy_environment(&doc) {
+                    api_key = legacy_api_key;
                 }
             }
         }
@@ -212,9 +222,6 @@ fn legacy_key_for_content(
     content: &str,
     read: impl FnOnce(&str) -> Result<String, AppError>,
 ) -> Result<String, AppError> {
-    if content.trim().is_empty() {
-        return read(LEGACY_ENV_KEY);
-    }
     let Some(doc) = content.parse::<DocumentMut>().ok() else {
         return Ok(String::new());
     };
@@ -274,9 +281,13 @@ pub fn get_codex_config() -> Result<CodexConfig, AppError> {
 }
 
 #[cfg_attr(not(test), allow(dead_code))]
-pub fn prepare_codex_doc(base_url: &str, model: Option<&str>) -> Result<DocumentMut, AppError> {
+pub fn prepare_codex_doc(
+    base_url: &str,
+    api_key: &str,
+    model: Option<&str>,
+) -> Result<DocumentMut, AppError> {
     let mut doc = DocumentMut::new();
-    merge_codex_managed_fields(&mut doc, base_url, model)?;
+    merge_codex_managed_fields(&mut doc, base_url, api_key, model)?;
     Ok(doc)
 }
 
@@ -372,6 +383,7 @@ fn clean_query_parameters(
 pub fn merge_codex_managed_fields(
     doc: &mut DocumentMut,
     base_url: &str,
+    api_key: &str,
     model: Option<&str>,
 ) -> Result<(), AppError> {
     align_active_managed_profile(doc, model)?;
@@ -407,9 +419,9 @@ pub fn merge_codex_managed_fields(
         .map(ToOwned::to_owned);
     clean_query_parameters(custom, previous_url.as_deref(), base_url)?;
     custom.insert("base_url", toml_edit::value(base_url));
-    custom.insert("env_key", toml_edit::value(LEGACY_ENV_KEY));
+    custom.insert("experimental_bearer_token", toml_edit::value(api_key));
     for name in [
-        "experimental_bearer_token",
+        "env_key",
         "env_key_instructions",
         "auth",
         "requires_openai_auth",
@@ -421,15 +433,22 @@ pub fn merge_codex_managed_fields(
     if custom.get("name").is_none() {
         custom.insert("name", toml_edit::value("Custom"));
     }
-    if custom.get("api").is_none() {
-        custom.insert("api", toml_edit::value("openai-responses"));
+    if let Some(api) = custom.get("api") {
+        if api.as_str() != Some("openai-responses") {
+            return Err(AppError::Toml(
+                "Codex custom provider 的旧 api 字段无法确认，请检查后再保存".into(),
+            ));
+        }
+        custom.remove("api");
     }
+    custom.insert("wire_api", toml_edit::value("responses"));
     Ok(())
 }
 
 fn edited_codex_contents(
     previous: Option<&[u8]>,
     base_url: &str,
+    api_key: &str,
     model: Option<&str>,
 ) -> Result<Vec<u8>, AppError> {
     let raw = std::str::from_utf8(previous.unwrap_or_default())
@@ -443,7 +462,7 @@ fn edited_codex_contents(
     if !raw.trim().is_empty() {
         validate_managed_binding(&doc)?;
     }
-    merge_codex_managed_fields(&mut doc, base_url, model)?;
+    merge_codex_managed_fields(&mut doc, base_url, api_key, model)?;
     let text = doc.to_string();
     let check = text
         .parse::<DocumentMut>()
@@ -452,166 +471,30 @@ fn edited_codex_contents(
         .ok_or_else(|| AppError::Toml("Codex custom provider 缺失".into()))?;
     if check.get("model_provider").and_then(Item::as_str) != Some(MANAGED_PROVIDER)
         || custom.get("base_url").and_then(Item::as_str) != Some(base_url)
-        || custom.get("env_key").and_then(Item::as_str) != Some(LEGACY_ENV_KEY)
+        || custom
+            .get("experimental_bearer_token")
+            .and_then(Item::as_str)
+            != Some(api_key)
+        || custom.get("wire_api").and_then(Item::as_str) != Some("responses")
     {
         return Err(AppError::Toml(
-            "Codex URL 与环境变量引用未能在同一配置中绑定，已停止保存".into(),
+            "Codex URL 与密钥未能在同一配置中绑定，已停止保存".into(),
         ));
     }
     Ok(text.into_bytes())
 }
 
-#[cfg_attr(not(test), allow(dead_code))]
-fn write_codex_config_at(path: &Path, base_url: &str, model: Option<&str>) -> Result<(), AppError> {
+fn write_codex_config_at(
+    path: &Path,
+    base_url: &str,
+    api_key: &str,
+    model: Option<&str>,
+) -> Result<(), AppError> {
+    // URL and bearer token commit as one private file. There is no global
+    // environment or registry staging/rollback window, including on failures.
     crate::safe_fs::update_file(path, |previous| {
-        edited_codex_contents(previous, base_url, model)
+        edited_codex_contents(previous, base_url, api_key, model)
     })
-}
-
-#[derive(Debug, Clone)]
-struct EnvironmentSnapshot {
-    #[cfg(target_os = "windows")]
-    registry_value: Option<String>,
-    process_value: Option<std::ffi::OsString>,
-}
-
-impl EnvironmentSnapshot {
-    fn capture(name: &str) -> Result<Self, AppError> {
-        #[cfg(target_os = "windows")]
-        {
-            use winreg::{enums::HKEY_CURRENT_USER, RegKey};
-            let hkcu = RegKey::predef(HKEY_CURRENT_USER);
-            let registry_value = match hkcu.open_subkey("Environment") {
-                Ok(env) => match env.get_value::<String, _>(name) {
-                    Ok(val) => Some(val),
-                    Err(err) if err.kind() == std::io::ErrorKind::NotFound => None,
-                    Err(err) => return Err(AppError::Registry(err.to_string())),
-                },
-                Err(err) if err.kind() == std::io::ErrorKind::NotFound => None,
-                Err(err) => return Err(AppError::Registry(err.to_string())),
-            };
-            let process_value = std::env::var_os(name);
-            Ok(Self {
-                registry_value,
-                process_value,
-            })
-        }
-        #[cfg(not(target_os = "windows"))]
-        {
-            let process_value = std::env::var_os(name);
-            Ok(Self { process_value })
-        }
-    }
-
-    fn restore(self, name: &str) -> Result<(), AppError> {
-        #[cfg(target_os = "windows")]
-        {
-            use winreg::{enums::HKEY_CURRENT_USER, RegKey};
-            let hkcu = RegKey::predef(HKEY_CURRENT_USER);
-            if let Some(ref reg_val) = self.registry_value {
-                let (env, _) = hkcu
-                    .create_subkey("Environment")
-                    .map_err(|e| AppError::Registry(e.to_string()))?;
-                env.set_value(name, reg_val)
-                    .map_err(|e| AppError::Registry(e.to_string()))?;
-            } else {
-                match hkcu.open_subkey_with_flags("Environment", winreg::enums::KEY_SET_VALUE) {
-                    Ok(env) => {
-                        if let Err(error) = env.delete_value(name) {
-                            if error.kind() != std::io::ErrorKind::NotFound {
-                                return Err(AppError::Registry(error.to_string()));
-                            }
-                        }
-                    }
-                    Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
-                    Err(error) => return Err(AppError::Registry(error.to_string())),
-                }
-            }
-            if let Some(proc_val) = self.process_value {
-                std::env::set_var(name, proc_val);
-            } else {
-                std::env::remove_var(name);
-            }
-            broadcast_environment_change();
-            Ok(())
-        }
-        #[cfg(not(target_os = "windows"))]
-        {
-            if let Some(proc_val) = self.process_value {
-                std::env::set_var(name, proc_val);
-            } else {
-                std::env::remove_var(name);
-            }
-            Ok(())
-        }
-    }
-}
-
-#[cfg(target_os = "windows")]
-fn broadcast_environment_change() {
-    use std::ffi::c_void;
-    const HWND_BROADCAST: *mut c_void = 0xffff as *mut c_void;
-    const WM_SETTINGCHANGE: u32 = 0x001A;
-    const SMTO_ABORTIFHUNG: u32 = 0x0002;
-
-    #[link(name = "user32")]
-    unsafe extern "system" {
-        fn SendMessageTimeoutW(
-            hwnd: *mut c_void,
-            msg: u32,
-            wparam: usize,
-            lparam: isize,
-            flags: u32,
-            timeout: u32,
-            result: *mut usize,
-        ) -> isize;
-    }
-
-    let env_str: Vec<u16> = "Environment\0".encode_utf16().collect();
-    let mut result: usize = 0;
-    unsafe {
-        let ret = SendMessageTimeoutW(
-            HWND_BROADCAST,
-            WM_SETTINGCHANGE,
-            0,
-            env_str.as_ptr() as isize,
-            SMTO_ABORTIFHUNG,
-            2000,
-            &mut result,
-        );
-        if ret == 0 {
-            log::warn!("WM_SETTINGCHANGE 广播通知未完成或超时（尽力通知）");
-        }
-    }
-}
-
-fn write_codex_environment(name: &str, key: &str) -> Result<(), AppError> {
-    if name.contains('\0') || key.contains('\0') {
-        return Err(AppError::Other("环境变量名称或值包含 NUL".into()));
-    }
-    if key.is_empty() {
-        delete_registry_env(name)
-    } else {
-        write_registry_env(name, key)
-    }
-}
-
-fn combine_transaction_errors(
-    primary: AppError,
-    file_rollback: Result<(), AppError>,
-    env_rollback: Result<(), AppError>,
-) -> AppError {
-    let file_err = file_rollback.err().map(Box::new);
-    let env_err = env_rollback.err().map(Box::new);
-    if file_err.is_none() && env_err.is_none() {
-        primary
-    } else {
-        AppError::Transaction {
-            primary: Box::new(primary),
-            file_rollback: file_err,
-            environment_rollback: env_err,
-        }
-    }
 }
 
 pub fn set_codex_config(
@@ -636,42 +519,12 @@ pub fn set_codex_config(
     } else {
         format!("{normalized}/v1")
     };
-    let path = codex_config_path()?;
-
-    crate::safe_fs::with_file_lock(&path, || {
-        let previous_file = crate::safe_fs::read_optional_locked(&path)?;
-        let previous_env = EnvironmentSnapshot::capture(LEGACY_ENV_KEY)?;
-        let expected =
-            edited_codex_contents(previous_file.as_deref(), &base_url, model.as_deref())?;
-
-        let result = (|| {
-            write_codex_environment(LEGACY_ENV_KEY, api_key.trim())?;
-            crate::safe_fs::replace_with_backup_locked(&path, previous_file.as_deref(), &expected)?;
-
-            let persisted = crate::safe_fs::read_optional_locked(&path)?;
-            let expected_process =
-                (!api_key.trim().is_empty()).then(|| std::ffi::OsString::from(api_key.trim()));
-            if persisted.as_deref() != Some(expected.as_slice())
-                || read_registry_env(LEGACY_ENV_KEY)? != api_key.trim()
-                || std::env::var_os(LEGACY_ENV_KEY) != expected_process
-            {
-                return Err(AppError::Other("Codex 配置写后验证失败".into()));
-            }
-            Ok(())
-        })();
-
-        if let Err(primary) = result {
-            let file_rollback =
-                crate::safe_fs::restore_optional_locked(&path, previous_file.as_deref());
-            let env_rollback = previous_env.restore(LEGACY_ENV_KEY);
-            return Err(combine_transaction_errors(
-                primary,
-                file_rollback,
-                env_rollback,
-            ));
-        }
-        Ok(())
-    })
+    write_codex_config_at(
+        &codex_config_path()?,
+        &base_url,
+        api_key.trim(),
+        model.as_deref(),
+    )
 }
 
 #[cfg(any(target_os = "windows", test))]
@@ -684,7 +537,7 @@ fn checked_environment_read(value: std::io::Result<String>) -> Result<String, Ap
 }
 
 #[cfg(target_os = "windows")]
-pub fn read_registry_env(name: &str) -> Result<String, AppError> {
+fn read_registry_env(name: &str) -> Result<String, AppError> {
     use winreg::{enums::HKEY_CURRENT_USER, RegKey};
     let hkcu = RegKey::predef(HKEY_CURRENT_USER);
     let env = match hkcu.open_subkey("Environment") {
@@ -696,7 +549,7 @@ pub fn read_registry_env(name: &str) -> Result<String, AppError> {
 }
 
 #[cfg(not(target_os = "windows"))]
-pub fn read_registry_env(name: &str) -> Result<String, AppError> {
+fn read_registry_env(name: &str) -> Result<String, AppError> {
     match std::env::var(name) {
         Ok(value) => Ok(value),
         Err(std::env::VarError::NotPresent) => Ok(String::new()),
@@ -704,64 +557,6 @@ pub fn read_registry_env(name: &str) -> Result<String, AppError> {
             Err(AppError::Registry("旧 Codex 环境凭据不是有效 UTF-8".into()))
         }
     }
-}
-
-#[cfg(target_os = "windows")]
-pub fn write_registry_env(name: &str, value: &str) -> Result<(), AppError> {
-    if name.contains('\0') || value.contains('\0') {
-        return Err(AppError::Other("环境变量名称或值包含 NUL".into()));
-    }
-    use winreg::{enums::HKEY_CURRENT_USER, RegKey};
-    let hkcu = RegKey::predef(HKEY_CURRENT_USER);
-    let (env, _) = hkcu
-        .create_subkey("Environment")
-        .map_err(|e| AppError::Registry(e.to_string()))?;
-    env.set_value(name, &value.to_string())
-        .map_err(|e| AppError::Registry(e.to_string()))?;
-    std::env::set_var(name, value);
-    broadcast_environment_change();
-    Ok(())
-}
-
-#[cfg(not(target_os = "windows"))]
-pub fn write_registry_env(name: &str, value: &str) -> Result<(), AppError> {
-    if name.contains('\0') || value.contains('\0') {
-        return Err(AppError::Other("环境变量名称或值包含 NUL".into()));
-    }
-    std::env::set_var(name, value);
-    Ok(())
-}
-
-#[cfg(target_os = "windows")]
-pub fn delete_registry_env(name: &str) -> Result<(), AppError> {
-    if name.contains('\0') {
-        return Err(AppError::Other("环境变量名称包含 NUL".into()));
-    }
-    use winreg::{enums::HKEY_CURRENT_USER, RegKey};
-    let hkcu = RegKey::predef(HKEY_CURRENT_USER);
-    match hkcu.open_subkey_with_flags("Environment", winreg::enums::KEY_SET_VALUE) {
-        Ok(env) => {
-            if let Err(error) = env.delete_value(name) {
-                if error.kind() != std::io::ErrorKind::NotFound {
-                    return Err(AppError::Registry(error.to_string()));
-                }
-            }
-        }
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
-        Err(error) => return Err(AppError::Registry(error.to_string())),
-    }
-    std::env::remove_var(name);
-    broadcast_environment_change();
-    Ok(())
-}
-
-#[cfg(not(target_os = "windows"))]
-pub fn delete_registry_env(name: &str) -> Result<(), AppError> {
-    if name.contains('\0') {
-        return Err(AppError::Other("环境变量名称包含 NUL".into()));
-    }
-    std::env::remove_var(name);
-    Ok(())
 }
 
 #[cfg(test)]
@@ -783,14 +578,20 @@ model_provider = "custom"
 model = "team-model"
 [model_providers.custom]
 base_url = "https://old.example/v1"
-env_key = "CUSTOM_OPENAI_API_KEY"
+experimental_bearer_token = "fake-old-key"
 unknown_policy = { keep = true }
 [model_providers.other]
 base_url = "https://other.example/v1"
 env_key = "OTHER_PROVIDER_KEY"
 "#;
         std::fs::write(&path, previous).unwrap();
-        write_codex_config_at(&path, "https://new.example/v1", Some("new-model")).unwrap();
+        write_codex_config_at(
+            &path,
+            "https://new.example/v1",
+            "fake-new-key",
+            Some("new-model"),
+        )
+        .unwrap();
         let current = std::fs::read_to_string(&path).unwrap();
         let doc = current.parse::<DocumentMut>().unwrap();
         let provider = custom_provider(&doc).unwrap();
@@ -799,10 +600,11 @@ env_key = "OTHER_PROVIDER_KEY"
             Some("https://new.example/v1")
         );
         assert_eq!(
-            provider.get("env_key").and_then(Item::as_str),
-            Some(LEGACY_ENV_KEY)
+            provider
+                .get("experimental_bearer_token")
+                .and_then(Item::as_str),
+            Some("fake-new-key")
         );
-        assert!(provider.get("experimental_bearer_token").is_none());
         assert_eq!(doc["profile"].as_str(), Some("team"));
         assert_eq!(
             doc["profiles"]["team"]["model_provider"].as_str(),
@@ -839,22 +641,24 @@ env_key = "OTHER_PROVIDER_KEY"
     fn failed_atomic_update_keeps_the_previous_url_and_key_pair() {
         let directory = tempfile::tempdir().unwrap();
         let path = directory.path().join("config.toml");
-        let previous = b"model_provider='custom'\n[model_providers.custom]\nbase_url='https://old.example/v1'\nenv_key='CUSTOM_OPENAI_API_KEY'\n";
+        let previous = b"model_provider='custom'\n[model_providers.custom]\nbase_url='https://old.example/v1'\nexperimental_bearer_token='fake-old-key'\n";
         std::fs::write(&path, previous).unwrap();
         // Force the real backup write to fail before replacing the target.
         std::fs::create_dir(path.with_extension("toml.bak")).unwrap();
-        assert!(write_codex_config_at(&path, "https://new.example/v1", None).is_err());
+        assert!(
+            write_codex_config_at(&path, "https://new.example/v1", "fake-new-key", None).is_err()
+        );
         assert_eq!(std::fs::read(&path).unwrap(), previous);
         let parsed = parse_codex_content(
             std::str::from_utf8(previous).unwrap(),
             "",
             true,
-            "test-env-key".into(),
+            "unrelated-legacy-key".into(),
             false,
             None,
         );
         assert_eq!(parsed.base_url, "https://old.example/");
-        assert_eq!(parsed.api_key, "test-env-key");
+        assert_eq!(parsed.api_key, "fake-old-key");
     }
 
     #[test]
@@ -866,7 +670,6 @@ base_url = "https://old.example/v1"
 env_key = "CUSTOM_OPENAI_API_KEY"
 env_key_instructions = "obsolete setup"
 requires_openai_auth = true
-experimental_bearer_token = "fake-token"
 auth = { command = "fake-command", args = ["unchanged elsewhere"] }
 http_headers = { Authorization = "fake-old-key", aUtHoRiZaTiOn = "fake-second-key", X-Trace = "keep" }
 env_http_headers = { AUTHORIZATION = "OLD_ENV", X-Meta = "KEEP_ENV" }
@@ -877,16 +680,21 @@ requires_openai_auth = true
 http_headers = { Authorization = "fake-other-key", X-Other = "keep-other" }
 "#;
         let original = previous.parse::<DocumentMut>().unwrap();
-        let bytes =
-            edited_codex_contents(Some(previous.as_bytes()), "https://new.example/v1", None)
-                .unwrap();
+        let token = "fake-token-with-\"quotes\"-and-\\slashes";
+        let bytes = edited_codex_contents(
+            Some(previous.as_bytes()),
+            "https://new.example/v1",
+            token,
+            None,
+        )
+        .unwrap();
         let doc = std::str::from_utf8(&bytes)
             .unwrap()
             .parse::<DocumentMut>()
             .unwrap();
         let custom = custom_provider(&doc).unwrap();
         for name in [
-            "experimental_bearer_token",
+            "env_key",
             "env_key_instructions",
             "auth",
             "requires_openai_auth",
@@ -894,8 +702,10 @@ http_headers = { Authorization = "fake-other-key", X-Other = "keep-other" }
             assert!(custom.get(name).is_none());
         }
         assert_eq!(
-            custom.get("env_key").and_then(Item::as_str),
-            Some(LEGACY_ENV_KEY)
+            custom
+                .get("experimental_bearer_token")
+                .and_then(Item::as_str),
+            Some(token)
         );
         for field in ["http_headers", "env_http_headers"] {
             assert!(!custom
@@ -926,9 +736,13 @@ http_headers = { Authorization = "fake-other-key", X-Other = "keep-other" }
             r#"model_providers = { custom = { base_url = "https://old.example/v1", env_key = "OLD", requires_openai_auth = true, auth = { command = "fake" }, http_headers = { Authorization = "old", X-Keep = "yes" } }, other = { env_key = "OTHER" } }"#,
             r#"model_providers = { other = { env_key = "OTHER" } }"#,
         ] {
-            let bytes =
-                edited_codex_contents(Some(previous.as_bytes()), "https://new.example/v1", None)
-                    .unwrap();
+            let bytes = edited_codex_contents(
+                Some(previous.as_bytes()),
+                "https://new.example/v1",
+                "fake-new-key",
+                None,
+            )
+            .unwrap();
             let doc = std::str::from_utf8(&bytes)
                 .unwrap()
                 .parse::<DocumentMut>()
@@ -938,12 +752,10 @@ http_headers = { Authorization = "fake-other-key", X-Other = "keep-other" }
                 Some("OTHER")
             );
             assert_eq!(
-                doc["model_providers"]["custom"]["env_key"].as_str(),
-                Some(LEGACY_ENV_KEY)
+                doc["model_providers"]["custom"]["experimental_bearer_token"].as_str(),
+                Some("fake-new-key")
             );
-            assert!(doc["model_providers"]["custom"]
-                .get("experimental_bearer_token")
-                .is_none());
+            assert!(doc["model_providers"]["custom"].get("env_key").is_none());
             if previous.contains("X-Keep") {
                 assert_eq!(
                     doc["model_providers"]["custom"]["http_headers"]["X-Keep"].as_str(),
@@ -974,8 +786,13 @@ http_headers = { Authorization = "fake-other-key", X-Other = "keep-other" }
             } else {
                 format!("[model_providers.custom]\nbase_url='https://old.example/v1'\n[model_providers.custom.http_headers]\n{}\n[model_providers.custom.env_http_headers]\n{}\n[model_providers.other.http_headers]\nCookie='fake-other-cookie'\n", assignments.join("\n"), assignments.join("\n"))
             };
-            let bytes = edited_codex_contents(Some(raw.as_bytes()), "https://new.example/v1", None)
-                .unwrap();
+            let bytes = edited_codex_contents(
+                Some(raw.as_bytes()),
+                "https://new.example/v1",
+                "fake-new-key",
+                None,
+            )
+            .unwrap();
             let doc = std::str::from_utf8(&bytes)
                 .unwrap()
                 .parse::<DocumentMut>()
@@ -1004,8 +821,13 @@ http_headers = { Authorization = "fake-other-key", X-Other = "keep-other" }
 base_url = "https://new.example:443/v1"
 query_params = { api_key = "fake-old", key = "fake-old", token = "fake-old", access_token = "fake-old", auth = "fake-old", signature = "fake-old", region = "keep" }
 "#;
-        let bytes =
-            edited_codex_contents(Some(raw.as_bytes()), "https://new.example/v1", None).unwrap();
+        let bytes = edited_codex_contents(
+            Some(raw.as_bytes()),
+            "https://new.example/v1",
+            "fake-new-key",
+            None,
+        )
+        .unwrap();
         let doc = std::str::from_utf8(&bytes)
             .unwrap()
             .parse::<DocumentMut>()
@@ -1027,15 +849,17 @@ query_params = { api_key = "fake-old", key = "fake-old", token = "fake-old", acc
     fn origin_change_requires_review_of_remaining_custom_query_parameters() {
         let directory = tempfile::tempdir().unwrap();
         let path = directory.path().join("config.toml");
-        let raw = "model_provider='custom'\n[model_providers.custom]\nbase_url='https://old.example/v1'\nenv_key='CUSTOM_OPENAI_API_KEY'\nquery_params={region='keep',api_key='fake-old-query-key'}";
+        let raw = "model_provider='custom'\n[model_providers.custom]\nbase_url='https://old.example/v1'\nexperimental_bearer_token='fake-old-key'\nquery_params={region='keep',api_key='fake-old-query-key'}";
         std::fs::write(&path, raw).unwrap();
-        let error = write_codex_config_at(&path, "https://new.example/v1", None).unwrap_err();
+        let error = write_codex_config_at(&path, "https://new.example/v1", "fake-new-key", None)
+            .unwrap_err();
         assert!(error.to_string().contains("query_params"));
         assert_eq!(std::fs::read_to_string(path).unwrap(), raw);
         let credential_only = "[model_providers.custom]\nbase_url='https://old.example/v1'\nquery_params={api_key='fake-old-query-key'}";
         let bytes = edited_codex_contents(
             Some(credential_only.as_bytes()),
             "https://new.example/v1",
+            "fake-new-key",
             None,
         )
         .unwrap();
@@ -1064,7 +888,10 @@ query_params = { api_key = "fake-old", key = "fake-old", token = "fake-old", acc
             let directory = tempfile::tempdir().unwrap();
             let path = directory.path().join("config.toml");
             std::fs::write(&path, previous).unwrap();
-            assert!(write_codex_config_at(&path, "https://new.example/v1", None).is_err());
+            assert!(
+                write_codex_config_at(&path, "https://new.example/v1", "fake-new-key", None)
+                    .is_err()
+            );
             assert_eq!(std::fs::read_to_string(path).unwrap(), previous);
         }
     }
@@ -1082,30 +909,28 @@ query_params = { api_key = "fake-old", key = "fake-old", token = "fake-old", acc
         for content in [
             "[model_providers.other]\nenv_key='CUSTOM_OPENAI_API_KEY'",
             "[model_providers.custom]\nenv_key='AN_UNRELATED_SECRET'",
+            "[model_providers.custom]\nenv_key='CUSTOM_OPENAI_API_KEY'\nexperimental_bearer_token=''",
+            "[model_providers.custom]\nenv_key='CUSTOM_OPENAI_API_KEY'\nexperimental_bearer_token=42",
             "[invalid toml",
+            "",
         ] {
-            assert_eq!(
-                legacy_key_for_content(content, |_| panic!(
-                    "must not read an unrelated environment credential"
-                ))
-                .unwrap(),
-                ""
-            );
+            assert_eq!(legacy_key_for_content(content, |_| panic!("must not read an unrelated environment credential")).unwrap(), "");
         }
     }
 
     #[test]
-    fn codex_only_uses_environment_variable_and_ignores_bearer_token() {
-        let content = "model_provider='custom'\n[model_providers.custom]\nbase_url='https://old.example/v1'\nenv_key='CUSTOM_OPENAI_API_KEY'\nexperimental_bearer_token='obsolete-bearer'";
-        let parsed = parse_codex_content(content, "", true, "valid-env-key".into(), false, None);
-        assert_eq!(parsed.base_url, "https://old.example/");
-        assert_eq!(parsed.api_key, "valid-env-key");
+    fn explicit_empty_bearer_never_falls_back_to_old_global_key() {
+        let content = "model_provider='custom'\n[model_providers.custom]\nbase_url='https://new.example/v1'\nenv_key='CUSTOM_OPENAI_API_KEY'\nexperimental_bearer_token=''";
+        let parsed =
+            parse_codex_content(content, "", true, "fake-old-global-key".into(), false, None);
+        assert_eq!(parsed.base_url, "https://new.example/");
+        assert_eq!(parsed.api_key, "");
     }
 
     #[test]
     fn legacy_read_failure_is_reported_instead_of_becoming_an_empty_key() {
         let content =
-            "model_provider='custom'\n[model_providers.custom]\nenv_key='CUSTOM_OPENAI_API_KEY'";
+            "model_provider='custom'\n[model_providers.custom]\nbase_url='https://old.example/v1'\nenv_key='CUSTOM_OPENAI_API_KEY'";
         assert!(legacy_key_for_content(content, |_| Err(AppError::Registry(
             "injected read failure".into()
         )))
@@ -1124,14 +949,19 @@ model_provider = "other"
 model = "other-model"
 [model_providers.custom]
 base_url = "https://old.example/v1"
-env_key = "CUSTOM_OPENAI_API_KEY"
+experimental_bearer_token = "fake-old-key"
 [model_providers.other]
 base_url = "https://other.example/v1"
 env_key = "OTHER_KEY"
 "#;
         std::fs::write(&path, previous).unwrap();
-        let error =
-            write_codex_config_at(&path, "https://new.example/v1", Some("new-model")).unwrap_err();
+        let error = write_codex_config_at(
+            &path,
+            "https://new.example/v1",
+            "fake-new-key",
+            Some("new-model"),
+        )
+        .unwrap_err();
         assert!(error.to_string().contains("profile"));
         assert_eq!(std::fs::read_to_string(&path).unwrap(), previous);
         assert_eq!(
@@ -1160,6 +990,7 @@ model = "unrelated-model"
         let bytes = edited_codex_contents(
             Some(previous.as_bytes()),
             "https://new.example/v1",
+            "fake-new-key",
             Some("new-model"),
         )
         .unwrap();
@@ -1204,6 +1035,7 @@ model = "unrelated-model"
             assert!(edited_codex_contents(
                 Some(previous.as_bytes()),
                 "https://new.example/v1",
+                "fake-new-key",
                 Some("new-model")
             )
             .is_err());
@@ -1211,10 +1043,9 @@ model = "unrelated-model"
     }
 
     #[test]
-    fn actual_set_codex_config_writes_env_key_and_updates_environment() {
-        let key = "fake-managed-codex-env-key";
+    fn actual_set_codex_config_writes_one_private_pair_without_an_env_reference() {
+        let key = "fake-managed-codex-atomic-pair-key";
         crate::credential_policy::register_managed_key(key);
-        let previous = read_registry_env(LEGACY_ENV_KEY).unwrap_or_default();
         set_codex_config(
             "https://bob-api.com/v1/".into(),
             key.into(),
@@ -1228,20 +1059,10 @@ model = "unrelated-model"
             Some("https://bob-api.com/v1")
         );
         assert_eq!(
-            doc["model_providers"]["custom"]["env_key"].as_str(),
-            Some(LEGACY_ENV_KEY)
+            doc["model_providers"]["custom"]["experimental_bearer_token"].as_str(),
+            Some(key)
         );
-        assert!(doc["model_providers"]["custom"]
-            .get("experimental_bearer_token")
-            .is_none());
-        assert_eq!(read_registry_env(LEGACY_ENV_KEY).unwrap(), key);
-
-        // Clean up
-        if previous.is_empty() {
-            let _ = delete_registry_env(LEGACY_ENV_KEY);
-        } else {
-            let _ = write_registry_env(LEGACY_ENV_KEY, &previous);
-        }
+        assert!(doc["model_providers"]["custom"].get("env_key").is_none());
     }
 
     #[test]
@@ -1275,7 +1096,7 @@ model = "unrelated-model"
         assert!(cfg.config_exists);
         assert!(cfg.is_installed);
         assert_eq!(cfg.base_url, "");
-        assert_eq!(cfg.api_key, "test-key");
+        assert_eq!(cfg.api_key, "");
         assert_eq!(cfg.model, "");
     }
 
@@ -1338,7 +1159,8 @@ base_url = "https://api.openai.com/v1"
 
     #[test]
     fn test_prepare_codex_doc_with_model() {
-        let doc = prepare_codex_doc("https://api.example.com/v1", Some("o1")).unwrap();
+        let doc =
+            prepare_codex_doc("https://api.example.com/v1", "fake-direct-key", Some("o1")).unwrap();
         assert_eq!(doc["model"].as_str(), Some("o1"));
         assert_eq!(doc["model_provider"].as_str(), Some("custom"));
         assert_eq!(
@@ -1346,30 +1168,23 @@ base_url = "https://api.openai.com/v1"
             Some("https://api.example.com/v1")
         );
         assert_eq!(
-            doc["model_providers"]["custom"]["api"].as_str(),
-            Some("openai-responses")
+            doc["model_providers"]["custom"]["wire_api"].as_str(),
+            Some("responses")
         );
         assert_eq!(
-            doc["model_providers"]["custom"]["env_key"].as_str(),
-            Some("CUSTOM_OPENAI_API_KEY")
+            doc["model_providers"]["custom"]["experimental_bearer_token"].as_str(),
+            Some("fake-direct-key")
         );
-        assert!(doc["model_providers"]["custom"]
-            .get("experimental_bearer_token")
-            .is_none());
     }
 
     #[test]
     fn test_prepare_codex_doc_without_model() {
-        let doc = prepare_codex_doc("https://api.example.com/v1", None).unwrap();
+        let doc = prepare_codex_doc("https://api.example.com/v1", "fake-direct-key", None).unwrap();
         assert!(doc.get("model").is_none());
         assert_eq!(doc["model_provider"].as_str(), Some("custom"));
         assert_eq!(
             doc["model_providers"]["custom"]["base_url"].as_str(),
             Some("https://api.example.com/v1")
-        );
-        assert_eq!(
-            doc["model_providers"]["custom"]["env_key"].as_str(),
-            Some("CUSTOM_OPENAI_API_KEY")
         );
     }
 
@@ -1389,7 +1204,13 @@ extra_flag = true
 "#
         .parse()
         .unwrap();
-        merge_codex_managed_fields(&mut doc, "https://bob-api.com/v1", Some("new-model")).unwrap();
+        merge_codex_managed_fields(
+            &mut doc,
+            "https://bob-api.com/v1",
+            "fake-direct-key",
+            Some("new-model"),
+        )
+        .unwrap();
         assert_eq!(doc["approval_policy"].as_str(), Some("untrusted"));
         assert_eq!(
             doc["model_providers"]["openai"]["name"].as_str(),
@@ -1398,10 +1219,6 @@ extra_flag = true
         assert_eq!(
             doc["model_providers"]["custom"]["base_url"].as_str(),
             Some("https://bob-api.com/v1")
-        );
-        assert_eq!(
-            doc["model_providers"]["custom"]["env_key"].as_str(),
-            Some("CUSTOM_OPENAI_API_KEY")
         );
         assert_eq!(
             doc["model_providers"]["custom"]["extra_flag"].as_bool(),
@@ -1418,101 +1235,257 @@ custom = { name = "Old", base_url = "https://old.example/v1", api = "openai-resp
 "#
         .parse()
         .unwrap();
-        merge_codex_managed_fields(&mut doc, "https://bob-api.com/v1", Some("gpt-4o")).unwrap();
+        merge_codex_managed_fields(
+            &mut doc,
+            "https://bob-api.com/v1",
+            "fake-direct-key",
+            Some("gpt-4o"),
+        )
+        .unwrap();
         assert_eq!(
             doc["model_providers"]["custom"]["base_url"].as_str(),
             Some("https://bob-api.com/v1")
-        );
-        assert_eq!(
-            doc["model_providers"]["custom"]["env_key"].as_str(),
-            Some("CUSTOM_OPENAI_API_KEY")
         );
         let parsed = parse_codex_content(&doc.to_string(), "", true, String::new(), false, None);
         assert_eq!(parsed.base_url, "https://bob-api.com/");
     }
 
     #[test]
-    fn set_codex_config_rejects_nul_and_preserves_environment() {
-        let initial_env = std::env::var(LEGACY_ENV_KEY).ok();
-        let result = set_codex_config(
-            "https://api.openai.com/v1".into(),
-            "sk-invalid\0key".into(),
-            None,
-        );
-        assert!(result.is_err(), "Key containing NUL must be rejected");
-        let err_msg = result.unwrap_err().to_string();
-        assert!(err_msg.contains("NUL"), "Error must mention NUL: {err_msg}");
+    fn file_bound_baseline_survives_upgrade_without_reading_any_environment() {
+        // The managed shape written by 45ca137b: URL and direct token, no env_key.
+        let content = "model = 'fake-model'\nmodel_provider = 'custom'\n[model_providers.custom]\nbase_url = 'https://old.example/v1'\nexperimental_bearer_token = 'fake-file-key'\nname = 'Custom'\napi = 'openai-responses'\n";
         assert_eq!(
-            std::env::var(LEGACY_ENV_KEY).ok(),
-            initial_env,
-            "Environment must remain unmodified"
+            legacy_key_for_content(content, |_| panic!(
+                "a file token must not read the environment"
+            ))
+            .unwrap(),
+            ""
         );
-    }
-
-    #[test]
-    fn write_and_delete_codex_environment_rejects_nul() {
-        assert!(write_codex_environment("TEST_KEY\0", "value").is_err());
-        assert!(write_codex_environment("TEST_KEY", "val\0ue").is_err());
-        assert!(delete_registry_env("TEST_KEY\0").is_err());
-    }
-
-    #[test]
-    fn invalid_env_key_binding_fails_without_clearing_existing_credentials() {
-        let malformed = "model_provider = 'custom'\n[model_providers.custom]\nenv_key = 42\nbase_url = 'https://example.com/v1'\n";
-        let read_res = legacy_key_for_content(malformed, |_| panic!("must not read"));
-        assert!(read_res.is_err(), "Malformed env_key must fail on read");
-        let err_msg = read_res.unwrap_err().to_string();
-        assert!(
-            err_msg.contains("env_key 无效") || err_msg.contains("损坏"),
-            "Error should mention invalid env_key: {err_msg}"
-        );
-
-        let edit_res =
-            edited_codex_contents(Some(malformed.as_bytes()), "https://new.example/v1", None);
-        assert!(edit_res.is_err(), "Malformed env_key must fail on edit");
-
-        // An unsupported string binding must also fail
-        let unsupported =
-            "model_provider = 'custom'\n[model_providers.custom]\nenv_key = 'UNSUPPORTED_KEY'\n";
-        assert!(legacy_key_for_content(unsupported, |_| panic!("must not read")).is_err());
-        assert!(edited_codex_contents(
-            Some(unsupported.as_bytes()),
-            "https://new.example/v1",
-            None
-        )
-        .is_err());
-
-        // But missing env_key on legacy custom config is supported and migrates cleanly
-        let legacy_missing = "model_provider = 'custom'\n[model_providers.custom]\nbase_url = 'https://old.example/v1'\n";
-        let legacy_res = legacy_key_for_content(legacy_missing, |name| {
-            assert_eq!(name, LEGACY_ENV_KEY);
-            Ok("migrated-key".into())
-        });
-        assert_eq!(legacy_res.unwrap(), "migrated-key");
-    }
-
-    #[test]
-    fn combine_transaction_errors_constructs_structured_transaction_error() {
-        let primary = AppError::Other("写入验证失败".into());
-        let file_err = AppError::Io(std::io::Error::other("disk locked"));
-        let env_err = AppError::Registry("registry failure".into());
-
-        let combined = combine_transaction_errors(primary, Err(file_err), Err(env_err));
-
-        match combined {
-            AppError::Transaction {
-                primary,
-                file_rollback,
-                environment_rollback,
-            } => {
-                assert!(primary.to_string().contains("写入验证失败"));
-                assert!(file_rollback.unwrap().to_string().contains("disk locked"));
-                assert!(environment_rollback
-                    .unwrap()
-                    .to_string()
-                    .contains("registry failure"));
-            }
-            other => panic!("Expected AppError::Transaction, got: {:?}", other),
+        for stale_environment in ["", "fake-stale-global-key"] {
+            let cfg = parse_codex_content(content, "", true, stale_environment.into(), true, None);
+            assert_eq!(cfg.base_url, "https://old.example/");
+            assert_eq!(cfg.api_key, "fake-file-key");
         }
+    }
+
+    #[test]
+    fn unbound_environment_and_invalid_bindings_never_supply_a_key() {
+        for content in [
+            "",
+            " \n\t",
+            "model_provider='custom'\n[model_providers.custom]\nbase_url='https://unknown.example/v1'",
+        ] {
+            assert_eq!(
+                legacy_key_for_content(content, |_| panic!("no explicit legacy binding")).unwrap(),
+                ""
+            );
+            assert!(parse_codex_content(content, "", true, "fake-unbound-key".into(), true, None)
+                .api_key
+                .is_empty());
+        }
+        for fields in [
+            "env_key = 42",
+            "env_key = 'UNSUPPORTED_KEY'",
+            "experimental_bearer_token = 42",
+        ] {
+            let content = format!("model_provider='custom'\n[model_providers.custom]\nbase_url='https://old.example/v1'\n{fields}");
+            assert!(
+                legacy_key_for_content(&content, |_| panic!("invalid binding must not read"))
+                    .is_err()
+            );
+            assert!(edited_codex_contents(
+                Some(content.as_bytes()),
+                "https://new.example/v1",
+                "fake-new-key",
+                None
+            )
+            .is_err());
+        }
+        let unknown_url =
+            "model_provider='custom'\n[model_providers.custom]\nenv_key='CUSTOM_OPENAI_API_KEY'";
+        assert!(
+            legacy_key_for_content(unknown_url, |_| panic!("an unknown URL must not read"))
+                .is_err()
+        );
+        let unbound_file_token = "model_provider='custom'\n[model_providers.custom]\nexperimental_bearer_token='fake-unbound-key'";
+        assert!(legacy_key_for_content(unbound_file_token, |_| panic!(
+            "an unknown URL must not read"
+        ))
+        .is_err());
+    }
+
+    #[test]
+    fn legacy_environment_migrates_read_only_to_a_persistent_direct_pair() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("config.toml");
+        let legacy = "model_provider='custom'\n[model_providers.custom]\nbase_url='https://old.example/v1'\nenv_key='CUSTOM_OPENAI_API_KEY'";
+        let key = legacy_key_for_content(legacy, |name| {
+            assert_eq!(name, LEGACY_ENV_KEY);
+            Ok("fake-migrated-key".into())
+        })
+        .unwrap();
+        std::fs::write(&path, legacy).unwrap();
+        write_codex_config_at(&path, "https://old.example/v1", &key, None).unwrap();
+        let persisted = std::fs::read_to_string(&path).unwrap();
+        assert_eq!(
+            legacy_key_for_content(&persisted, |_| panic!("migration is complete")).unwrap(),
+            ""
+        );
+        let cfg = parse_codex_content(&persisted, "", true, String::new(), true, None);
+        assert_eq!(cfg.api_key, key);
+        assert_eq!(cfg.base_url, "https://old.example/");
+        assert!(custom_provider(&persisted.parse::<DocumentMut>().unwrap())
+            .unwrap()
+            .get("env_key")
+            .is_none());
+    }
+
+    #[test]
+    fn concurrent_readers_only_observe_complete_node_and_token_pairs() {
+        use std::sync::atomic::{AtomicBool, Ordering};
+        use std::sync::Arc;
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("config.toml");
+        write_codex_config_at(&path, "https://first.example/v1", "fake-first-key", None).unwrap();
+        let done = Arc::new(AtomicBool::new(false));
+        let reader_done = done.clone();
+        let reader_path = path.clone();
+        let reader = std::thread::spawn(move || {
+            let mut reads = 0;
+            while !reader_done.load(Ordering::Acquire) || reads < 50 {
+                let raw = std::fs::read_to_string(&reader_path).unwrap();
+                let cfg = parse_codex_content(
+                    &raw,
+                    "",
+                    true,
+                    "fake-inherited-terminal-key".into(),
+                    true,
+                    None,
+                );
+                assert!(matches!(
+                    (cfg.base_url.as_str(), cfg.api_key.as_str()),
+                    ("https://first.example/", "fake-first-key")
+                        | ("https://second.example/", "fake-second-key")
+                ));
+                reads += 1;
+                std::thread::yield_now();
+            }
+        });
+        for i in 0..20 {
+            let (url, key) = if i % 2 == 0 {
+                ("https://second.example/v1", "fake-second-key")
+            } else {
+                ("https://first.example/v1", "fake-first-key")
+            };
+            match write_codex_config_at(&path, url, key, None) {
+                Ok(()) => {}
+                // Windows may refuse replacement while an outside reader has
+                // the target open. Refusal must preserve the complete old pair.
+                #[cfg(windows)]
+                Err(AppError::Io(error)) if matches!(error.raw_os_error(), Some(5 | 32)) => {}
+                Err(error) => panic!("unexpected write failure: {error}"),
+            }
+        }
+        done.store(true, Ordering::Release);
+        reader.join().unwrap();
+        write_codex_config_at(&path, "https://second.example/v1", "fake-second-key", None).unwrap();
+        let final_contents = std::fs::read_to_string(&path).unwrap();
+        let cfg = parse_codex_content(&final_contents, "", true, String::new(), true, None);
+        assert_eq!(cfg.base_url, "https://second.example/");
+        assert_eq!(cfg.api_key, "fake-second-key");
+    }
+
+    #[test]
+    fn fresh_process_reads_only_the_saved_pair() {
+        let Some(path) = std::env::var_os("AI_HELPER_TEST_CODEX_CONFIG") else {
+            return;
+        };
+        let raw = std::fs::read_to_string(path).unwrap();
+        let key = legacy_key_for_content(&raw, |_| panic!("fresh process must use the file token"))
+            .unwrap();
+        let cfg = parse_codex_content(&raw, "", true, key, true, None);
+        assert_eq!(
+            cfg.base_url,
+            std::env::var("AI_HELPER_TEST_CODEX_EXPECTED_URL").unwrap()
+        );
+        assert_eq!(
+            cfg.api_key,
+            std::env::var("AI_HELPER_TEST_CODEX_EXPECTED_KEY").unwrap()
+        );
+    }
+
+    #[test]
+    fn saved_pair_survives_a_fresh_process_with_stale_terminal_environment() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("config.toml");
+        for (url, key, stale_environment) in [
+            ("https://first.example/", "fake-first-key", ""),
+            (
+                "https://second.example/",
+                "fake-second-key",
+                "fake-first-key",
+            ),
+        ] {
+            write_codex_config_at(&path, &format!("{url}v1"), key, None).unwrap();
+            let output = std::process::Command::new(std::env::current_exe().unwrap())
+                .args([
+                    "--exact",
+                    "codex::tests::fresh_process_reads_only_the_saved_pair",
+                    "--nocapture",
+                ])
+                .env_clear()
+                .env("AI_HELPER_TEST_CODEX_CONFIG", &path)
+                .env("AI_HELPER_TEST_CODEX_EXPECTED_URL", url)
+                .env("AI_HELPER_TEST_CODEX_EXPECTED_KEY", key)
+                .env(LEGACY_ENV_KEY, stale_environment)
+                .output()
+                .unwrap();
+            assert!(
+                output.status.success(),
+                "{}",
+                String::from_utf8_lossy(&output.stderr)
+            );
+            assert!(String::from_utf8_lossy(&output.stdout).contains("1 passed"));
+        }
+    }
+
+    #[test]
+    fn nul_key_is_rejected_before_any_persistence_or_environment_access() {
+        let error =
+            set_codex_config("https://old.example/".into(), "fake\0key".into(), None).unwrap_err();
+        assert!(error.to_string().contains("NUL"));
+    }
+
+    #[test]
+    fn managed_protocol_migrates_only_the_helpers_known_obsolete_api_field() {
+        let known = "model_provider='custom'\n[model_providers.custom]\nbase_url='https://old.example/v1'\nexperimental_bearer_token='fake-old-key'\napi='openai-responses'\n[model_providers.other]\napi='vendor-internal-protocol'";
+        let edited = edited_codex_contents(
+            Some(known.as_bytes()),
+            "https://new.example/v1",
+            "fake-new-key",
+            None,
+        )
+        .unwrap();
+        let doc = std::str::from_utf8(&edited)
+            .unwrap()
+            .parse::<DocumentMut>()
+            .unwrap();
+        assert!(doc["model_providers"]["custom"].get("api").is_none());
+        assert_eq!(
+            doc["model_providers"]["custom"]["wire_api"].as_str(),
+            Some("responses")
+        );
+        assert_eq!(
+            doc["model_providers"]["other"]["api"].as_str(),
+            Some("vendor-internal-protocol")
+        );
+        let unknown = known.replace("api='openai-responses'", "api='unrecognized-protocol'");
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("config.toml");
+        std::fs::write(&path, &unknown).unwrap();
+        assert!(
+            write_codex_config_at(&path, "https://new.example/v1", "fake-new-key", None).is_err()
+        );
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), unknown);
     }
 }

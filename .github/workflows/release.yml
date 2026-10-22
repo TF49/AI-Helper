@@ -5,33 +5,55 @@ on:
     tags:
       - 'v*.*.*'  # 匹配 v1.0.0, v1.2.3 等格式
   workflow_dispatch:  # 保留手动触发选项
+  workflow_call:
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: ai-helper-release
   cancel-in-progress: false
 
 jobs:
+  check-version:
+    name: Validate release identity and availability
+    runs-on: ubuntu-24.04
+    outputs:
+      should_release: ${{ steps.check.outputs.should_release }}
+      tag: ${{ steps.check.outputs.tag }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version: '22'
+      - name: Check release without changing published assets
+        id: check
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node scripts/check-release.mjs
+
   windows:
-    name: Build and publish Windows x64
+    name: Build Windows x64
+    needs: check-version
+    if: needs.check-version.outputs.should_release == 'true'
     runs-on: windows-2022
     defaults:
       run:
         shell: pwsh
+    outputs:
+      tag: ${{ steps.package.outputs.tag }}
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-node@v6
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         with:
           node-version: '22'
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
         with:
           version: 10.12.3
-      - uses: dtolnay/rust-toolchain@master
+      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master
         with:
           toolchain: '1.95'
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
         with:
           workspaces: src-tauri
       - name: Install dependencies
@@ -47,36 +69,129 @@ jobs:
         run: pnpm tauri build --bundles nsis
       - name: Package release
         id: package
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         run: |
           $package = Get-Content -LiteralPath package.json -Encoding UTF8 -Raw | ConvertFrom-Json
           $tag = "v$($package.version)"
           ./scripts/package-release.ps1 -Tag $tag
           "tag=$tag" >> $env:GITHUB_OUTPUT
-      - name: Preserve build artifacts
-        uses: actions/upload-artifact@v7
+      - name: Upload Windows artifacts
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
-          name: AI-Helper-${{ steps.package.outputs.tag }}-Windows-x64
-          path: |
-            release/${{ steps.package.outputs.tag }}/*.exe
-            release/${{ steps.package.outputs.tag }}/*.sig
-            release/${{ steps.package.outputs.tag }}/*.zip
-            release/${{ steps.package.outputs.tag }}/*.json
-            release/${{ steps.package.outputs.tag }}/SHA256SUMS.txt
+          name: windows-assets
+          path: release/${{ steps.package.outputs.tag }}/*
           if-no-files-found: error
-      - name: Publish release
+
+  macos:
+    name: Build macOS (${{ matrix.target }})
+    needs: check-version
+    if: needs.check-version.outputs.should_release == 'true'
+    runs-on: macos-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [aarch64-apple-darwin, x86_64-apple-darwin]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version: '22'
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
+        with:
+          version: 10.12.3
+      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master
+        with:
+          toolchain: '1.95'
+          targets: ${{ matrix.target }}
+      - name: Add Rust target
+        run: rustup target add ${{ matrix.target }}
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
+        with:
+          workspaces: src-tauri
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Build DMG installer
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: pnpm tauri build --target ${{ matrix.target }} --bundles dmg
+      - name: Package macOS release
+        id: package
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: |
+          chmod +x ./scripts/package-macos.sh
+          ./scripts/package-macos.sh "" "${{ matrix.target }}"
+          package_ver=$(node -p "require('./package.json').version")
+          echo "tag=v${package_ver}" >> $GITHUB_OUTPUT
+      - name: Upload macOS artifacts
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: macos-assets-${{ matrix.target }}
+          path: release/${{ steps.package.outputs.tag }}/*
+          if-no-files-found: error
+
+  publish:
+    name: Publish Release
+    needs: [check-version, windows, macos]
+    if: needs.check-version.outputs.should_release == 'true'
+    permissions:
+      contents: write
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version: '22'
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
+        with:
+          version: 10.12.3
+      - name: Install release tooling
+        run: pnpm install --frozen-lockfile
+      - name: Download all artifacts
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131
+        with:
+          path: artifacts
+      - name: Prepare release directory
+        id: prep
+        run: |
+          mkdir -p release_assets
+          # 将所有子目录下载的文件合并到 release_assets
+          find artifacts -type f -exec cp {} release_assets/ \;
+          package_ver=$(node -p "require('./package.json').version")
+          tag="v${package_ver}"
+          echo "tag=$tag" >> $GITHUB_OUTPUT
+          ls -la release_assets/
+      - name: Sign final multi-platform update manifest
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: pwsh -NoProfile -File scripts/finalize-update-manifest.ps1 -AssetRoot release_assets -Tag "${{ steps.prep.outputs.tag }}"
+      - name: Recheck tag identity and release absence before publishing
+        id: final-check
         env:
           GH_TOKEN: ${{ github.token }}
-          RELEASE_TAG: ${{ steps.package.outputs.tag }}
+        run: node scripts/check-release.mjs
+      - name: Publish release to GitHub
+        if: steps.final-check.outputs.should_release == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ steps.prep.outputs.tag }}
         run: |
-          $ErrorActionPreference = 'Stop'
-          $tag = $env:RELEASE_TAG
-          if (-not $tag) { throw 'RELEASE_TAG is empty - Package release step may have failed to set its output.' }
-          $notes = "docs/releases/$tag.md"
-          if (-not (Test-Path -LiteralPath $notes)) { throw "Missing release notes: $notes" }
-          $assets = @(Get-ChildItem -LiteralPath "release/$tag" -File | Select-Object -ExpandProperty FullName)
-          if ($assets.Count -eq 0) { throw "No release assets found in release/$tag" }
-          gh release create $tag @assets --repo $env:GITHUB_REPOSITORY --target $env:GITHUB_SHA --title "AI Helper $tag" --notes-file $notes --draft
-          if ($LASTEXITCODE -ne 0) { throw 'Release creation failed; existing releases are never overwritten.' }
-          gh release edit $tag --repo $env:GITHUB_REPOSITORY --draft=false --latest
-          if ($LASTEXITCODE -ne 0) { throw 'Release is still a draft; inspect its uploaded assets before publishing.' }
-
+          tag="${RELEASE_TAG}"
+          notes="docs/releases/${tag}.md"
+          if [ ! -f "$notes" ]; then
+            echo "Missing release notes: $notes"
+            exit 1
+          fi
+          assets=(release_assets/*)
+          if [ ${#assets[@]} -eq 0 ]; then
+            echo "No release assets found"
+            exit 1
+          fi
+          target_sha="$(git rev-parse HEAD)"
+          gh release create "$tag" "${assets[@]}" --repo "$GITHUB_REPOSITORY" --target "$target_sha" --title "AI Helper $tag" --notes-file "$notes" --draft
+          gh release edit "$tag" --repo "$GITHUB_REPOSITORY" --draft=false --latest

@@ -29,6 +29,12 @@ case "$TARGET" in
   *) echo "Unsupported macOS release target: $TARGET" >&2; exit 1 ;;
 esac
 
+# A failed retry for this exact validated tag/target must not leave an earlier
+# signature available for publication alongside unchecked or replaced bytes.
+ASSET_ROOT="$REPO_ROOT/release/$TAG"
+TARGET_DMG="$ASSET_ROOT/AI-Helper-$TAG-macOS-$ARCH_NAME.dmg"
+rm -f "$TARGET_DMG.sig"
+
 BUILD_ROOT="$REPO_ROOT/src-tauri/target/$TARGET/release"
 if [ ! -d "$BUILD_ROOT" ]; then
   echo "Target-specific release directory not found: $BUILD_ROOT" >&2
@@ -101,13 +107,11 @@ rmdir "$MOUNT_POINT"
 # This custom updater consumes DMGs, not Tauri's optional .app.tar.gz artifacts.
 # With --bundles dmg the pinned CLI does not create the latter; do not require or
 # relabel a leftover archive from an earlier build.
-ASSET_ROOT="$REPO_ROOT/release/$TAG"
 mkdir -p "$ASSET_ROOT"
 # Remove only the known obsolete outputs for this exact version/architecture so
 # a reused local release directory cannot re-publish an unchecked old archive.
 rm -f "$ASSET_ROOT/AI-Helper-$TAG-macOS-$ARCH_NAME.app.tar.gz" \
   "$ASSET_ROOT/AI-Helper-$TAG-macOS-$ARCH_NAME.app.tar.gz.sig"
-TARGET_DMG="$ASSET_ROOT/AI-Helper-$TAG-macOS-$ARCH_NAME.dmg"
 cp "$STAGED_DMG" "$TARGET_DMG"
 rm -f "$TARGET_DMG.sig"
 (

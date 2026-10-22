@@ -201,7 +201,7 @@ export function QuickToolsModal({
                 <code className="text-blue-600 dark:text-blue-300 font-mono font-medium">
                   ~/.codex/config.toml
                 </code>
-                。
+                ，客户端重新加载后读取对应密钥。
               </p>
               <p>
                 •{" "}

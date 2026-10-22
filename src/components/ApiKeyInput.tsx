@@ -674,13 +674,13 @@ export function ApiKeyInput({
                 </span>
               ) : envVarName ? (
                 <span>
-                  Codex 将通过环境变量{" "}
+                  通过环境变量{" "}
                   <code
                     className="px-1 py-0.5 rounded font-mono text-[11px] font-medium bg-neutral-100 dark:bg-neutral-900 text-neutral-800 dark:text-neutral-200 border border-neutral-200/80 dark:border-neutral-800"
                   >
                     {envVarName}
                   </code>
-                  {" "}读取；Windows 写入用户环境变量，macOS/Linux 同步至应用进程（独立终端持久化方式取决于操作系统）。
+                  {" "}读取本地凭据。
                 </span>
               ) : hintText ? (
                 <span>{hintText}</span>
