@@ -33,6 +33,10 @@ const config = JSON.parse(readFileSync(path.join(repo, "src-tauri/tauri.conf.jso
 const tag = `v${packageJson.version}`;
 const assetRoot = path.join(fixture, "release", tag);
 const baseEnv = { ...process.env };
+// pnpm/Node can enable the compile cache automatically. Keep that unrelated
+// cache out of TMPDIR, whose emptiness proves the DMG mount was cleaned up.
+baseEnv.NODE_COMPILE_CACHE = path.join(fixture, "node-compile-cache");
+baseEnv.NODE_DISABLE_COMPILE_CACHE = "1";
 for (const name of [
   "TAURI_SIGNING_PRIVATE_KEY",
   "TAURI_SIGNING_PRIVATE_KEY_PASSWORD",
