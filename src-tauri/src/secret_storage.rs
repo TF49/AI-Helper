@@ -785,20 +785,22 @@ mod tests {
     }
 }
 
-#[cfg(any(target_os = "macos", target_os = "linux"))]
+#[cfg(all(test, any(target_os = "macos", target_os = "linux")))]
+#[allow(dead_code)]
 struct NativeCleanup {
     purpose: CredentialPurpose,
     reference: String,
 }
 
-#[cfg(any(target_os = "macos", target_os = "linux"))]
+#[cfg(all(test, any(target_os = "macos", target_os = "linux")))]
+#[allow(dead_code)]
 impl NativeCleanup {
     fn new(purpose: CredentialPurpose, reference: String) -> Self {
         Self { purpose, reference }
     }
 }
 
-#[cfg(any(target_os = "macos", target_os = "linux"))]
+#[cfg(all(test, any(target_os = "macos", target_os = "linux")))]
 impl Drop for NativeCleanup {
     fn drop(&mut self) {
         let _ = native_keyring::delete(self.purpose, &self.reference);

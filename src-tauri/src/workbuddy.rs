@@ -933,7 +933,7 @@ mod tests {
     use std::process::{Child, Command, Stdio};
     use std::time::{Duration, Instant};
 
-    fn in_profile<T>(root: &std::path::Path, operation: impl FnOnce() -> T) -> T {
+    pub(crate) fn in_profile<T>(root: &std::path::Path, operation: impl FnOnce() -> T) -> T {
         struct Restore(Option<PathBuf>);
         impl Drop for Restore {
             fn drop(&mut self) {
@@ -945,7 +945,7 @@ mod tests {
         operation()
     }
 
-    fn payload(model: &str) -> WorkbuddySavePayload {
+    pub(crate) fn payload(model: &str) -> WorkbuddySavePayload {
         WorkbuddySavePayload {
             url: "https://bob-api.com".into(),
             api_key: String::new(),
@@ -970,7 +970,7 @@ mod tests {
         ]
     }
 
-    fn fixture(root: &std::path::Path) -> [Vec<u8>; 2] {
+    pub(crate) fn fixture(root: &std::path::Path) -> [Vec<u8>; 2] {
         let mut result = [Vec::new(), Vec::new()];
         for (index, path) in profiles(root).iter().enumerate() {
             std::fs::create_dir_all(path.parent().unwrap()).unwrap();
@@ -1655,6 +1655,7 @@ mod tests {
 
 #[cfg(all(test, not(target_os = "windows")))]
 mod unix_filesystem_tests {
+    use super::tests::{fixture, in_profile, payload};
     use super::*;
     use std::os::unix::fs::PermissionsExt;
 
