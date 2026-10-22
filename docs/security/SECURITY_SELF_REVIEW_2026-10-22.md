@@ -1,6 +1,6 @@
 # 2026-10-22 修复后独立复核记录
 
-复核基线：`63016846`。本记录描述该提交之后的客户端、事务恢复和工作流修复；最终修复提交、完整检查与对应 CI 结果由主审补入。此前问题及外部待办分别见 [上一轮修复记录](SECURITY_FIXES_2026-10-22.md) 和 [任务跟踪](TASK_TRACKER.md)。
+复核基线：`63016846`，代码修复提交：`c81c1315`。本记录描述该提交之后的客户端、事务恢复和工作流修复。此前问题及外部待办分别见 [上一轮修复记录](SECURITY_FIXES_2026-10-22.md) 和 [任务跟踪](TASK_TRACKER.md)。验证记录于 2026-10-23 补充。
 
 本轮交叉审查发现了可复现的问题并修复，不能仅凭上一轮绿色 CI 认定交付完成。复核和复现使用合成凭据、隔离配置及本机 loopback 服务；未操作个人凭据库、生产签名密钥或线上发布资产。
 
@@ -30,7 +30,8 @@ WorkBuddy 新增回归覆盖正常同步、未写入源的 Key 轮换和模型�
 | 超时根因 | 同提交此前分支 Windows 完整库 229 项通过、耗时 10.33 秒；main 运行中其他磁盘及 junction 测试也显著变慢。证据表明存在超时稳定性问题，尚不足以断言慢 I/O 是唯一根因或认定生产死锁 |
 | 最新修复本机完整验证 | 主审已实际运行 `./scripts/verify-improvements.ps1` 全部通过：Windows 库 239 passed、5 ignored；DPAPI 单独 2 项；前端安全行为 60 项；上述工作流检查；Rust fmt、生产 check、全目标 Clippy（`-D warnings`）、TypeScript、renderer build 及 Windows 发布资产回归通过 |
 | WorkBuddy 专项 | 最终定向回归 35 passed、1 个子进程 helper ignored；独立 v1/v2 journal 场景 5/5 通过。定向验证不替代完整库或 CI |
-| 最新修复 CI | 最终 commit 尚待提交，对应三平台 CI job/step 结果待补；不预填通过结论。远端 main 仍为基线 `63016846` |
+| 修复提交 CI | `c81c13156766f4368052436af319d90d85bdbbf1` 的 [CI `39809963053`](https://github.com/TF49/AI-Helper/actions/runs/39809963053) 最终 completed/success，六个 job 均 success。Windows 完整库 239 passed/5 ignored/0 filtered（27.41 秒），原生 DPAPI 2 项；macOS、Linux 完整库各 245 passed/5 ignored/0 filtered，实际 Keychain、Secret Service 及 SessionStore 各 2 项通过；macOS 真实双架构 DMG/临时签名/生产验签、前端 60 项、工作流 164/28/40/80、发布资产回归均通过。两个原先超时的 Windows 用例本次均通过 |
+| main 验证规则 | 合入时再次检查 main 自身 CI，结果以 GitHub 对应 main 提交的运行记录为准；上述分支记录不能代替 main 的实际运行 |
 
 上一轮分支 [CI `39799137128`](https://github.com/TF49/AI-Helper/actions/runs/39799137128) 绿色，不等于随后 main CI 绿色，也不能证明本轮新增修复已经通过。原生凭据服务、实际 DMG 挂载、更新签名和生产 Rust 验签的既有证据保留各自执行范围；最新结论必须绑定最新修复提交。
 
