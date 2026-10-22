@@ -679,6 +679,16 @@ export function CursorPanel() {
                     {clientRunning ? "重启 Cursor" : "启动 Cursor"}
                   </button>
                 </div>
+
+                <div className="mt-3 p-3 rounded-xl bg-blue-50/60 dark:bg-blue-950/20 border border-blue-100 dark:border-blue-900/30 text-[11px] text-blue-700 dark:text-blue-300 space-y-1">
+                  <div className="font-semibold flex items-center gap-1">
+                    <Sparkles className="w-3 h-3 text-blue-500" />
+                    挂接增强特性说明：
+                  </div>
+                  <div>• 覆盖 Agent 模式、Composer 多文件协同与普通 Chat 对话全链路</div>
+                  <div>• 自动提取工作区当前活跃文件与代码片段注入 LLM 上下文</div>
+                  <div>• 自动重算写入 product.json sha256 完整性校验，杜绝“安装损坏”弹窗</div>
+                </div>
               </div>
             </motion.div>
           )}

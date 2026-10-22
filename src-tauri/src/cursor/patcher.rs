@@ -246,9 +246,22 @@ pub fn apply_patch(custom_path: Option<&str>, bridge_port: u16) -> Result<String
 
     let target_url = format!("http://127.0.0.1:{}", bridge_port);
 
-    // 替换核心 API 服务地址
-    content = content.replace("https://api2.cursor.sh", &target_url);
-    content = content.replace("https://api3.cursor.sh", &target_url);
+    // 替换核心 API 服务地址 (涵盖基础 API、Composer、Agent 模式及各区域网关)
+    const CURSOR_TARGET_DOMAINS: &[&str] = &[
+        "https://api2.cursor.sh",
+        "https://api3.cursor.sh",
+        "https://api4.cursor.sh",
+        "https://agent.api5.cursor.sh",
+        "https://agentn.api5.cursor.sh",
+        "https://agent-gcpp-uswest.api5.cursor.sh",
+        "https://agentn-gcpp-uswest.api5.cursor.sh",
+        "https://agentn-gcpp-eucentral.api5.cursor.sh",
+        "https://agentn-gcpp-apsoutheast.api5.cursor.sh",
+    ];
+
+    for domain in CURSOR_TARGET_DOMAINS {
+        content = content.replace(domain, &target_url);
+    }
 
     // 针对可能已经修补过的端口进行热换
     let regex_pattern = regex_lite_or_simple_replace(&content, bridge_port);
@@ -326,4 +339,24 @@ pub fn restore_patch(custom_path: Option<&str>) -> Result<String, String> {
     }
 
     Ok("成功还原 Cursor 至官方原始连接状态！".to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_compute_file_checksum_not_empty() {
+        let dummy = b"console.log('hello cursor');";
+        let hash = compute_file_checksum(dummy);
+        assert!(!hash.is_empty());
+        assert!(!hash.ends_with('=')); // stripped trailing base64 padding
+    }
+
+    #[test]
+    fn test_regex_lite_or_simple_replace() {
+        let text = "const backend = 'http://127.0.0.1:8969/api';";
+        let replaced = regex_lite_or_simple_replace(text, 9999);
+        assert_eq!(replaced, "const backend = 'http://127.0.0.1:9999/api';");
+    }
 }
