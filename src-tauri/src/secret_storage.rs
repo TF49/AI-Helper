@@ -188,6 +188,7 @@ fn unavailable() -> AppError {
 }
 
 #[cfg(any(target_os = "macos", target_os = "linux"))]
+#[allow(dead_code)]
 mod native_keyring {
     use super::*;
     use std::sync::Mutex;
@@ -196,6 +197,7 @@ mod native_keyring {
     // without ever switching keyring's global backend or falling back to a file.
     static KEYRING_ACCESS: Mutex<()> = Mutex::new(());
 
+    #[allow(dead_code)]
     pub(super) fn kind() -> &'static str {
         "keyring"
     }
@@ -245,6 +247,7 @@ mod native_keyring {
         }
     }
 
+    #[allow(dead_code)]
     pub(super) fn unprotect_legacy(_legacy: &str) -> Result<String, AppError> {
         // Never open/recreate the historical HOME/.ai-helper master-key file.
         Err(AppError::Other("旧版凭据无法安全迁移，请重新登录".into()))
@@ -558,6 +561,7 @@ mod platform {
         })
     }
 
+    #[allow(dead_code)]
     pub(super) fn unprotect_legacy(_legacy: &str) -> Result<String, AppError> {
         Err(invalid_credential())
     }
@@ -782,6 +786,13 @@ mod tests {
         );
         assert!(unprotect_secret("enc:v1:not-a-native-dpapi-blob").is_err());
         assert!(is_encrypted("enc:v1:historical"));
+    }
+
+    #[test]
+    #[cfg(any(target_os = "macos", target_os = "linux"))]
+    fn native_keyring_contract() {
+        assert_eq!(native_keyring::kind(), "keyring");
+        assert!(native_keyring::unprotect_legacy("any-legacy-string").is_err());
     }
 }
 
