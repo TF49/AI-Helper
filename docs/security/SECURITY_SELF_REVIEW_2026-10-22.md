@@ -32,6 +32,7 @@ WorkBuddy 新增回归覆盖正常同步、未写入源的 Key 轮换和模型�
 | WorkBuddy 专项 | 最终定向回归 35 passed、1 个子进程 helper ignored；独立 v1/v2 journal 场景 5/5 通过。定向验证不替代完整库或 CI |
 | 修复提交 CI | `c81c13156766f4368052436af319d90d85bdbbf1` 的 [CI `39809963053`](https://github.com/TF49/AI-Helper/actions/runs/39809963053) 最终 completed/success，六个 job 均 success。Windows 完整库 239 passed/5 ignored/0 filtered（27.41 秒），原生 DPAPI 2 项；macOS、Linux 完整库各 245 passed/5 ignored/0 filtered，实际 Keychain、Secret Service 及 SessionStore 各 2 项通过；macOS 真实双架构 DMG/临时签名/生产验签、前端 60 项、工作流 164/28/40/80、发布资产回归均通过。两个原先超时的 Windows 用例本次均通过 |
 | main 验证规则 | 合入时再次检查 main 自身 CI，结果以 GitHub 对应 main 提交的运行记录为准；上述分支记录不能代替 main 的实际运行 |
+| 首次 main 运行的基础设施异常 | `bf7953f4` 的 [main CI `39812287999`](https://github.com/TF49/AI-Helper/actions/runs/39812287999) 已核验五个 job 成功：Windows 完整库 239 项、DPAPI 2 项，macOS 完整库 245 项、Keychain/会话 2 项及真实 DMG，前端与资产检查均通过。Ubuntu 的 Azure 镜像下载超过 15 分钟，取消时尚未进入 Rust 或测试；最终日志确认安装阶段持续缓慢下载，未发现编译/测试错误。取消后所有 step 已结束，但运行汇总数分钟仍为进行中，单 job 重试被 API 403 拒绝；强制取消同时返回 409，未实际执行。本次补录文档后重新运行完整 main CI，生产代码与测试保持不变，不把取消或跳过当作通过 |
 
 上一轮分支 [CI `39799137128`](https://github.com/TF49/AI-Helper/actions/runs/39799137128) 绿色，不等于随后 main CI 绿色，也不能证明本轮新增修复已经通过。原生凭据服务、实际 DMG 挂载、更新签名和生产 Rust 验签的既有证据保留各自执行范围；最新结论必须绑定最新修复提交。
 
