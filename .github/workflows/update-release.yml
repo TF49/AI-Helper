@@ -5,9 +5,10 @@ on:
     branches:
       - main
     paths:
-      - 'src/**'
-      - 'src-tauri/**'
-      - 'package.json'
+      - 'package.json'  # 只在版本号变更时触发
+    tags:
+      - 'v*'  # 或者打 tag 时触发
+  workflow_dispatch:  # 允许手动触发
 
 permissions:
   contents: write
