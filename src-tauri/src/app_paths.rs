@@ -12,6 +12,8 @@ pub struct AppPathsConfig {
     pub workbuddy_client_path: Option<String>,
     #[serde(default)]
     pub accio_client_path: Option<String>,
+    #[serde(default)]
+    pub cursor_client_path: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -187,6 +189,15 @@ fn matches_process(
                 || name_lower == "accio work"
                 || cmd_line.contains("accio.exe")
                 || cmd_line.contains("accio work.exe")
+        }
+        "cursor" => {
+            if name_lower.contains("crashpad")
+                || name_lower.contains("uninstall")
+                || name_lower.contains("helper")
+            {
+                return false;
+            }
+            name_lower == "cursor.exe" || name_lower == "cursor" || cmd_line.contains("cursor.exe")
         }
         _ => false,
     }
@@ -1202,6 +1213,76 @@ pub fn detect_accio_client_path() -> DetectedPathInfo {
     detect_accio_client_path_internal(is_running, running_exe)
 }
 
+/// 探测 Cursor 客户端路径
+pub fn detect_cursor_client_path_internal(
+    is_running: bool,
+    running_exe: Option<PathBuf>,
+) -> DetectedPathInfo {
+    if let Some(path) = running_exe {
+        return DetectedPathInfo {
+            app_type: "cursor".to_string(),
+            path: path.to_string_lossy().to_string(),
+            exists: true,
+            source: "running_process".to_string(),
+            is_running,
+            extra_info: Some("探测自当前运行中进程".to_string()),
+        };
+    }
+
+    if let Some(root) = crate::cursor::patcher::find_cursor_root(None) {
+        #[cfg(target_os = "windows")]
+        let exe = if root.join("Cursor.exe").exists() {
+            root.join("Cursor.exe")
+        } else {
+            root.join("cursor.exe")
+        };
+        #[cfg(target_os = "macos")]
+        let exe = root.clone();
+        #[cfg(target_os = "linux")]
+        let exe = if root.join("cursor").exists() {
+            root.join("cursor")
+        } else {
+            root.clone()
+        };
+
+        if exe.exists() {
+            return DetectedPathInfo {
+                app_type: "cursor".to_string(),
+                path: exe.to_string_lossy().to_string(),
+                exists: true,
+                source: "standard_dir".to_string(),
+                is_running,
+                extra_info: Some("探测自 Cursor 标准安装目录".to_string()),
+            };
+        }
+    }
+
+    if let Some(path) = find_in_path("cursor").or_else(|| find_in_path("Cursor")) {
+        return DetectedPathInfo {
+            app_type: "cursor".to_string(),
+            path: path.to_string_lossy().to_string(),
+            exists: true,
+            source: "path_env".to_string(),
+            is_running,
+            extra_info: Some("探测自系统 PATH 环境变量".to_string()),
+        };
+    }
+
+    DetectedPathInfo {
+        app_type: "cursor".to_string(),
+        path: String::new(),
+        exists: false,
+        source: "not_found".to_string(),
+        is_running: false,
+        extra_info: None,
+    }
+}
+
+pub fn detect_cursor_client_path() -> DetectedPathInfo {
+    let (is_running, running_exe) = inspect_target_process("cursor");
+    detect_cursor_client_path_internal(is_running, running_exe)
+}
+
 /// 单次扫描系统进程树，高效全量探测所有应用路径
 pub fn detect_all_app_paths() -> Vec<DetectedPathInfo> {
     let mut system = System::new();
@@ -1212,6 +1293,7 @@ pub fn detect_all_app_paths() -> Vec<DetectedPathInfo> {
     let (chatgpt_run, chatgpt_exe) = inspect_target_process_with_system("chatgpt", &system);
     let (workbuddy_run, workbuddy_exe) = inspect_target_process_with_system("workbuddy", &system);
     let (accio_run, accio_exe) = inspect_target_process_with_system("acciowork", &system);
+    let (cursor_run, cursor_exe) = inspect_target_process_with_system("cursor", &system);
 
     vec![
         detect_claude_cli_path_internal(claude_run, claude_exe),
@@ -1219,6 +1301,7 @@ pub fn detect_all_app_paths() -> Vec<DetectedPathInfo> {
         detect_chatgpt_client_path_internal(chatgpt_run, chatgpt_exe),
         detect_workbuddy_client_path_internal(workbuddy_run, workbuddy_exe),
         detect_accio_client_path_internal(accio_run, accio_exe),
+        detect_cursor_client_path_internal(cursor_run, cursor_exe),
     ]
 }
 
@@ -1254,6 +1337,11 @@ pub fn browse_path_dialog(app_type: &str) -> Result<Option<String>, String> {
             "可执行文件 (*.exe)",
             "*.exe",
             "选择 Accio Work 客户端路径 (Accio.exe / Accio Work.exe)",
+        ),
+        "cursor" => (
+            "可执行文件 (*.exe)",
+            "*.exe",
+            "选择 Cursor 客户端可执行文件 (Cursor.exe)",
         ),
         _ => return Err(format!("不支持的应用类型选择: {}", app_type)),
     };
@@ -1296,6 +1384,7 @@ pub fn browse_path_dialog(app_type: &str) -> Result<Option<String>, String> {
         "codex" => "选择 Codex CLI 执行文件",
         "workbuddy" => "选择 WorkBuddy 客户端应用",
         "acciowork" => "选择 Accio 客户端应用",
+        "cursor" => "选择 Cursor 客户端应用 (Cursor.app)",
         _ => "选择应用文件",
     };
     let script = format!(
@@ -1360,6 +1449,13 @@ mod tests {
     }
 
     #[test]
+    fn test_detect_cursor_client_path_does_not_panic() {
+        let detected = detect_cursor_client_path();
+        assert_eq!(detected.app_type, "cursor");
+        println!("Detected Cursor: {:?}", detected);
+    }
+
+    #[test]
     fn test_app_paths_config_serde() {
         let cfg = AppPathsConfig {
             claude_cli_path: Some("C:\\bin\\claude.cmd".to_string()),
@@ -1371,6 +1467,7 @@ mod tests {
             accio_client_path: Some(
                 "C:\\Users\\Administrator\\AppData\\Local\\Programs\\Accio\\Accio.exe".to_string(),
             ),
+            cursor_client_path: Some("E:\\Developer Tool\\Cursor\\Cursor.exe".to_string()),
         };
 
         let json = serde_json::to_string(&cfg).expect("serialize");
@@ -1384,5 +1481,6 @@ mod tests {
             cfg.workbuddy_client_path
         );
         assert_eq!(deserialized.accio_client_path, cfg.accio_client_path);
+        assert_eq!(deserialized.cursor_client_path, cfg.cursor_client_path);
     }
 }

@@ -149,3 +149,36 @@ export const AccioWorkIcon: React.FC<
   );
 };
 
+export const CURSOR_BRAND_COLOR = "#000000";
+
+/**
+ * Cursor IDE 官方等轴立方体品牌图标
+ */
+export const CursorIcon: React.FC<
+  BrandIconProps & { useOfficialColor?: boolean }
+> = ({ size = 16, className = "", color, useOfficialColor = false }) => {
+  const iconStroke = color || (useOfficialColor ? CURSOR_BRAND_COLOR : "currentColor");
+
+  return (
+    <svg
+      height={size}
+      width={size}
+      className={cn("flex-shrink-0 transition-colors", className)}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke={iconStroke}
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      xmlns="http://www.w3.org/2000/svg"
+    >
+      <title>Cursor</title>
+      <path d="M12 2L3 7.2v9.6L12 22l9-5.2V7.2L12 2z" />
+      <path d="M12 12L3 7.2" />
+      <path d="M12 12l9-4.8" />
+      <path d="M12 12v10" />
+    </svg>
+  );
+};
+
+

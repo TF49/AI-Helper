@@ -21,10 +21,11 @@ export interface AppPathsConfig {
   chatgpt_client_path?: string | null;
   workbuddy_client_path?: string | null;
   accio_client_path?: string | null;
+  cursor_client_path?: string | null;
 }
 
 export interface DetectedPathInfo {
-  app_type: "claude" | "codex" | "chatgpt" | "workbuddy" | "acciowork";
+  app_type: "claude" | "codex" | "chatgpt" | "workbuddy" | "acciowork" | "cursor";
   path: string;
   exists: boolean;
   source: string;
@@ -140,6 +141,15 @@ export const ACCIO_MODEL_SUGGESTIONS = [
   "qwen-2.5-max",
 ] as const;
 
+export const CURSOR_MODEL_SUGGESTIONS = [
+  "claude-3-7-sonnet",
+  "claude-3-5-sonnet",
+  "deepseek-chat",
+  "deepseek-reasoner",
+  "gpt-4o",
+  "o3-mini",
+] as const;
+
 export interface WorkbuddyModelItem {
   id: string;
   name: string;
@@ -215,6 +225,41 @@ export interface AccioConfig {
 export interface AccioBridgeStatus {
   is_running: boolean;
   port?: number | null;
+}
+
+export interface CursorConfig {
+  base_url: string;
+  api_key: string;
+  model: string;
+  bridge_port: number;
+  auto_start_bridge?: boolean;
+  custom_models?: string[];
+  cursor_path?: string | null;
+  config_exists?: boolean;
+  config_path?: string;
+  is_installed?: boolean;
+  app_path?: string | null;
+  bridge_running?: boolean;
+  actual_port?: number | null;
+  is_patched?: boolean;
+  patch_detail?: string | null;
+  is_process_running?: boolean;
+}
+
+export interface CursorBridgeStatus {
+  is_running: boolean;
+  port?: number | null;
+}
+
+export interface CursorPatchInfo {
+  is_installed: boolean;
+  cursor_app_path?: string | null;
+  workbench_js_path?: string | null;
+  product_json_path?: string | null;
+  is_patched: boolean;
+  current_bridge_target?: string | null;
+  backup_exists: boolean;
+  message: string;
 }
 
 // ── 用户认证与 API Key 凭据类型定义 (PRD 桌面登录方案 B) ──
@@ -375,7 +420,7 @@ export type MainNav =
   | "tools"
   | "settings";
 
-export type AgentTool = "chatgpt" | "claude" | "workbuddy" | "acciowork";
+export type AgentTool = "chatgpt" | "claude" | "workbuddy" | "acciowork" | "cursor";
 
 export interface AppSettings {
   autoStart: boolean;

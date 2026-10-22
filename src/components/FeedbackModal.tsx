@@ -23,7 +23,7 @@ interface FeedbackModalProps {
   open: boolean;
   onClose: () => void;
   appVersion: string;
-  activeTab: "chatgpt" | "claude" | "workbuddy" | "acciowork" | "paths";
+  activeTab: "chatgpt" | "claude" | "workbuddy" | "acciowork" | "cursor" | "paths";
   networkState: "checking" | "reachable" | "unreachable";
   currentUser?: UserInfo | null;
   onRefreshAuth?: () => Promise<void>;

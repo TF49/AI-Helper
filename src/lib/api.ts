@@ -13,6 +13,9 @@ import type {
   WorkbuddyModelItem,
   AccioConfig,
   AccioBridgeStatus,
+  CursorConfig,
+  CursorBridgeStatus,
+  CursorPatchInfo,
   SiteStatus,
   EncryptionKeyData,
   CaptchaGenerateData,
@@ -499,19 +502,19 @@ export async function detectAllAppPaths(): Promise<DetectedPathInfo[]> {
 }
 
 export async function browseAppPath(
-  appType: "claude" | "codex" | "chatgpt" | "workbuddy" | "acciowork",
+  appType: "claude" | "codex" | "chatgpt" | "workbuddy" | "acciowork" | "cursor",
 ): Promise<string | null> {
   return invoke<string | null>("browse_app_path", { appType });
 }
 
 export async function checkAppProcessStatus(
-  appType: "claude" | "codex" | "chatgpt" | "workbuddy" | "acciowork",
+  appType: "claude" | "codex" | "chatgpt" | "workbuddy" | "acciowork" | "cursor",
 ): Promise<boolean> {
   return invoke<boolean>("check_app_process_status", { appType });
 }
 
 export async function restartTargetApp(
-  appType: "claude" | "codex" | "chatgpt" | "workbuddy" | "acciowork",
+  appType: "claude" | "codex" | "chatgpt" | "workbuddy" | "acciowork" | "cursor",
   customPath?: string,
 ): Promise<string> {
   return invoke<string>("restart_target_app", { appType, customPath });
@@ -683,6 +686,41 @@ export async function testAccioStream(
     model,
     onEvent: channel,
   });
+}
+
+export async function getCursorConfig(): Promise<CursorConfig> {
+  return invoke<CursorConfig>("get_cursor_config");
+}
+
+export async function setCursorConfig(config: CursorConfig): Promise<void> {
+  return invoke("set_cursor_config", { config });
+}
+
+export async function startCursorBridge(port?: number): Promise<number> {
+  return invoke<number>("start_cursor_bridge", { port });
+}
+
+export async function stopCursorBridge(): Promise<void> {
+  return invoke<void>("stop_cursor_bridge");
+}
+
+export async function getCursorBridgeStatus(): Promise<CursorBridgeStatus> {
+  return invoke<CursorBridgeStatus>("get_cursor_bridge_status");
+}
+
+export async function getCursorPatchStatus(customPath?: string): Promise<CursorPatchInfo> {
+  return invoke<CursorPatchInfo>("get_cursor_patch_status", { customPath });
+}
+
+export async function patchCursorClient(
+  customPath?: string,
+  bridgePort?: number,
+): Promise<string> {
+  return invoke<string>("patch_cursor_client", { customPath, bridgePort });
+}
+
+export async function restoreCursorClient(customPath?: string): Promise<string> {
+  return invoke<string>("restore_cursor_client", { customPath });
 }
 
 export async function fetchCodexModels(
@@ -924,7 +962,7 @@ export async function setSelectedToken(
 
 export async function applyApiKeyToAgents(
   apiKey: string,
-  targets: string[] = ["chatgpt", "claude", "workbuddy", "acciowork"],
+  targets: string[] = ["chatgpt", "claude", "workbuddy", "acciowork", "cursor"],
 ): Promise<Record<string, boolean>> {
   return invoke<Record<string, boolean>>("apply_api_key_to_agents", {
     apiKey,

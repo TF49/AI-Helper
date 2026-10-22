@@ -7,11 +7,13 @@ import {
   ClaudeIcon,
   WorkbuddyIcon,
   AccioWorkIcon,
+  CursorIcon,
 } from "../BrandIcons";
 import { ChatGPTPanel } from "../ChatGPTPanel";
 import { ClaudePanel } from "../ClaudePanel";
 import { WorkbuddyPanel } from "../WorkbuddyPanel";
 import { AccioWorkPanel } from "../AccioWorkPanel";
+import { CursorPanel } from "../CursorPanel";
 import { cn } from "../../lib/utils";
 import type { AgentTool } from "../../types";
 
@@ -48,6 +50,12 @@ const TOOLS: {
     id: "acciowork",
     name: "Accio Work",
     icon: AccioWorkIcon,
+    activeColor: "text-black dark:text-white",
+  },
+  {
+    id: "cursor",
+    name: "Cursor",
+    icon: CursorIcon,
     activeColor: "text-black dark:text-white",
   },
 ];
@@ -184,7 +192,7 @@ export function WorkspaceView({ activeTool, onSelectTool }: WorkspaceViewProps) 
             >
               <WorkbuddyPanel />
             </motion.div>
-          ) : (
+          ) : activeTool === "acciowork" ? (
             <motion.div
               key="acciowork"
               initial={{ opacity: 0, y: 4 }}
@@ -193,6 +201,16 @@ export function WorkspaceView({ activeTool, onSelectTool }: WorkspaceViewProps) 
               transition={{ duration: 0.15 }}
             >
               <AccioWorkPanel />
+            </motion.div>
+          ) : (
+            <motion.div
+              key="cursor"
+              initial={{ opacity: 0, y: 4 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -4 }}
+              transition={{ duration: 0.15 }}
+            >
+              <CursorPanel />
             </motion.div>
           )}
         </AnimatePresence>

@@ -34,6 +34,7 @@ import {
   ClaudeIcon,
   WorkbuddyIcon,
   AccioWorkIcon,
+  CursorIcon,
 } from "./components/BrandIcons";
 import { WorkspaceView } from "./components/views/WorkspaceView";
 import { UsageLogsView } from "./components/views/UsageLogsView";
@@ -144,6 +145,12 @@ const WORKBENCH_TOOLS: {
     id: "acciowork",
     name: "Accio Work",
     icon: AccioWorkIcon,
+    activeColor: "text-black dark:text-white",
+  },
+  {
+    id: "cursor",
+    name: "Cursor",
+    icon: CursorIcon,
     activeColor: "text-black dark:text-white",
   },
 ];

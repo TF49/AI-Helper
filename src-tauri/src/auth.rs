@@ -1989,6 +1989,37 @@ pub async fn apply_api_key_to_agents(
                     }
                 }
             }
+            "cursor" => {
+                let cur = crate::cursor::config::load_cursor_config();
+                let base_url = if cur.base_url.is_empty() {
+                    "https://bob-api.com/".to_string()
+                } else {
+                    cur.base_url
+                };
+                if let Err(e) = managed_destination(&base_url, "https://bob-api.com/") {
+                    error!("应用 Key 到 Cursor 失败: {e}");
+                    results.insert("cursor".to_string(), false);
+                    continue;
+                }
+                let config = crate::cursor::config::CursorConfig {
+                    base_url,
+                    api_key: api_key.clone(),
+                    model: cur.model,
+                    bridge_port: cur.bridge_port,
+                    auto_start_bridge: cur.auto_start_bridge,
+                    custom_models: cur.custom_models,
+                    cursor_path: cur.cursor_path,
+                };
+                match crate::cursor::config::save_cursor_config(&config) {
+                    Ok(_) => {
+                        results.insert("cursor".to_string(), true);
+                    }
+                    Err(e) => {
+                        error!("应用 Key 到 Cursor 失败: {e}");
+                        results.insert("cursor".to_string(), false);
+                    }
+                }
+            }
             _ => {}
         }
     }

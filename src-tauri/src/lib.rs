@@ -8,6 +8,7 @@ mod autostart;
 mod claude;
 mod codex;
 mod credential_policy;
+mod cursor;
 mod error;
 mod feedback;
 mod image_fetch;
@@ -73,6 +74,7 @@ fn detect_app_path(app_type: String) -> Result<app_paths::DetectedPathInfo, Stri
         "chatgpt" => Ok(app_paths::detect_chatgpt_client_path()),
         "workbuddy" => Ok(app_paths::detect_workbuddy_client_path()),
         "acciowork" => Ok(app_paths::detect_accio_client_path()),
+        "cursor" => Ok(app_paths::detect_cursor_client_path()),
         _ => Err(format!("未知应用类型: {}", app_type)),
     }
 }
@@ -324,6 +326,66 @@ async fn test_accio_stream(
     on_event: tauri::ipc::Channel<api_test::TestStreamEvent>,
 ) -> api_test::ApiTestResult {
     api_test::test_accio_stream(url, api_key, model, on_event).await
+}
+
+#[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
+pub struct CursorBridgeStatus {
+    pub is_running: bool,
+    pub port: Option<u16>,
+}
+
+#[tauri::command]
+fn get_cursor_config() -> cursor::CursorUIConfig {
+    let running = cursor::is_bridge_running();
+    let port = cursor::get_bridge_port();
+    cursor::get_cursor_ui_config(running, port)
+}
+
+#[tauri::command]
+fn set_cursor_config(config: serde_json::Value) -> Result<(), error::AppError> {
+    let existing = cursor::load_cursor_config();
+    let config = cursor::config::merge_config_update(config, &existing)?;
+    cursor::save_cursor_config(&config)?;
+    Ok(())
+}
+
+#[tauri::command]
+async fn start_cursor_bridge(port: Option<u16>) -> Result<u16, String> {
+    cursor::start_bridge(port).await
+}
+
+#[tauri::command]
+async fn stop_cursor_bridge() -> Result<(), String> {
+    cursor::stop_bridge().await
+}
+
+#[tauri::command]
+fn get_cursor_bridge_status() -> CursorBridgeStatus {
+    CursorBridgeStatus {
+        is_running: cursor::is_bridge_running(),
+        port: cursor::get_bridge_port(),
+    }
+}
+
+#[tauri::command]
+fn get_cursor_patch_status(custom_path: Option<String>) -> cursor::CursorPatchInfo {
+    cursor::get_patch_status(custom_path.as_deref())
+}
+
+#[tauri::command]
+fn patch_cursor_client(
+    custom_path: Option<String>,
+    bridge_port: Option<u16>,
+) -> Result<String, String> {
+    let port = bridge_port
+        .or_else(cursor::get_bridge_port)
+        .unwrap_or_else(|| cursor::load_cursor_config().bridge_port);
+    cursor::apply_patch(custom_path.as_deref(), port)
+}
+
+#[tauri::command]
+fn restore_cursor_client(custom_path: Option<String>) -> Result<String, String> {
+    cursor::restore_patch(custom_path.as_deref())
 }
 
 #[tauri::command]
@@ -659,6 +721,16 @@ pub fn run() {
                 });
             }
 
+            let cursor_cfg = cursor::config::load_cursor_config();
+            if cursor_cfg.auto_start_bridge && !cursor_cfg.api_key.trim().is_empty() {
+                log::info!("正在自动拉起 Cursor Bridge 网关...");
+                tauri::async_runtime::spawn(async move {
+                    if let Err(e) = cursor::start_bridge(Some(cursor_cfg.bridge_port)).await {
+                        log::error!("自启动 Cursor Bridge 异常: {}", e);
+                    }
+                });
+            }
+
             Ok(())
         })
         .on_window_event(|window, event| {
@@ -691,6 +763,14 @@ pub fn run() {
             stop_accio_bridge,
             get_accio_bridge_status,
             test_accio_stream,
+            get_cursor_config,
+            set_cursor_config,
+            start_cursor_bridge,
+            stop_cursor_bridge,
+            get_cursor_bridge_status,
+            get_cursor_patch_status,
+            patch_cursor_client,
+            restore_cursor_client,
             fetch_codex_models,
             fetch_claude_models,
             open_url,

@@ -41,7 +41,7 @@ import { ButtonToLoaderToSuccess } from "./ui/ButtonToLoaderToSuccess";
 export interface TerminalTestModalProps {
   open: boolean;
   onClose: () => void;
-  type: "codex" | "claude" | "workbuddy" | "acciowork";
+  type: "codex" | "claude" | "workbuddy" | "acciowork" | "cursor";
   url: string;
   apiKey: string;
   model: string;
@@ -203,7 +203,9 @@ export function TerminalTestModal({
           ? "WorkBuddy"
           : type === "acciowork"
             ? "Accio Work"
-            : "Claude Code";
+            : type === "cursor"
+              ? "Cursor IDE"
+              : "Claude Code";
     // Accio Work 根据模型名前缀自动检测使用的协议（与 Rust 端 detect_accio_model_protocol 保持一致）
     const detectAccioProtocol = (m: string): string => {
       const lower = m.trim().toLowerCase();
@@ -219,7 +221,9 @@ export function TerminalTestModal({
           ? "OpenAI Chat Completions Protocol"
           : type === "acciowork"
             ? detectAccioProtocol(model)
-            : "Anthropic Messages Protocol";
+            : type === "cursor"
+              ? "Cursor Connect-RPC / OpenAI Bridge"
+              : "Anthropic Messages Protocol";
 
     addLog(`🚀 启动 ${platformName} 连通性测试与配置流程...`, "info");
     addLog(`目标协议: ${protocolName}`, "dim");
@@ -260,6 +264,13 @@ export function TerminalTestModal({
         );
       } else if (type === "acciowork") {
         testResult = await testAccioStream(
+          url,
+          apiKey.trim(),
+          model.trim(),
+          handleEvent,
+        );
+      } else if (type === "cursor") {
+        testResult = await testCodexStream(
           url,
           apiKey.trim(),
           model.trim(),
