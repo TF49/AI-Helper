@@ -160,7 +160,10 @@ jobs:
         run: cargo clippy --manifest-path src-tauri/Cargo.toml --locked --all-targets -- -D warnings
 
       - name: Run backend tests
-        run: cargo test --manifest-path src-tauri/Cargo.toml --locked --lib
+        timeout-minutes: 15
+        # The tests exercise their own concurrent writers. Avoid contention
+        # between unrelated test cases on shared hosted-runner storage.
+        run: cargo test --manifest-path src-tauri/Cargo.toml --locked --lib -- --test-threads=1
 
       - name: Native Windows DPAPI smoke with synthetic values
         if: runner.os == 'Windows'

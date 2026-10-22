@@ -29,8 +29,20 @@ function parseWorkflow(source, name) {
 function fullLibraryRun(step) {
   if (step.if !== undefined) return false;
   return [...code(step).matchAll(/\bcargo\s+test\s+([^\r\n]+)/g)].some((match) => {
-    const [cargo, harness = ""] = match[1].split(/\s+--(?:\s+|$)/, 2);
-    if (/--(?:skip|ignored|include-ignored)\b/.test(harness)) return false;
+    const separator = /\s+--(?:\s+|$)/.exec(match[1]);
+    const cargo = separator ? match[1].slice(0, separator.index) : match[1];
+    const harness = separator ? match[1].slice(separator.index + separator[0].length) : "";
+    const harnessTokens = (harness.match(/"[^"]*"|'[^']*'|\S+/g) ?? [])
+      .map((token) => token.replace(/^["']|["']$/g, ""));
+    for (let index = 0; index < harnessTokens.length; index += 1) {
+      const token = harnessTokens[index];
+      if (token === "--test-threads") {
+        if (!/^[1-9]\d*$/.test(harnessTokens[++index] ?? "")) return false;
+      } else if (!/^--test-threads=[1-9]\d*$/.test(token)
+        && !["--nocapture", "--show-output", "--quiet", "-q"].includes(token)) {
+        return false;
+      }
+    }
     const tokens = cargo.match(/"[^"]*"|'[^']*'|\S+/g) ?? [];
     let manifest = false;
     for (let index = 0; index < tokens.length; index += 1) {
@@ -215,6 +227,23 @@ rejectsMutation("filtered Unix test suite", (copy) => {
   const step = copy.workflows["ci.yml"].jobs.backend.steps.find(fullLibraryRun);
   step.run = code(step).replace(/--lib\b/, "--lib unix_filesystem_tests");
 }, "ci-full-library");
+for (const harness of [
+  "--list", "--exact nonexistent", "nonexistent", "--skip auth::", "--ignored", "--include-ignored",
+  "--test-threads=0", "--test-threads 0", "--test-threads", "--test-threads=1 nonexistent",
+  "--test-threads=1 --list", "-- --list",
+]) {
+  rejectsMutation(`filtered or non-executing harness: ${harness}`, (copy) => {
+    const step = copy.workflows["ci.yml"].jobs.backend.steps.find(fullLibraryRun);
+    step.run = `cargo test --manifest-path src-tauri/Cargo.toml --locked --lib -- ${harness}`;
+  }, "ci-full-library");
+}
+for (const harness of [
+  "", "--test-threads=1", "--test-threads 2", '--test-threads "3"', "--nocapture", "--show-output",
+  "--quiet", "-q", "--test-threads=1 --nocapture --show-output -q",
+]) {
+  assert.ok(fullLibraryRun({ run: `cargo test --manifest-path src-tauri/Cargo.toml --locked --lib -- ${harness}` }),
+    `full library execution option must remain accepted: ${harness}`);
+}
 rejectsMutation("missing frontend regressions", (copy) => {
   const job = copy.workflows["ci.yml"].jobs.frontend;
   job.steps = job.steps.filter((step) => !/test:security\b/.test(code(step)));

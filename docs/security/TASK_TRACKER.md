@@ -1,6 +1,6 @@
 # 当前待办与验收跟踪
 
-更新日期：2026-10-22。本轮修复基线：`5522758f`。当前实现与证据见[本轮修复记录](SECURITY_FIXES_2026-10-22.md)，缺陷来源见[独立审查](SECURITY_REVIEW_2026-10-22.md)。旧日期快照不代表当前实现状态。
+更新日期：2026-10-22。最新自审基线：`63016846`，发现与修复见[严格自审记录](SECURITY_SELF_REVIEW_2026-10-22.md)。此前修复基线 `5522758f` 的记录保留在[上一轮修复记录](SECURITY_FIXES_2026-10-22.md)及[独立审查](SECURITY_REVIEW_2026-10-22.md)。旧日期快照和旧提交的 CI 不代表当前实现状态。
 
 ## 当前必须推动的事项
 
@@ -9,7 +9,7 @@
 | 优先级 | 事项 | 负责人 / 完成证据 |
 | --- | --- | --- |
 | P0 | Bob API 服务端：对象级授权、会话撤销、group-only 修改、报价契约、并发额度硬限和幂等记账 | 开发同事；提供服务端源码/隔离环境及权限、并发、重放和恢复测试证据 |
-| P1 | macOS/Linux 原生凭据服务、受支持 Accio 版本兼容、macOS 两架构签名/公证/安装和旧版升级 | 对应平台实机验证记录；模拟测试不算通过 |
+| P1 | 已签名成品的系统凭据授权交互、受支持 Accio 版本兼容、macOS 两架构生产签名/公证/安装和旧版升级 | 对应平台实机验证记录；CI 已验证隔离的真实 Keychain/Secret Service 与临时签名 DMG，该证据不能代替成品验收 |
 | P1 | 轮换并撤销已暴露的旧 Webhook/Key | 运维；提供轮换、撤销及验证记录 |
 
 其余客户端实现与本机/CI 检查范围见下方 SEC-01 至 SEC-17 跟踪表；完成状态以对应提交和实际检查结果为准。
@@ -19,7 +19,7 @@
 | SEC-01 更新信任 | 签名、摘要、防重放、平台绑定与 DMG 版本/架构检查；TODO：旧版升级、macOS 两架构真实安装 |
 | SEC-02 凭据出口 | Managed/External/Unknown、显式确认、精确 origin、Managed 优先和坏库阻断；官方转发固定 HTTPS origin |
 | SEC-03 分组修改 | 客户端 group-only PATCH，无完整 PUT 回退；TODO（服务端）：接口契约、对象授权、并发字段保护 |
-| SEC-04 配置保留 | Claude/Codex 同锁恢复与读改写；Codex URL 与 Key 同一私有 TOML 原子替换；WorkBuddy 多位置事务、外部版本冲突保护，Committed 不覆盖后续修改 |
+| SEC-04 配置保留 | Claude/Codex 同锁恢复与读改写；Codex URL 与 Key 同一私有 TOML 原子替换，跨 origin 拒绝残留未知请求头/参数；WorkBuddy 检查全部合并输入，v2 事务保留只读依赖，恢复前阻断缺失来源，Committed 不覆盖后续修改 |
 | SEC-05 Bridge 鉴权 | 实例凭据、读取 body 前鉴权、失败不冒用其他端口；TODO：Accio 受支持版本实机矩阵 |
 | SEC-06 付费请求 | 已发送或结果未知不跨供应商补单；未决占用持久化，生成与取图分离；TODO：服务端操作 ID、幂等与查询契约 |
 | SEC-07 预算 | 本地次数预留落盘后放行、跨进程锁、异常不清零、默认关闭；TODO（服务端）：可信金额上界及账户全局硬限 |
@@ -59,7 +59,7 @@ pnpm build:renderer
 cargo fmt --manifest-path src-tauri/Cargo.toml -- --check
 cargo check --manifest-path src-tauri/Cargo.toml --locked --lib
 cargo clippy --manifest-path src-tauri/Cargo.toml --locked --all-targets -- -D warnings
-cargo test --manifest-path src-tauri/Cargo.toml --locked --lib
+cargo test --manifest-path src-tauri/Cargo.toml --locked --lib -- --test-threads=1
 
 # 发布资产验证
 ./scripts/test-release-artifacts.ps1

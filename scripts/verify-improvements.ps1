@@ -12,7 +12,7 @@ try {
     Invoke-Required cargo @('fmt', '--manifest-path', 'src-tauri/Cargo.toml', '--', '--check')
     Invoke-Required cargo @('check', '--manifest-path', 'src-tauri/Cargo.toml', '--locked', '--lib')
     Invoke-Required cargo @('clippy', '--manifest-path', 'src-tauri/Cargo.toml', '--locked', '--all-targets', '--', '-D', 'warnings')
-    Invoke-Required cargo @('test', '--manifest-path', 'src-tauri/Cargo.toml', '--locked', '--lib')
+    Invoke-Required cargo @('test', '--manifest-path', 'src-tauri/Cargo.toml', '--locked', '--lib', '--', '--test-threads=1')
     if ([System.Environment]::OSVersion.Platform -eq [System.PlatformID]::Win32NT) {
         Invoke-Required cargo @('test', '--manifest-path', 'src-tauri/Cargo.toml', '--locked', '--lib', 'secret_storage::native_windows_tests', '--', '--ignored')
     }

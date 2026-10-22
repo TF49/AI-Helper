@@ -81,7 +81,12 @@ jobs:
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: windows-assets
-          path: release/${{ steps.package.outputs.tag }}/*
+          path: |
+            release/${{ steps.package.outputs.tag }}/*.exe
+            release/${{ steps.package.outputs.tag }}/*.sig
+            release/${{ steps.package.outputs.tag }}/*.zip
+            release/${{ steps.package.outputs.tag }}/*.json
+            release/${{ steps.package.outputs.tag }}/SHA256SUMS.txt
           if-no-files-found: error
 
   macos:
@@ -131,7 +136,9 @@ jobs:
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: macos-assets-${{ matrix.target }}
-          path: release/${{ steps.package.outputs.tag }}/*
+          path: |
+            release/${{ steps.package.outputs.tag }}/*.dmg
+            release/${{ steps.package.outputs.tag }}/*.dmg.sig
           if-no-files-found: error
 
   publish:

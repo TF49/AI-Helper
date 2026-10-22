@@ -292,6 +292,11 @@ struct WorkbuddyTransaction {
     version: u32,
     phase: TransactionPhase,
     files: Vec<FileChange>,
+    // Existing merge inputs that this transaction never replaces. Persist
+    // only their paths so recovery cannot resurrect an externally deleted
+    // source from a backup, and never replay their old credential contents.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    read_dependencies: Vec<PathBuf>,
 }
 
 fn read_optional_bytes(path: &std::path::Path) -> Result<Option<Vec<u8>>, AppError> {
@@ -310,7 +315,11 @@ fn read_transaction(path: &std::path::Path) -> Result<Option<WorkbuddyTransactio
         serde_json::from_slice(&bytes).map_err(|error| {
             AppError::Other(format!("WorkBuddy 配置事务记录损坏，已停止读写: {error}"))
         })?;
-    if transaction.version != 1 || transaction.files.is_empty() || transaction.files.len() > 16 {
+    if !matches!(transaction.version, 1 | 2)
+        || transaction.files.is_empty()
+        || transaction.files.len() > 16
+        || transaction.read_dependencies.len() > 16
+    {
         return Err(AppError::Other(
             "WorkBuddy 配置事务记录无效，已停止读写".into(),
         ));
@@ -321,6 +330,12 @@ fn read_transaction(path: &std::path::Path) -> Result<Option<WorkbuddyTransactio
         }
         file.path = absolute_path(file.path.clone())?;
     }
+    for dependency in &mut transaction.read_dependencies {
+        if !dependency.is_absolute() {
+            return Err(AppError::Other("WorkBuddy 配置事务路径不是绝对路径".into()));
+        }
+        *dependency = absolute_path(dependency.clone())?;
+    }
     let mut seen = std::collections::HashSet::new();
     if transaction.files.iter().any(|file| {
         !file.path.is_absolute()
@@ -329,6 +344,9 @@ fn read_transaction(path: &std::path::Path) -> Result<Option<WorkbuddyTransactio
                 Some("models.json" | "models.json.bak")
             )
             || !seen.insert(path_key(&file.path))
+    }) || transaction.read_dependencies.iter().any(|dependency| {
+        dependency.file_name().and_then(|name| name.to_str()) != Some("models.json")
+            || !seen.insert(path_key(dependency))
     }) {
         return Err(AppError::Other(
             "WorkBuddy 配置事务记录无效，已停止读写".into(),
@@ -383,8 +401,21 @@ fn verify_file_snapshot(path: &std::path::Path, expected: Option<&[u8]>) -> Resu
 
 fn verify_transaction_snapshot(
     transaction: &WorkbuddyTransaction,
+    documents: &[ModelDocument],
     committed_files: usize,
 ) -> Result<(), AppError> {
+    // A document can supply models to another profile without needing its
+    // own replacement. Keep that read dependency in every validation pass,
+    // separately from the targets recovery is allowed to rewrite.
+    for document in documents {
+        if !transaction
+            .files
+            .iter()
+            .any(|file| file.path == document.path)
+        {
+            verify_file_snapshot(&document.path, document.raw.as_deref())?;
+        }
+    }
     for (index, file) in transaction.files.iter().enumerate() {
         let expected = if index < committed_files {
             Some(file.after.as_slice())
@@ -473,6 +504,18 @@ fn recover_transaction(
     path: &std::path::Path,
     transaction: &WorkbuddyTransaction,
 ) -> Result<(), AppError> {
+    // A read dependency may have changed contents since the interrupted
+    // operation; use those contents in the next fresh merge. Missing,
+    // unreadable or redirected inputs instead preserve the journal and stop
+    // before normal backup recovery can recreate the old source credentials.
+    for dependency in &transaction.read_dependencies {
+        if !matches!(transaction_path_is_link(dependency), Ok(false))
+            || !std::fs::symlink_metadata(dependency).is_ok_and(|metadata| metadata.is_file())
+            || !matches!(read_optional_bytes(dependency), Ok(Some(_)))
+        {
+            return Err(transaction_conflict(dependency));
+        }
+    }
     restore_transaction(
         transaction,
         matches!(transaction.phase, TransactionPhase::Committed),
@@ -518,7 +561,7 @@ fn with_workbuddy_transaction<T>(
     // All application profiles share this coordinator. Configuration and backup
     // locks are acquired in one stable order, including paths in a crash journal.
     crate::safe_fs::with_file_lock(&paths.journal, || {
-        let pending = read_transaction(&paths.journal)?;
+        let mut pending = read_transaction(&paths.journal)?;
         for path in &paths.candidates {
             if let Some(parent) = path.parent() {
                 remove_broken_symlink_locked(parent)?;
@@ -535,12 +578,28 @@ fn with_workbuddy_transaction<T>(
             })
             .cloned()
             .collect::<Vec<_>>();
+        if let Some(pending) = &mut pending {
+            if pending.version == 1 {
+                // Legacy journals did not record unchanged merge inputs.
+                // Require every identifiable non-written active source to
+                // exist before recovery; its old contents are never guessed
+                // or restored from a backup.
+                for path in &active {
+                    if !pending.files.iter().any(|file| file.path == *path)
+                        && !pending.read_dependencies.contains(path)
+                    {
+                        pending.read_dependencies.push(path.clone());
+                    }
+                }
+            }
+        }
         let mut locked = active
             .iter()
             .flat_map(|path| [path.clone(), model_backup(path)])
             .collect::<Vec<_>>();
         if let Some(pending) = &pending {
             locked.extend(pending.files.iter().map(|file| file.path.clone()));
+            locked.extend(pending.read_dependencies.iter().cloned());
         }
         locked.sort_by_key(|path| path_key(path));
         locked.dedup_by(|left, right| path_key(left) == path_key(right));
@@ -711,17 +770,25 @@ fn commit_documents(
     if files.is_empty() {
         return Ok(());
     }
+    let read_dependencies = documents
+        .iter()
+        .filter(|document| {
+            document.raw.is_some() && !files.iter().any(|file| file.path == document.path)
+        })
+        .map(|document| document.path.clone())
+        .collect();
     let mut transaction = WorkbuddyTransaction {
-        version: 1,
+        version: 2,
         phase: TransactionPhase::Prepared,
         files,
+        read_dependencies,
     };
     let staged = transaction
         .files
         .iter()
         .map(|file| crate::safe_fs::prepare_write_locked(&file.path, &file.after))
         .collect::<Result<Vec<_>, _>>()?;
-    verify_transaction_snapshot(&transaction, 0)?;
+    verify_transaction_snapshot(&transaction, documents, 0)?;
     crate::safe_fs::atomic_write_locked(&paths.journal, serde_json::to_vec(&transaction)?)?;
     if let Err(error) = transaction_checkpoint(0) {
         drop(staged);
@@ -732,7 +799,7 @@ fn commit_documents(
     // such a writer can still race the final check and replacement.
     let mut staged = staged.into_iter();
     for (index, file) in transaction.files.iter().enumerate() {
-        verify_transaction_snapshot(&transaction, index)?;
+        verify_transaction_snapshot(&transaction, documents, index)?;
         verify_file_snapshot(&file.path, file.before.as_deref())?;
         let result = staged
             .next()
@@ -746,7 +813,7 @@ fn commit_documents(
             return rollback_failed_transaction(paths, &transaction, error);
         }
     }
-    verify_transaction_snapshot(&transaction, transaction.files.len())?;
+    verify_transaction_snapshot(&transaction, documents, transaction.files.len())?;
     transaction.phase = TransactionPhase::Committed;
     if let Err(error) =
         crate::safe_fs::atomic_write_locked(&paths.journal, serde_json::to_vec(&transaction)?)
@@ -1144,9 +1211,9 @@ mod tests {
         ChildGuard(child_command(root, action, model, pause).spawn().unwrap())
     }
 
-    fn resumable_child(root: &std::path::Path, pause: usize) -> ChildGuard {
+    fn resumable_child(root: &std::path::Path, action: &str, pause: usize) -> ChildGuard {
         ChildGuard(
-            child_command(root, "save-conflict", "conflicted", Some(pause))
+            child_command(root, action, "conflicted", Some(pause))
                 .env(
                     "AI_HELPER_TEST_WORKBUDDY_CONTINUE",
                     root.join("child-continue"),
@@ -1156,30 +1223,44 @@ mod tests {
         )
     }
 
+    fn child_timeout() -> Duration {
+        Duration::from_secs(if cfg!(windows) { 120 } else { 30 })
+    }
+
     fn wait_child(child: &mut ChildGuard) -> std::process::ExitStatus {
-        let deadline = Instant::now() + Duration::from_secs(15);
+        let started = Instant::now();
+        let timeout = child_timeout();
         loop {
             if let Some(status) = child.0.try_wait().unwrap() {
                 return status;
             }
             assert!(
-                Instant::now() < deadline,
-                "WorkBuddy transaction exceeded subprocess deadline"
+                started.elapsed() < timeout,
+                "WorkBuddy transaction exceeded subprocess deadline: pid={}, elapsed={:?}, limit={timeout:?}",
+                child.0.id(),
+                started.elapsed()
             );
             std::thread::sleep(Duration::from_millis(10));
         }
     }
 
     fn wait_ready(child: &mut ChildGuard, root: &std::path::Path) {
-        let deadline = Instant::now() + Duration::from_secs(15);
+        let started = Instant::now();
+        let timeout = child_timeout();
         while !root.join("child-ready").exists() {
+            let status = child.0.try_wait().unwrap();
             assert!(
-                child.0.try_wait().unwrap().is_none(),
-                "child exited before transaction checkpoint"
+                status.is_none(),
+                "child exited before transaction checkpoint: pid={}, status={status:?}, profile={}",
+                child.0.id(),
+                root.display()
             );
             assert!(
-                Instant::now() < deadline,
-                "child did not reach transaction checkpoint"
+                started.elapsed() < timeout,
+                "child did not reach transaction checkpoint: pid={}, elapsed={:?}, limit={timeout:?}, profile={}",
+                child.0.id(),
+                started.elapsed(),
+                root.display()
             );
             std::thread::sleep(Duration::from_millis(10));
         }
@@ -1377,6 +1458,7 @@ mod tests {
                         after: b"[]".to_vec(),
                     })
                     .collect(),
+                read_dependencies: Vec::new(),
             };
             std::fs::create_dir_all(paths.journal.parent().unwrap()).unwrap();
             std::fs::write(&paths.journal, serde_json::to_vec(&transaction).unwrap()).unwrap();
@@ -1421,6 +1503,7 @@ mod tests {
                         after: b"[]".to_vec(),
                     },
                 ],
+                read_dependencies: Vec::new(),
             };
             std::fs::create_dir_all(paths.journal.parent().unwrap()).unwrap();
             std::fs::write(&paths.journal, serde_json::to_vec(&transaction).unwrap()).unwrap();
@@ -1624,7 +1707,7 @@ mod tests {
         for checkpoint in [0, 2, 4] {
             let directory = tempfile::tempdir().unwrap();
             fixture(directory.path());
-            let mut saver = resumable_child(directory.path(), checkpoint);
+            let mut saver = resumable_child(directory.path(), "save-conflict", checkpoint);
             wait_ready(&mut saver, directory.path());
             external_policy_edit(&profiles(directory.path())[1]);
             let snapshot = profile_and_backup_snapshot(directory.path());
@@ -1637,6 +1720,248 @@ mod tests {
             assert_eq!(profile_and_backup_snapshot(directory.path()), snapshot);
             assert_eq!(std::fs::read(journal).unwrap(), pending);
         }
+    }
+
+    fn synchronization_fixture(root: &std::path::Path) -> [Vec<u8>; 2] {
+        fixture(root);
+        // Rotate an existing known field. Adding a previously absent field
+        // changes its JSON map position under serde_json's preserve_order;
+        // a later normal serialization would then reorder the same value.
+        for path in profiles(root) {
+            let mut value: serde_json::Value =
+                serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
+            value["models"][0]["apiKey"] = serde_json::json!("original-fake-key");
+            std::fs::write(path, serde_json::to_vec(&value).unwrap()).unwrap();
+        }
+        in_profile(root, || {
+            set_workbuddy_config(payload("source-only")).unwrap()
+        });
+        let [primary, compatibility] = profiles(root);
+        let primary_before = std::fs::read(&primary).unwrap();
+        let mut value: serde_json::Value =
+            serde_json::from_slice(&std::fs::read(&compatibility).unwrap()).unwrap();
+        value["models"]
+            .as_array_mut()
+            .unwrap()
+            .retain(|entry| entry["id"] != "source-only");
+        let compatibility_before = serde_json::to_vec(&value).unwrap();
+        std::fs::write(&compatibility, &compatibility_before).unwrap();
+        std::fs::remove_file(model_backup(&compatibility)).unwrap();
+        [primary_before, compatibility_before]
+    }
+
+    #[test]
+    fn read_synchronization_keeps_unchanged_source_and_updates_compatibility() {
+        let directory = tempfile::tempdir().unwrap();
+        let [primary_before, compatibility_before] = synchronization_fixture(directory.path());
+        let [primary, compatibility] = profiles(directory.path());
+        let mut reader = child(directory.path(), "read", "unused", None);
+        assert!(wait_child(&mut reader).success());
+        assert_eq!(std::fs::read(&primary).unwrap(), primary_before);
+        assert_eq!(ids(&primary), ["keep", "source-only"]);
+        assert_eq!(ids(&compatibility), ["keep", "source-only"]);
+        assert_eq!(
+            std::fs::read(model_backup(&compatibility)).unwrap(),
+            compatibility_before
+        );
+        assert!(!directory
+            .path()
+            .join(".ai-helper/workbuddy-transaction.json")
+            .exists());
+    }
+
+    fn unchanged_sync_source_conflicts(delete_model: bool) {
+        // Check before any replacement, after the compatibility backup, and
+        // after both replacements but before the completion marker. The
+        // unchanged source must be validated at all three points.
+        for checkpoint in [0, 1, 2] {
+            let directory = tempfile::tempdir().unwrap();
+            let [_, compatibility_before] = synchronization_fixture(directory.path());
+            let [primary, compatibility] = profiles(directory.path());
+            let mut reader = resumable_child(directory.path(), "read-conflict", checkpoint);
+            wait_ready(&mut reader, directory.path());
+            let journal = directory
+                .path()
+                .join(".ai-helper/workbuddy-transaction.json");
+            let transaction = read_transaction(&journal).unwrap().unwrap();
+            assert_eq!(transaction.files.len(), 2);
+            assert_eq!(
+                transaction.read_dependencies,
+                [absolute_path(primary.clone()).unwrap()]
+            );
+            assert!(transaction
+                .files
+                .iter()
+                .all(|file| file.path != absolute_path(primary.clone()).unwrap()));
+            let pending = std::fs::read(&journal).unwrap();
+            let mut value: serde_json::Value =
+                serde_json::from_slice(&std::fs::read(&primary).unwrap()).unwrap();
+            value["externalSourceEdit"] = serde_json::json!(true);
+            if delete_model {
+                value["models"]
+                    .as_array_mut()
+                    .unwrap()
+                    .retain(|entry| entry["id"] != "source-only");
+            } else {
+                let keep = value["models"]
+                    .as_array_mut()
+                    .unwrap()
+                    .iter_mut()
+                    .find(|entry| entry["id"] == "keep")
+                    .unwrap();
+                keep["apiKey"] = serde_json::json!("externally-rotated-fake-key");
+            }
+            let edited = serde_json::to_vec_pretty(&value).unwrap();
+            std::fs::write(&primary, &edited).unwrap();
+            let snapshot = profile_and_backup_snapshot(directory.path());
+            std::fs::write(directory.path().join("child-continue"), b"continue").unwrap();
+            assert!(wait_child(&mut reader).success());
+            assert_eq!(profile_and_backup_snapshot(directory.path()), snapshot);
+            assert_eq!(std::fs::read(&journal).unwrap(), pending);
+            if checkpoint < 2 {
+                // Reject stale output before it reaches the profile. A
+                // completed replacement at checkpoint 2 is rolled back by
+                // the next read before it can become a merge input.
+                assert_eq!(std::fs::read(&compatibility).unwrap(), compatibility_before);
+            }
+
+            let mut recovery = child(directory.path(), "read", "unused", None);
+            assert!(wait_child(&mut recovery).success());
+            assert!(!journal.exists());
+            assert_eq!(std::fs::read(&primary).unwrap(), edited);
+            for path in [&primary, &compatibility] {
+                if delete_model {
+                    assert_eq!(ids(path), ["keep"]);
+                } else {
+                    assert_eq!(ids(path), ["keep", "source-only"]);
+                    let entries = read_workbuddy_entries(path).unwrap();
+                    let keep = entries.iter().find(|entry| entry.id == "keep").unwrap();
+                    assert_eq!(keep.api_key.as_deref(), Some("externally-rotated-fake-key"));
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn read_synchronization_rejects_rotated_credentials_in_unchanged_source() {
+        unchanged_sync_source_conflicts(false);
+    }
+
+    #[test]
+    fn read_synchronization_does_not_resurrect_model_deleted_from_unchanged_source() {
+        unchanged_sync_source_conflicts(true);
+    }
+
+    #[test]
+    fn recovery_does_not_recreate_deleted_unchanged_source_from_backup() {
+        for checkpoint in [0, 1, 2, usize::MAX] {
+            let directory = tempfile::tempdir().unwrap();
+            synchronization_fixture(directory.path());
+            let [primary, _] = profiles(directory.path());
+            let mut reader = resumable_child(directory.path(), "read-conflict", checkpoint);
+            wait_ready(&mut reader, directory.path());
+            let journal = directory
+                .path()
+                .join(".ai-helper/workbuddy-transaction.json");
+            let transaction = read_transaction(&journal).unwrap().unwrap();
+            assert_eq!(
+                transaction.read_dependencies,
+                [absolute_path(primary.clone()).unwrap()]
+            );
+            let pending = std::fs::read(&journal).unwrap();
+            if checkpoint == usize::MAX {
+                // Exercise a leftover durable Committed marker as well as
+                // Prepared journals kept after an in-process conflict.
+                reader.0.kill().unwrap();
+                reader.0.wait().unwrap();
+            }
+            assert!(model_backup(&primary).exists());
+            std::fs::remove_file(&primary).unwrap();
+            let snapshot = profile_and_backup_snapshot(directory.path());
+            if checkpoint != usize::MAX {
+                std::fs::write(directory.path().join("child-continue"), b"continue").unwrap();
+                assert!(wait_child(&mut reader).success());
+                assert_eq!(profile_and_backup_snapshot(directory.path()), snapshot);
+                assert_eq!(std::fs::read(&journal).unwrap(), pending);
+            }
+            for action in ["read-conflict", "save-conflict"] {
+                let mut recovery = child(directory.path(), action, "unused", None);
+                assert!(wait_child(&mut recovery).success());
+                assert!(!primary.exists());
+                assert_eq!(profile_and_backup_snapshot(directory.path()), snapshot);
+                assert_eq!(std::fs::read(&journal).unwrap(), pending);
+            }
+        }
+    }
+
+    fn interrupted_legacy_synchronization(root: &std::path::Path) -> PathBuf {
+        synchronization_fixture(root);
+        let mut reader = child(root, "read", "unused", Some(1));
+        wait_ready(&mut reader, root);
+        reader.0.kill().unwrap();
+        reader.0.wait().unwrap();
+        let journal = root.join(".ai-helper/workbuddy-transaction.json");
+        let mut value: serde_json::Value =
+            serde_json::from_slice(&std::fs::read(&journal).unwrap()).unwrap();
+        assert_eq!(value["version"], 2);
+        value["version"] = serde_json::json!(1);
+        value.as_object_mut().unwrap().remove("read_dependencies");
+        std::fs::write(&journal, serde_json::to_vec(&value).unwrap()).unwrap();
+        journal
+    }
+
+    #[test]
+    fn legacy_journal_recovers_with_existing_unchanged_source() {
+        let directory = tempfile::tempdir().unwrap();
+        let journal = interrupted_legacy_synchronization(directory.path());
+        let [primary, compatibility] = profiles(directory.path());
+        let primary_before = std::fs::read(&primary).unwrap();
+        let mut recovery = child(directory.path(), "read", "unused", None);
+        assert!(wait_child(&mut recovery).success());
+        assert!(!journal.exists());
+        assert_eq!(std::fs::read(&primary).unwrap(), primary_before);
+        assert_eq!(ids(&primary), ["keep", "source-only"]);
+        assert_eq!(ids(&compatibility), ["keep", "source-only"]);
+    }
+
+    #[test]
+    fn legacy_journal_does_not_recreate_missing_nonwritten_source() {
+        let directory = tempfile::tempdir().unwrap();
+        let journal = interrupted_legacy_synchronization(directory.path());
+        let [primary, _] = profiles(directory.path());
+        assert!(model_backup(&primary).exists());
+        std::fs::remove_file(&primary).unwrap();
+        let snapshot = profile_and_backup_snapshot(directory.path());
+        let pending = std::fs::read(&journal).unwrap();
+        for action in ["read-conflict", "save-conflict"] {
+            let mut recovery = child(directory.path(), action, "unused", None);
+            assert!(wait_child(&mut recovery).success());
+            assert!(!primary.exists());
+            assert_eq!(profile_and_backup_snapshot(directory.path()), snapshot);
+            assert_eq!(std::fs::read(&journal).unwrap(), pending);
+        }
+    }
+
+    #[test]
+    fn future_journal_version_blocks_operations_without_changes() {
+        let directory = tempfile::tempdir().unwrap();
+        let journal = interrupted_legacy_synchronization(directory.path());
+        let mut value: serde_json::Value =
+            serde_json::from_slice(&std::fs::read(&journal).unwrap()).unwrap();
+        value["version"] = serde_json::json!(3);
+        let pending = serde_json::to_vec(&value).unwrap();
+        std::fs::write(&journal, &pending).unwrap();
+        let snapshot = profile_and_backup_snapshot(directory.path());
+        in_profile(directory.path(), || {
+            assert!(read_all_workbuddy_entries()
+                .unwrap_err()
+                .to_string()
+                .contains("事务记录无效"));
+            assert!(set_workbuddy_config(payload("blocked")).is_err());
+            assert!(delete_workbuddy_model("keep".into()).is_err());
+        });
+        assert_eq!(profile_and_backup_snapshot(directory.path()), snapshot);
+        assert_eq!(std::fs::read(&journal).unwrap(), pending);
     }
 
     #[cfg(windows)]

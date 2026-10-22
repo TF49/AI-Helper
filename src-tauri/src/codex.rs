@@ -222,9 +222,12 @@ fn legacy_key_for_content(
     content: &str,
     read: impl FnOnce(&str) -> Result<String, AppError>,
 ) -> Result<String, AppError> {
-    let Some(doc) = content.parse::<DocumentMut>().ok() else {
+    if content.trim().is_empty() {
         return Ok(String::new());
-    };
+    }
+    let doc = content
+        .parse::<DocumentMut>()
+        .map_err(|_| AppError::Toml("现有 Codex 配置损坏，无法读取；请先修复配置".into()))?;
     validate_managed_binding(&doc)?;
     if needs_legacy_environment(&doc) {
         read(LEGACY_ENV_KEY)
@@ -309,7 +312,11 @@ fn is_credential_header(name: &str) -> bool {
     .any(|credential| name.eq_ignore_ascii_case(credential))
 }
 
-fn remove_credential_headers(provider: &mut dyn TableLike, field: &str) -> Result<(), AppError> {
+fn clean_headers(
+    provider: &mut dyn TableLike,
+    field: &str,
+    same_origin: bool,
+) -> Result<(), AppError> {
     let Some(headers) = provider.get_mut(field) else {
         return Ok(());
     };
@@ -326,14 +333,22 @@ fn remove_credential_headers(provider: &mut dyn TableLike, field: &str) -> Resul
     for name in names {
         headers.remove(&name);
     }
+    if !same_origin && !headers.is_empty() {
+        return Err(AppError::Toml(format!(
+            "Codex 当前 provider 的 {field} 仍有自定义请求头；更换节点前请先检查并清理这些请求头，避免把旧节点凭据发送到新节点"
+        )));
+    }
     Ok(())
 }
 
-fn clean_query_parameters(
-    provider: &mut dyn TableLike,
-    previous_url: Option<&str>,
-    base_url: &str,
-) -> Result<(), AppError> {
+fn same_provider_origin(previous_url: Option<&str>, base_url: &str) -> bool {
+    previous_url
+        .and_then(|url| crate::credential_policy::parse_origin(url).ok())
+        .zip(crate::credential_policy::parse_origin(base_url).ok())
+        .is_some_and(|(previous, next)| previous == next)
+}
+
+fn clean_query_parameters(provider: &mut dyn TableLike, same_origin: bool) -> Result<(), AppError> {
     let Some(parameters) = provider.get_mut("query_params") else {
         return Ok(());
     };
@@ -368,10 +383,6 @@ fn clean_query_parameters(
     for name in names {
         parameters.remove(&name);
     }
-    let same_origin = previous_url
-        .and_then(|url| crate::credential_policy::parse_origin(url).ok())
-        .zip(crate::credential_policy::parse_origin(base_url).ok())
-        .is_some_and(|(previous, next)| previous == next);
     if !same_origin && !parameters.is_empty() {
         return Err(AppError::Toml("Codex 当前 provider 的 query_params 仍有自定义参数；更换节点前请先检查并清理这些参数，避免把旧节点参数发送到新节点".into()));
     }
@@ -379,7 +390,8 @@ fn clean_query_parameters(
 }
 
 /// Only this helper's `custom` provider is managed. Keep every other provider,
-/// profile, sandbox setting, and unrelated header intact.
+/// profile and sandbox setting intact. Unreviewed headers and query values may
+/// remain only when the provider origin is unchanged.
 pub fn merge_codex_managed_fields(
     doc: &mut DocumentMut,
     base_url: &str,
@@ -417,7 +429,10 @@ pub fn merge_codex_managed_fields(
         .get("base_url")
         .and_then(Item::as_str)
         .map(ToOwned::to_owned);
-    clean_query_parameters(custom, previous_url.as_deref(), base_url)?;
+    let same_origin = same_provider_origin(previous_url.as_deref(), base_url);
+    clean_query_parameters(custom, same_origin)?;
+    clean_headers(custom, "http_headers", same_origin)?;
+    clean_headers(custom, "env_http_headers", same_origin)?;
     custom.insert("base_url", toml_edit::value(base_url));
     custom.insert("experimental_bearer_token", toml_edit::value(api_key));
     for name in [
@@ -428,8 +443,6 @@ pub fn merge_codex_managed_fields(
     ] {
         custom.remove(name);
     }
-    remove_credential_headers(custom, "http_headers")?;
-    remove_credential_headers(custom, "env_http_headers")?;
     if custom.get("name").is_none() {
         custom.insert("name", toml_edit::value("Custom"));
     }
@@ -683,7 +696,7 @@ http_headers = { Authorization = "fake-other-key", X-Other = "keep-other" }
         let token = "fake-token-with-\"quotes\"-and-\\slashes";
         let bytes = edited_codex_contents(
             Some(previous.as_bytes()),
-            "https://new.example/v1",
+            "https://old.example:443/updated/v1",
             token,
             None,
         )
@@ -738,7 +751,7 @@ http_headers = { Authorization = "fake-other-key", X-Other = "keep-other" }
         ] {
             let bytes = edited_codex_contents(
                 Some(previous.as_bytes()),
-                "https://new.example/v1",
+                "https://old.example:443/updated/v1",
                 "fake-new-key",
                 None,
             )
@@ -768,24 +781,129 @@ http_headers = { Authorization = "fake-other-key", X-Other = "keep-other" }
     #[test]
     fn known_credential_headers_are_removed_in_all_table_forms() {
         for inline in [false, true] {
-            let assignments = [
-                "Authorization",
-                "Proxy-Authorization",
-                "Cookie",
-                "X-API-Key",
-                "api-key",
-                "x-auth-token",
-                "X-Access-Token",
-            ]
-            .iter()
-            .map(|name| format!("'{name}' = 'fake-old-credential'"))
-            .chain(std::iter::once("X-Trace = 'keep'".into()))
-            .collect::<Vec<_>>();
-            let raw = if inline {
-                format!("model_providers = {{ custom = {{ base_url = 'https://old.example/v1', http_headers = {{ {} }}, env_http_headers = {{ {} }} }}, other = {{ http_headers = {{ Cookie = 'fake-other-cookie' }} }} }}", assignments.join(", "), assignments.join(", "))
-            } else {
-                format!("[model_providers.custom]\nbase_url='https://old.example/v1'\n[model_providers.custom.http_headers]\n{}\n[model_providers.custom.env_http_headers]\n{}\n[model_providers.other.http_headers]\nCookie='fake-other-cookie'\n", assignments.join("\n"), assignments.join("\n"))
-            };
+            for same_origin in [false, true] {
+                let assignments = [
+                    "aUtHoRiZaTiOn",
+                    "Proxy-Authorization",
+                    "Cookie",
+                    "cOoKiE2",
+                    "X-API-Key",
+                    "api-key",
+                    "x-auth-token",
+                    "X-Access-Token",
+                    "X-Auth-Session",
+                    "x-gateway-auth",
+                    "X-AI-HELPER-INSTANCE",
+                ]
+                .iter()
+                .map(|name| format!("'{name}' = 'fake-old-credential'"))
+                .chain(same_origin.then(|| "X-Trace = 'keep'".into()))
+                .collect::<Vec<_>>();
+                let raw = if inline {
+                    format!("model_providers = {{ custom = {{ base_url = 'https://old.example/v1', http_headers = {{ {} }}, env_http_headers = {{ {} }} }}, other = {{ http_headers = {{ Cookie = 'fake-other-cookie' }} }} }}", assignments.join(", "), assignments.join(", "))
+                } else {
+                    format!("[model_providers.custom]\nbase_url='https://old.example/v1'\n[model_providers.custom.http_headers]\n{}\n[model_providers.custom.env_http_headers]\n{}\n[model_providers.other.http_headers]\nCookie='fake-other-cookie'\n", assignments.join("\n"), assignments.join("\n"))
+                };
+                let bytes = edited_codex_contents(
+                    Some(raw.as_bytes()),
+                    if same_origin {
+                        "https://old.example:443/updated/v1"
+                    } else {
+                        "https://new.example/v1"
+                    },
+                    "fake-new-key",
+                    None,
+                )
+                .unwrap();
+                let doc = std::str::from_utf8(&bytes)
+                    .unwrap()
+                    .parse::<DocumentMut>()
+                    .unwrap();
+                for field in ["http_headers", "env_http_headers"] {
+                    let headers = custom_provider(&doc)
+                        .unwrap()
+                        .get(field)
+                        .unwrap()
+                        .as_table_like()
+                        .unwrap();
+                    assert_eq!(headers.iter().count(), usize::from(same_origin));
+                    assert_eq!(
+                        headers.get("X-Trace").and_then(Item::as_str),
+                        same_origin.then_some("keep")
+                    );
+                }
+                assert_eq!(
+                    doc["model_providers"]["other"]["http_headers"]["Cookie"].as_str(),
+                    Some("fake-other-cookie")
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn unreviewed_headers_reject_origin_changes_without_touching_file_or_backup() {
+        for (field, name, value) in [
+            ("http_headers", "X-Goog-Api-Key", "fake-old-google-secret"),
+            ("env_http_headers", "X-Service-Token", "FAKE_OLD_TOKEN_ENV"),
+            ("http_headers", "X-Trace", "unreviewed-value"),
+            ("env_http_headers", "X-Meta", "UNREVIEWED_ENV"),
+        ] {
+            for previous_url in [
+                Some("https://old.example/v1"),
+                Some(""),
+                Some("https://"),
+                Some("file:///old"),
+                None,
+            ] {
+                for form in 0..3 {
+                    let url = previous_url
+                        .map(|url| format!("base_url='{url}'"))
+                        .unwrap_or_default();
+                    let entries = format!("aUtHoRiZaTiOn='fake-old-bearer', '{name}'='{value}'");
+                    let raw = match form {
+                        0 => format!("model_provider='custom'\n[model_providers.custom]\n{url}\n{field}={{{entries}}}\n[model_providers.other]\nhttp_headers={{Authorization='fake-other-secret'}}\n"),
+                        1 => {
+                            let url = if url.is_empty() {
+                                String::new()
+                            } else {
+                                format!("{url},")
+                            };
+                            format!("model_provider='custom'\nmodel_providers={{custom={{{url}{field}={{{entries}}}}},other={{http_headers={{Authorization='fake-other-secret'}}}}}}\n")
+                        }
+                        _ => format!("model_provider='custom'\n[model_providers.custom]\n{url}\n[model_providers.custom.{field}]\naUtHoRiZaTiOn='fake-old-bearer'\n'{name}'='{value}'\n[model_providers.other.http_headers]\nAuthorization='fake-other-secret'\n"),
+                    };
+                    for old_backup in [None, Some("fake-existing-backup")] {
+                        let directory = tempfile::tempdir().unwrap();
+                        let path = directory.path().join("config.toml");
+                        let backup = path.with_extension("toml.bak");
+                        std::fs::write(&path, &raw).unwrap();
+                        if let Some(old_backup) = old_backup {
+                            std::fs::write(&backup, old_backup).unwrap();
+                        }
+                        let error = write_codex_config_at(
+                            &path,
+                            "https://new.example/v1",
+                            "fake-new-key",
+                            None,
+                        )
+                        .unwrap_err();
+                        assert!(error.to_string().contains(field), "{error}");
+                        assert!(!error.to_string().contains(value));
+                        assert_eq!(std::fs::read_to_string(&path).unwrap(), raw);
+                        assert_eq!(std::fs::read_to_string(&backup).ok().as_deref(), old_backup);
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn empty_header_tables_allow_a_new_or_previously_unknown_origin() {
+        for raw in [
+            "[model_providers.custom]\nhttp_headers={}\nenv_http_headers={}",
+            "model_providers={custom={base_url='file:///old',http_headers={},env_http_headers={}}}",
+            "[model_providers.custom]\nbase_url='https://old.example/v1'\n[model_providers.custom.http_headers]\n[model_providers.custom.env_http_headers]",
+        ] {
             let bytes = edited_codex_contents(
                 Some(raw.as_bytes()),
                 "https://new.example/v1",
@@ -797,29 +915,30 @@ http_headers = { Authorization = "fake-other-key", X-Other = "keep-other" }
                 .unwrap()
                 .parse::<DocumentMut>()
                 .unwrap();
+            assert_eq!(
+                doc["model_providers"]["custom"]["base_url"].as_str(),
+                Some("https://new.example/v1")
+            );
             for field in ["http_headers", "env_http_headers"] {
-                let headers = custom_provider(&doc)
+                assert!(custom_provider(&doc)
                     .unwrap()
                     .get(field)
                     .unwrap()
                     .as_table_like()
-                    .unwrap();
-                assert_eq!(headers.iter().count(), 1);
-                assert_eq!(headers.get("X-Trace").and_then(Item::as_str), Some("keep"));
+                    .unwrap()
+                    .is_empty());
             }
-            assert_eq!(
-                doc["model_providers"]["other"]["http_headers"]["Cookie"].as_str(),
-                Some("fake-other-cookie")
-            );
         }
     }
 
     #[test]
-    fn credential_query_keys_are_removed_and_same_origin_custom_parameters_survive() {
+    fn same_origin_normalization_preserves_custom_headers_and_query_parameters() {
         let raw = r#"
 [model_providers.custom]
-base_url = "https://new.example:443/v1"
+base_url = "https://NEW.example:443/old/v1/"
 query_params = { api_key = "fake-old", key = "fake-old", token = "fake-old", access_token = "fake-old", auth = "fake-old", signature = "fake-old", region = "keep" }
+http_headers = { Authorization = "fake-old-bearer", X-Trace = "keep-header" }
+env_http_headers = { AUTHORIZATION = "OLD_TOKEN_ENV", X-Meta = "KEEP_META_ENV" }
 "#;
         let bytes = edited_codex_contents(
             Some(raw.as_bytes()),
@@ -843,6 +962,19 @@ query_params = { api_key = "fake-old", key = "fake-old", token = "fake-old", acc
             parameters.get("region").and_then(Item::as_str),
             Some("keep")
         );
+        for (field, name, value) in [
+            ("http_headers", "X-Trace", "keep-header"),
+            ("env_http_headers", "X-Meta", "KEEP_META_ENV"),
+        ] {
+            let headers = custom_provider(&doc)
+                .unwrap()
+                .get(field)
+                .unwrap()
+                .as_table_like()
+                .unwrap();
+            assert_eq!(headers.iter().count(), 1);
+            assert_eq!(headers.get(name).and_then(Item::as_str), Some(value));
+        }
     }
 
     #[test]
@@ -911,11 +1043,42 @@ query_params = { api_key = "fake-old", key = "fake-old", token = "fake-old", acc
             "[model_providers.custom]\nenv_key='AN_UNRELATED_SECRET'",
             "[model_providers.custom]\nenv_key='CUSTOM_OPENAI_API_KEY'\nexperimental_bearer_token=''",
             "[model_providers.custom]\nenv_key='CUSTOM_OPENAI_API_KEY'\nexperimental_bearer_token=42",
-            "[invalid toml",
             "",
         ] {
             assert_eq!(legacy_key_for_content(content, |_| panic!("must not read an unrelated environment credential")).unwrap(), "");
         }
+    }
+
+    #[test]
+    fn malformed_config_read_reports_a_redacted_error_without_reading_environment() {
+        let malformed = "model_provider='custom'\n[model_providers.custom]\nexperimental_bearer_token='fake-private-token'\nbase_url='https://old.example/v1'\nenv_key='CUSTOM_OPENAI_API_KEY'\n[invalid toml";
+        let error = legacy_key_for_content(malformed, |_| {
+            panic!("a malformed configuration must not read an environment credential")
+        })
+        .unwrap_err();
+        assert!(matches!(error, AppError::Toml(_)));
+        assert!(!error.to_string().contains("fake-private-token"));
+        assert!(!error.to_string().contains("old.example"));
+        for empty in ["", " \n\t"] {
+            assert_eq!(
+                legacy_key_for_content(empty, |_| panic!("empty config must not read")).unwrap(),
+                ""
+            );
+        }
+
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("config.toml");
+        let backup = path.with_extension("toml.bak");
+        std::fs::write(&path, malformed).unwrap();
+        std::fs::write(&backup, "fake-existing-backup").unwrap();
+        assert!(
+            write_codex_config_at(&path, "https://new.example/v1", "fake-new-key", None,).is_err()
+        );
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), malformed);
+        assert_eq!(
+            std::fs::read_to_string(&backup).unwrap(),
+            "fake-existing-backup"
+        );
     }
 
     #[test]
