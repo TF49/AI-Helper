@@ -130,13 +130,13 @@ async fn fetch_and_cache_model_ids(config: &crate::cursor::config::CursorConfig)
             let mut latest = load_cursor_config();
             let latest_fp =
                 crate::cursor::config::model_source_fingerprint(&latest.base_url, &latest.api_key);
-            if latest_fp == fingerprint {
-                if latest.cached_models != ids || latest.cached_models_fingerprint != fingerprint {
-                    latest.cached_models = ids.clone();
-                    latest.cached_models_fingerprint = fingerprint;
-                    if let Err(e) = crate::cursor::config::save_cursor_config(&latest) {
-                        log::warn!("回写 Cursor 模型缓存失败: {e}");
-                    }
+            if latest_fp == fingerprint
+                && (latest.cached_models != ids || latest.cached_models_fingerprint != fingerprint)
+            {
+                latest.cached_models = ids.clone();
+                latest.cached_models_fingerprint = fingerprint;
+                if let Err(e) = crate::cursor::config::save_cursor_config(&latest) {
+                    log::warn!("回写 Cursor 模型缓存失败: {e}");
                 }
             }
             ids
@@ -1039,20 +1039,20 @@ impl StreamOutput {
             self.generated_bytes += text.len();
             let frame = match self.kind {
                 StreamKind::Agent => match (self.is_proto, thinking) {
-                    (true, true) => create_agent_thinking_chunk(&text),
-                    (false, true) => create_agent_json_thinking_chunk(&text),
-                    (true, false) => create_agent_text_chunk(&text),
-                    (false, false) => create_agent_json_text_chunk(&text),
+                    (true, true) => create_agent_thinking_chunk(text),
+                    (false, true) => create_agent_json_thinking_chunk(text),
+                    (true, false) => create_agent_text_chunk(text),
+                    (false, false) => create_agent_json_text_chunk(text),
                 },
                 StreamKind::Legacy => {
                     if self.is_proto {
-                        create_legacy_chat_response_chunk(&text)
+                        create_legacy_chat_response_chunk(text)
                     } else {
-                        create_connect_text_chunk(&text)
+                        create_connect_text_chunk(text)
                     }
                 }
                 StreamKind::FastEdit => {
-                    self.accumulated_code.push_str(&text);
+                    self.accumulated_code.push_str(text);
                     if self.is_proto {
                         create_legacy_fast_edit_response_chunk(&self.accumulated_code)
                     } else {

@@ -366,7 +366,7 @@ async fn fetch_cursor_installer_info(client: &reqwest::Client) -> AppInstallerIn
         if let Some(filename) = extract_filename_from_headers(res.headers()) {
             for part in filename.split(|c: char| !c.is_numeric() && c != '.') {
                 let p = part.trim_matches('.');
-                if p.split('.').count() >= 3 && p.chars().next().map_or(false, |c| c.is_numeric()) {
+                if p.split('.').count() >= 3 && p.chars().next().is_some_and(|c| c.is_numeric()) {
                     version = format!("v{}", p);
                     break;
                 }

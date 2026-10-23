@@ -562,10 +562,10 @@ pub fn apply_patch(custom_path: Option<&str>, bridge_port: u16) -> Result<String
     let mut prod_val: serde_json::Value =
         serde_json::from_str(&prod_str).map_err(|e| format!("解析 product.json 失败: {}", e))?;
 
-    if !prod_val
+    if prod_val
         .get("checksums")
         .and_then(|v| v.as_object())
-        .is_some()
+        .is_none()
     {
         return Err("product.json 缺少 checksums 字段，无法安全修补 workbench.js".to_string());
     }
@@ -1193,6 +1193,7 @@ mod tests {
 
     #[cfg(windows)]
     #[test]
+    #[allow(clippy::permissions_set_readonly_false)]
     fn settings_replace_failure_preserves_backup_and_current_bytes() {
         let directory = tempfile::tempdir().unwrap();
         let path = directory.path().join("settings.json");
