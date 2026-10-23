@@ -6,6 +6,7 @@ import {
   ClaudeIcon,
   WorkbuddyIcon,
   AccioWorkIcon,
+  CursorIcon,
 } from "../BrandIcons";
 import { cn } from "../../lib/utils";
 import type { AgentTool } from "../../types";
@@ -60,6 +61,15 @@ const TOOLS_CONFIG: Array<{
     activeBg: "bg-orange-500/15 text-orange-600 dark:text-orange-400",
     activeBorder: "border-orange-500/50 shadow-xs ring-1 ring-orange-500/20",
     activeText: "text-orange-600 dark:text-orange-400",
+  },
+  {
+    id: "cursor",
+    name: "Cursor",
+    icon: CursorIcon,
+    color: "text-neutral-800 dark:text-neutral-200",
+    activeBg: "bg-neutral-800/15 text-neutral-900 dark:text-neutral-100",
+    activeBorder: "border-neutral-500/50 shadow-xs ring-1 ring-neutral-500/20",
+    activeText: "text-neutral-900 dark:text-neutral-100",
   },
 ];
 

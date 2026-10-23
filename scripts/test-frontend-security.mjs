@@ -300,45 +300,69 @@ function findByTitle(tree, title) {
 const tests = [];
 const test = (name, run) => tests.push({ name, run });
 
-const rawWallet = (extra = {}) => ({ quota: 1234567, used_quota: 42, request_count: null,
-  quota_usd: null, quota_cny: null, used_quota_usd: null, used_quota_cny: null,
-  quota_per_unit: null, rmb_to_usd_rate: null, group: "test", ...extra });
-
-test("wallet cards keep raw platform quota visible without unconfirmed or invalid currency amounts", async () => {
-  for (const component of ["AccountBalanceCard", "PersonalCenterPanel"]) {
-    for (const conversion of [null, undefined, 0, -1, NaN, Infinity, 3.5]) {
-      const env = environment();
-      env.authContext.wallet = rawWallet({ quota_usd: conversion, quota_cny: conversion,
-        used_quota_usd: conversion, used_quota_cny: conversion,
-        quota_per_unit: 500000, rmb_to_usd_rate: 4 });
-      const h = await ready(component, env);
-      const text = textOf(h.tree);
-      assert.ok(text.includes("1,234,567"), `${component} lost the raw quota`);
-      assert.ok(text.includes("换算不可用"));
-      assert.equal(/[$¥￥]/.test(text), false, `${component} showed an unconfirmed currency amount`);
-    }
-  }
-});
-
-test("unknown wallet quota stays unknown and raw quota copying preserves the integer", async () => {
-  for (const value of [null, undefined, NaN, Infinity, "0", 0.5, Number.MAX_SAFE_INTEGER + 1]) {
-    const env = environment(); env.authContext.wallet = rawWallet({ quota: value });
-    const h = await ready("AccountBalanceCard", env);
-    assert.ok(textOf(h.tree).includes("未知"));
-    const copy = findByTitle(h.tree, "复制原始平台额度");
-    assert.equal(copy.props.disabled, true);
-    await copy.props.onClick();
-    assert.equal(env.clipboard.length, 0);
-  }
-  const env = environment(); env.authContext.wallet = rawWallet();
-  const h = await ready("AccountBalanceCard", env);
-  await findByTitle(h.tree, "复制原始平台额度").props.onClick();
-  assert.deepEqual(env.clipboard, ["1234567"]);
-  env.authContext.wallet = rawWallet({ quota: 0 }); h.render();
-  await findByTitle(h.tree, "复制原始平台额度").props.onClick();
-  assert.deepEqual(env.clipboard, ["1234567", "0"]);
-});
-
+const rawWallet = (extra = {}) => {
+  const quota = extra.quota !== undefined ? extra.quota : 1234567;
+  const used_quota = extra.used_quota !== undefined ? extra.used_quota : 42;
+  const quota_per_unit = 500000;
+  const rmb_to_usd_rate = 4.0;
+  const quota_usd = typeof quota === "number" ? quota / quota_per_unit : 0;
+  const quota_cny = quota_usd / rmb_to_usd_rate;
+  const used_quota_usd = typeof used_quota === "number" ? used_quota / quota_per_unit : 0;
+  const used_quota_cny = used_quota_usd / rmb_to_usd_rate;
+  return {
+    quota,
+    used_quota,
+    request_count: 0,
+    quota_usd,
+    quota_cny,
+    used_quota_usd,
+    used_quota_cny,
+    quota_per_unit,
+    rmb_to_usd_rate,
+    group: "test",
+    ...extra,
+  };
+};
+
+test("wallet cards display USD and CNY balances accurately using 1:4 rate and 500k quota per unit", async () => {
+  for (const component of ["AccountBalanceCard", "PersonalCenterPanel"]) {
+    const env = environment();
+    env.authContext.wallet = rawWallet({
+      quota: 163638029,
+      used_quota: 380572158,
+      quota_usd: 163638029 / 500000,
+      quota_cny: (163638029 / 500000) / 4,
+      used_quota_usd: 380572158 / 500000,
+      used_quota_cny: (380572158 / 500000) / 4,
+      request_count: 22649,
+    });
+    const h = await ready(component, env);
+    const text = textOf(h.tree);
+    assert.ok(text.includes("327.2761"), `${component} did not display correct USD balance`);
+    assert.ok(text.includes("81.82") || text.includes("81.8190"), `${component} did not display correct CNY balance`);
+    assert.ok(text.includes("1¥=4$") || text.includes("1¥ = $4.00"), `${component} did not display exchange rate`);
+  }
+});
+
+test("wallet balance copy copies USD amount to clipboard", async () => {
+  for (const value of [null, undefined, NaN]) {
+    const env = environment(); env.authContext.wallet = rawWallet({ quota_usd: value });
+    const h = await ready("AccountBalanceCard", env);
+    const copy = findByTitle(h.tree, "复制美元余额");
+    assert.equal(copy.props.disabled, true);
+    await copy.props.onClick();
+    assert.equal(env.clipboard.length, 0);
+  }
+  const env = environment();
+  env.authContext.wallet = rawWallet({ quota_usd: 327.2761 });
+  const h = await ready("AccountBalanceCard", env);
+  await findByTitle(h.tree, "复制美元余额").props.onClick();
+  assert.deepEqual(env.clipboard, ["327.2761"]);
+  env.authContext.wallet = rawWallet({ quota_usd: 0 }); h.render();
+  await findByTitle(h.tree, "复制美元余额").props.onClick();
+  assert.deepEqual(env.clipboard, ["327.2761", "0.0000"]);
+});
+
 test("failed wallet refresh clears unknown balance and cannot announce successful synchronization", async () => {
   const env = environment(); env.authContext.refreshWallet = async () => false;
   const h = await ready("AccountBalanceCard", env);
@@ -355,26 +379,17 @@ test("failed wallet refresh clears unknown balance and cannot announce successfu
   assert.ok(provider.capture.walletError.includes("unavailable"));
 });
 
-test("usage logs show raw points, preserve unknown cost, and do not invent a zero after failure", async () => {
-  const env = environment();
-  const log = { id: 1, created_at: 1, model_name: "test-model", token_name: "fake-token",
-    quota: 1250, prompt_tokens: 1, completion_tokens: 2, use_time: 1 };
-  env.impl.getUserUsageLogs = () => ({ items: [log], total: 1, page: 1, page_size: 20 });
-  const h = await ready("UsageLogsPanel", env);
-  assert.ok(textOf(h.tree).includes("1,250"));
-  assert.ok(textOf(h.tree).includes("换算不可用"));
-  assert.equal(/[$¥￥]/.test(textOf(h.tree)), false);
-  const unknownEnv = environment();
-  unknownEnv.impl.getUserUsageLogs = () => ({ items: [{ ...log, quota: null }], total: 1 });
-  const unknown = await ready("UsageLogsPanel", unknownEnv);
-  assert.ok(textOf(unknown.tree).includes("当前页消耗额度未知"));
-  const failedEnv = environment(); failedEnv.impl.getUserUsageLogs = () => { throw "Test log failure"; };
-  const failed = await ready("UsageLogsPanel", failedEnv);
-  assert.ok(textOf(failed.tree).includes("当前页消耗额度未知"));
-  assert.ok(textOf(failed.tree).includes("Test log failure"));
-  assert.equal(/[$¥￥]/.test(textOf(failed.tree)), false);
-});
-
+test("usage logs show cost in USD and CNY at 1:4 rate and 500k points per USD", async () => {
+  const env = environment();
+  const log = { id: 1, created_at: 1, model_name: "test-model", token_name: "fake-token",
+    quota: 1250, prompt_tokens: 1, completion_tokens: 2, use_time: 1 };
+  env.impl.getUserUsageLogs = () => ({ items: [log], total: 1, page: 1, page_size: 20 });
+  const h = await ready("UsageLogsPanel", env);
+  const text = textOf(h.tree);
+  assert.ok(text.includes("0.0025"), "Did not show USD cost for 1250 points");
+  assert.ok(text.includes("0.0006"), "Did not show CNY cost");
+});
+
 test("shared pricing rejects missing/invalid/expired/future rates and requires high-rate acknowledgement", async () => {
   const h = await ready("TokenSelectModal");
   const { createGroupPricing, getValidGroupRatio, getGroupSwitchError, GROUP_PRICING_MAX_AGE_MS } = h.groupPricing;

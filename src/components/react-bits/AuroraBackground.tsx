@@ -1,7 +1,7 @@
 import React from "react";
 
 export interface AuroraBackgroundProps {
-  theme?: "chatgpt" | "claude" | "workbuddy" | "acciowork";
+  theme?: "chatgpt" | "claude" | "workbuddy" | "acciowork" | "cursor";
   className?: string;
   children?: React.ReactNode;
 }

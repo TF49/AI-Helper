@@ -140,6 +140,13 @@ export const TOOL_EXCLUSIVE_GUIDES: Record<string, ToolExclusiveGuide> = {
     technicalNote: "建议优先选用平均响应时延低于 1.5s 且近 3 小时成功率维持在 99%+ 的专属稳定分组，保障长时间工作流不中断。配置保存于 ~/.ai-helper/accio_config.json。",
     recommendedKeywords: ["accio", "bridge", "enterprise", "svip", "default"],
   },
+  cursor: {
+    title: "Cursor IDE 专属分组与密钥规则",
+    tag: "Composer / Agent 桥接",
+    desc: "Cursor IDE 深度依赖高并发流式代码补全与 Agent 工具调用（如 Claude 3.7、DeepSeek-V3/R1、GPT-4o）。绑定的 Key 所属分组必须具备充足并发与代码模型权限。",
+    technicalNote: "建议关联高并发低延迟代码专属分组或 SVIP 分组。配置保存于 ~/.ai-helper/cursor_config.json 并通过本地 Bridge 自动转译提供给 Cursor。",
+    recommendedKeywords: ["cursor", "code", "svip", "default", "claude"],
+  },
 };
 
 function formatLatency(seconds?: number | null): string {
@@ -308,6 +315,7 @@ export function ChannelGroupMonitor({
     if (tname.includes("claude")) return "claude";
     if (tname.includes("workbuddy")) return "workbuddy";
     if (tname.includes("accio")) return "acciowork";
+    if (tname.includes("cursor")) return "cursor";
     return "default";
   }, [toolId, toolName]);
 
@@ -688,7 +696,7 @@ export function ChannelGroupMonitor({
         if (!isCurrent()) return;
         const results = await applyApiKeyToAgents(plainKey);
         if (!isCurrent()) return;
-        const toolIds = ["chatgpt", "claude", "workbuddy", "acciowork"].filter((id) => results[id]);
+        const toolIds = ["chatgpt", "claude", "workbuddy", "acciowork", "cursor"].filter((id) => results[id]);
 
         toolIds.forEach((tid) => {
           try {

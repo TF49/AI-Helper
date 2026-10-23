@@ -17,7 +17,7 @@ import { ButtonToLoaderToSuccess } from "./ui/ButtonToLoaderToSuccess";
 interface QuickToolsModalProps {
   open: boolean;
   onClose: () => void;
-  activeTab: "chatgpt" | "claude" | "workbuddy" | "acciowork";
+  activeTab: "chatgpt" | "claude" | "workbuddy" | "acciowork" | "cursor";
   currentUrl: string;
   currentKey: string;
   currentModel: string;
@@ -32,7 +32,7 @@ export function QuickToolsModal({
   currentModel,
 }: QuickToolsModalProps) {
   const [selectedProtocol, setSelectedProtocol] = useState<
-    "chatgpt" | "claude" | "workbuddy" | "acciowork"
+    "chatgpt" | "claude" | "workbuddy" | "acciowork" | "cursor"
   >(activeTab);
 
   useEffect(() => {

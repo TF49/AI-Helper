@@ -23,7 +23,6 @@ import type {
 } from "../../types";
 import { CircleToSearchBar } from "../ui/CircleToSearchBar";
 import { cn } from "../../lib/utils";
-import { formatPlatformQuota, isPlatformQuota, sumPlatformQuota, QUOTA_CONVERSION_UNAVAILABLE } from "../../lib/quotaDisplay";
 
 export interface UsageLogsPanelProps {
   className?: string;
@@ -41,7 +40,6 @@ export const UsageLogsPanel: React.FC<UsageLogsPanelProps> = ({
   const [pageSize] = useState(20);
   const [loadingLogs, setLoadingLogs] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
-  const [logsLoaded, setLogsLoaded] = useState(false);
   const requestGeneration = useRef(0);
 
   // 聚合统计数据
@@ -90,7 +88,6 @@ export const UsageLogsPanel: React.FC<UsageLogsPanelProps> = ({
     const isCurrent = () => request === requestGeneration.current;
     setLoadingLogs(true);
     setErrorMsg(null);
-    setLogsLoaded(false);
     setLogs([]);
     setStatData(null);
 
@@ -112,7 +109,6 @@ export const UsageLogsPanel: React.FC<UsageLogsPanelProps> = ({
       setLogs(logsRes.items || []);
       setTotalLogs(logsRes.total || 0);
       setStatData(statRes);
-      setLogsLoaded(true);
     } catch (err) {
       if (!isCurrent()) return;
       setErrorMsg(typeof err === "string" ? err : "拉取使用日志失败");
@@ -131,7 +127,6 @@ export const UsageLogsPanel: React.FC<UsageLogsPanelProps> = ({
   ]);
 
   useEffect(() => {
-    setLogsLoaded(false);
     setLogs([]);
     setStatData(null);
     void fetchLogsAndStat();
@@ -145,7 +140,7 @@ export const UsageLogsPanel: React.FC<UsageLogsPanelProps> = ({
     const pageTotalTokens = pagePromptTokens + pageCompTokens;
     const pageTotalUseTime = logs.reduce((acc, cur) => acc + (cur.use_time || 0), 0);
     const pageAvgUseTime = logs.length > 0 ? pageTotalUseTime / logs.length : 0;
-    const pageTotalQuota = sumPlatformQuota(logs.map((log) => log.quota));
+    const pageTotalQuota = logs.reduce((acc, cur) => acc + (cur.quota || 0), 0);
 
     return {
       pagePromptTokens,
@@ -197,13 +192,16 @@ export const UsageLogsPanel: React.FC<UsageLogsPanelProps> = ({
   const totalPages = Math.max(1, Math.ceil(totalLogs / pageSize));
 
   // 累计调用次数展示逻辑：优先使用当前筛选下的 totalLogs；若未开启特定搜索且有钱包总数也可参考
-  const displayRequestCount = logsLoaded ? totalLogs : null;
+  const displayRequestCount = totalLogs > 0 ? totalLogs : (statData?.request_count || 0);
 
   // 累计消耗额度点数
   const totalQuotaPoints =
-    isPlatformQuota(statData?.quota)
+    statData && typeof statData.quota === "number" && statData.quota > 0
       ? statData.quota
-      : logsLoaded ? computedStats.pageTotalQuota : null;
+      : computedStats.pageTotalQuota;
+
+  const totalCostUsd = ((totalQuotaPoints || 0) as number) / 500000;
+  const totalCostCny = totalCostUsd / 4.0;
 
   // 累计 Token 吞吐
   const totalTokensNum =
@@ -271,7 +269,7 @@ export const UsageLogsPanel: React.FC<UsageLogsPanelProps> = ({
             累计调用次数
           </span>
           <div className="text-lg font-mono font-bold text-slate-900 dark:text-white mt-1">
-            {formatPlatformQuota(displayRequestCount)}
+            {displayRequestCount.toLocaleString()}
           </div>
           <span className="text-[10px] text-slate-400">
             个人请求记录数
@@ -281,13 +279,13 @@ export const UsageLogsPanel: React.FC<UsageLogsPanelProps> = ({
         {/* 累计消耗金额 */}
         <div className="p-3.5 rounded-2xl bg-white dark:bg-[#121524] border border-slate-200/80 dark:border-white/10 shadow-2xs">
           <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
-            {isPlatformQuota(statData?.quota) ? "当前筛选消耗额度" : "当前页消耗额度"}
+            {statData && statData.quota && statData.quota > 0 ? "当前筛选消耗额度" : "当前页消耗额度"}
           </span>
           <div className="text-lg font-mono font-bold text-blue-600 dark:text-blue-400 mt-1">
-            {formatPlatformQuota(totalQuotaPoints)}
+            ${totalCostUsd.toFixed(4)}
           </div>
           <span className="text-[10px] text-slate-400">
-            平台额度 · {QUOTA_CONVERSION_UNAVAILABLE}
+            个人消耗 · ≈ ¥{totalCostCny.toFixed(4)} (1￥=4$)
           </span>
         </div>
 
@@ -441,9 +439,9 @@ export const UsageLogsPanel: React.FC<UsageLogsPanelProps> = ({
                         {log.token_name || "默认密钥"}
                       </td>
                       <td className="py-2.5 px-3 text-blue-600 dark:text-blue-400 whitespace-nowrap">
-                        {formatPlatformQuota(log.quota)}
+                        ${(((log.quota || 0) as number) / 500000).toFixed(4)}
                         <span className="text-[10px] text-slate-400 ml-1">
-                          平台额度
+                          (¥{(((log.quota || 0) as number) / 2000000).toFixed(4)})
                         </span>
                       </td>
                       <td className="py-2.5 px-3 text-[11px] text-slate-500 whitespace-nowrap">

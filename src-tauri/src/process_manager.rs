@@ -3,7 +3,7 @@ use crate::app_paths::{
     is_target_running, load_app_paths,
 };
 use std::path::Path;
-use std::process::Command;
+use std::process::{Command, Stdio};
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -21,18 +21,44 @@ pub fn kill_app_processes(app_type: &str) -> Result<usize, String> {
 
     #[cfg(target_os = "windows")]
     {
+        // 先尝试优雅关闭 (WM_CLOSE)，等待 1.5 秒
         for pid in &pids {
             let _ = Command::new("taskkill")
-                .args(["/F", "/T", "/PID", &pid.to_string()])
+                .args(["/PID", &pid.to_string()])
                 .creation_flags(0x08000000) // CREATE_NO_WINDOW
                 .output();
+        }
+
+        thread::sleep(Duration::from_millis(1500));
+
+        // 检查是否还有残留进程，仅对残留进程执行强制终止
+        let remaining_pids = get_target_pids(app_type);
+        if !remaining_pids.is_empty() {
+            for pid in &remaining_pids {
+                let _ = Command::new("taskkill")
+                    .args(["/F", "/T", "/PID", &pid.to_string()])
+                    .creation_flags(0x08000000)
+                    .output();
+            }
         }
     }
 
     #[cfg(not(target_os = "windows"))]
     {
+        // Unix: 先发送 SIGTERM，等待 1.5 秒后对残留进程发送 SIGKILL
         for pid in &pids {
-            let _ = Command::new("kill").args(["-9", &pid.to_string()]).output();
+            let _ = Command::new("kill")
+                .args(["-15", &pid.to_string()])
+                .output();
+        }
+
+        thread::sleep(Duration::from_millis(1500));
+
+        let remaining_pids = get_target_pids(app_type);
+        if !remaining_pids.is_empty() {
+            for pid in &remaining_pids {
+                let _ = Command::new("kill").args(["-9", &pid.to_string()]).output();
+            }
         }
     }
 
@@ -90,6 +116,11 @@ pub fn resolve_app_path(app_type: &str, custom_path: Option<&str>) -> Option<Str
             .as_deref()
             .filter(|p| !p.trim().is_empty())
             .map(|s| s.to_string()),
+        "cursor" => saved
+            .cursor_client_path
+            .as_deref()
+            .filter(|p| !p.trim().is_empty())
+            .map(|s| s.to_string()),
         _ => None,
     };
 
@@ -112,6 +143,7 @@ pub fn resolve_app_path(app_type: &str, custom_path: Option<&str>) -> Option<Str
         "chatgpt" => detect_chatgpt_client_path(),
         "workbuddy" => crate::app_paths::detect_workbuddy_client_path(),
         "acciowork" => crate::app_paths::detect_accio_client_path(),
+        "cursor" => crate::app_paths::detect_cursor_client_path(),
         _ => return None,
     };
 
@@ -132,6 +164,9 @@ pub fn resolve_app_path(app_type: &str, custom_path: Option<&str>) -> Option<Str
             let _ = crate::app_paths::save_app_paths(&updated);
         } else if app_type == "acciowork" {
             updated.accio_client_path = Some(detected.path.clone());
+            let _ = crate::app_paths::save_app_paths(&updated);
+        } else if app_type == "cursor" {
+            updated.cursor_client_path = Some(detected.path.clone());
             let _ = crate::app_paths::save_app_paths(&updated);
         }
         Some(detected.path)
@@ -188,6 +223,9 @@ pub fn launch_app(app_type: &str, custom_path: Option<&str>) -> Result<String, S
                         if let Some(parent) = path.parent() {
                             cmd.current_dir(parent);
                         }
+                        cmd.stdin(Stdio::null())
+                            .stdout(Stdio::null())
+                            .stderr(Stdio::null());
                         cmd.spawn()
                             .map_err(|e| format!("启动 ChatGPT 客户端失败: {}", e))?;
                         return Ok(format!("ChatGPT 客户端已启动: {}", path_str));
@@ -340,6 +378,9 @@ end tell"#,
                     if let Some(parent) = path.parent() {
                         cmd.current_dir(parent);
                     }
+                    cmd.stdin(Stdio::null())
+                        .stdout(Stdio::null())
+                        .stderr(Stdio::null());
                     cmd.spawn()
                         .map_err(|e| format!("启动 WorkBuddy 客户端失败: {}", e))?;
                     return Ok(format!("WorkBuddy 客户端已启动: {}", path_str));
@@ -411,6 +452,9 @@ end tell"#,
                     if let Some(parent) = path.parent() {
                         cmd.current_dir(parent);
                     }
+                    cmd.stdin(Stdio::null())
+                        .stdout(Stdio::null())
+                        .stderr(Stdio::null());
                     cmd.spawn()
                         .map_err(|e| format!("启动 Accio Work 客户端失败: {}", e))?;
 
@@ -474,6 +518,44 @@ end tell"#,
             #[cfg(not(any(target_os = "windows", target_os = "macos")))]
             {
                 Err("当前平台不支持自动拉起 Accio Work 客户端".to_string())
+            }
+        }
+        "cursor" => {
+            #[cfg(any(target_os = "windows", target_os = "macos"))]
+            let path_str = resolved_path.ok_or_else(|| {
+                "未找到 Cursor 安装路径，请先在路径管理中配置或执行自动探测".to_string()
+            })?;
+
+            #[cfg(target_os = "windows")]
+            {
+                let path = Path::new(&path_str);
+                if path.exists() {
+                    let mut cmd = Command::new(path);
+                    if let Some(parent) = path.parent() {
+                        cmd.current_dir(parent);
+                    }
+                    cmd.stdin(Stdio::null())
+                        .stdout(Stdio::null())
+                        .stderr(Stdio::null());
+                    cmd.spawn()
+                        .map_err(|e| format!("启动 Cursor 客户端失败: {}", e))?;
+                    return Ok(format!("Cursor 客户端已成功拉起: {}", path_str));
+                }
+                Err(format!("Cursor 可执行文件不存在: {}", path_str))
+            }
+
+            #[cfg(target_os = "macos")]
+            {
+                let mut cmd = Command::new("open");
+                cmd.arg(&path_str);
+                cmd.spawn()
+                    .map_err(|e| format!("启动 Cursor 客户端失败: {}", e))?;
+                Ok(format!("Cursor 客户端已成功拉起: {}", path_str))
+            }
+
+            #[cfg(not(any(target_os = "windows", target_os = "macos")))]
+            {
+                Err("当前平台不支持自动拉起 Cursor 客户端".to_string())
             }
         }
         _ => Err(format!("未知应用类型: {}", app_type)),

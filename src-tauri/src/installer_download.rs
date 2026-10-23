@@ -61,6 +61,10 @@ const CHATGPT_WINGET_CMD: &str =
     "winget install --id=9NT1R1C2HH7J --source=msstore --accept-package-agreements --accept-source-agreements";
 const CHATGPT_DOWNLOAD_PAGE: &str = "https://chatgpt.com/download";
 
+const CURSOR_HOMEPAGE_URL: &str = "https://www.cursor.com";
+const CURSOR_DOWNLOAD_URL: &str = "https://downloader.cursor.sh/windows/x64";
+const CURSOR_FALLBACK_VERSION: &str = "最新版";
+
 fn is_allowed_installer_download_url(raw: &str) -> bool {
     let Ok(url) = reqwest::Url::parse(raw.trim()) else {
         return false;
@@ -71,15 +75,19 @@ fn is_allowed_installer_download_url(raw: &str) -> bool {
     if !url.username().is_empty() || url.password().is_some() {
         return false;
     }
+    let host = url.host_str().unwrap_or("");
     matches!(
-        url.host_str(),
-        Some("work-download.accio.com")
-            | Some("www.accio.com")
-            | Some("download.codebuddy.cn")
-            | Some("www.workbuddy.cn")
-            | Some("chatgpt.com")
-            | Some("apps.microsoft.com")
-    )
+        host,
+        "work-download.accio.com"
+            | "www.accio.com"
+            | "download.codebuddy.cn"
+            | "www.workbuddy.cn"
+            | "chatgpt.com"
+            | "apps.microsoft.com"
+            | "downloader.cursor.sh"
+            | "cursor.com"
+            | "www.cursor.com"
+    ) || host.ends_with(".todesktop.com")
 }
 
 fn create_installer_download_client(connect_timeout: Duration) -> Result<reqwest::Client, String> {
@@ -344,6 +352,61 @@ async fn fetch_workbuddy_installer_info(client: &reqwest::Client) -> AppInstalle
     }
 }
 
+/// 嗅探 Cursor 官方最新下载信息
+async fn fetch_cursor_installer_info(client: &reqwest::Client) -> AppInstallerInfo {
+    let mut download_url = CURSOR_DOWNLOAD_URL.to_string();
+    let mut version = CURSOR_FALLBACK_VERSION.to_string();
+
+    // 尝试向 Cursor 官方分发中继发送 HEAD 请求以获取实际跳转文件名与版本
+    if let Ok(res) = client.head(CURSOR_DOWNLOAD_URL).send().await {
+        let final_url = res.url().to_string();
+        if is_allowed_installer_download_url(&final_url) {
+            download_url = final_url.clone();
+        }
+        if let Some(filename) = extract_filename_from_headers(res.headers()) {
+            for part in filename.split(|c: char| !c.is_numeric() && c != '.') {
+                let p = part.trim_matches('.');
+                if p.split('.').count() >= 3 && p.chars().next().map_or(false, |c| c.is_numeric()) {
+                    version = format!("v{}", p);
+                    break;
+                }
+            }
+        } else if let Some(v_pos) = final_url.find("Cursor%20Setup%20") {
+            let sub = &final_url[v_pos + 17..];
+            let v_str = sub.split('%').next().unwrap_or(sub);
+            if !v_str.is_empty() {
+                version = format!("v{}", v_str);
+            }
+        }
+    }
+
+    let file_name = if let Some(slash) = download_url.split('?').next().and_then(|u| u.rfind('/')) {
+        let raw = &download_url.split('?').next().unwrap()[slash + 1..];
+        let decoded = percent_decode_string(raw);
+        let sanitized = sanitize_filename(&decoded);
+        if sanitized.ends_with(".exe") {
+            sanitized
+        } else {
+            "Cursor-Setup-x64.exe".to_string()
+        }
+    } else {
+        "Cursor-Setup-x64.exe".to_string()
+    };
+
+    AppInstallerInfo {
+        app_type: "cursor".to_string(),
+        app_name: "Cursor".to_string(),
+        version,
+        download_url,
+        file_name,
+        size_bytes: None,
+        is_external_store: false,
+        store_uri: None,
+        winget_command: None,
+        official_web_url: Some(CURSOR_HOMEPAGE_URL.to_string()),
+    }
+}
+
 /// 组装 ChatGPT 客户端信息（微软商店 / WinGet / 官方直达）
 fn get_chatgpt_installer_info() -> AppInstallerInfo {
     AppInstallerInfo {
@@ -371,6 +434,10 @@ pub async fn fetch_latest_installer_info(app_type: &str) -> Result<AppInstallerI
         "acciowork" => {
             let client = create_client(REQUEST_TIMEOUT)?;
             Ok(fetch_accio_installer_info(&client).await)
+        }
+        "cursor" => {
+            let client = create_client(REQUEST_TIMEOUT)?;
+            Ok(fetch_cursor_installer_info(&client).await)
         }
         _ => Err(format!("不支持的客户端安装包下载类型: {}", app_type)),
     }
@@ -481,6 +548,7 @@ pub async fn download_installer_file(
     let fallback_candidate = match app_type.as_str() {
         "acciowork" => Some(ACCIO_FALLBACK_URL),
         "workbuddy" => Some(WORKBUDDY_FALLBACK_URL),
+        "cursor" => Some(CURSOR_DOWNLOAD_URL),
         _ => None,
     };
 
@@ -752,6 +820,8 @@ const TRUSTED_PUBLISHER_KEYWORDS: &[&str] = &[
     "TENCENT",   // WorkBuddy (腾讯旗下)
     "OPENAI",    // ChatGPT desktop
     "MICROSOFT", // Microsoft Store apps
+    "ANYSPHERE", // Cursor (Anysphere, Inc.)
+    "CURSOR",    // Cursor
 ];
 
 #[cfg(target_os = "windows")]
