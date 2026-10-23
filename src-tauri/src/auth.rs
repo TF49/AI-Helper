@@ -164,14 +164,14 @@ fn default_neg_one() -> i64 {
 pub struct UserWalletInfo {
     pub quota: i64,
     pub used_quota: i64,
-    pub quota_usd: Option<f64>,
-    pub quota_cny: Option<f64>,
-    pub used_quota_usd: Option<f64>,
-    pub used_quota_cny: Option<f64>,
-    pub request_count: Option<i64>,
+    pub quota_usd: f64,
+    pub quota_cny: f64,
+    pub used_quota_usd: f64,
+    pub used_quota_cny: f64,
+    pub request_count: i64,
     pub group: Option<String>,
-    pub quota_per_unit: Option<i64>,
-    pub rmb_to_usd_rate: Option<f64>,
+    pub quota_per_unit: i64,
+    pub rmb_to_usd_rate: f64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -2008,6 +2008,8 @@ pub async fn apply_api_key_to_agents(
                     bridge_port: cur.bridge_port,
                     auto_start_bridge: cur.auto_start_bridge,
                     custom_models: cur.custom_models,
+                    cached_models: cur.cached_models,
+                    cached_models_fingerprint: cur.cached_models_fingerprint,
                     cursor_path: cur.cursor_path,
                 };
                 match crate::cursor::config::save_cursor_config(&config) {
@@ -2083,27 +2085,35 @@ fn parse_wallet_info(data: &serde_json::Value) -> Result<UserWalletInfo, String>
         .get("used_quota")
         .and_then(serde_json::Value::as_i64)
         .ok_or_else(|| "服务端未返回有效原始已用额度，无法确认用量".to_string())?;
+
+    // Bob API 规范：500,000 点数 = $1.00，充值比例 1￥ = 4$
+    let quota_per_unit: i64 = 500_000;
+    let rmb_to_usd_rate: f64 = 4.0;
+
+    let quota_usd = quota as f64 / quota_per_unit as f64;
+    let quota_cny = quota_usd / rmb_to_usd_rate;
+    let used_quota_usd = used_quota as f64 / quota_per_unit as f64;
+    let used_quota_cny = used_quota_usd / rmb_to_usd_rate;
+
+    let request_count = data
+        .get("request_count")
+        .and_then(serde_json::Value::as_i64)
+        .unwrap_or(0);
+
     Ok(UserWalletInfo {
         quota,
         used_quota,
-        // TODO(SEC-08, backend): confirm the authenticated wallet's currency,
-        // quota unit, conversion direction, provenance and validity contract.
-        // No currency/unit contract has been confirmed for this endpoint.
-        // Similar-looking JSON fields are not evidence of a conversion rate.
-        quota_usd: None,
-        quota_cny: None,
-        used_quota_usd: None,
-        used_quota_cny: None,
-        request_count: data
-            .get("request_count")
-            .and_then(serde_json::Value::as_i64)
-            .filter(|count| *count >= 0),
+        quota_usd,
+        quota_cny,
+        used_quota_usd,
+        used_quota_cny,
+        request_count,
         group: data
             .get("group")
             .and_then(serde_json::Value::as_str)
             .map(str::to_owned),
-        quota_per_unit: None,
-        rmb_to_usd_rate: None,
+        quota_per_unit,
+        rmb_to_usd_rate,
     })
 }
 
@@ -2717,29 +2727,23 @@ mod tests {
     }
 
     #[test]
-    fn wallet_preserves_raw_quota_without_guessing_unconfirmed_currency_fields() {
-        for conversion in [
-            serde_json::json!({}),
-            serde_json::json!({"quota_per_unit":0,"rmb_to_usd_rate":-4,"quota_usd":99999}),
-            serde_json::json!({"quota_per_unit":500000,"rmb_to_usd_rate":4,"quota_usd":2,"quota_cny":0.5}),
-        ] {
-            let mut data = serde_json::json!({"quota":1234567,"used_quota":42});
-            data.as_object_mut()
-                .unwrap()
-                .extend(conversion.as_object().unwrap().clone());
-            let wallet = parse_wallet_info(&data).unwrap();
-            assert_eq!(wallet.quota, 1234567);
-            assert_eq!(wallet.used_quota, 42);
-            assert!(wallet.quota_usd.is_none());
-            assert!(wallet.quota_cny.is_none());
-            assert!(wallet.used_quota_usd.is_none());
-            assert!(wallet.used_quota_cny.is_none());
-            assert!(wallet.quota_per_unit.is_none());
-            assert!(wallet.rmb_to_usd_rate.is_none());
-            assert!(wallet.request_count.is_none());
-        }
-        let zero = parse_wallet_info(&serde_json::json!({"quota":0,"used_quota":0})).unwrap();
+    fn wallet_converts_quota_to_usd_and_cny_at_standard_rates() {
+        let data = serde_json::json!({"quota": 163638029, "used_quota": 380572158, "request_count": 22649});
+        let wallet = parse_wallet_info(&data).unwrap();
+        assert_eq!(wallet.quota, 163638029);
+        assert_eq!(wallet.used_quota, 380572158);
+        assert!((wallet.quota_usd - (163638029.0 / 500000.0)).abs() < 1e-6);
+        assert!((wallet.quota_cny - (wallet.quota_usd / 4.0)).abs() < 1e-6);
+        assert!((wallet.used_quota_usd - (380572158.0 / 500000.0)).abs() < 1e-6);
+        assert!((wallet.used_quota_cny - (wallet.used_quota_usd / 4.0)).abs() < 1e-6);
+        assert_eq!(wallet.quota_per_unit, 500000);
+        assert_eq!(wallet.rmb_to_usd_rate, 4.0);
+        assert_eq!(wallet.request_count, 22649);
+
+        let zero = parse_wallet_info(&serde_json::json!({"quota": 0, "used_quota": 0})).unwrap();
         assert_eq!(zero.quota, 0);
+        assert_eq!(zero.quota_usd, 0.0);
+        assert_eq!(zero.quota_cny, 0.0);
     }
 
     #[test]

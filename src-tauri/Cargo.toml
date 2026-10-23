@@ -32,7 +32,7 @@ dirs = "5.0"
 toml_edit = "0.22"
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "net", "time", "sync"] }
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json", "stream", "cookies", "gzip", "brotli", "deflate"] }
-axum = { version = "0.7", features = ["tokio", "http1"] }
+axum = { version = "0.7", features = ["tokio", "http1", "http2"] }
 tower-http = { version = "0.5", features = ["cors"] }
 bytes = "1.0"
 futures-util = "0.3"
@@ -47,9 +47,15 @@ sha2 = "0.10"
 minisign-verify = "0.2"
 tempfile = "3"
 getrandom = "0.2"
+regex-lite = "0.1"
+hex = "0.4"
+prost = "0.13"
+json5 = "0.4"
+rusqlite = { version = "0.40.2", features = ["bundled"] }
 
 [target.'cfg(target_os = "windows")'.dependencies]
 winreg = "0.52"
+winapi = { version = "0.3", features = ["winbase"] }
 
 [target.'cfg(target_os = "macos")'.dependencies]
 keyring = { version = "3.6.3", default-features = false, features = ["apple-native"] }

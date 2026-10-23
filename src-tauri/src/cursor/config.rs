@@ -14,8 +14,12 @@ pub struct CursorConfig {
     pub bridge_port: u16,
     #[serde(default = "default_true")]
     pub auto_start_bridge: bool,
-    #[serde(default = "default_models")]
+    #[serde(default)]
     pub custom_models: Vec<String>,
+    #[serde(default)]
+    pub cached_models: Vec<String>,
+    #[serde(default)]
+    pub cached_models_fingerprint: String,
     #[serde(default)]
     pub cursor_path: Option<String>,
 }
@@ -25,7 +29,7 @@ fn default_base_url() -> String {
 }
 
 fn default_model() -> String {
-    "claude-3-7-sonnet".to_string()
+    "gpt-5.6-sol".to_string()
 }
 
 fn default_bridge_port() -> u16 {
@@ -36,15 +40,12 @@ fn default_true() -> bool {
     true
 }
 
-fn default_models() -> Vec<String> {
-    vec![
-        "claude-3-7-sonnet".to_string(),
-        "claude-3-5-sonnet".to_string(),
-        "deepseek-chat".to_string(),
-        "deepseek-reasoner".to_string(),
-        "gpt-4o".to_string(),
-        "o3-mini".to_string(),
-    ]
+pub fn model_source_fingerprint(base_url: &str, api_key: &str) -> String {
+    let normalized = base_url
+        .trim()
+        .trim_end_matches('/')
+        .trim_end_matches("/v1");
+    format!("{normalized}||{}", api_key.trim())
 }
 
 impl Default for CursorConfig {
@@ -55,7 +56,9 @@ impl Default for CursorConfig {
             model: default_model(),
             bridge_port: default_bridge_port(),
             auto_start_bridge: true,
-            custom_models: default_models(),
+            custom_models: Vec::new(),
+            cached_models: Vec::new(),
+            cached_models_fingerprint: String::new(),
             cursor_path: None,
         }
     }
@@ -107,6 +110,10 @@ pub fn merge_config_update(
     if config.custom_models.is_empty() {
         config.custom_models = existing.custom_models.clone();
     }
+    if config.cached_models.is_empty() && !existing.cached_models.is_empty() {
+        config.cached_models = existing.cached_models.clone();
+        config.cached_models_fingerprint = existing.cached_models_fingerprint.clone();
+    }
     Ok(config)
 }
 
@@ -153,5 +160,20 @@ pub fn get_cursor_ui_config(bridge_running: bool, actual_port: Option<u16>) -> C
         is_patched: patch_info.is_patched,
         patch_detail: Some(patch_info.message),
         is_process_running: is_running,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_model_source_fingerprint_normalization() {
+        let fp1 = model_source_fingerprint("https://bob-api.com/", "sk-test123");
+        let fp2 = model_source_fingerprint("https://bob-api.com/v1", "sk-test123");
+        let fp3 = model_source_fingerprint("https://bob-api.com/v1/", "sk-test123 ");
+        assert_eq!(fp1, "https://bob-api.com||sk-test123");
+        assert_eq!(fp2, "https://bob-api.com||sk-test123");
+        assert_eq!(fp3, "https://bob-api.com||sk-test123");
     }
 }

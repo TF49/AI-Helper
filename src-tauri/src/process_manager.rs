@@ -3,7 +3,7 @@ use crate::app_paths::{
     is_target_running, load_app_paths,
 };
 use std::path::Path;
-use std::process::Command;
+use std::process::{Command, Stdio};
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -21,18 +21,44 @@ pub fn kill_app_processes(app_type: &str) -> Result<usize, String> {
 
     #[cfg(target_os = "windows")]
     {
+        // 先尝试优雅关闭 (WM_CLOSE)，等待 1.5 秒
         for pid in &pids {
             let _ = Command::new("taskkill")
-                .args(["/F", "/T", "/PID", &pid.to_string()])
+                .args(["/PID", &pid.to_string()])
                 .creation_flags(0x08000000) // CREATE_NO_WINDOW
                 .output();
+        }
+
+        thread::sleep(Duration::from_millis(1500));
+
+        // 检查是否还有残留进程，仅对残留进程执行强制终止
+        let remaining_pids = get_target_pids(app_type);
+        if !remaining_pids.is_empty() {
+            for pid in &remaining_pids {
+                let _ = Command::new("taskkill")
+                    .args(["/F", "/T", "/PID", &pid.to_string()])
+                    .creation_flags(0x08000000)
+                    .output();
+            }
         }
     }
 
     #[cfg(not(target_os = "windows"))]
     {
+        // Unix: 先发送 SIGTERM，等待 1.5 秒后对残留进程发送 SIGKILL
         for pid in &pids {
-            let _ = Command::new("kill").args(["-9", &pid.to_string()]).output();
+            let _ = Command::new("kill")
+                .args(["-15", &pid.to_string()])
+                .output();
+        }
+
+        thread::sleep(Duration::from_millis(1500));
+
+        let remaining_pids = get_target_pids(app_type);
+        if !remaining_pids.is_empty() {
+            for pid in &remaining_pids {
+                let _ = Command::new("kill").args(["-9", &pid.to_string()]).output();
+            }
         }
     }
 
@@ -197,6 +223,9 @@ pub fn launch_app(app_type: &str, custom_path: Option<&str>) -> Result<String, S
                         if let Some(parent) = path.parent() {
                             cmd.current_dir(parent);
                         }
+                        cmd.stdin(Stdio::null())
+                            .stdout(Stdio::null())
+                            .stderr(Stdio::null());
                         cmd.spawn()
                             .map_err(|e| format!("启动 ChatGPT 客户端失败: {}", e))?;
                         return Ok(format!("ChatGPT 客户端已启动: {}", path_str));
@@ -349,6 +378,9 @@ end tell"#,
                     if let Some(parent) = path.parent() {
                         cmd.current_dir(parent);
                     }
+                    cmd.stdin(Stdio::null())
+                        .stdout(Stdio::null())
+                        .stderr(Stdio::null());
                     cmd.spawn()
                         .map_err(|e| format!("启动 WorkBuddy 客户端失败: {}", e))?;
                     return Ok(format!("WorkBuddy 客户端已启动: {}", path_str));
@@ -420,6 +452,9 @@ end tell"#,
                     if let Some(parent) = path.parent() {
                         cmd.current_dir(parent);
                     }
+                    cmd.stdin(Stdio::null())
+                        .stdout(Stdio::null())
+                        .stderr(Stdio::null());
                     cmd.spawn()
                         .map_err(|e| format!("启动 Accio Work 客户端失败: {}", e))?;
 
@@ -499,6 +534,9 @@ end tell"#,
                     if let Some(parent) = path.parent() {
                         cmd.current_dir(parent);
                     }
+                    cmd.stdin(Stdio::null())
+                        .stdout(Stdio::null())
+                        .stderr(Stdio::null());
                     cmd.spawn()
                         .map_err(|e| format!("启动 Cursor 客户端失败: {}", e))?;
                     return Ok(format!("Cursor 客户端已成功拉起: {}", path_str));

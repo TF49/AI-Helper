@@ -328,6 +328,16 @@ async fn test_accio_stream(
     api_test::test_accio_stream(url, api_key, model, on_event).await
 }
 
+#[tauri::command]
+async fn test_cursor_stream(
+    url: String,
+    api_key: String,
+    model: String,
+    on_event: tauri::ipc::Channel<api_test::TestStreamEvent>,
+) -> api_test::ApiTestResult {
+    api_test::test_cursor_stream(url, api_key, model, on_event).await
+}
+
 #[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
 pub struct CursorBridgeStatus {
     pub is_running: bool,
@@ -344,7 +354,29 @@ fn get_cursor_config() -> cursor::CursorUIConfig {
 #[tauri::command]
 fn set_cursor_config(config: serde_json::Value) -> Result<(), error::AppError> {
     let existing = cursor::load_cursor_config();
-    let config = cursor::config::merge_config_update(config, &existing)?;
+    let mut config = cursor::config::merge_config_update(config, &existing)?;
+    let old_fp = cursor::model_source_fingerprint(&existing.base_url, &existing.api_key);
+    let new_fp = cursor::model_source_fingerprint(&config.base_url, &config.api_key);
+
+    if config.cached_models.is_empty() {
+        if old_fp == new_fp && !existing.cached_models.is_empty() {
+            config.cached_models = existing.cached_models;
+            config.cached_models_fingerprint = new_fp.clone();
+        } else {
+            config.cached_models.clear();
+            config.cached_models_fingerprint.clear();
+        }
+    } else {
+        config.cached_models_fingerprint = new_fp.clone();
+    }
+
+    if old_fp != new_fp {
+        cursor::invalidate_model_list_cache();
+        tokio::spawn(async {
+            cursor::refresh_model_list_cache().await;
+        });
+    }
+
     cursor::save_cursor_config(&config)?;
     Ok(())
 }
@@ -768,6 +800,7 @@ pub fn run() {
             start_cursor_bridge,
             stop_cursor_bridge,
             get_cursor_bridge_status,
+            test_cursor_stream,
             get_cursor_patch_status,
             patch_cursor_client,
             restore_cursor_client,
