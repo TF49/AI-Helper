@@ -57,7 +57,6 @@ import { ThemeToggle } from "./components/ThemeToggle";
 import { useTheme } from "./components/theme-provider";
 import { AuroraBackground } from "./components/react-bits/AuroraBackground";
 import { cn } from "./lib/utils";
-import { formatPlatformQuota } from "./lib/quotaDisplay";
 import { checkBobApiNetwork, openUrl, isTauri, exitApp } from "./lib/api";
 import { isMac, modifierKey } from "./lib/platform";
 import { ForceUpdateModal, useAppUpdater } from "./components/ForceUpdateModal";
@@ -890,8 +889,8 @@ function AppContent() {
                     className="w-9 h-9 rounded-xl bg-neutral-100 dark:bg-white/10 text-neutral-800 dark:text-neutral-200 hover:bg-neutral-200 dark:hover:bg-white/20 flex items-center justify-center transition-colors cursor-pointer relative shadow-2xs"
                     title={
                       wallet
-                        ? `账号原始平台额度: ${formatPlatformQuota(wallet.quota)}\n换算不可用 - 展示服务端原始数据，不推测币值\n点击前往个人中心`
-                        : "账号额度未知 - 点击前往个人中心刷新"
+                        ? `账号额度: $${wallet.quota_usd.toFixed(2)} (≈ ¥${wallet.quota_cny.toFixed(2)}) - 点击前往个人中心`
+                        : "账号额度与钱包 - 点击前往个人中心"
                     }
                   >
                     <Wallet size={15} />

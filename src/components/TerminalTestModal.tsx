@@ -16,6 +16,7 @@ import {
   ClaudeIcon,
   WorkbuddyIcon,
   AccioWorkIcon,
+  CursorIcon,
 } from "./BrandIcons";
 import { toast } from "sonner";
 import {
@@ -23,11 +24,14 @@ import {
   setClaudeConfig,
   setWorkbuddyConfig,
   setAccioConfig,
+  setCursorConfig,
   testCodexStream,
   testClaudeStream,
   testWorkbuddyStream,
   testAccioStream,
+  testCursorStream,
   startAccioBridge,
+  startCursorBridge,
   checkAppProcessStatus,
   restartTargetApp,
 } from "../lib/api";
@@ -35,6 +39,7 @@ import type {
   TestStreamEvent,
   WorkbuddySavePayload,
   AccioConfig,
+  CursorConfig,
 } from "../types";
 import { ButtonToLoaderToSuccess } from "./ui/ButtonToLoaderToSuccess";
 
@@ -47,6 +52,7 @@ export interface TerminalTestModalProps {
   model: string;
   workbuddyPayload?: WorkbuddySavePayload;
   accioPayload?: AccioConfig;
+  cursorPayload?: CursorConfig;
   onSuccess?: () => void;
 }
 
@@ -66,6 +72,7 @@ export function TerminalTestModal({
   model,
   workbuddyPayload,
   accioPayload,
+  cursorPayload,
   onSuccess,
 }: TerminalTestModalProps) {
   const [status, setStatus] = useState<"running" | "success" | "error">(
@@ -84,6 +91,7 @@ export function TerminalTestModal({
   const [claudeRunning, setClaudeRunning] = useState(false);
   const [workbuddyRunning, setWorkbuddyRunning] = useState(false);
   const [accioRunning, setAccioRunning] = useState(false);
+  const [cursorRunning, setCursorRunning] = useState(false);
   const [restartingTarget, setRestartingTarget] = useState<string | null>(null);
   const [showRestartCard, setShowRestartCard] = useState(false);
 
@@ -142,7 +150,7 @@ export function TerminalTestModal({
   }, [countdown, onClose]);
 
   const handleRestart = async (
-    target: "chatgpt" | "codex" | "claude" | "workbuddy" | "acciowork",
+    target: "chatgpt" | "codex" | "claude" | "workbuddy" | "acciowork" | "cursor",
   ) => {
     setRestartingTarget(target);
     const targetName =
@@ -154,7 +162,9 @@ export function TerminalTestModal({
             ? "WorkBuddy 客户端"
             : target === "acciowork"
               ? "Accio Work 客户端"
-              : "Claude Code CLI";
+              : target === "cursor"
+                ? "Cursor 客户端"
+                : "Claude Code CLI";
 
     addLog(`🚀 正在执行 ${targetName} 重启/拉起流程...`, "info");
     try {
@@ -169,6 +179,7 @@ export function TerminalTestModal({
       if (target === "claude") setClaudeRunning(true);
       if (target === "workbuddy") setWorkbuddyRunning(true);
       if (target === "acciowork") setAccioRunning(true);
+      if (target === "cursor") setCursorRunning(true);
       toast.success(`${targetName} 操作成功！`);
       setCountdown(5);
     } catch (err) {
@@ -270,7 +281,7 @@ export function TerminalTestModal({
           handleEvent,
         );
       } else if (type === "cursor") {
-        testResult = await testCodexStream(
+        testResult = await testCursorStream(
           url,
           apiKey.trim(),
           model.trim(),
@@ -352,6 +363,25 @@ export function TerminalTestModal({
           } catch (bridgeErr) {
             addLog(`⚠️ Bridge 启动告警: ${bridgeErr}`, "warn");
           }
+        } else if (type === "cursor") {
+          addLog(`💾 正在将配置写入本地 ~/.ai-helper/cursor_config.json...`, "info");
+          const payload: CursorConfig = cursorPayload || {
+            base_url: url.trim(),
+            api_key: apiKey.trim(),
+            model: model.trim() || "claude-3-7-sonnet",
+            bridge_port: 8969,
+            auto_start_bridge: true,
+            cursor_path: null,
+          };
+          await setCursorConfig(payload);
+          addLog(`✓ 配置文件 ~/.ai-helper/cursor_config.json 已成功写入`, "success");
+          addLog(`🔌 正在唤醒/刷新本地 Cursor Connect-RPC Bridge 中继服务...`, "info");
+          try {
+            const port = await startCursorBridge(payload.bridge_port);
+            addLog(`✓ 本地中继网关已就绪，监听于 http://127.0.0.1:${port}`, "success");
+          } catch (bridgeErr) {
+            addLog(`⚠️ Bridge 启动告警: ${bridgeErr}`, "warn");
+          }
         } else {
           addLog(`💾 正在备份旧配置并纯净写入 ~/.claude/settings.json...`, "info");
           await setClaudeConfig(url, apiKey.trim(), model.trim());
@@ -398,6 +428,12 @@ export function TerminalTestModal({
           anyRunning = aRun;
           if (aRun) addLog(`💡 检测到 Accio Work 客户端正在运行中`, "info");
           else addLog(`💡 当前未检测到运行中的 Accio Work 进程`, "dim");
+        } else if (type === "cursor") {
+          const curRun = await checkAppProcessStatus("cursor").catch(() => false);
+          setCursorRunning(curRun);
+          anyRunning = curRun;
+          if (curRun) addLog(`💡 检测到 Cursor IDE 客户端正在运行中`, "info");
+          else addLog(`💡 当前未检测到运行中的 Cursor 进程`, "dim");
         } else {
           const cRun = await checkAppProcessStatus("claude").catch(() => false);
           setClaudeRunning(cRun);
@@ -500,7 +536,9 @@ export function TerminalTestModal({
                     ? "WorkBuddy"
                     : type === "acciowork"
                       ? "Accio Work"
-                      : "Claude Code"}{" "}
+                      : type === "cursor"
+                        ? "Cursor IDE"
+                        : "Claude Code"}{" "}
                 连通性测试与配置部署终端
               </span>
             </div>
@@ -637,9 +675,13 @@ export function TerminalTestModal({
                       ? accioRunning
                         ? "检测到 Accio Work 客户端运行中"
                         : "当前未运行"
-                      : claudeRunning
-                        ? "检测到 CLI 运行中"
-                        : "当前未运行"}
+                      : type === "cursor"
+                        ? cursorRunning
+                          ? "检测到 Cursor 客户端运行中"
+                          : "当前未运行"
+                        : claudeRunning
+                          ? "检测到 CLI 运行中"
+                          : "当前未运行"}
               </span>
             </div>
 
@@ -726,6 +768,26 @@ export function TerminalTestModal({
                     resetAfterMs={3000}
                     holdMs={800}
                     onAction={() => handleRestart("acciowork")}
+                  />
+                ) : type === "cursor" ? (
+                  <ButtonToLoaderToSuccess
+                    accent="blue"
+                    disabled={restartingTarget !== null}
+                    className="px-3 py-1.5 rounded-lg text-xs font-medium min-w-[165px]"
+                    idleLabel={
+                      <>
+                        <CursorIcon size={13} />
+                        <span>
+                          {cursorRunning
+                            ? "重启 Cursor 客户端"
+                            : "启动 Cursor 客户端"}
+                        </span>
+                      </>
+                    }
+                    successLabel="Cursor 已拉起"
+                    resetAfterMs={3000}
+                    holdMs={800}
+                    onAction={() => handleRestart("cursor")}
                   />
                 ) : (
                   <ButtonToLoaderToSuccess

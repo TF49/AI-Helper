@@ -25,6 +25,7 @@ import {
   OpenAIIcon,
   WorkbuddyIcon,
   AccioWorkIcon,
+  CursorIcon,
 } from "./BrandIcons";
 import {
   browseAppPath,
@@ -119,6 +120,7 @@ export function AppPathsPanel() {
   const [chatgptPath, setChatgptPath] = useState("");
   const [workbuddyPath, setWorkbuddyPath] = useState("");
   const [accioPath, setAccioPath] = useState("");
+  const [cursorPath, setCursorPath] = useState("");
 
   // 运行与探测状态
   const [claudeInfo, setClaudeInfo] = useState<DetectedPathInfo | null>(null);
@@ -128,12 +130,14 @@ export function AppPathsPanel() {
     null,
   );
   const [accioInfo, setAccioInfo] = useState<DetectedPathInfo | null>(null);
+  const [cursorInfo, setCursorInfo] = useState<DetectedPathInfo | null>(null);
 
   const [claudeRunning, setClaudeRunning] = useState(false);
   const [codexRunning, setCodexRunning] = useState(false);
   const [chatgptRunning, setChatgptRunning] = useState(false);
   const [workbuddyRunning, setWorkbuddyRunning] = useState(false);
   const [accioRunning, setAccioRunning] = useState(false);
+  const [cursorRunning, setCursorRunning] = useState(false);
 
   const [detectingType, setDetectingType] = useState<string | null>(null);
   const [launchingType, setLaunchingType] = useState<string | null>(null);
@@ -228,20 +232,23 @@ export function AppPathsPanel() {
       setChatgptPath(saved.chatgpt_client_path || "");
       setWorkbuddyPath(saved.workbuddy_client_path || "");
       setAccioPath(saved.accio_client_path || "");
+      setCursorPath(saved.cursor_client_path || "");
 
       // 并发检查当前运行状态
-      const [cRun, xRun, gRun, wbRun, accioRun] = await Promise.all([
+      const [cRun, xRun, gRun, wbRun, accioRun, curRun] = await Promise.all([
         checkAppProcessStatus("claude").catch(() => false),
         checkAppProcessStatus("codex").catch(() => false),
         checkAppProcessStatus("chatgpt").catch(() => false),
         checkAppProcessStatus("workbuddy").catch(() => false),
         checkAppProcessStatus("acciowork").catch(() => false),
+        checkAppProcessStatus("cursor").catch(() => false),
       ]);
       setClaudeRunning(cRun);
       setCodexRunning(xRun);
       setChatgptRunning(gRun);
       setWorkbuddyRunning(wbRun);
       setAccioRunning(accioRun);
+      setCursorRunning(curRun);
     } catch (err) {
       toast.error(`读取路径配置失败: ${err}`);
     } finally {
@@ -259,7 +266,7 @@ export function AppPathsPanel() {
 
   // 单项自动探测
   const handleDetectSingle = async (
-    type: "claude" | "codex" | "chatgpt" | "workbuddy" | "acciowork",
+    type: "claude" | "codex" | "chatgpt" | "workbuddy" | "acciowork" | "cursor",
   ) => {
     setDetectingType(type);
     try {
@@ -284,6 +291,10 @@ export function AppPathsPanel() {
         setAccioInfo(info);
         if (info.path) setAccioPath(info.path);
         setAccioRunning(info.is_running);
+      } else if (type === "cursor") {
+        setCursorInfo(info);
+        if (info.path) setCursorPath(info.path);
+        setCursorRunning(info.is_running);
       }
 
       if (info.exists && info.path) {
@@ -334,6 +345,10 @@ export function AppPathsPanel() {
           setAccioInfo(info);
           if (info.path) setAccioPath(info.path);
           setAccioRunning(info.is_running);
+        } else if (info.app_type === "cursor") {
+          setCursorInfo(info);
+          if (info.path) setCursorPath(info.path);
+          setCursorRunning(info.is_running);
         }
       }
       toast.success("已完成全部应用与 CLI 路径深度探测！");
@@ -346,7 +361,7 @@ export function AppPathsPanel() {
 
   // 浏览选择文件
   const handleBrowse = async (
-    type: "claude" | "codex" | "chatgpt" | "workbuddy" | "acciowork",
+    type: "claude" | "codex" | "chatgpt" | "workbuddy" | "acciowork" | "cursor",
   ) => {
     try {
       const selected = await browseAppPath(type);
@@ -356,6 +371,7 @@ export function AppPathsPanel() {
         if (type === "chatgpt") setChatgptPath(selected);
         if (type === "workbuddy") setWorkbuddyPath(selected);
         if (type === "acciowork") setAccioPath(selected);
+        if (type === "cursor") setCursorPath(selected);
         toast.success(`已选择路径: ${selected}`);
       }
     } catch (err) {
@@ -371,6 +387,7 @@ export function AppPathsPanel() {
       chatgpt_client_path: chatgptPath.trim() || null,
       workbuddy_client_path: workbuddyPath.trim() || null,
       accio_client_path: accioPath.trim() || null,
+      cursor_client_path: cursorPath.trim() || null,
     };
     try {
       await saveAppPaths(cfg);
@@ -382,7 +399,7 @@ export function AppPathsPanel() {
 
   // 测试启动 / 重启目标
   const handleLaunchOrRestart = async (
-    type: "claude" | "codex" | "chatgpt" | "workbuddy" | "acciowork",
+    type: "claude" | "codex" | "chatgpt" | "workbuddy" | "acciowork" | "cursor",
   ) => {
     setLaunchingType(type);
     try {
@@ -395,7 +412,9 @@ export function AppPathsPanel() {
               ? workbuddyPath
               : type === "acciowork"
                 ? accioPath
-                : chatgptPath;
+                : type === "cursor"
+                  ? cursorPath
+                  : chatgptPath;
 
       const result = await restartTargetApp(type, custom || undefined);
       toast.success(result);
@@ -412,6 +431,7 @@ export function AppPathsPanel() {
         if (type === "chatgpt") setChatgptRunning(isRun);
         if (type === "workbuddy") setWorkbuddyRunning(isRun);
         if (type === "acciowork") setAccioRunning(isRun);
+        if (type === "cursor") setCursorRunning(isRun);
         delete refreshTimersRef.current[type];
       }, 1000);
     } catch (err) {
@@ -457,10 +477,11 @@ export function AppPathsPanel() {
   };
 
   // 下载客户端官方最新安装包
-  const handleDownloadPackage = async (type: "workbuddy" | "acciowork") => {
+  const handleDownloadPackage = async (type: "workbuddy" | "acciowork" | "cursor") => {
     if (downloadingApps[type]) return;
     setDownloadingApps((prev) => ({ ...prev, [type]: true }));
-    const label = type === "workbuddy" ? "WorkBuddy" : "Accio Work";
+    const label =
+      type === "workbuddy" ? "WorkBuddy" : type === "acciowork" ? "Accio Work" : "Cursor";
     toast.info(`正在解析并获取 ${label} 官方最新安装包...`);
 
     try {
@@ -2247,6 +2268,209 @@ export function AppPathsPanel() {
               <span className="text-black dark:text-white font-bold">ℹ️</span>
               <span>
                 启动说明：在此拉起 Accio Work 客户端时，AI-Helper 将在进程中注入本地 Bridge 网关地址环境变量，使应用与后台转译网关实时协同，阻断官方直连以保护 i 豆。
+              </span>
+            </div>
+          </div>
+        </SpotlightCard>
+
+        {/* 卡片 6: Cursor 桌面客户端 */}
+        <SpotlightCard
+          className="p-5 rounded-2xl border border-slate-200/90 dark:border-white/10 bg-white/80 dark:bg-black/60 shadow-sm dark:shadow-none flex-shrink-0 min-h-fit"
+          spotlightColor="rgba(255, 255, 255, 0.08)"
+        >
+          <div className="flex flex-col gap-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-lg bg-neutral-100 text-black dark:bg-white/10 dark:text-white flex items-center justify-center flex-shrink-0">
+                  <CursorIcon size={16} />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-bold text-slate-900 dark:text-white">
+                      Cursor 桌面客户端路径
+                    </span>
+                    {cursorRunning && (
+                      <span className="inline-flex items-center gap-1 text-[10px] font-medium px-2 py-0.2 rounded-full bg-neutral-100 text-neutral-800 border border-neutral-200 dark:bg-white/10 dark:text-neutral-200 dark:border-white/10">
+                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                        运行中
+                      </span>
+                    )}
+                  </div>
+                  <span className="text-[11px] text-slate-400 dark:text-gray-500 font-mono">
+                    Win32 可执行程序 (Cursor.exe) / 注册表安装路径
+                  </span>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2">
+                {cursorPath ? (
+                  <span className="text-[11px] text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
+                    <CheckCircle2 size={13} />
+                    <span>已就绪</span>
+                  </span>
+                ) : (
+                  <span className="text-[11px] text-amber-600 dark:text-amber-400 flex items-center gap-1">
+                    <AlertCircle size={13} />
+                    <span>待配置</span>
+                  </span>
+                )}
+              </div>
+            </div>
+
+            {/* 路径输入框与操作按键 */}
+            <div className="flex flex-col sm:flex-row gap-2 items-center">
+              <div className="relative flex-1 w-full">
+                <input
+                  type="text"
+                  value={cursorPath}
+                  onChange={(e) => setCursorPath(e.target.value)}
+                  placeholder="例如: C:\Users\Administrator\AppData\Local\Programs\cursor\Cursor.exe"
+                  className="w-full text-xs font-mono px-3 py-2 rounded-xl border border-slate-200 dark:border-white/10 bg-slate-50/70 dark:bg-black/30 text-slate-800 dark:text-gray-200 focus:outline-none focus:border-black dark:focus:border-white focus:ring-1 focus:ring-black/20 dark:focus:ring-white/20"
+                />
+              </div>
+
+              <div className="flex items-center gap-1.5 w-full sm:w-auto justify-end">
+                {downloadedFiles["cursor"] ? (
+                  <div className="flex items-center gap-1">
+                    <button
+                      type="button"
+                      onClick={() =>
+                        void handleRunInstaller(
+                          downloadedRecords["cursor"],
+                          "Cursor",
+                        )
+                      }
+                      className="px-2.5 py-1.5 rounded-lg bg-black hover:bg-neutral-800 text-white dark:bg-white dark:hover:bg-neutral-200 dark:text-black text-xs font-medium flex items-center gap-1 cursor-pointer transition-colors shadow-sm"
+                      title="立即调起官方安装包执行安装"
+                    >
+                      <Play size={12} />
+                      <span>运行安装</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        void handleShowInFolder(downloadedFiles["cursor"])
+                      }
+                      className="px-2 py-1.5 rounded-lg border border-slate-200 dark:border-white/10 hover:bg-slate-100 dark:hover:bg-white/5 text-xs text-slate-700 dark:text-gray-300 flex items-center cursor-pointer transition-colors"
+                      title="在文件资源管理器中定位安装包"
+                    >
+                      <FolderOpen size={12} />
+                    </button>
+                  </div>
+                ) : downloadingApps["cursor"] ? (
+                  <button
+                    type="button"
+                    disabled
+                    className="px-2.5 py-1.5 rounded-lg border border-neutral-300 text-neutral-800 bg-neutral-100 dark:border-white/20 dark:bg-white/10 dark:text-neutral-200 text-xs font-medium flex items-center gap-1.5 cursor-wait"
+                  >
+                    <Loader2 size={12} className="animate-spin text-black dark:text-white" />
+                    <span>
+                      下载中{" "}
+                      {Math.round(downloadProgress["cursor"]?.percent || 0)}%
+                    </span>
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => void handleDownloadPackage("cursor")}
+                    disabled={Boolean(downloadingApps["cursor"])}
+                    className="px-2.5 py-1.5 rounded-lg border border-slate-200 text-slate-700 bg-white hover:bg-slate-50 dark:border-white/10 dark:bg-white/5 dark:text-gray-300 dark:hover:bg-white/10 text-xs font-medium flex items-center gap-1 cursor-pointer transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+                    title="自动嗅探并下载 Cursor 官方最新 Windows 安装包"
+                  >
+                    <DownloadCloud size={12} />
+                    <span>下载安装包</span>
+                  </button>
+                )}
+
+                <button
+                  type="button"
+                  onClick={() => void handleDetectSingle("cursor")}
+                  disabled={detectingType === "cursor"}
+                  className="px-2.5 py-1.5 rounded-lg border border-slate-200 text-slate-700 bg-white hover:bg-slate-50 dark:border-white/10 dark:bg-white/5 dark:text-gray-300 dark:hover:bg-white/10 text-xs font-medium flex items-center gap-1 cursor-pointer transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+                  title="自动探测 Cursor 客户端安装路径"
+                >
+                  <Search
+                    size={12}
+                    className={
+                      detectingType === "cursor" ? "animate-spin" : ""
+                    }
+                  />
+                  <span>探测</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => void handleBrowse("cursor")}
+                  className="px-2.5 py-1.5 rounded-lg border border-slate-200 dark:border-white/10 text-slate-700 dark:text-gray-300 hover:bg-slate-100 dark:hover:bg-white/5 text-xs font-medium flex items-center gap-1 cursor-pointer transition-colors"
+                  title="通过文件管理器浏览 Cursor 路径"
+                >
+                  <FolderOpen size={12} />
+                  <span>浏览</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => void handleLaunchOrRestart("cursor")}
+                  disabled={launchingType === "cursor"}
+                  className="px-2.5 py-1.5 rounded-lg bg-black hover:bg-neutral-800 text-white dark:bg-white dark:hover:bg-neutral-200 dark:text-black text-xs font-medium flex items-center gap-1 cursor-pointer transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+                  title="启动或重启 Cursor 客户端"
+                >
+                  <Play
+                    size={12}
+                    className={
+                      launchingType === "cursor" ? "animate-spin" : ""
+                    }
+                  />
+                  <span>{cursorRunning ? "重启客户端" : "启动客户端"}</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Cursor 下载进度展示条 */}
+            {downloadingApps["cursor"] && downloadProgress["cursor"] && (
+              <div className="p-2.5 rounded-xl border border-neutral-200 dark:border-white/10 bg-neutral-100/50 dark:bg-white/5 space-y-1.5 animate-fade-in">
+                <div className="flex items-center justify-between text-[11px]">
+                  <span className="font-mono text-black dark:text-white truncate max-w-[260px]">
+                    {downloadProgress["cursor"].fileName}
+                  </span>
+                  <span className="font-mono text-black dark:text-white font-semibold">
+                    {formatBytes(downloadProgress["cursor"].downloaded)} /{" "}
+                    {formatBytes(downloadProgress["cursor"].totalBytes)} (
+                    {Math.round(downloadProgress["cursor"].percent)}%)
+                  </span>
+                </div>
+                <div className="w-full h-1.5 rounded-full bg-slate-200 dark:bg-white/10 overflow-hidden">
+                  <div
+                    className="h-full bg-black dark:bg-white rounded-full transition-all duration-200 ease-out"
+                    style={{
+                      width: `${Math.max(5, downloadProgress["cursor"].percent)}%`,
+                    }}
+                  />
+                </div>
+              </div>
+            )}
+
+            {downloadedFiles["cursor"] && (
+              <div className="text-[11px] text-neutral-800 dark:text-neutral-200 bg-neutral-100/80 dark:bg-white/10 px-2.5 py-1.5 rounded-lg border border-neutral-200 dark:border-white/10 flex items-center justify-between animate-fade-in">
+                <div className="flex items-center gap-1.5">
+                  <span>🎉</span>
+                  <span>
+                    Cursor 安装包已就绪！点击【运行安装】完成安装后，请点击上方【探测】按钮自动绑定路径。
+                  </span>
+                </div>
+              </div>
+            )}
+
+            {cursorInfo?.extra_info && (
+              <div className="text-[11px] text-neutral-800 dark:text-neutral-200 bg-neutral-100/70 dark:bg-white/5 px-2.5 py-1 rounded-lg border border-neutral-200 dark:border-white/10">
+                💡 {cursorInfo.extra_info}
+              </div>
+            )}
+
+            <div className="text-[11px] text-slate-500 dark:text-gray-400 bg-slate-50/60 dark:bg-white/[0.03] px-2.5 py-1.5 rounded-lg border border-slate-200/60 dark:border-white/5 flex items-start gap-1.5">
+              <span className="text-black dark:text-white font-bold">ℹ️</span>
+              <span>
+                挂接说明：在此拉起 Cursor 客户端时，AI-Helper 将在进程中注入本地 Bridge 网关环境变量并激活转译中继，配合一键修补挂接即可无缝接入自有模型站点，支持 Agent 模式与全模型中继。
               </span>
             </div>
           </div>

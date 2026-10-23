@@ -8,7 +8,6 @@ import { toast } from "sonner";
 import { useAuth } from "../lib/useAuth";
 import { openUrl } from "../lib/api";
 import { cn } from "../lib/utils";
-import { formatPlatformQuota, isPlatformQuota, QUOTA_CONVERSION_UNAVAILABLE } from "../lib/quotaDisplay";
 
 export interface AccountBalanceCardProps {
   className?: string;
@@ -69,6 +68,9 @@ export const AccountBalanceCard: React.FC<AccountBalanceCardProps> = ({
     );
   }
 
+  const hasValidUsd = Number.isFinite(wallet?.quota_usd);
+  const hasValidCny = Number.isFinite(wallet?.quota_cny);
+
   return (
     <div
       className={cn(
@@ -77,24 +79,27 @@ export const AccountBalanceCard: React.FC<AccountBalanceCardProps> = ({
         className,
       )}
     >
-      {/* 平台原始额度与复制/刷新 */}
+      {/* 头部：账户余额 - USD 与复制/刷新 */}
       <div className="flex items-center justify-between text-slate-400 dark:text-gray-500 mb-1">
         <div className="flex items-center gap-1">
           <span className="text-[10px] font-semibold tracking-wider">
-            账户平台额度
+            账户余额 - USD
           </span>
           <button
             type="button"
             onClick={async () => {
-              if (!isPlatformQuota(wallet?.quota)) return;
-              try {
-                await navigator.clipboard.writeText(String(wallet.quota));
-                toast.success("已复制原始平台额度");
-              } catch { toast.error("复制失败"); }
+              if (hasValidUsd && wallet) {
+                try {
+                  await navigator.clipboard.writeText(wallet.quota_usd.toFixed(4));
+                  toast.success(`已复制余额: $${wallet.quota_usd.toFixed(4)}`);
+                } catch {
+                  toast.error("复制失败");
+                }
+              }
             }}
-            disabled={!isPlatformQuota(wallet?.quota)}
-            className="p-0.5 hover:text-slate-700 dark:hover:text-gray-300 transition-colors cursor-pointer"
-            title="复制原始平台额度"
+            disabled={!hasValidUsd}
+            className="p-0.5 hover:text-slate-700 dark:hover:text-gray-300 transition-colors cursor-pointer disabled:opacity-50"
+            title="复制美元余额"
           >
             <Coins size={11} />
           </button>
@@ -111,18 +116,17 @@ export const AccountBalanceCard: React.FC<AccountBalanceCardProps> = ({
         </button>
       </div>
 
-      {/* 核心数值与蓝色充值胶囊按钮 (对齐参考图排版) */}
+      {/* 核心数值与蓝色充值胶囊按钮 */}
       <div className="flex items-center justify-between gap-2 mt-1">
         <div>
           <div className="text-lg font-bold font-mono text-slate-900 dark:text-white tracking-tight leading-none">
-            {formatPlatformQuota(wallet?.quota)}
+            ${hasValidUsd && wallet ? wallet.quota_usd.toFixed(4) : "0.0000"}
           </div>
-          <div className="text-[10px] font-mono text-slate-500 dark:text-gray-400 mt-1">
-            平台额度 · {QUOTA_CONVERSION_UNAVAILABLE}
-          </div>
-          <div className="text-[10px] text-slate-400 dark:text-gray-500 mt-1 leading-relaxed">
-            💡 无权威转换契约时显示原始额度，避免推测币值误导
-          </div>
+          {hasValidCny && wallet && (
+            <div className="text-[10px] font-mono text-emerald-600 dark:text-emerald-400 mt-1">
+              = ¥{wallet.quota_cny.toFixed(2)} (1¥=4$)
+            </div>
+          )}
           {walletError && <div className="text-[10px] text-amber-600 mt-1">余额未确认，请重试刷新</div>}
         </div>
 

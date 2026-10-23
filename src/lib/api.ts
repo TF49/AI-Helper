@@ -249,19 +249,26 @@ function getMockResponse<T>(cmd: string, _args?: Record<string, unknown>): T {
           })),
         },
       ] as unknown as T;
-    case "get_user_wallet":
+    case "get_user_wallet": {
+      const quota = 227002749;
+      const used_quota = 302207438;
+      const quota_usd = quota / 500000;
+      const quota_cny = quota_usd / 4.0;
+      const used_quota_usd = used_quota / 500000;
+      const used_quota_cny = used_quota_usd / 4.0;
       return {
-        quota: 227002749,
-        used_quota: 302207438,
-        quota_usd: null,
-        quota_cny: null,
-        used_quota_usd: null,
-        used_quota_cny: null,
+        quota,
+        used_quota,
+        quota_usd,
+        quota_cny,
+        used_quota_usd,
+        used_quota_cny,
         request_count: 20540,
         group: "svip",
-        quota_per_unit: null,
-        rmb_to_usd_rate: null,
+        quota_per_unit: 500000,
+        rmb_to_usd_rate: 4.0,
       } as unknown as T;
+    }
     case "open_url":
       if (_args && typeof _args.url === "string") {
         window.open(_args.url, "_blank");
@@ -492,7 +499,7 @@ export async function saveAppPaths(config: AppPathsConfig): Promise<void> {
 }
 
 export async function detectAppPath(
-  appType: "claude" | "codex" | "chatgpt" | "workbuddy" | "acciowork",
+  appType: "claude" | "codex" | "chatgpt" | "workbuddy" | "acciowork" | "cursor",
 ): Promise<DetectedPathInfo> {
   return invoke<DetectedPathInfo>("detect_app_path", { appType });
 }
@@ -681,6 +688,26 @@ export async function testAccioStream(
   }
   const channel = new Channel<TestStreamEvent>(onEvent);
   return invoke<ApiTestResult>("test_accio_stream", {
+    url,
+    apiKey,
+    model,
+    onEvent: channel,
+  });
+}
+
+export async function testCursorStream(
+  url: string,
+  apiKey: string,
+  model: string,
+  onEvent: (event: TestStreamEvent) => void,
+): Promise<ApiTestResult> {
+  if (!isTauri) {
+    onEvent({ type: "log", data: { text: "[Web Preview] 模拟发起 Cursor 连接测试...", level: "info" } });
+    onEvent({ type: "finish", data: { success: true, message: "测试连接成功", latency_ms: 60, status_code: 200 } });
+    return { success: true, message: "测试连接成功", latencyMs: 60, statusCode: 200 };
+  }
+  const channel = new Channel<TestStreamEvent>(onEvent);
+  return invoke<ApiTestResult>("test_cursor_stream", {
     url,
     apiKey,
     model,
