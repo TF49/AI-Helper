@@ -165,6 +165,33 @@ pub(crate) fn remove_file_locked(path: &Path) -> Result<(), AppError> {
     }
 }
 
+pub(crate) fn read_optional_locked(path: &Path) -> Result<Option<Vec<u8>>, AppError> {
+    recover_missing_file_locked(path)?;
+    read_optional(path)
+}
+
+pub(crate) fn restore_optional_locked(
+    path: &Path,
+    previous: Option<&[u8]>,
+) -> Result<(), AppError> {
+    if let Some(contents) = previous {
+        atomic_write_locked(path, contents)
+    } else {
+        remove_file_locked(path)
+    }
+}
+
+pub(crate) fn replace_with_backup_locked(
+    path: &Path,
+    previous: Option<&[u8]>,
+    contents: &[u8],
+) -> Result<(), AppError> {
+    if let Some(previous) = previous {
+        atomic_write_locked(&backup_path(path), previous)?;
+    }
+    atomic_write_locked(path, contents)
+}
+
 pub fn atomic_write(path: &Path, contents: impl AsRef<[u8]>) -> Result<(), AppError> {
     with_file_lock(path, || {
         recover_missing_file_locked(path)?;
