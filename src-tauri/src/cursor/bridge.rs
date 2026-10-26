@@ -357,6 +357,7 @@ struct BidiSession {
     context_codes: Vec<(String, String)>,
     context_rules: Vec<(String, String)>,
     extra_context: Vec<String>,
+    images: Vec<crate::cursor::protocol::CursorImageData>,
     last_seqno: i64,
     created_at: std::time::Instant,
 }
@@ -440,6 +441,11 @@ impl BidiSession {
             .map(|(n, c)| n.len() + c.len())
             .sum::<usize>();
         total += self.extra_context.iter().map(|s| s.len()).sum::<usize>();
+        total += self
+            .images
+            .iter()
+            .map(|img| img.base64.len() + img.mime_type.len())
+            .sum::<usize>();
         total
     }
 }
@@ -1238,6 +1244,7 @@ async fn handle_bidi_append(req: Request) -> Response {
                 context_codes: Vec::new(),
                 context_rules: Vec::new(),
                 extra_context: Vec::new(),
+                images: Vec::new(),
                 last_seqno: -1,
                 created_at: std::time::Instant::now(),
             });
@@ -1280,6 +1287,9 @@ async fn handle_bidi_append(req: Request) -> Response {
             }
             if !decoded.extra_context.is_empty() {
                 candidate.extra_context = decoded.extra_context;
+            }
+            if !decoded.images.is_empty() {
+                candidate.images = decoded.images;
             }
         }
 
@@ -1414,10 +1424,11 @@ async fn handle_run_sse(req: Request) -> Response {
         };
 
         log::info!(
-            "Cursor RunSSE 开始向下游派发模型生成流, 模型: {}, 历史轮数: {}, 上下文文件数: {}, prompt 长度: {}",
+            "Cursor RunSSE 开始向下游派发模型生成流, 模型: {}, 历史轮数: {}, 上下文文件数: {}, 图片数: {}, prompt 长度: {}",
             model_to_use,
             session_data.history.len(),
             session_data.context_files.len(),
+            session_data.images.len(),
             session_data.user_prompt.len()
         );
 
@@ -1442,7 +1453,15 @@ async fn handle_run_sse(req: Request) -> Response {
         } else {
             format!("{}\n\n{}", user_context, session_data.user_prompt)
         };
-        messages.push(json!({"role": "user", "content": full_user_content}));
+
+        // P1 重构：使用提取的多模态内容构建函数
+        messages.push(json!({
+            "role": "user",
+            "content": crate::cursor::protocol::build_openai_multimodal_content(
+                &full_user_content,
+                &session_data.images
+            )
+        }));
 
         let openai_req = json!({
             "model": model_to_use,
@@ -1484,10 +1503,21 @@ async fn handle_run_sse(req: Request) -> Response {
             let err_status = upstream_res.status();
             let err_text = bounded_upstream_error(upstream_res).await;
             log::error!("RunSSE 上游报错 HTTP {}: {}", err_status, err_text);
-            let err_frame = create_connect_error_frame(
-                "internal",
-                &format!("【AI-Helper 上游报错】{}", err_text),
-            );
+            let display_err = if !session_data.images.is_empty()
+                && (err_status == StatusCode::BAD_REQUEST
+                    || err_text.contains("multimodal")
+                    || err_text.contains("image")
+                    || err_text.contains("vision")
+                    || err_text.contains("content"))
+            {
+                format!(
+                    "【AI-Helper 上游报错】{}\n\n💡 提示：当前请求包含图片，但上游模型（{}）可能不支持多模态视觉识别，请在 AI-Helper 中切换为支持图片识别的模型（如 Claude 3.5/3.7 Sonnet, GPT-4o 等）。",
+                    err_text, model_to_use
+                )
+            } else {
+                format!("【AI-Helper 上游报错】{}", err_text)
+            };
+            let err_frame = create_connect_error_frame("internal", &display_err);
             let _ = tx.send(Ok(Bytes::from(err_frame))).await;
             return;
         }
@@ -1607,10 +1637,11 @@ async fn handle_agent_run(req: Request) -> Response {
     };
 
     log::info!(
-        "Cursor Agent Run 开始派发模型生成流, 模型: {}, 历史轮数: {}, 上下文文件数: {}, prompt 长度: {}",
+        "Cursor Agent Run 开始派发模型生成流, 模型: {}, 历史轮数: {}, 上下文文件数: {}, 图片数: {}, prompt 长度: {}",
         model_to_use,
         decoded.history.len(),
         decoded.context_files.len(),
+        decoded.images.len(),
         decoded.user_text.len()
     );
 
@@ -1623,6 +1654,7 @@ async fn handle_agent_run(req: Request) -> Response {
         context_codes: decoded.context_codes.clone(),
         context_rules: decoded.context_rules.clone(),
         extra_context: decoded.extra_context.clone(),
+        images: decoded.images.clone(),
         last_seqno: 0,
         created_at: std::time::Instant::now(),
     };
@@ -1643,7 +1675,15 @@ async fn handle_agent_run(req: Request) -> Response {
     } else {
         format!("{}\n\n{}", user_context, decoded.user_text)
     };
-    messages.push(json!({"role": "user", "content": full_user_content}));
+
+    // P1 重构：使用提取的多模态内容构建函数
+    messages.push(json!({
+        "role": "user",
+        "content": crate::cursor::protocol::build_openai_multimodal_content(
+            &full_user_content,
+            &decoded.images
+        )
+    }));
 
     let openai_req = json!({
         "model": model_to_use,
@@ -1688,12 +1728,26 @@ async fn handle_agent_run(req: Request) -> Response {
         let err_status = upstream_res.status();
         let err_text = bounded_upstream_error(upstream_res).await;
         log::error!("Agent Run 上游报错 HTTP {}: {}", err_status, err_text);
+        let display_err = if !decoded.images.is_empty()
+            && (err_status == StatusCode::BAD_REQUEST
+                || err_text.contains("multimodal")
+                || err_text.contains("image")
+                || err_text.contains("vision")
+                || err_text.contains("content"))
+        {
+            format!(
+                "【AI-Helper 上游报错】{}\n\n💡 提示：当前请求包含图片，但上游模型（{}）可能不支持多模态视觉识别，请在 AI-Helper 中切换为支持图片识别的模型（如 Claude 3.5/3.7 Sonnet, GPT-4o 等）。",
+                err_text, model_to_use
+            )
+        } else {
+            format!("【AI-Helper 上游报错】{}", err_text)
+        };
         return Response::builder()
             .status(StatusCode::OK)
             .header(header::CONTENT_TYPE, content_type)
             .header("connect-protocol-version", "1")
             .body(Body::from(create_connect_error_stream(
-                &format!("【AI-Helper 上游报错】{}", err_text),
+                &display_err,
                 is_proto,
             )))
             .unwrap_or_else(|_| (StatusCode::INTERNAL_SERVER_ERROR, "error").into_response());
@@ -2250,6 +2304,7 @@ mod tests {
             context_codes: Vec::new(),
             context_rules: Vec::new(),
             extra_context: Vec::new(),
+            images: Vec::new(),
             last_seqno: 0,
             created_at: std::time::Instant::now(),
         }
@@ -2654,6 +2709,7 @@ mod tests {
                         context_codes: vec![],
                         context_rules: vec![],
                         extra_context: vec![],
+                        images: vec![],
                         last_seqno: 1,
                         created_at: std::time::Instant::now(),
                     },

@@ -15,3 +15,5 @@ pub use config::{
 };
 #[allow(unused_imports)]
 pub use patcher::{apply_patch, get_patch_status, restore_patch, CursorPatchInfo};
+#[allow(unused_imports)]
+pub use protocol::{build_openai_multimodal_content, CursorImageData};

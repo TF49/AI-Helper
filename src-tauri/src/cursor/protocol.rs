@@ -1,4 +1,6 @@
+use base64::Engine;
 use serde_json::{json, Value};
+use std::path::Path;
 
 /// 最大请求体大小（15MB），防御超大请求体 DoS
 pub const MAX_REQUEST_BODY_BYTES: usize = 15 * 1024 * 1024;
@@ -14,12 +16,169 @@ pub const MAX_EXTRA_CONTEXT_BYTES: usize = 50_000;
 pub const MAX_RULES_COUNT: usize = 10;
 /// 上下文提取的最大文件条数
 pub const MAX_FILES_COUNT: usize = 20;
+/// 单张图片最大字节数（8MB）
+pub const MAX_IMAGE_BYTES: usize = 8 * 1024 * 1024;
+/// 上下文提取的最大图片张数
+pub const MAX_IMAGES_COUNT: usize = 5;
 /// 上下文总字节数安全上限（200KB），防止下游模型上下文爆满
 pub const MAX_TOTAL_CONTEXT_BYTES: usize = 200_000;
 /// SSE 单行最大字节数（1MB），防止无换行符的恶意流
 pub const MAX_SSE_LINE_BYTES: usize = 1024 * 1024;
 /// 单次生成最大输出字节数（10MB），防止异常上游持续输出
 pub const MAX_GENERATION_BYTES: usize = 10 * 1024 * 1024;
+
+/// 用户上传或粘贴的图像上下文
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct CursorImageData {
+    pub mime_type: String,
+    pub base64: String,
+}
+
+/// 规整化图片的 MIME 类型，保证符合 RFC 2397 Data URL 标准
+pub fn normalize_image_mime(raw_mime: &str, raw_bytes: &[u8]) -> String {
+    let trimmed = raw_mime.trim().to_lowercase();
+    if !trimmed.is_empty() && trimmed.contains('/') {
+        return trimmed;
+    }
+    if !trimmed.is_empty() {
+        return format!("image/{}", trimmed);
+    }
+    if !raw_bytes.is_empty() {
+        if let Some(detected) = crate::image_fetch::detect_image_mime(raw_bytes) {
+            return detected.to_string();
+        }
+    }
+    "image/png".to_string()
+}
+
+/// 安全读取本地图片文件（防路径遍历、符号链接逃逸、TOCTOU 攻击）
+fn safe_read_local_image(raw_path: &str) -> Option<Vec<u8>> {
+    let clean = raw_path.trim().trim_start_matches("file://");
+    let path = Path::new(clean);
+
+    // 1. 规范化路径（解析 .. 和 .，阻止路径遍历）
+    let canonical = match path.canonicalize() {
+        Ok(p) => p,
+        Err(e) => {
+            log::debug!("图片路径规范化失败 [{}]: {}", clean, e);
+            return None;
+        }
+    };
+
+    // 2. 禁止符号链接（防止逃逸到工作区外）
+    if canonical.is_symlink() {
+        log::warn!("拒绝读取符号链接图片: {:?}", canonical);
+        return None;
+    }
+
+    // 3. 限制在安全白名单目录
+    // 允许：系统临时目录、用户主目录下的常见工作区路径
+    let allowed = if cfg!(target_os = "windows") {
+        // Windows: %TEMP%, %USERPROFILE%\Documents, %USERPROFILE%\Desktop, 任意盘符根目录下的非系统目录
+        let temp_dir = std::env::temp_dir();
+        let user_profile = std::env::var("USERPROFILE")
+            .ok()
+            .map(std::path::PathBuf::from);
+
+        canonical.starts_with(&temp_dir)
+            || user_profile
+                .as_ref()
+                .map(|profile| {
+                    canonical.starts_with(profile.join("Documents"))
+                        || canonical.starts_with(profile.join("Desktop"))
+                        || canonical.starts_with(profile.join("Downloads"))
+                        || canonical.starts_with(profile.join("Pictures"))
+                })
+                .unwrap_or(false)
+            || canonical
+                .components()
+                .take(2)
+                .all(|c| !matches!(c, std::path::Component::RootDir))
+    } else {
+        // Unix/macOS: /tmp, /var/tmp, $HOME, /Users (macOS), 当前工作目录
+        let temp_dir = std::env::temp_dir();
+        let home_dir = std::env::var("HOME").ok().map(std::path::PathBuf::from);
+
+        canonical.starts_with(&temp_dir)
+            || canonical.starts_with("/var/tmp")
+            || canonical.starts_with("/Users")
+            || home_dir
+                .as_ref()
+                .map(|home| canonical.starts_with(home))
+                .unwrap_or(false)
+    };
+
+    if !allowed {
+        log::warn!("拒绝读取白名单外路径: {:?}", canonical);
+        return None;
+    }
+
+    // 4. 读取并原子验证（TOCTOU 防护：读取后立即验证，避免中间被替换）
+    let bytes = match std::fs::read(&canonical) {
+        Ok(b) => b,
+        Err(e) => {
+            log::debug!("读取图片文件失败 [{:?}]: {}", canonical, e);
+            return None;
+        }
+    };
+
+    // 5. 尺寸与格式双重校验
+    if bytes.len() > MAX_IMAGE_BYTES {
+        log::warn!(
+            "图片文件超过大小限制: {:?} ({} 字节)",
+            canonical,
+            bytes.len()
+        );
+        return None;
+    }
+
+    if crate::image_fetch::detect_image_mime(&bytes).is_none() {
+        log::warn!("图片文件格式检测失败（非有效图片）: {:?}", canonical);
+        return None;
+    }
+
+    log::debug!("成功读取本地图片: {:?} ({} 字节)", canonical, bytes.len());
+    Some(bytes)
+}
+
+/// 从 OpenAI messages 构建多模态请求（P1 重构：提取重复逻辑）
+///
+/// # 参数
+/// - `user_prompt`: 用户的文本提示（可能为空）
+/// - `images`: 已提取的图片数据列表
+///
+/// # 返回
+/// OpenAI 兼容的 content 字段（String 或 Array）
+pub fn build_openai_multimodal_content(user_prompt: &str, images: &[CursorImageData]) -> Value {
+    if images.is_empty() {
+        // 无图片：保持纯文本格式
+        return json!(user_prompt);
+    }
+
+    // 有图片：构建多模态数组
+    let effective_prompt = if user_prompt.trim().is_empty() {
+        "请识别并分析这张图片内容。".to_string()
+    } else {
+        user_prompt.to_string()
+    };
+
+    let mut content_parts: Vec<Value> = vec![json!({
+        "type": "text",
+        "text": effective_prompt
+    })];
+
+    for img in images {
+        content_parts.push(json!({
+            "type": "image_url",
+            "image_url": {
+                "url": format!("data:{};base64,{}", img.mime_type, img.base64),
+                "detail": "auto"  // TODO: 支持从配置读取（high 用于截图/OCR，auto 用于照片）
+            }
+        }));
+    }
+
+    json!(content_parts)
+}
 
 /// 转义 XML 标签属性（如 path="xxx"），避免注入破坏
 pub fn sanitize_tag_attribute(s: &str) -> String {
@@ -206,6 +365,16 @@ pub mod proto {
     pub struct ConversationHistoryUserContent {
         #[prost(message, optional, tag = "1")]
         pub text: Option<ConversationHistoryTextContent>,
+        #[prost(message, optional, tag = "2")]
+        pub image: Option<ConversationHistoryImageContent>,
+    }
+
+    #[derive(Clone, PartialEq, ::prost::Message)]
+    pub struct ConversationHistoryImageContent {
+        #[prost(string, tag = "1")]
+        pub data: String,
+        #[prost(string, optional, tag = "2")]
+        pub mime_type: Option<String>,
     }
 
     #[derive(Clone, PartialEq, ::prost::Message)]
@@ -245,7 +414,33 @@ pub mod proto {
     }
 
     #[derive(Clone, PartialEq, ::prost::Message)]
+    pub struct BlobIdWithData {
+        #[prost(bytes = "vec", tag = "1")]
+        pub blob_id: Vec<u8>,
+        #[prost(bytes = "vec", tag = "2")]
+        pub data: Vec<u8>,
+    }
+
+    #[derive(Clone, PartialEq, ::prost::Message)]
+    pub struct SelectedImage {
+        #[prost(bytes = "vec", optional, tag = "1")]
+        pub blob_id: Option<Vec<u8>>,
+        #[prost(string, tag = "2")]
+        pub uuid: String,
+        #[prost(string, tag = "3")]
+        pub path: String,
+        #[prost(string, tag = "7")]
+        pub mime_type: String,
+        #[prost(bytes = "vec", optional, tag = "8")]
+        pub data: Option<Vec<u8>>,
+        #[prost(message, optional, tag = "9")]
+        pub blob_id_with_data: Option<BlobIdWithData>,
+    }
+
+    #[derive(Clone, PartialEq, ::prost::Message)]
     pub struct SelectedContext {
+        #[prost(message, repeated, tag = "1")]
+        pub selected_images: Vec<SelectedImage>,
         #[prost(string, repeated, tag = "3")]
         pub extra_context: Vec<String>,
         #[prost(message, repeated, tag = "4")]
@@ -819,6 +1014,8 @@ pub struct DecodedBidiMessage {
     pub context_rules: Vec<(String, String)>,
     /// 额外的文本上下文
     pub extra_context: Vec<String>,
+    /// 当前请求附带的用户上传/粘贴图片
+    pub images: Vec<CursorImageData>,
 }
 
 /// 解析 AgentRunRequest 核心内容（提取历史对话、用户消息与工作区上下文）
@@ -845,6 +1042,7 @@ pub fn parse_agent_run_request(
     let mut context_codes = Vec::new();
     let mut context_rules = Vec::new();
     let mut extra_context = Vec::new();
+    let mut images = Vec::new();
 
     if let Some(action) = run_req.action {
         if let Some(user_action) = action.user_message_action {
@@ -860,6 +1058,14 @@ pub fn parse_agent_run_request(
                                         combined.push('\n');
                                     }
                                     combined.push_str(&t.text);
+                                }
+                            }
+                            if let Some(img) = c.image {
+                                if !img.data.is_empty() {
+                                    if !combined.is_empty() {
+                                        combined.push('\n');
+                                    }
+                                    combined.push_str("[Attached Image in History]");
                                 }
                             }
                         }
@@ -900,6 +1106,40 @@ pub fn parse_agent_run_request(
                 user_text = u_msg.text;
 
                 if let Some(sel) = u_msg.selected_context {
+                    for img in sel.selected_images.into_iter().take(MAX_IMAGES_COUNT) {
+                        let mut raw_bytes = img
+                            .blob_id_with_data
+                            .map(|b| b.data)
+                            .or(img.data)
+                            .unwrap_or_default();
+
+                        // 兜底：若载荷未直接携带字节流，但提供了本地磁盘文件路径，尝试安全读取（防路径遍历）
+                        if raw_bytes.is_empty() && !img.path.trim().is_empty() {
+                            if let Some(file_bytes) = safe_read_local_image(&img.path) {
+                                raw_bytes = file_bytes;
+                            }
+                        }
+
+                        if !raw_bytes.is_empty() && raw_bytes.len() <= MAX_IMAGE_BYTES {
+                            // 验证是否为有效图片格式
+                            if crate::image_fetch::detect_image_mime(&raw_bytes).is_none() {
+                                log::warn!(
+                                    "图片 {} 格式检测失败，跳过（声明 MIME={}，实际前 16 字节={:?}）",
+                                    img.uuid,
+                                    img.mime_type,
+                                    &raw_bytes.get(..16).unwrap_or(&[])
+                                );
+                                continue;
+                            }
+                            let mime = normalize_image_mime(&img.mime_type, &raw_bytes);
+                            let b64 = base64::engine::general_purpose::STANDARD.encode(&raw_bytes);
+                            images.push(CursorImageData {
+                                mime_type: mime,
+                                base64: b64,
+                            });
+                        }
+                    }
+
                     let mut total_context_bytes = 0usize;
 
                     for f in sel.files.into_iter().take(MAX_FILES_COUNT) {
@@ -966,6 +1206,7 @@ pub fn parse_agent_run_request(
         context_codes,
         context_rules,
         extra_context,
+        images,
     }
 }
 
@@ -1103,6 +1344,7 @@ fn decode_single_bidi_append_payload(payload_bytes: &[u8]) -> Option<DecodedBidi
                 context_codes: Vec::new(),
                 context_rules: Vec::new(),
                 extra_context: Vec::new(),
+                images: Vec::new(),
             });
         }
     }
@@ -1183,12 +1425,77 @@ fn decode_single_bidi_append_payload(payload_bytes: &[u8]) -> Option<DecodedBidi
         let mut context_codes = Vec::new();
         let mut context_rules = Vec::new();
         let mut extra_context = Vec::new();
+        let mut images = Vec::new();
         let mut total_context_bytes = 0usize;
 
         if let Some(ctx_val) = val
             .get("selectedContext")
             .or_else(|| val.get("selected_context"))
         {
+            if let Some(img_list) = ctx_val
+                .get("selectedImages")
+                .or_else(|| ctx_val.get("selected_images"))
+                .and_then(|i| i.as_array())
+            {
+                for img_node in img_list.iter().take(MAX_IMAGES_COUNT) {
+                    let raw_mime = img_node
+                        .get("mimeType")
+                        .or_else(|| img_node.get("mime_type"))
+                        .and_then(|m| m.as_str())
+                        .unwrap_or("");
+
+                    let b64_opt = img_node.get("data").and_then(|d| d.as_str()).or_else(|| {
+                        img_node
+                            .get("blobIdWithData")
+                            .or_else(|| img_node.get("blob_id_with_data"))
+                            .and_then(|b| b.get("data"))
+                            .and_then(|d| d.as_str())
+                    });
+
+                    // P0 修复：Base64 解码前增加长度预检（防止超大字符串绕过内存限制）
+                    let max_b64_len = MAX_IMAGE_BYTES * 4 / 3 + 4; // 考虑填充
+                    let mut b64_res = if let Some(b64) = b64_opt {
+                        let trimmed = b64.trim();
+                        if !trimmed.is_empty() && trimmed.len() <= max_b64_len {
+                            Some(trimmed.to_string())
+                        } else {
+                            if trimmed.len() > max_b64_len {
+                                log::warn!("拒绝过长的 Base64 图片数据: {} 字节", trimmed.len());
+                            }
+                            None
+                        }
+                    } else {
+                        None
+                    };
+
+                    let mut detected_mime = raw_mime.to_string();
+                    if b64_res.is_none() {
+                        if let Some(path_str) = img_node.get("path").and_then(|p| p.as_str()) {
+                            // P0 修复：使用安全的文件读取函数（防路径遍历）
+                            if let Some(file_bytes) = safe_read_local_image(path_str) {
+                                if let Some(m) = crate::image_fetch::detect_image_mime(&file_bytes)
+                                {
+                                    if detected_mime.is_empty() {
+                                        detected_mime = m.to_string();
+                                    }
+                                    b64_res = Some(
+                                        base64::engine::general_purpose::STANDARD
+                                            .encode(&file_bytes),
+                                    );
+                                }
+                            }
+                        }
+                    }
+
+                    if let Some(b64) = b64_res {
+                        let mime = normalize_image_mime(&detected_mime, &[]);
+                        images.push(CursorImageData {
+                            mime_type: mime,
+                            base64: b64,
+                        });
+                    }
+                }
+            }
             if let Some(files) = ctx_val.get("files").and_then(|f| f.as_array()) {
                 for f in files.iter().take(MAX_FILES_COUNT) {
                     if let (Some(path), Some(content)) = (
@@ -1275,7 +1582,11 @@ fn decode_single_bidi_append_payload(payload_bytes: &[u8]) -> Option<DecodedBidi
             .and_then(|s| s.as_i64())
             .unwrap_or(0);
 
-        if !request_id.is_empty() || !user_text.is_empty() || !history.is_empty() {
+        if !request_id.is_empty()
+            || !user_text.is_empty()
+            || !history.is_empty()
+            || !images.is_empty()
+        {
             return Some(DecodedBidiMessage {
                 request_id,
                 seqno,
@@ -1287,6 +1598,7 @@ fn decode_single_bidi_append_payload(payload_bytes: &[u8]) -> Option<DecodedBidi
                 context_codes,
                 context_rules,
                 extra_context,
+                images,
             });
         }
     }
@@ -1364,6 +1676,9 @@ pub fn decode_bidi_append(bytes: &[u8]) -> Option<DecodedBidiMessage> {
                     }
                     if existing.extra_context.is_empty() && !msg.extra_context.is_empty() {
                         existing.extra_context = msg.extra_context;
+                    }
+                    if existing.images.is_empty() && !msg.images.is_empty() {
+                        existing.images = msg.images;
                     }
                     if msg.seqno > existing.seqno {
                         existing.seqno = msg.seqno;
@@ -1579,6 +1894,122 @@ pub fn cursor_to_openai_request(raw_body: &Value, fallback_model: &str) -> Value
         }
     }
 
+    // 3.5 提取工作区附带的图片并挂接至最后一条 user 消息（多模态 Vision 支持）
+    let mut vision_images: Vec<CursorImageData> = Vec::new();
+    let sel_ctx = raw_body
+        .get("selectedContext")
+        .or_else(|| raw_body.get("selected_context"));
+    if let Some(ctx) = sel_ctx {
+        if let Some(imgs) = ctx
+            .get("selectedImages")
+            .or_else(|| ctx.get("selected_images"))
+            .and_then(|i| i.as_array())
+        {
+            for img in imgs.iter().take(MAX_IMAGES_COUNT) {
+                let raw_mime = img
+                    .get("mimeType")
+                    .or_else(|| img.get("mime_type"))
+                    .and_then(|m| m.as_str())
+                    .unwrap_or("");
+
+                let b64 = img.get("data").and_then(|d| d.as_str()).or_else(|| {
+                    img.get("blobIdWithData")
+                        .or_else(|| img.get("blob_id_with_data"))
+                        .and_then(|b| b.get("data"))
+                        .and_then(|d| d.as_str())
+                });
+
+                let mut b64_res = if let Some(data) = b64 {
+                    let trimmed = data.trim();
+                    if !trimmed.is_empty() && trimmed.len() <= MAX_IMAGE_BYTES * 4 / 3 {
+                        Some(trimmed.to_string())
+                    } else {
+                        None
+                    }
+                } else {
+                    None
+                };
+
+                let mut detected_mime = raw_mime.to_string();
+                if b64_res.is_none() {
+                    if let Some(path_str) = img.get("path").and_then(|p| p.as_str()) {
+                        let clean_path = path_str.trim().trim_start_matches("file://");
+                        if let Ok(file_bytes) = std::fs::read(clean_path) {
+                            if file_bytes.len() <= MAX_IMAGE_BYTES {
+                                if let Some(m) = crate::image_fetch::detect_image_mime(&file_bytes)
+                                {
+                                    if detected_mime.is_empty() {
+                                        detected_mime = m.to_string();
+                                    }
+                                    b64_res = Some(
+                                        base64::engine::general_purpose::STANDARD
+                                            .encode(&file_bytes),
+                                    );
+                                }
+                            }
+                        }
+                    }
+                }
+
+                if let Some(data) = b64_res {
+                    let mime = normalize_image_mime(&detected_mime, &[]);
+                    vision_images.push(CursorImageData {
+                        mime_type: mime,
+                        base64: data,
+                    });
+                }
+            }
+        }
+    }
+
+    if !vision_images.is_empty() {
+        if let Some(last_msg) = messages
+            .iter_mut()
+            .rev()
+            .find(|m| m.get("role").and_then(|r| r.as_str()) == Some("user"))
+        {
+            let raw_text = last_msg
+                .get("content")
+                .and_then(|c| c.as_str())
+                .unwrap_or("")
+                .trim();
+            let effective_text = if raw_text.is_empty() {
+                "请识别并分析这张图片内容。"
+            } else {
+                raw_text
+            };
+            let mut parts = vec![json!({"type": "text", "text": effective_text})];
+            for img in vision_images {
+                parts.push(json!({
+                    "type": "image_url",
+                    "image_url": {
+                        "url": format!("data:{};base64,{}", img.mime_type, img.base64),
+                        "detail": "auto"
+                    }
+                }));
+            }
+            if let Some(map) = last_msg.as_object_mut() {
+                map.insert("content".to_string(), Value::Array(parts));
+            }
+        } else {
+            // 如果尚无 user 消息，直接创建包含图片的 user 消息
+            let mut parts = vec![json!({"type": "text", "text": "请识别并分析这张图片内容。"})];
+            for img in vision_images {
+                parts.push(json!({
+                    "type": "image_url",
+                    "image_url": {
+                        "url": format!("data:{};base64,{}", img.mime_type, img.base64),
+                        "detail": "auto"
+                    }
+                }));
+            }
+            messages.push(json!({
+                "role": "user",
+                "content": parts
+            }));
+        }
+    }
+
     // 4. 解析与规整目标模型
     let raw_model = raw_body
         .get("modelDetails")
@@ -1675,6 +2106,7 @@ pub mod tests {
     fn protobuf_and_json_context_budgets_include_long_paths_and_all_categories() {
         let path = "p".repeat(190_000);
         let selected = proto::SelectedContext {
+            selected_images: Vec::new(),
             files: vec![proto::SelectedFile {
                 path: path.clone(),
                 content: "x".into(),
@@ -1802,6 +2234,7 @@ pub mod tests {
                             text: "Explain async in Rust".to_string(),
                             message_id: "msg_123".to_string(),
                             selected_context: Some(proto::SelectedContext {
+                                selected_images: Vec::new(),
                                 extra_context: vec!["terminal output: success".to_string()],
                                 files: vec![proto::SelectedFile {
                                     content: "fn main() {}".to_string(),
@@ -1827,6 +2260,7 @@ pub mod tests {
                                             text: Some(proto::ConversationHistoryTextContent {
                                                 text: "Hello, who are you?".to_string(),
                                             }),
+                                            image: None,
                                         }],
                                     }),
                                     assistant: None,
@@ -2056,6 +2490,7 @@ pub mod tests {
                                         text: Some(proto::ConversationHistoryTextContent {
                                             text: "Why is sky blue?".to_string(),
                                         }),
+                                        image: None,
                                     }],
                                 }),
                                 assistant: Some(proto::ConversationHistoryAssistantMessage {
@@ -2136,5 +2571,190 @@ pub mod tests {
         assert_eq!(decoded.conversation_id.as_deref(), Some("conv-123"));
         assert_eq!(decoded.model.as_deref(), Some("gpt-5.6-sol"));
         assert_eq!(decoded.user_text, "Hello from Agent Run");
+    }
+
+    #[test]
+    fn test_decode_bidi_append_with_selected_images() {
+        let fake_png_bytes = vec![0x89, b'P', b'N', b'G', 0x0D, 0x0A, 0x1A, 0x0A, 1, 2, 3, 4];
+        let client_msg = proto::AgentClientMessage {
+            run_request: Some(proto::AgentRunRequest {
+                action: Some(proto::ConversationAction {
+                    user_message_action: Some(proto::UserMessageAction {
+                        user_message: Some(proto::UserMessage {
+                            text: "Explain this diagram".to_string(),
+                            selected_context: Some(proto::SelectedContext {
+                                selected_images: vec![proto::SelectedImage {
+                                    blob_id: None,
+                                    uuid: "img-uuid-001".to_string(),
+                                    path: "diagram.png".to_string(),
+                                    mime_type: "image/png".to_string(),
+                                    data: None,
+                                    blob_id_with_data: Some(proto::BlobIdWithData {
+                                        blob_id: b"sha256-blob".to_vec(),
+                                        data: fake_png_bytes.clone(),
+                                    }),
+                                }],
+                                ..Default::default()
+                            }),
+                            ..Default::default()
+                        }),
+                        ..Default::default()
+                    }),
+                }),
+                ..Default::default()
+            }),
+            conversation_action: None,
+        };
+
+        let bidi_req = proto::BidiAppendRequest {
+            data: hex::encode(client_msg.encode_to_vec()),
+            request_id: Some(proto::BidiRequestId {
+                request_id: "req_image_test".to_string(),
+            }),
+            append_seqno: 1,
+            data_binary: Vec::new(),
+        };
+
+        let framed = encode_connect_frame_raw(0x00, &bidi_req.encode_to_vec());
+        let decoded = decode_bidi_append(&framed).expect("must decode bidi with images");
+
+        assert_eq!(decoded.request_id, "req_image_test");
+        assert_eq!(decoded.user_text, "Explain this diagram");
+        assert_eq!(decoded.images.len(), 1);
+        assert_eq!(decoded.images[0].mime_type, "image/png");
+        assert_eq!(
+            decoded.images[0].base64,
+            base64::engine::general_purpose::STANDARD.encode(&fake_png_bytes)
+        );
+    }
+
+    #[test]
+    fn test_cursor_to_openai_request_with_and_without_images() {
+        // 1. 无图片请求保持纯文本字符串 content
+        let req_text_only = json!({
+            "messages": [
+                {"role": "user", "content": "Just text"}
+            ]
+        });
+        let res1 = cursor_to_openai_request(&req_text_only, "gpt-4o");
+        assert_eq!(res1["messages"][0]["content"], "Just text");
+
+        // 2. 带图片请求转为多模态数组 content
+        let req_with_image = json!({
+            "text": "What is in this screenshot?",
+            "selectedContext": {
+                "selectedImages": [
+                    {
+                        "mimeType": "image/jpeg",
+                        "data": "aGVsbG8gd29ybGQ="
+                    }
+                ]
+            }
+        });
+        let res2 = cursor_to_openai_request(&req_with_image, "gpt-4o");
+        let content = &res2["messages"][0]["content"];
+        assert!(content.is_array());
+        let arr = content.as_array().unwrap();
+        assert_eq!(arr.len(), 2);
+        assert_eq!(arr[0]["type"], "text");
+        assert_eq!(arr[0]["text"], "What is in this screenshot?");
+        assert_eq!(arr[1]["type"], "image_url");
+        assert_eq!(
+            arr[1]["image_url"]["url"],
+            "data:image/jpeg;base64,aGVsbG8gd29ybGQ="
+        );
+        assert_eq!(arr[1]["image_url"]["detail"], "auto");
+
+        // 3. 仅附带图片、用户文本为空时的兜底提示词注入
+        let req_empty_text_with_image = json!({
+            "text": "   ",
+            "selectedContext": {
+                "selectedImages": [
+                    {
+                        "mimeType": "png",
+                        "data": "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAAAAAA6fptVAAAACklEQVR4nGNiAAAABgADNjd8qAAAAABJRU5ErkJggg=="
+                    }
+                ]
+            }
+        });
+        let res3 = cursor_to_openai_request(&req_empty_text_with_image, "gpt-4o");
+        let content3 = &res3["messages"][0]["content"];
+        assert!(content3.is_array());
+        let arr3 = content3.as_array().unwrap();
+        assert_eq!(arr3[0]["text"], "请识别并分析这张图片内容。");
+        assert!(arr3[1]["image_url"]["url"]
+            .as_str()
+            .unwrap()
+            .starts_with("data:image/png;base64,"));
+    }
+
+    #[test]
+    fn test_normalize_image_mime() {
+        assert_eq!(normalize_image_mime("image/png", &[]), "image/png");
+        assert_eq!(normalize_image_mime("jpeg", &[]), "image/jpeg");
+        assert_eq!(normalize_image_mime("PNG", &[]), "image/png");
+
+        let fake_png = [0x89, b'P', b'N', b'G', 0, 0];
+        assert_eq!(normalize_image_mime("", &fake_png), "image/png");
+
+        let fake_jpg = [0xFF, 0xD8, 0xFF, 0, 0];
+        assert_eq!(normalize_image_mime("", &fake_jpg), "image/jpeg");
+
+        assert_eq!(normalize_image_mime("", &[]), "image/png");
+    }
+
+    #[test]
+    fn test_decode_bidi_append_disk_fallback() {
+        // 创建临时真实图片文件测试本地磁盘 fallback 读取机制
+        let dir = tempfile::tempdir().unwrap();
+        let file_path = dir.path().join("test_shot.png");
+        let fake_png = vec![0x89, b'P', b'N', b'G', 0x0D, 0x0A, 0x1A, 0x0A, 1, 2, 3, 4];
+        std::fs::write(&file_path, &fake_png).unwrap();
+
+        let client_msg = proto::AgentClientMessage {
+            run_request: Some(proto::AgentRunRequest {
+                action: Some(proto::ConversationAction {
+                    user_message_action: Some(proto::UserMessageAction {
+                        user_message: Some(proto::UserMessage {
+                            text: "Check this screenshot file".to_string(),
+                            selected_context: Some(proto::SelectedContext {
+                                selected_images: vec![proto::SelectedImage {
+                                    blob_id: None,
+                                    uuid: "img-002".to_string(),
+                                    path: file_path.to_string_lossy().to_string(),
+                                    mime_type: "".to_string(),
+                                    data: None,
+                                    blob_id_with_data: None,
+                                }],
+                                ..Default::default()
+                            }),
+                            ..Default::default()
+                        }),
+                        ..Default::default()
+                    }),
+                }),
+                ..Default::default()
+            }),
+            conversation_action: None,
+        };
+
+        let bidi_req = proto::BidiAppendRequest {
+            data: hex::encode(client_msg.encode_to_vec()),
+            request_id: Some(proto::BidiRequestId {
+                request_id: "req_disk_fallback".to_string(),
+            }),
+            append_seqno: 1,
+            data_binary: Vec::new(),
+        };
+
+        let framed = encode_connect_frame_raw(0x00, &bidi_req.encode_to_vec());
+        let decoded = decode_bidi_append(&framed).expect("must decode");
+
+        assert_eq!(decoded.images.len(), 1);
+        assert_eq!(decoded.images[0].mime_type, "image/png");
+        assert_eq!(
+            decoded.images[0].base64,
+            base64::engine::general_purpose::STANDARD.encode(&fake_png)
+        );
     }
 }
