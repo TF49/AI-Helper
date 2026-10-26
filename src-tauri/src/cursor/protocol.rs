@@ -53,11 +53,13 @@ pub fn normalize_image_mime(raw_mime: &str, raw_bytes: &[u8]) -> String {
 
 /// 安全读取本地图片文件（防路径遍历、符号链接逃逸、TOCTOU 攻击）
 fn safe_read_local_image(raw_path: &str) -> Option<Vec<u8>> {
-    let mut clean = raw_path.trim().trim_start_matches("file://");
+    let clean = raw_path.trim().trim_start_matches("file://");
     #[cfg(target_os = "windows")]
-    if clean.starts_with('/') && clean.len() >= 3 && clean.as_bytes()[2] == b':' {
-        clean = &clean[1..];
-    }
+    let clean = if clean.starts_with('/') && clean.len() >= 3 && clean.as_bytes()[2] == b':' {
+        &clean[1..]
+    } else {
+        clean
+    };
     let path = Path::new(clean);
 
     // 1. 规范化路径（解析 .. 和 .，阻止路径遍历）
