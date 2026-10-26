@@ -53,7 +53,11 @@ pub fn normalize_image_mime(raw_mime: &str, raw_bytes: &[u8]) -> String {
 
 /// 安全读取本地图片文件（防路径遍历、符号链接逃逸、TOCTOU 攻击）
 fn safe_read_local_image(raw_path: &str) -> Option<Vec<u8>> {
-    let clean = raw_path.trim().trim_start_matches("file://");
+    let mut clean = raw_path.trim().trim_start_matches("file://");
+    #[cfg(target_os = "windows")]
+    if clean.starts_with('/') && clean.len() >= 3 && clean.as_bytes()[2] == b':' {
+        clean = &clean[1..];
+    }
     let path = Path::new(clean);
 
     // 1. 规范化路径（解析 .. 和 .，阻止路径遍历）
@@ -65,52 +69,84 @@ fn safe_read_local_image(raw_path: &str) -> Option<Vec<u8>> {
         }
     };
 
-    // 2. 禁止符号链接（防止逃逸到工作区外）
-    if canonical.is_symlink() {
-        log::warn!("拒绝读取符号链接图片: {:?}", canonical);
+    if !canonical.is_file() {
+        log::debug!("目标路径不是普通文件: {:?}", canonical);
         return None;
     }
 
-    // 3. 限制在安全白名单目录
-    // 允许：系统临时目录、用户主目录下的常见工作区路径
-    let allowed = if cfg!(target_os = "windows") {
-        // Windows: %TEMP%, %USERPROFILE%\Documents, %USERPROFILE%\Desktop, 任意盘符根目录下的非系统目录
-        let temp_dir = std::env::temp_dir();
-        let user_profile = std::env::var("USERPROFILE")
-            .ok()
-            .map(std::path::PathBuf::from);
+    // 2. 限制在安全白名单目录
+    // 允许：系统临时目录、用户主目录、当前工作目录等
+    let mut allowed_roots: Vec<std::path::PathBuf> = Vec::new();
 
-        canonical.starts_with(&temp_dir)
-            || user_profile
-                .as_ref()
-                .map(|profile| {
-                    canonical.starts_with(profile.join("Documents"))
-                        || canonical.starts_with(profile.join("Desktop"))
-                        || canonical.starts_with(profile.join("Downloads"))
-                        || canonical.starts_with(profile.join("Pictures"))
-                })
-                .unwrap_or(false)
-            || canonical
-                .components()
-                .take(2)
-                .all(|c| !matches!(c, std::path::Component::RootDir))
+    // 系统临时目录（Windows %TEMP%, Linux/macOS $TMPDIR 或 /tmp）
+    let temp_dir = std::env::temp_dir();
+    if let Ok(c) = temp_dir.canonicalize() {
+        allowed_roots.push(c);
     } else {
-        // Unix/macOS: /tmp, /var/tmp, $HOME, /Users (macOS), 当前工作目录
-        let temp_dir = std::env::temp_dir();
-        let home_dir = std::env::var("HOME").ok().map(std::path::PathBuf::from);
+        allowed_roots.push(temp_dir);
+    }
 
-        canonical.starts_with(&temp_dir)
-            || canonical.starts_with("/var/tmp")
-            || canonical.starts_with("/Users")
-            || home_dir
-                .as_ref()
-                .map(|home| canonical.starts_with(home))
-                .unwrap_or(false)
-    };
+    if let Some(home) = dirs::home_dir() {
+        if let Ok(c) = home.canonicalize() {
+            allowed_roots.push(c);
+        } else {
+            allowed_roots.push(home);
+        }
+    }
+
+    if cfg!(target_os = "windows") {
+        if let Ok(profile) = std::env::var("USERPROFILE") {
+            let p = std::path::PathBuf::from(profile);
+            if let Ok(c) = p.canonicalize() {
+                allowed_roots.push(c);
+            } else {
+                allowed_roots.push(p);
+            }
+        }
+    } else {
+        if let Ok(c) = std::path::Path::new("/tmp").canonicalize() {
+            allowed_roots.push(c);
+        }
+        if let Ok(c) = std::path::Path::new("/var/tmp").canonicalize() {
+            allowed_roots.push(c);
+        }
+        #[cfg(target_os = "macos")]
+        if let Ok(c) = std::path::Path::new("/Users").canonicalize() {
+            allowed_roots.push(c);
+        }
+        if let Ok(home) = std::env::var("HOME") {
+            let p = std::path::PathBuf::from(home);
+            if let Ok(c) = p.canonicalize() {
+                allowed_roots.push(c);
+            } else {
+                allowed_roots.push(p);
+            }
+        }
+    }
+
+    if let Ok(cwd) = std::env::current_dir() {
+        if let Ok(c) = cwd.canonicalize() {
+            allowed_roots.push(c);
+        }
+    }
+
+    let allowed = allowed_roots.iter().any(|root| canonical.starts_with(root));
 
     if !allowed {
         log::warn!("拒绝读取白名单外路径: {:?}", canonical);
         return None;
+    }
+
+    // 3. 读取前文件大小预检（防止将超大文件读入内存）
+    if let Ok(metadata) = std::fs::metadata(&canonical) {
+        if metadata.len() > MAX_IMAGE_BYTES as u64 {
+            log::warn!(
+                "图片文件超过大小限制: {:?} ({} 字节)",
+                canonical,
+                metadata.len()
+            );
+            return None;
+        }
     }
 
     // 4. 读取并原子验证（TOCTOU 防护：读取后立即验证，避免中间被替换）
@@ -2756,5 +2792,32 @@ pub mod tests {
             decoded.images[0].base64,
             base64::engine::general_purpose::STANDARD.encode(&fake_png)
         );
+    }
+
+    #[test]
+    fn test_safe_read_local_image_validations() {
+        let dir = tempfile::tempdir().unwrap();
+
+        // 1. 正常有效图片
+        let valid_img_path = dir.path().join("shot.png");
+        let fake_png = vec![0x89, b'P', b'N', b'G', 0x0D, 0x0A, 0x1A, 0x0A, 1, 2, 3, 4];
+        std::fs::write(&valid_img_path, &fake_png).unwrap();
+
+        let read_bytes = safe_read_local_image(&valid_img_path.to_string_lossy());
+        assert_eq!(read_bytes, Some(fake_png.clone()));
+
+        // 2. 带 file:// 协议头正常读取
+        let file_url = format!("file://{}", valid_img_path.to_string_lossy());
+        let read_url_bytes = safe_read_local_image(&file_url);
+        assert_eq!(read_url_bytes, Some(fake_png));
+
+        // 3. 非图片格式文件（防任意文件读取攻击）
+        let text_path = dir.path().join("sensitive.txt");
+        std::fs::write(&text_path, b"SECRET_PASSWORD_OR_TOKEN").unwrap();
+        assert!(safe_read_local_image(&text_path.to_string_lossy()).is_none());
+
+        // 4. 不存在的文件路径
+        let nonexistent = dir.path().join("not_found.png");
+        assert!(safe_read_local_image(&nonexistent.to_string_lossy()).is_none());
     }
 }
