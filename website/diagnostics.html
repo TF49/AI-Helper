@@ -732,6 +732,237 @@
       font-family: var(--font-mono);
       word-break: break-all;
     }
+
+    /* ── 登录模态框与登录态组件样式 ── */
+    .login-backdrop {
+      z-index: 10000;
+      background: rgba(5, 8, 18, 0.82);
+      backdrop-filter: blur(14px);
+      -webkit-backdrop-filter: blur(14px);
+      transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+
+    .login-card {
+      background: var(--surface);
+      border: 1px solid var(--border-strong);
+      border-radius: 16px;
+      width: 100%;
+      max-width: 440px;
+      padding: 32px 28px 26px;
+      box-shadow: 0 25px 60px rgba(0, 0, 0, 0.6), 0 0 40px var(--primary-glow);
+      position: relative;
+      transform: scale(0.95);
+      opacity: 0;
+      transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+
+    .login-backdrop.open .login-card {
+      transform: scale(1);
+      opacity: 1;
+    }
+
+    .login-card-header {
+      text-align: center;
+      margin-bottom: 24px;
+    }
+
+    .login-logo-wrap {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 54px;
+      height: 54px;
+      border-radius: 14px;
+      background: var(--surface-light);
+      border: 1px solid var(--border-strong);
+      margin-bottom: 12px;
+      box-shadow: 0 8px 20px rgba(0, 0, 0, 0.25);
+    }
+
+    .login-logo {
+      width: 34px;
+      height: 34px;
+    }
+
+    .login-title {
+      font-size: 1.25rem;
+      font-weight: 700;
+      color: var(--text);
+      letter-spacing: -0.01em;
+      margin-bottom: 6px;
+    }
+
+    .login-subtitle {
+      font-size: 0.8rem;
+      color: var(--text-faint);
+      line-height: 1.4;
+    }
+
+    .login-error-alert {
+      background: rgba(239, 68, 68, 0.12);
+      border: 1px solid var(--danger);
+      color: #fca5a5;
+      padding: 10px 14px;
+      border-radius: 8px;
+      font-size: 0.8rem;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 18px;
+      animation: alertShake 0.35s ease;
+    }
+
+    @keyframes alertShake {
+      0%, 100% { transform: translateX(0); }
+      20%, 60% { transform: translateX(-6px); }
+      40%, 80% { transform: translateX(6px); }
+    }
+
+    .login-form {
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    .input-with-icon {
+      position: relative;
+      display: flex;
+      align-items: center;
+    }
+
+    .input-with-icon .input-icon {
+      position: absolute;
+      left: 12px;
+      font-size: 0.95rem;
+      color: var(--text-faint);
+      pointer-events: none;
+      z-index: 2;
+    }
+
+    .input-with-icon .form-input {
+      padding-left: 38px;
+      padding-right: 38px;
+    }
+
+    .btn-icon-addon {
+      position: absolute;
+      right: 10px;
+      background: none;
+      border: none;
+      color: var(--text-faint);
+      cursor: pointer;
+      font-size: 0.95rem;
+      padding: 4px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: color 0.15s ease;
+      z-index: 2;
+    }
+
+    .btn-icon-addon:hover {
+      color: var(--text);
+    }
+
+    .login-options-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-size: 0.78rem;
+      color: var(--text-muted);
+      margin-top: -2px;
+    }
+
+    .checkbox-label {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      cursor: pointer;
+      user-select: none;
+    }
+
+    .checkbox-label input {
+      cursor: pointer;
+      accent-color: var(--primary);
+    }
+
+    .btn-login-submit {
+      margin-top: 6px;
+      padding: 11px 18px;
+      font-size: 0.92rem;
+      font-weight: 600;
+      letter-spacing: 0.02em;
+      box-shadow: 0 4px 15px var(--primary-glow);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+    }
+
+    .btn-login-submit:disabled {
+      opacity: 0.65;
+      cursor: not-allowed;
+    }
+
+    .login-spinner {
+      animation: spin 1s linear infinite;
+      display: inline-block;
+    }
+
+    @keyframes spin {
+      100% { transform: rotate(360deg); }
+    }
+
+    .login-footer-tip {
+      margin-top: 20px;
+      text-align: center;
+      font-size: 0.7rem;
+      color: var(--text-faint);
+      line-height: 1.4;
+    }
+
+    /* 顶部导航栏用户登录态胶囊 */
+    .user-auth-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: var(--surface-light);
+      border: 1px solid var(--border-strong);
+      border-radius: 20px;
+      padding: 3px 10px 3px 8px;
+      font-size: 0.76rem;
+      color: var(--text);
+      font-weight: 500;
+      box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
+    }
+
+    .auth-avatar {
+      font-size: 0.85rem;
+    }
+
+    .auth-username {
+      font-family: var(--font-mono);
+      color: var(--primary);
+      font-weight: 600;
+    }
+
+    .btn-logout-pill {
+      background: rgba(239, 68, 68, 0.12);
+      border: 1px solid rgba(239, 68, 68, 0.3);
+      color: #f87171;
+      border-radius: 12px;
+      padding: 2px 7px;
+      font-size: 0.7rem;
+      cursor: pointer;
+      margin-left: 4px;
+      transition: all 0.15s ease;
+    }
+
+    .btn-logout-pill:hover {
+      background: var(--danger);
+      color: #ffffff;
+      border-color: var(--danger);
+    }
   </style>
 </head>
 <body>
@@ -772,6 +1003,13 @@
         <button id="btn-manual-refresh" class="btn btn-sm" title="立即从服务端拉取最新真实数据">
           🔄 刷新大盘
         </button>
+
+        <!-- 当前登录用户信息及登出按钮 -->
+        <div class="user-auth-pill" id="user-auth-pill" style="display: none;" title="当前登录的管理员身份">
+          <span class="auth-avatar">👤</span>
+          <span id="nav-username" class="auth-username">admin</span>
+          <button id="btn-logout" class="btn-logout-pill" title="退出当前登录态">退出</button>
+        </div>
 
         <button id="theme-toggle-btn" class="btn btn-sm" title="切换暗色/亮色">
           🌓
@@ -1081,9 +1319,12 @@
           </div>
 
           <div class="form-group" style="padding-top: 10px; border-top: 1px solid var(--border);">
-            <label class="form-label">🔐 内部开发者大盘访问口令 (Admin Token)</label>
-            <div class="form-desc">用于调用大盘数据、查看所有用户设备列表与清空操作的身份凭证 (与 server/.env 中的 ADMIN_TOKEN 对应)</div>
-            <input type="password" id="cfg-admin-token" class="form-input" placeholder="请输入管理员口令">
+            <div style="display: flex; align-items: center; justify-content: space-between;">
+              <label class="form-label" style="margin-bottom: 0;">🔐 内部开发者登录凭证与鉴权口令 (Auth / Admin Token)</label>
+              <button type="button" id="btn-relogin" class="btn btn-sm" style="font-size: 0.74rem; padding: 2px 8px;">重新登录</button>
+            </div>
+            <div class="form-desc">用于调用大盘数据、查看所有用户设备列表与清空操作的身份凭证 (支持动态登录态 Token 或 server/.env 中的静态口令)</div>
+            <input type="password" id="cfg-admin-token" class="form-input" placeholder="请输入管理员登录凭据或访问口令">
           </div>
 
           <div class="form-group" style="padding-top: 10px; border-top: 1px solid var(--border);">
@@ -1116,6 +1357,61 @@
         </form>
       </div>
     </section>
+  </div>
+
+  <!-- ======================================================================= -->
+  <!-- 内部开发者身份登录弹窗 (Admin Login Modal)                               -->
+  <!-- ======================================================================= -->
+  <div id="login-modal" class="modal-backdrop login-backdrop">
+    <div class="login-card">
+      <div class="login-card-header">
+        <div class="login-logo-wrap">
+          <img src="assets/favicon.ico" alt="Logo" class="login-logo" onerror="this.style.display='none'">
+        </div>
+        <h2 class="login-title">内部开发者诊断监控中心</h2>
+        <p class="login-subtitle">请使用管理员账号密码登录以访问全网监控大盘</p>
+      </div>
+
+      <div id="login-error-alert" class="login-error-alert" style="display: none;">
+        <span class="error-icon">⚠️</span>
+        <span id="login-error-text">用户名或密码不正确</span>
+      </div>
+
+      <form id="login-form" class="login-form" onsubmit="return false;">
+        <div class="form-group">
+          <label class="form-label" for="login-username">管理员账号</label>
+          <div class="input-with-icon">
+            <span class="input-icon">👤</span>
+            <input type="text" id="login-username" class="form-input" placeholder="请输入管理员用户名 (默认: admin)" autocomplete="username" required>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label" for="login-password">登录密码</label>
+          <div class="input-with-icon">
+            <span class="input-icon">🔑</span>
+            <input type="password" id="login-password" class="form-input" placeholder="请输入登录密码" autocomplete="current-password" required>
+            <button type="button" id="btn-toggle-pwd" class="btn-icon-addon" title="显示/隐藏密码">👁️</button>
+          </div>
+        </div>
+
+        <div class="login-options-row">
+          <label class="checkbox-label">
+            <input type="checkbox" id="login-remember" checked>
+            <span>保持登录状态（30 天）</span>
+          </label>
+        </div>
+
+        <button type="submit" id="btn-login-submit" class="btn btn-primary btn-block btn-login-submit">
+          <span id="login-btn-spinner" class="login-spinner" style="display: none;">⏳</span>
+          <span id="login-btn-text">立即登录</span>
+        </button>
+      </form>
+
+      <div class="login-footer-tip">
+        🔒 仅限内部开发与运维团队使用 · 全流程数据加密与行为日志审计
+      </div>
+    </div>
   </div>
 
   <!-- ======================================================================= -->
@@ -1223,15 +1519,14 @@
     (function () {
       'use strict';
 
-      // ── 1. 服务地址自动适配 (若部署到同一 Express 端口，默认当前 origin) ──
+      // ── 1. 服务地址自动适配 (同源自动继承，避免暴露具体 IP) ──
       function getDefaultServerBase() {
         const saved = localStorage.getItem('ai_helper_telemetry_server_base');
         if (saved) return saved.trim();
-        // 若当前运行在自建服务 (Node 3001 端口或远程域名)，默认使用当前 origin
-        if (window.location.port === '3001' || (window.location.hostname && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1')) {
+        if (typeof window !== 'undefined' && window.location.protocol.startsWith('http')) {
           return window.location.origin;
         }
-        return 'http://64.118.130.216:3001';
+        return 'http://localhost:3001';
       }
 
       let currentServerBase = getDefaultServerBase();
@@ -1292,32 +1587,240 @@
         });
       });
 
-      // ── 5. 内部开发者身份鉴权与大盘数据拉取 ──
-      function getAdminToken() {
-        return localStorage.getItem('ai_helper_admin_token') || '';
+      // ── 5. 内部开发者身份认证与登录态管理 ──
+      const AUTH_STORAGE_KEYS = {
+        TOKEN: 'ai_helper_auth_token',
+        USER: 'ai_helper_auth_user',
+        EXPIRES: 'ai_helper_auth_expires',
+        LEGACY_TOKEN: 'ai_helper_admin_token',
+      };
+
+      function getAuthToken() {
+        return localStorage.getItem(AUTH_STORAGE_KEYS.TOKEN) ||
+               sessionStorage.getItem(AUTH_STORAGE_KEYS.TOKEN) ||
+               localStorage.getItem(AUTH_STORAGE_KEYS.LEGACY_TOKEN) ||
+               '';
+      }
+
+      function getAuthUser() {
+        try {
+          const str = localStorage.getItem(AUTH_STORAGE_KEYS.USER) || sessionStorage.getItem(AUTH_STORAGE_KEYS.USER);
+          return str ? JSON.parse(str) : null;
+        } catch {
+          return null;
+        }
+      }
+
+      function saveAuthState(token, user, expiresAt, remember) {
+        const storage = remember ? localStorage : sessionStorage;
+        // 先清理可能在另一个存储中的旧数据
+        localStorage.removeItem(AUTH_STORAGE_KEYS.TOKEN);
+        localStorage.removeItem(AUTH_STORAGE_KEYS.USER);
+        localStorage.removeItem(AUTH_STORAGE_KEYS.EXPIRES);
+        sessionStorage.removeItem(AUTH_STORAGE_KEYS.TOKEN);
+        sessionStorage.removeItem(AUTH_STORAGE_KEYS.USER);
+        sessionStorage.removeItem(AUTH_STORAGE_KEYS.EXPIRES);
+
+        storage.setItem(AUTH_STORAGE_KEYS.TOKEN, token);
+        storage.setItem(AUTH_STORAGE_KEYS.USER, JSON.stringify(user || { username: 'admin' }));
+        if (expiresAt) storage.setItem(AUTH_STORAGE_KEYS.EXPIRES, String(expiresAt));
+
+        // 同步兼顾旧配置
+        localStorage.setItem(AUTH_STORAGE_KEYS.LEGACY_TOKEN, token);
+        updateUserAuthUI();
+      }
+
+      function clearAuthState() {
+        localStorage.removeItem(AUTH_STORAGE_KEYS.TOKEN);
+        localStorage.removeItem(AUTH_STORAGE_KEYS.USER);
+        localStorage.removeItem(AUTH_STORAGE_KEYS.EXPIRES);
+        localStorage.removeItem(AUTH_STORAGE_KEYS.LEGACY_TOKEN);
+        sessionStorage.removeItem(AUTH_STORAGE_KEYS.TOKEN);
+        sessionStorage.removeItem(AUTH_STORAGE_KEYS.USER);
+        sessionStorage.removeItem(AUTH_STORAGE_KEYS.EXPIRES);
+        updateUserAuthUI();
       }
 
       function getAuthHeaders() {
-        return {
-          'Content-Type': 'application/json',
-          'x-admin-token': getAdminToken(),
-        };
+        const token = getAuthToken();
+        const headers = { 'Content-Type': 'application/json' };
+        if (token) {
+          headers['Authorization'] = `Bearer ${token}`;
+          headers['x-admin-token'] = token;
+        }
+        return headers;
       }
 
-      function promptForAdminToken() {
-        const val = prompt('🔐 【内部开发者身份验证】\n服务端已开启鉴权保护，请输入访问口令 (Admin Token)：', getAdminToken());
-        if (val && val.trim()) {
-          localStorage.setItem('ai_helper_admin_token', val.trim());
-          showToast('✓ 开发者口令已保存，正在重新加载...');
-          fetchAndRenderDashboard();
+      function updateUserAuthUI() {
+        const token = getAuthToken();
+        const user = getAuthUser();
+        const pill = document.getElementById('user-auth-pill');
+        const nameEl = document.getElementById('nav-username');
+        if (token && pill && nameEl) {
+          nameEl.textContent = user?.username || 'admin';
+          pill.style.display = 'inline-flex';
+        } else if (pill) {
+          pill.style.display = 'none';
         }
       }
+
+      // ── 登录弹窗元素与交互控制器 ──
+      const loginModal = document.getElementById('login-modal');
+      const loginErrorAlert = document.getElementById('login-error-alert');
+      const loginErrorText = document.getElementById('login-error-text');
+      const loginBtnSubmit = document.getElementById('btn-login-submit');
+      const loginBtnSpinner = document.getElementById('login-btn-spinner');
+      const loginBtnText = document.getElementById('login-btn-text');
+      const loginUsernameInput = document.getElementById('login-username');
+      const loginPasswordInput = document.getElementById('login-password');
+      const loginRememberInput = document.getElementById('login-remember');
+
+      function showLoginModal(errorMessage = '') {
+        if (!loginModal) return;
+        if (errorMessage) {
+          if (loginErrorText) loginErrorText.textContent = errorMessage;
+          if (loginErrorAlert) loginErrorAlert.style.display = 'flex';
+        } else if (loginErrorAlert) {
+          loginErrorAlert.style.display = 'none';
+        }
+
+        loginModal.classList.add('open');
+        setTimeout(() => {
+          if (loginUsernameInput && !loginUsernameInput.value) {
+            loginUsernameInput.focus();
+          } else if (loginPasswordInput) {
+            loginPasswordInput.focus();
+          }
+        }, 150);
+      }
+
+      function hideLoginModal() {
+        if (!loginModal) return;
+        loginModal.classList.remove('open');
+        if (loginErrorAlert) loginErrorAlert.style.display = 'none';
+      }
+
+      function handleAuthUnauthorized() {
+        const serverStatusPill = document.getElementById('server-status-pill');
+        const statusDot = document.getElementById('server-status-dot');
+        const statusText = document.getElementById('server-status-text');
+        if (statusDot) statusDot.className = 'status-dot error';
+        if (statusText) statusText.textContent = '🔒 登录态已过期 (401)';
+        clearAuthState();
+        showLoginModal('⚠️ 登录已过期或凭证无效，请输入管理员账号密码重新登录');
+      }
+
+      // 切换密码明暗显示
+      document.getElementById('btn-toggle-pwd')?.addEventListener('click', () => {
+        if (!loginPasswordInput) return;
+        const isPwd = loginPasswordInput.type === 'password';
+        loginPasswordInput.type = isPwd ? 'text' : 'password';
+        const btn = document.getElementById('btn-toggle-pwd');
+        if (btn) btn.textContent = isPwd ? '🙈' : '👁️';
+      });
+
+      // 登录表单提交处理
+      async function handleLoginSubmit() {
+        if (!loginUsernameInput || !loginPasswordInput || !loginBtnSubmit) return;
+        const username = loginUsernameInput.value.trim();
+        const password = loginPasswordInput.value.trim();
+        const remember = loginRememberInput ? loginRememberInput.checked : true;
+
+        if (!username) {
+          if (loginErrorText) loginErrorText.textContent = '请输入管理员账号';
+          if (loginErrorAlert) loginErrorAlert.style.display = 'flex';
+          loginUsernameInput.focus();
+          return;
+        }
+
+        if (!password) {
+          if (loginErrorText) loginErrorText.textContent = '请输入登录密码';
+          if (loginErrorAlert) loginErrorAlert.style.display = 'flex';
+          loginPasswordInput.focus();
+          return;
+        }
+
+        loginBtnSubmit.disabled = true;
+        if (loginBtnSpinner) loginBtnSpinner.style.display = 'inline-block';
+        if (loginBtnText) loginBtnText.textContent = '正在验证登录...';
+        if (loginErrorAlert) loginErrorAlert.style.display = 'none';
+
+        try {
+          const res = await fetch(`${currentServerBase}/api/auth/login`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ username, password, rememberMe: remember }),
+            signal: AbortSignal.timeout(6000),
+          });
+
+          const data = await res.json().catch(() => ({}));
+
+          if (res.status === 404) {
+            throw new Error('监控服务端未找到登录接口 (404)，请确认服务端代码已部署并启动。');
+          }
+          if (res.status === 401) {
+            throw new Error(data.error || '用户名或密码不正确');
+          }
+          if (!res.ok || !data.success) {
+            throw new Error(data.error || `请求失败 (HTTP ${res.status})`);
+          }
+
+          // 登录成功，沉淀持久登录态
+          saveAuthState(data.token, data.user || { username }, data.expiresAt, remember);
+          hideLoginModal();
+          showToast(`🎉 欢迎回来，${data.user?.username || username}！登录成功`);
+          loginPasswordInput.value = '';
+
+          // 刷新大盘
+          fetchAndRenderDashboard();
+        } catch (err) {
+          let msg = err.message || '';
+          if (err.name === 'AbortError') {
+            msg = '连接监控服务端请求超时，请检查后端服务是否正在运行。';
+          } else if (msg.includes('Failed to fetch') || msg.includes('NetworkError') || msg.includes('connect')) {
+            msg = '无法连接至监控服务端，请确认后端服务已启动或检查网络连接。';
+          }
+          if (loginErrorText) loginErrorText.textContent = msg;
+          if (loginErrorAlert) loginErrorAlert.style.display = 'flex';
+        } finally {
+          loginBtnSubmit.disabled = false;
+          if (loginBtnSpinner) loginBtnSpinner.style.display = 'none';
+          if (loginBtnText) loginBtnText.textContent = '立即登录';
+        }
+      }
+
+      document.getElementById('login-form')?.addEventListener('submit', (e) => {
+        e.preventDefault();
+        handleLoginSubmit();
+      });
+
+      // 退出登录按钮
+      document.getElementById('btn-logout')?.addEventListener('click', async () => {
+        if (!confirm('确定要退出当前管理员登录状态吗？')) return;
+        try {
+          await fetch(`${currentServerBase}/api/auth/logout`, {
+            method: 'POST',
+            headers: getAuthHeaders(),
+            signal: AbortSignal.timeout(3000),
+          });
+        } catch {}
+        clearAuthState();
+        showToast('已安全退出登录');
+        showLoginModal('您已退出登录，请重新登录以访问大盘');
+      });
 
       async function fetchAndRenderDashboard() {
         const startTime = performance.now();
         const serverStatusPill = document.getElementById('server-status-pill');
         const statusDot = document.getElementById('server-status-dot');
         const statusText = document.getElementById('server-status-text');
+
+        // 若无凭据直接展示登录框
+        const token = getAuthToken();
+        if (!token) {
+          showLoginModal();
+          return;
+        }
 
         try {
           const res = await fetch(`${currentServerBase}/api/telemetry/dashboard`, {
@@ -1327,9 +1830,7 @@
           const latency = Math.round(performance.now() - startTime);
 
           if (res.status === 401) {
-            statusDot.className = 'status-dot error';
-            statusText.textContent = '🔒 口令验证失败 (401)';
-            promptForAdminToken();
+            handleAuthUnauthorized();
             return;
           }
 
@@ -1523,7 +2024,7 @@
             headers: getAuthHeaders(),
           });
           if (res.status === 401) {
-            promptForAdminToken();
+            handleAuthUnauthorized();
             return;
           }
           if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -1655,7 +2156,7 @@
             headers: getAuthHeaders(),
           });
           if (res.status === 401) {
-            promptForAdminToken();
+            handleAuthUnauthorized();
             return;
           }
           if (!res.ok) throw new Error('Not found');
@@ -1899,7 +2400,7 @@
             headers: getAuthHeaders(),
           });
           if (res.status === 401) {
-            promptForAdminToken();
+            handleAuthUnauthorized();
             return;
           }
           if (res.ok) {
@@ -1918,7 +2419,7 @@
         if (input) input.value = currentServerBase;
 
         const tokenInput = document.getElementById('cfg-admin-token');
-        if (tokenInput) tokenInput.value = getAdminToken();
+        if (tokenInput) tokenInput.value = getAuthToken();
 
         const core = window.DiagnosticsCore;
         if (!core) return;
@@ -1927,6 +2428,10 @@
         if (feishuUrlInput) feishuUrlInput.value = core.config.feishuWebhookUrl || '';
         if (enableFeishuInput) enableFeishuInput.checked = Boolean(core.config.enableFeishuReport);
       }
+
+      document.getElementById('btn-relogin')?.addEventListener('click', () => {
+        showLoginModal();
+      });
 
       document.getElementById('btn-save-settings')?.addEventListener('click', (e) => {
         e.preventDefault();
@@ -1938,7 +2443,7 @@
 
         const tokenVal = (document.getElementById('cfg-admin-token')?.value || '').trim();
         if (tokenVal) {
-          localStorage.setItem('ai_helper_admin_token', tokenVal);
+          saveAuthState(tokenVal, getAuthUser() || { username: 'admin' }, Date.now() + 30 * 24 * 3600 * 1000, true);
         }
 
         const core = window.DiagnosticsCore;
@@ -2001,7 +2506,7 @@
           const res = await fetch(`${currentServerBase}/api/telemetry/dashboard`, { headers: getAuthHeaders() });
           const devRes = await fetch(`${currentServerBase}/api/telemetry/devices`, { headers: getAuthHeaders() });
           if (res.status === 401 || devRes.status === 401) {
-            promptForAdminToken();
+            handleAuthUnauthorized();
             return;
           }
           const dash = await res.json();
@@ -2149,8 +2654,11 @@
 
       // ── 13. 页面初始化启动 ──
       window.addEventListener('DOMContentLoaded', () => {
-        fetchAndRenderDashboard();
         updateAutoRefresh();
+        updateUserAuthUI();
+
+        // 直接拉取大盘，若未登录或凭据失效由服务端鉴权统一返回 401 触发登录
+        fetchAndRenderDashboard();
 
         // 监听本地核心报错，实时更新 UI
         window.DiagnosticsCore?.on('new-log', () => {

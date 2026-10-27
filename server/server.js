@@ -19,6 +19,7 @@ import mysql from 'mysql2/promise';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import rateLimit from 'express-rate-limit';
+import crypto from 'crypto';
 
 dotenv.config();
 
@@ -63,6 +64,15 @@ const adminLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   message: { success: false, error: 'Too many requests, please try again later' },
+});
+
+// 速率限制：登录接口 (每 IP 每分钟最多 15 次，防止暴力破解)
+const loginLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 15,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { success: false, error: '登录尝试过于频繁，请稍后再试' },
 });
 
 // 静态托管 website 目录，便于同一端口直达监控后台 (http://localhost:3001/diagnostics.html)
@@ -214,19 +224,21 @@ async function initDatabase(retryCount = 0, maxRetries = 8) {
 }
 
 // 后台定时自愈：若数据库离线，每隔 15 秒重新尝试连接一次
-setInterval(() => {
+const dbProbeTimer = setInterval(() => {
   if (!isDbConnected && !isInitializing) {
     void initDatabase(0, 1);
   }
 }, 15000);
+dbProbeTimer.unref?.();
 
 // -----------------------------------------------------------------------------
 // 1. 服务健康状态检查 (GET /api/health)
 // -----------------------------------------------------------------------------
 app.get('/api/health', async (req, res) => {
-  // 检查是否携带管理员 Token (可选认证，决定返回详情深度)
-  const token = req.headers['x-admin-token'];
-  const isAdmin = token && token === ADMIN_TOKEN;
+  // 检查是否携带管理员 Token 或有效登录态凭证
+  const token = extractToken(req);
+  const auth = verifyAuthToken(token);
+  const isAdmin = auth.valid || (Boolean(ADMIN_TOKEN) && token === ADMIN_TOKEN);
 
   let dbStatus = isDbConnected ? 'connected' : 'disconnected (memory fallback)';
   let detailedInfo = {};
@@ -249,7 +261,7 @@ app.get('/api/health', async (req, res) => {
   const response = {
     status: 'ok',
     service: 'AI-Helper Telemetry & Diagnostics Backend',
-    version: '1.0.0',
+    version: '1.1.0',
     mode: isDbConnected ? 'mysql' : 'memory_fallback',
     uptime_sec: Math.round(process.uptime()),
     database: {
@@ -262,24 +274,226 @@ app.get('/api/health', async (req, res) => {
   res.json(response);
 });
 
-// 内部开发者专属鉴权 Token (必须通过环境变量 ADMIN_TOKEN 配置)
+// -----------------------------------------------------------------------------
+// 认证与登录态管理体系 (账号密码 + HMAC-SHA256 会话 Token)
+// -----------------------------------------------------------------------------
+const ADMIN_USERNAME = process.env.ADMIN_USERNAME || 'admin';
+const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'admin123';
 const ADMIN_TOKEN = process.env.ADMIN_TOKEN;
-if (!ADMIN_TOKEN || ADMIN_TOKEN.length < 16) {
-  console.warn('[Security] ⚠️ ADMIN_TOKEN 未设置或长度不足 16 位！管理接口将拒绝所有请求。');
-  console.warn('[Security]     请在 server/.env 中设置强随机 Token:');
-  console.warn("[Security]     node -e \"console.log(require('crypto').randomBytes(32).toString('hex'))\"");
+const SESSION_SECRET = process.env.SESSION_SECRET || ADMIN_TOKEN || 'ai_helper_telemetry_jwt_secret_2026';
+
+// 已注销 Session Token 黑名单
+const revokedTokens = new Set();
+
+/**
+ * 安全比较密码 (常数时间防止时序攻击，支持明文及 SHA-256 哈希比对)
+ */
+function verifyPassword(inputPassword, storedPassword) {
+  if (!inputPassword || !storedPassword) return false;
+  const inputStr = String(inputPassword);
+  const storedStr = String(storedPassword);
+
+  if (/^[a-f0-9]{64}$/i.test(storedStr)) {
+    const hash = crypto.createHash('sha256').update(inputStr).digest('hex');
+    return crypto.timingSafeEqual(Buffer.from(hash), Buffer.from(storedStr.toLowerCase()));
+  }
+
+  const inputBuf = Buffer.from(inputStr);
+  const storedBuf = Buffer.from(storedStr);
+  if (inputBuf.length !== storedBuf.length) return false;
+  return crypto.timingSafeEqual(inputBuf, storedBuf);
 }
 
+/**
+ * 签发轻量级登录态 Token (HMAC-SHA256 签名)
+ */
+function createAuthToken(user, expiresInMs) {
+  const now = Date.now();
+  const payload = {
+    u: user.username,
+    r: user.role || 'admin',
+    iat: now,
+    exp: now + expiresInMs,
+    jti: crypto.randomBytes(8).toString('hex'),
+  };
+  const encodedPayload = Buffer.from(JSON.stringify(payload)).toString('base64url');
+  const signature = crypto.createHmac('sha256', SESSION_SECRET).update(encodedPayload).digest('base64url');
+  return `${encodedPayload}.${signature}`;
+}
+
+/**
+ * 校验登录态 Token 有效性
+ */
+function verifyAuthToken(tokenString) {
+  if (!tokenString || typeof tokenString !== 'string') return { valid: false };
+  if (revokedTokens.has(tokenString)) return { valid: false, error: 'Token has been revoked' };
+
+  const parts = tokenString.split('.');
+  if (parts.length !== 2) return { valid: false, error: 'Malformed token' };
+
+  const [encodedPayload, receivedSig] = parts;
+  const expectedSig = crypto.createHmac('sha256', SESSION_SECRET).update(encodedPayload).digest('base64url');
+
+  const receivedBuf = Buffer.from(receivedSig);
+  const expectedBuf = Buffer.from(expectedSig);
+  if (receivedBuf.length !== expectedBuf.length || !crypto.timingSafeEqual(receivedBuf, expectedBuf)) {
+    return { valid: false, error: 'Invalid signature' };
+  }
+
+  try {
+    const payload = JSON.parse(Buffer.from(encodedPayload, 'base64url').toString('utf8'));
+    if (!payload.exp || payload.exp <= Date.now()) {
+      return { valid: false, error: 'Token expired' };
+    }
+    return {
+      valid: true,
+      user: { username: payload.u, role: payload.r },
+      exp: payload.exp,
+    };
+  } catch {
+    return { valid: false, error: 'Invalid payload' };
+  }
+}
+
+/**
+ * 撤销/注销登录态 Token
+ */
+function revokeAuthToken(tokenString) {
+  if (tokenString) {
+    revokedTokens.add(tokenString);
+    if (revokedTokens.size > 10000) {
+      const first = revokedTokens.values().next().value;
+      revokedTokens.delete(first);
+    }
+  }
+}
+
+/**
+ * 提取请求凭据 (支持 Bearer Token、x-admin-token 请求头与 URL token 参数)
+ */
+function extractToken(req) {
+  if (!req) return null;
+  const authHeader = req.headers['authorization'];
+  if (authHeader && typeof authHeader === 'string' && authHeader.startsWith('Bearer ')) {
+    return authHeader.slice(7).trim();
+  }
+  if (req.headers['x-admin-token']) {
+    return String(req.headers['x-admin-token']).trim();
+  }
+  if (req.query && req.query.token) {
+    return String(req.query.token).trim();
+  }
+  return null;
+}
+
+/**
+ * 管理员权限拦截中间件 (兼容 Session Token 及静态 ADMIN_TOKEN)
+ */
 function requireAdminAuth(req, res, next) {
-  const token = req.headers['x-admin-token'];
-  if (!ADMIN_TOKEN || !token || token !== ADMIN_TOKEN) {
+  const token = extractToken(req);
+  if (!token) {
     return res.status(401).json({
       success: false,
-      error: 'Unauthorized: 请提供有效的内部开发者口令 (x-admin-token header)',
+      error: 'Unauthorized: 未提供登录凭证，请先登录',
     });
   }
-  next();
+
+  // 1. 优先校验动态 Session Token
+  const auth = verifyAuthToken(token);
+  if (auth.valid) {
+    req.user = auth.user;
+    return next();
+  }
+
+  // 2. 向下兼容静态 ADMIN_TOKEN (用于脚本自动化维护)
+  if (ADMIN_TOKEN && token === ADMIN_TOKEN) {
+    req.user = { username: ADMIN_USERNAME, role: 'admin' };
+    return next();
+  }
+
+  return res.status(401).json({
+    success: false,
+    error: 'Unauthorized: 登录态已失效或密码口令错误，请重新登录',
+  });
 }
+
+// -----------------------------------------------------------------------------
+// 认证接口处理函数 (支持独立导出与单元测试)
+// -----------------------------------------------------------------------------
+async function loginHandler(req, res) {
+  const { username, password, rememberMe } = req.body || {};
+  if (!username || !password) {
+    return res.status(400).json({ success: false, error: '请输入用户名与密码' });
+  }
+
+  const u = String(username).trim();
+  const p = String(password).trim();
+
+  // 验证用户名与密码
+  const isUsernameMatch = u === ADMIN_USERNAME;
+  const isPasswordMatch = verifyPassword(p, ADMIN_PASSWORD);
+
+  if (!isUsernameMatch || !isPasswordMatch) {
+    return res.status(401).json({ success: false, error: '用户名或密码不正确' });
+  }
+
+  // 记住我 30 天，否则 24 小时
+  const expiresInMs = rememberMe ? 30 * 24 * 3600 * 1000 : 24 * 3600 * 1000;
+  const token = createAuthToken({ username: ADMIN_USERNAME, role: 'admin' }, expiresInMs);
+  const expiresAt = Date.now() + expiresInMs;
+
+  return res.json({
+    success: true,
+    message: '登录成功',
+    token,
+    user: {
+      username: ADMIN_USERNAME,
+      role: 'admin',
+    },
+    expiresAt,
+  });
+}
+
+async function meHandler(req, res) {
+  const token = extractToken(req);
+  if (!token) {
+    return res.status(401).json({ success: false, error: '未登录' });
+  }
+
+  const auth = verifyAuthToken(token);
+  if (auth.valid) {
+    return res.json({
+      success: true,
+      user: auth.user,
+      expiresAt: auth.exp,
+    });
+  }
+
+  if (ADMIN_TOKEN && token === ADMIN_TOKEN) {
+    return res.json({
+      success: true,
+      user: { username: ADMIN_USERNAME, role: 'admin' },
+      expiresAt: Date.now() + 365 * 24 * 3600 * 1000,
+    });
+  }
+
+  return res.status(401).json({ success: false, error: '登录态无效或已过期' });
+}
+
+async function logoutHandler(req, res) {
+  const token = extractToken(req);
+  if (token) {
+    revokeAuthToken(token);
+  }
+  return res.json({ success: true, message: '已安全退出登录' });
+}
+
+// -----------------------------------------------------------------------------
+// 认证路由绑定
+// -----------------------------------------------------------------------------
+app.post(['/api/auth/login', '/api/telemetry/auth/login'], loginLimiter, loginHandler);
+app.get(['/api/auth/me', '/api/telemetry/auth/me'], meHandler);
+app.post(['/api/auth/logout', '/api/telemetry/auth/logout'], logoutHandler);
 
 // 自动数据生命周期清理 (定期清理超过 DATA_RETENTION_DAYS 天的历史心跳与旧报错，默认 90 天)
 async function cleanOldData() {
@@ -294,8 +508,10 @@ async function cleanOldData() {
     }
   }
 }
-setTimeout(cleanOldData, 60000);
-setInterval(cleanOldData, 24 * 3600 * 1000);
+const cleanTimerInitial = setTimeout(cleanOldData, 60000);
+cleanTimerInitial.unref?.();
+const cleanTimerInterval = setInterval(cleanOldData, 24 * 3600 * 1000);
+cleanTimerInterval.unref?.();
 
 // -----------------------------------------------------------------------------
 // 2. 核心上报接口：接收客户端诊断报告 (POST /api/telemetry/report)
@@ -792,18 +1008,37 @@ app.post('/api/telemetry/clear-test-data', adminLimiter, requireAdminAuth, async
 });
 
 // -----------------------------------------------------------------------------
-// 启动服务并尝试连接数据库
+// 启动服务并尝试连接数据库 (直接运行模式)
 // -----------------------------------------------------------------------------
-initDatabase().finally(() => {
-  app.listen(PORT, () => {
-    console.log(`====================================================`);
-    console.log(`🚀 AI-Helper 内部开发全量诊断监控服务已启动!`);
-    console.log(`📡 服务监听端口: http://localhost:${PORT}`);
-    console.log(`💻 监控控制台网页: http://localhost:${PORT}/diagnostics.html`);
-    console.log(`📊 全网大盘数据接口: http://localhost:${PORT}/api/telemetry/dashboard`);
-    console.log(`💻 用户设备档案列表: http://localhost:${PORT}/api/telemetry/devices`);
-    console.log(`📥 客户端诊断上报口: http://localhost:${PORT}/api/telemetry/report`);
-    console.log(`🏥 数据库健康检测端点: http://localhost:${PORT}/api/health`);
-    console.log(`====================================================`);
+const isDirectRun = Boolean(process.argv[1]) && path.resolve(fileURLToPath(import.meta.url)) === path.resolve(process.argv[1]);
+
+if (isDirectRun) {
+  initDatabase().finally(() => {
+    app.listen(PORT, '0.0.0.0', () => {
+      console.log(`====================================================`);
+      console.log(`🚀 AI-Helper 内部开发全量诊断监控服务已启动!`);
+      console.log(`📡 服务监听端口: http://localhost:${PORT}`);
+      console.log(`💻 监控控制台网页: http://localhost:${PORT}/diagnostics.html`);
+      console.log(`🔐 开发者登录认证口: http://localhost:${PORT}/api/auth/login (账号: ${ADMIN_USERNAME})`);
+      console.log(`📊 全网大盘数据接口: http://localhost:${PORT}/api/telemetry/dashboard`);
+      console.log(`💻 用户设备档案列表: http://localhost:${PORT}/api/telemetry/devices`);
+      console.log(`📥 客户端诊断上报口: http://localhost:${PORT}/api/telemetry/report`);
+      console.log(`🏥 数据库健康检测端点: http://localhost:${PORT}/api/health`);
+      console.log(`====================================================`);
+    });
   });
-});
+}
+
+export {
+  app,
+  initDatabase,
+  createAuthToken,
+  verifyAuthToken,
+  revokeAuthToken,
+  verifyPassword,
+  extractToken,
+  requireAdminAuth,
+  loginHandler,
+  meHandler,
+  logoutHandler,
+};

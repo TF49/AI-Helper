@@ -88,6 +88,10 @@ vim .env
 填入您的真实 MySQL 密码：
 ```ini
 PORT=3001
+ADMIN_USERNAME=admin
+ADMIN_PASSWORD=您的管理员密码
+SESSION_SECRET=您的随机Session加密密钥
+ADMIN_TOKEN=您的静态开发者Token
 DB_HOST=127.0.0.1
 DB_PORT=3306
 DB_USER=root
@@ -113,9 +117,12 @@ pm2 startup
 
 ## 五、开发者使用与客户端连接
 
-1. **访问开发者监控中心**：
-   - 直接访问：`http://<您的服务器IP>:3001/diagnostics.html`。
-   - 顶部状态点应显示：`🟢 MySQL 已连接 (Host: 127.0.0.1, 累计 N 台设备)`。
+1. **访问开发者监控中心与登录**：
+   - 打开浏览器访问：`http://<您的服务器IP>:3001/diagnostics.html`。
+   - 首次访问弹出管理员登录窗口，输入设置的 `ADMIN_USERNAME` 与 `ADMIN_PASSWORD`（默认 `admin` / `admin123`）。
+   - 支持勾选「保持登录状态（30 天）」，登录成功后自动颁发 HMAC-SHA256 签名 Session Token 并持久化登录态。
+   - 顶部导航栏显示当前登录管理员身份及「退出登录」按钮。
+   - 顶部状态指示点显示：`🟢 MySQL 已连接 (Host: 127.0.0.1, 累计 N 台设备)`。
 2. **大盘三大核心视图**：
    - **📊 监控分析大盘**：实时查看累计设备、DAU、今日频次、7天真实使用走势、24小时峰值、操作系统与版本分布。
    - **💻 真实用户设备档案库**：搜索全网任意用户的设备 ID，点击 **「🔍 诊断」** 即可查阅该用户的详细硬件配置、显卡驱动、屏幕分辨率、该设备发生过的所有历史报错。
