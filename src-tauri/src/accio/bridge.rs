@@ -48,6 +48,25 @@ pub fn current_instance_token() -> Option<String> {
     INSTANCE_TOKEN.lock().ok()?.clone()
 }
 
+/// 获取（必要时生成）实例凭据。凭据在 AI Helper 进程生命周期内保持不变，
+/// 使 Bridge 因改端口或重启而重新监听时，已注入旧凭据的 Accio 进程无需重启即可继续访问。
+fn ensure_instance_token() -> String {
+    let mut guard = INSTANCE_TOKEN.lock().unwrap_or_else(|e| e.into_inner());
+    guard
+        .get_or_insert_with(crate::instance_auth::generate_instance_token)
+        .clone()
+}
+
+/// 注入给 Accio 的网关根地址：`http://127.0.0.1:<port>/i/<token>`。
+/// Accio 以字符串拼接方式在其后追加 `/api/...`，凭据随路径到达 Bridge 并在路由前被校验、剥离。
+pub fn accio_gateway_base_url(port: u16) -> Option<String> {
+    let token = current_instance_token()?;
+    Some(format!(
+        "http://127.0.0.1:{port}{}{token}",
+        crate::instance_auth::INSTANCE_PATH_PREFIX
+    ))
+}
+
 const MODEL_LIST_TTL: Duration = Duration::from_secs(300);
 
 static IS_REFRESHING: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
@@ -454,26 +473,81 @@ fn validate_upstream_destination(config: &AccioConfig) -> Result<(), String> {
     .map_err(|error| error.to_string())
 }
 
-/// Anti-CSRF、Anti-DNS-Rebinding 及流控防盗刷中间件：
+fn instance_auth_error(message: &str) -> Response {
+    (
+        StatusCode::UNAUTHORIZED,
+        Json(json!({
+            "error_code": 401,
+            "error_message": message
+        })),
+    )
+        .into_response()
+}
+
+/// 将请求 URI 的路径替换为 `new_path`，保留查询串与 scheme/authority
+fn rewrite_request_path(request: &mut Request, new_path: &str) -> Result<(), String> {
+    let uri = request.uri().clone();
+    let path_and_query = match uri.query() {
+        Some(query) => format!("{new_path}?{query}"),
+        None => new_path.to_string(),
+    };
+    let mut parts = uri.into_parts();
+    parts.path_and_query = Some(
+        path_and_query
+            .parse()
+            .map_err(|e| format!("无效的请求路径: {e}"))?,
+    );
+    *request.uri_mut() =
+        axum::http::Uri::from_parts(parts).map_err(|e| format!("无效的请求 URI: {e}"))?;
+    Ok(())
+}
+
+/// 实例鉴权、Anti-CSRF、Anti-DNS-Rebinding 及流控防盗刷中间件：
+/// 0. 校验 `/i/<token>` 路径凭据（或请求头凭据），通过后剥离前缀；
 /// 1. 严格拦截非受信 Host 请求，抵御 DNS Rebinding 攻击；
 /// 2. 拦截所有带有非受信 Origin 或跨站探测 (Sec-Fetch-Site: cross-site) 的请求；
 /// 3. 对消耗 token/额度的收费端点进行高频死循环拦截与限流保护。
-async fn bridge_anti_csrf_middleware(request: Request, next: axum::middleware::Next) -> Response {
-    let path = request.uri().path().to_string();
-    if crate::instance_auth::requires_instance_auth(&path) {
-        let token = current_instance_token().unwrap_or_default();
-        if !crate::instance_auth::header_matches_instance(request.headers(), &token) {
-            log::warn!("【实例鉴权】拒绝未持有当前实例凭据的敏感调用: {}", path);
+///
+/// 必须包裹在路由之外运行（见 `build_bridge_app`），否则剥离前缀后的路径不会参与路由匹配。
+async fn bridge_anti_csrf_middleware(
+    mut request: Request,
+    next: axum::middleware::Next,
+) -> Response {
+    let token = current_instance_token().unwrap_or_default();
+    let raw_path = request.uri().path().to_string();
+
+    // 0. 实例鉴权：优先识别 Accio 使用的 `/i/<token>` 路径凭据，其次兼容请求头凭据
+    let path = if let Some((candidate, tail)) = crate::instance_auth::split_instance_path(&raw_path)
+    {
+        if !crate::instance_auth::token_eq(candidate, &token) {
+            log::warn!(
+                "【实例鉴权】路径凭据与当前实例不匹配，已拒绝: {} (Accio 可能沿用了旧实例凭据，请通过 AI Helper 重启 Accio)",
+                tail
+            );
+            return instance_auth_error(
+                "【安全拦截】本地实例凭据无效或已过期，请通过 AI Helper 重新启动 Accio Work",
+            );
+        }
+        let tail = tail.to_string();
+        if let Err(error) = rewrite_request_path(&mut request, &tail) {
             return (
-                StatusCode::UNAUTHORIZED,
-                Json(json!({
-                    "error_code": 401,
-                    "error_message": "【安全拦截】缺少有效的本地实例凭据，已拒绝访问计费或敏感路由"
-                })),
+                StatusCode::BAD_REQUEST,
+                Json(json!({"error_code": 400, "error_message": error})),
             )
                 .into_response();
         }
-    }
+        tail
+    } else {
+        if crate::instance_auth::requires_instance_auth(&raw_path)
+            && !crate::instance_auth::header_matches_instance(request.headers(), &token)
+        {
+            log::warn!("【实例鉴权】拒绝未持有当前实例凭据的敏感调用: {}", raw_path);
+            return instance_auth_error(
+                "【安全拦截】缺少有效的本地实例凭据，已拒绝访问计费或敏感路由",
+            );
+        }
+        raw_path
+    };
 
     // 1. 严格检查 Host 头部 (防范 DNS Rebinding 跨站盗刷)
     if let Some(host_val) = request.headers().get(header::HOST) {
@@ -555,11 +629,32 @@ async fn bridge_anti_csrf_middleware(request: Request, next: axum::middleware::N
             .into_response();
     }
 
-    let mut request = request;
-    if let Some(token) = current_instance_token() {
+    if !token.is_empty() {
         crate::instance_auth::strip_instance_headers(request.headers_mut(), &token);
     }
     next.run(request).await
+}
+
+/// 组装 Bridge 服务：业务路由作为内层 fallback service，安全中间件包在路由之外，
+/// 保证 `/i/<token>` 前缀在路由匹配前完成校验与剥离；CORS 位于最外层以正确响应预检请求。
+fn build_bridge_app(routes: Router) -> Router {
+    let cors = CorsLayer::new()
+        .allow_origin(tower_http::cors::AllowOrigin::predicate(
+            |origin: &axum::http::HeaderValue, _| {
+                if let Ok(s) = origin.to_str() {
+                    is_trusted_bridge_origin(s)
+                } else {
+                    false
+                }
+            },
+        ))
+        .allow_methods(tower_http::cors::Any)
+        .allow_headers(tower_http::cors::Any);
+
+    Router::new()
+        .fallback_service(routes)
+        .layer(axum::middleware::from_fn(bridge_anti_csrf_middleware))
+        .layer(cors)
 }
 
 /// 启动 Accio Local Bridge 中继服务器
@@ -594,10 +689,7 @@ pub async fn start_bridge(preferred_port: Option<u16>) -> Result<u16, String> {
     let config = load_accio_config();
     let base_port = preferred_port.unwrap_or(config.bridge_port);
     let (listener, target_port) = bind_listener(base_port).await?;
-    let instance_token = crate::instance_auth::generate_instance_token();
-    if let Ok(mut guard) = INSTANCE_TOKEN.lock() {
-        *guard = Some(instance_token.clone());
-    }
+    ensure_instance_token();
     let image_cap = std::env::var("AI_HELPER_IMAGE_BUDGET_UNITS")
         .ok()
         .and_then(|s| s.parse().ok())
@@ -625,20 +717,7 @@ pub async fn start_bridge(preferred_port: Option<u16>) -> Result<u16, String> {
         .build()
         .map_err(|e| format!("构建 HTTP 客户端失败: {}", e))?;
 
-    let cors = CorsLayer::new()
-        .allow_origin(tower_http::cors::AllowOrigin::predicate(
-            |origin: &axum::http::HeaderValue, _| {
-                if let Ok(s) = origin.to_str() {
-                    is_trusted_bridge_origin(s)
-                } else {
-                    false
-                }
-            },
-        ))
-        .allow_methods(tower_http::cors::Any)
-        .allow_headers(tower_http::cors::Any);
-
-    let app = Router::new()
+    let routes = Router::new()
         .route("/health", get(handle_health))
         .route("/api/llm/config/v2", any(custom_model_list))
         .route("/api/tool/rlab/call", post(handle_tool_rlab_call))
@@ -648,9 +727,8 @@ pub async fn start_bridge(preferred_port: Option<u16>) -> Result<u16, String> {
         .route("/api/mcp/proxy", any(handle_mcp_proxy))
         .route("/api/mcp/proxy/*path", any(handle_mcp_proxy))
         .fallback(any(proxy_official))
-        .layer(axum::middleware::from_fn(bridge_anti_csrf_middleware))
-        .layer(cors)
         .with_state(client);
+    let app = build_bridge_app(routes);
 
     let (shutdown_tx, shutdown_rx) = oneshot::channel::<()>();
 
@@ -703,9 +781,7 @@ pub async fn stop_bridge() -> Result<(), String> {
         tokio::time::sleep(Duration::from_millis(150)).await;
         log::info!("已安全停止并释放 Accio Bridge 端口 {}", handle.port);
     }
-    if let Ok(mut guard) = INSTANCE_TOKEN.lock() {
-        *guard = None;
-    }
+    // 实例凭据保留至 AI Helper 退出：Bridge 停止后不再监听，凭据本身不构成可用入口
     Ok(())
 }
 
@@ -2569,7 +2645,7 @@ async fn forward_to_official_result(
     body: Bytes,
 ) -> Result<Response, (StatusCode, String)> {
     let config = load_accio_config();
-    if config.prevent_official_leak {
+    if config.prevent_official_leak && !crate::accio::config::is_official_metadata_path(path) {
         log::warn!(
             "【防泄漏拦截】已开启 prevent_official_leak，已拦截向阿里官方网关透明转发: {}",
             path
@@ -2676,6 +2752,72 @@ mod tests {
     use super::*;
     use flate2::{write::GzEncoder, Compression};
     use std::io::Write;
+
+    #[tokio::test]
+    async fn instance_path_prefix_is_verified_and_stripped_before_routing() {
+        let token = ensure_instance_token();
+        let routes = Router::new()
+            .route("/health", get(|| async { "ok" }))
+            .route(
+                "/api/echo",
+                get(|uri: axum::http::Uri| async move { uri.to_string() }),
+            )
+            .fallback(
+                |uri: axum::http::Uri| async move { (StatusCode::NOT_FOUND, uri.to_string()) },
+            );
+        let listener = TcpListener::bind(("127.0.0.1", 0)).await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let server = tokio::spawn(async move {
+            axum::serve(listener, build_bridge_app(routes))
+                .await
+                .unwrap();
+        });
+        let base = format!("http://127.0.0.1:{port}");
+        let gateway = accio_gateway_base_url(port).unwrap();
+        assert_eq!(gateway, format!("{base}/i/{token}"));
+        let client = Client::new();
+        let get = |url: String| {
+            let client = client.clone();
+            async move {
+                let response = client.get(url).send().await.unwrap();
+                (response.status(), response.text().await.unwrap())
+            }
+        };
+
+        // Accio 形式：凭据在路径前缀中，剥离后命中业务路由且保留查询串
+        assert_eq!(
+            get(format!("{gateway}/api/echo?sg_k=1")).await,
+            (StatusCode::OK, "/api/echo?sg_k=1".to_string())
+        );
+        assert_eq!(get(format!("{gateway}/health")).await.0, StatusCode::OK);
+        // 未知路径剥离前缀后进入 fallback，确保凭据不会随路径转发出去
+        assert_eq!(
+            get(format!("{gateway}/api/unknown")).await,
+            (StatusCode::NOT_FOUND, "/api/unknown".to_string())
+        );
+
+        // 无凭据、错误凭据均被拒绝，/health 保持免鉴权
+        assert_eq!(
+            get(format!("{base}/api/echo")).await.0,
+            StatusCode::UNAUTHORIZED
+        );
+        assert_eq!(
+            get(format!("{base}/i/{}/api/echo", "0".repeat(64))).await.0,
+            StatusCode::UNAUTHORIZED
+        );
+        assert_eq!(get(format!("{base}/health")).await.0, StatusCode::OK);
+
+        // 兼容请求头凭据
+        let response = client
+            .get(format!("{base}/api/echo"))
+            .header(crate::instance_auth::INSTANCE_HEADER, &token)
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+
+        server.abort();
+    }
 
     #[test]
     fn decode_request_body_supports_gzip() {

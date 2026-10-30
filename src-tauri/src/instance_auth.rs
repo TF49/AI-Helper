@@ -4,11 +4,38 @@ use axum::http::HeaderMap;
 
 pub const INSTANCE_HEADER: &str = "x-ai-helper-instance";
 pub const GATEWAY_AUTH_HEADER: &str = "x-gateway-auth";
+/// Accio 不支持自定义请求头，但会把 `GATEWAY_BASE_URL` / `ADK_BASE_URL` 原样作为前缀拼接请求路径，
+/// 因此实例凭据以 `/i/<token>` 路径前缀的形式随每个请求到达 Bridge。
+pub const INSTANCE_PATH_PREFIX: &str = "/i/";
 
 pub fn generate_instance_token() -> String {
     let mut bytes = [0u8; 32];
     getrandom::getrandom(&mut bytes).expect("secure random unavailable");
     bytes.iter().map(|b| format!("{b:02x}")).collect()
+}
+
+/// 常量时间比较，避免按字节提前返回泄露凭据前缀
+pub fn token_eq(candidate: &str, token: &str) -> bool {
+    let a = candidate.as_bytes();
+    let b = token.as_bytes();
+    if token.is_empty() || a.len() != b.len() {
+        return false;
+    }
+    a.iter().zip(b).fold(0u8, |acc, (x, y)| acc | (x ^ y)) == 0
+}
+
+/// 拆分 `/i/<token>/rest` 形式的路径，返回 (token, 剥离前缀后的路径)。
+/// 不带该前缀时返回 None；`/i/<token>` 本身视为根路径 `/`。
+pub fn split_instance_path(path: &str) -> Option<(&str, &str)> {
+    let rest = path.strip_prefix(INSTANCE_PATH_PREFIX)?;
+    let (token, tail) = match rest.find('/') {
+        Some(index) => (&rest[..index], &rest[index..]),
+        None => (rest, "/"),
+    };
+    if token.is_empty() {
+        return None;
+    }
+    Some((token, tail))
 }
 
 pub fn header_matches_instance(headers: &HeaderMap, token: &str) -> bool {
@@ -28,7 +55,7 @@ pub fn header_matches_instance(headers: &HeaderMap, token: &str) -> bool {
             .strip_prefix("Bearer ")
             .or_else(|| value.strip_prefix("bearer "))
         {
-            return rest.trim() == token;
+            return token_eq(rest.trim(), token);
         }
     }
     false
@@ -38,7 +65,7 @@ fn header_eq(headers: &HeaderMap, name: &str, token: &str) -> bool {
     headers
         .get(name)
         .and_then(|v| v.to_str().ok())
-        .is_some_and(|v| v.trim() == token)
+        .is_some_and(|v| token_eq(v.trim(), token))
 }
 
 pub fn strip_instance_headers(headers: &mut HeaderMap, token: &str) {
@@ -116,6 +143,27 @@ mod tests {
         assert!(headers.get(INSTANCE_HEADER).is_none());
         assert!(headers.get(axum::http::header::AUTHORIZATION).is_none());
         assert_eq!(headers.get("x-api-key").unwrap(), "sk-real");
+    }
+
+    #[test]
+    fn instance_path_prefix_is_split() {
+        assert_eq!(
+            split_instance_path("/i/abc/api/adk/llm/generateContent"),
+            Some(("abc", "/api/adk/llm/generateContent"))
+        );
+        assert_eq!(split_instance_path("/i/abc"), Some(("abc", "/")));
+        assert_eq!(split_instance_path("/i/"), None);
+        assert_eq!(split_instance_path("/i//api"), None);
+        assert_eq!(split_instance_path("/api/adk/llm"), None);
+        assert_eq!(split_instance_path("/item/x"), None);
+    }
+
+    #[test]
+    fn token_eq_requires_exact_match() {
+        assert!(token_eq("secret", "secret"));
+        assert!(!token_eq("secreT", "secret"));
+        assert!(!token_eq("secre", "secret"));
+        assert!(!token_eq("", ""));
     }
 
     #[test]

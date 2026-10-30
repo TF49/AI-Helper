@@ -64,8 +64,50 @@ pub fn validate_official_gateway(value: &str) -> Result<reqwest::Url, String> {
     Ok(url)
 }
 
+/// 防官方泄露开启时仍允许透传至官方网关的账号/元数据接口（登录态、团队、Agent 同步、技能、插件、
+/// 功能开关、模型目录等）。它们不触发模型推理、不消耗 i 豆，但被拦截会导致 Accio 无法正常运行。
+/// 模型推理、Embedding、生图、MCP 等计费路径由 Bridge 本地接管，未列入此表的路径一律阻断。
+const OFFICIAL_METADATA_PREFIXES: &[&str] = &[
+    "/api/auth/",
+    "/api/meta/sync/",
+    "/api/tool/featureFlag/",
+    "/api/team/",
+    "/api/agent-team/",
+    "/api/agent-hub/",
+    "/api/invitation/",
+    "/api/channel/",
+    "/api/skill/",
+    "/api/plugin/",
+    "/api/onboarding/",
+    "/api/heartbeat/",
+];
+const OFFICIAL_METADATA_PATHS: &[&str] = &[
+    "/api/media/catalog",
+    "/api/video/models",
+    "/api/llm/subAgent/routing",
+];
+
+/// 判断路径是否属于可透传的官方元数据接口。仅接受由字母、数字、`/`、`-`、`_` 组成的路径，
+/// 拒绝 `..`、百分号编码等可被 URL 规范化改写到计费接口的形式。
+pub fn is_official_metadata_path(path_and_query: &str) -> bool {
+    let path = path_and_query
+        .split_once('?')
+        .map_or(path_and_query, |(path, _)| path);
+    if !path
+        .bytes()
+        .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'/' | b'-' | b'_'))
+        || path.contains("//")
+    {
+        return false;
+    }
+    OFFICIAL_METADATA_PATHS.contains(&path)
+        || OFFICIAL_METADATA_PREFIXES
+            .iter()
+            .any(|prefix| path.len() > prefix.len() && path.starts_with(prefix))
+}
+
 pub fn official_request_url(config: &AccioConfig, path: &str) -> Result<reqwest::Url, String> {
-    if config.prevent_official_leak {
+    if config.prevent_official_leak && !is_official_metadata_path(path) {
         return Err("防官方泄露已开启，已阻止官方网关转发".to_string());
     }
     let origin = validate_official_gateway(&config.official_gateway)?;
@@ -264,6 +306,40 @@ mod tests {
         }
         config.official_gateway = "https://evil.example".into();
         assert!(official_request_url(&config, "/api/test").is_err());
+    }
+
+    #[test]
+    fn leak_protection_still_allows_account_metadata() {
+        let config = AccioConfig::default();
+        assert!(config.prevent_official_leak);
+        for path in [
+            "/api/auth/userinfo",
+            "/api/meta/sync/probe",
+            "/api/tool/featureFlag/evaluate",
+            "/api/skill/load?x=1",
+            "/api/media/catalog",
+            "/api/llm/subAgent/routing",
+        ] {
+            assert_eq!(
+                official_request_url(&config, path).unwrap().path(),
+                path.split('?').next().unwrap(),
+                "{path}"
+            );
+        }
+        for path in [
+            "/api/adk/llm/generateContent",
+            "/api/llm/config/v2",
+            "/api/tool/rlab/call",
+            "/api/mcp/proxy",
+            "/api/image/generate",
+            "/api/auth/",
+            "/api/auth/../adk/llm",
+            "/api/auth/%2e%2e/adk/llm",
+            "/api/auth//x",
+            "/api/media/catalog/x",
+        ] {
+            assert!(official_request_url(&config, path).is_err(), "{path}");
+        }
     }
 
     #[test]

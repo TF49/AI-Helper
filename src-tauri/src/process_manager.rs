@@ -426,30 +426,21 @@ end tell"#,
                     };
                     let config = crate::accio::config::load_accio_config();
 
-                    let mut cmd = Command::new(path);
-                    if let Some(token) = crate::accio::bridge::current_instance_token() {
-                        cmd.env("GATEWAY_AUTH_TOKEN", &token)
-                            .env("AI_HELPER_INSTANCE_TOKEN", &token)
-                            .env("ACCIO_GATEWAY_AUTH_TOKEN", &token);
-                    } else {
-                        return Err(
+                    // Accio 不会携带自定义鉴权头，实例凭据以 /i/<token> 路径前缀嵌入其读取的网关地址
+                    let gateway_base = crate::accio::bridge::accio_gateway_base_url(bridge_port)
+                        .ok_or_else(|| {
                             "本地网关实例凭据未就绪，已拒绝启动 Accio 以免无鉴权放行".to_string()
-                        );
-                    }
-                    cmd.env(
-                        "GATEWAY_BASE_URL",
-                        format!("http://127.0.0.1:{}", bridge_port),
-                    )
-                    .env(
-                        "ADK_BASE_URL",
-                        format!("http://127.0.0.1:{}/api/adk/llm", bridge_port),
-                    )
-                    .env("ADK_MODEL", &config.model)
-                    .env(
-                        "EMBEDDING_BASE_URL",
-                        format!("http://127.0.0.1:{}/api/adk/embedding/embed", bridge_port),
-                    )
-                    .env("EMBEDDING_MODEL", "text-embedding-3-small");
+                        })?;
+
+                    let mut cmd = Command::new(path);
+                    cmd.env("GATEWAY_BASE_URL", &gateway_base)
+                        .env("ADK_BASE_URL", format!("{gateway_base}/api/adk/llm"))
+                        .env("ADK_MODEL", &config.model)
+                        .env(
+                            "EMBEDDING_BASE_URL",
+                            format!("{gateway_base}/api/adk/embedding/embed"),
+                        )
+                        .env("EMBEDDING_MODEL", "text-embedding-3-small");
 
                     if let Some(parent) = path.parent() {
                         cmd.current_dir(parent);
@@ -495,20 +486,13 @@ end tell"#,
                     })
                     .map_err(|e| format!("Accio 本地网关未能完成监听，已拒绝启动客户端: {e}"))?,
                 };
+                let gateway_base = crate::accio::bridge::accio_gateway_base_url(bridge_port)
+                    .ok_or_else(|| {
+                        "本地网关实例凭据未就绪，已拒绝启动 Accio 以免无鉴权放行".to_string()
+                    })?;
                 let mut cmd = Command::new("open");
                 cmd.arg(&path_str);
-                if let Some(token) = crate::accio::bridge::current_instance_token() {
-                    cmd.env("GATEWAY_AUTH_TOKEN", &token)
-                        .env("AI_HELPER_INSTANCE_TOKEN", &token);
-                } else {
-                    return Err(
-                        "本地网关实例凭据未就绪，已拒绝启动 Accio 以免无鉴权放行".to_string()
-                    );
-                }
-                cmd.env(
-                    "GATEWAY_BASE_URL",
-                    format!("http://127.0.0.1:{}", bridge_port),
-                );
+                cmd.env("GATEWAY_BASE_URL", &gateway_base);
                 cmd.spawn()
                     .map_err(|e| format!("启动 Accio Work 客户端失败: {}", e))?;
                 Ok(format!(
