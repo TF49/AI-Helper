@@ -59,6 +59,8 @@ fn ensure_instance_token() -> String {
 
 /// 注入给 Accio 的网关根地址：`http://127.0.0.1:<port>/i/<token>`。
 /// Accio 以字符串拼接方式在其后追加 `/api/...`，凭据随路径到达 Bridge 并在路由前被校验、剥离。
+/// 仅 Windows/macOS 会拉起 Accio，其他平台只在测试中使用。
+#[cfg_attr(not(any(target_os = "windows", target_os = "macos")), allow(dead_code))]
 pub fn accio_gateway_base_url(port: u16) -> Option<String> {
     let token = current_instance_token()?;
     Some(format!(
