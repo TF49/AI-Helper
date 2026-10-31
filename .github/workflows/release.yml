@@ -202,3 +202,27 @@ jobs:
           target_sha="$(git rev-parse HEAD)"
           gh release create "$tag" "${assets[@]}" --repo "$GITHUB_REPOSITORY" --target "$target_sha" --title "AI Helper $tag" --notes-file "$notes" --draft
           gh release edit "$tag" --repo "$GITHUB_REPOSITORY" --draft=false --latest
+      - name: Trigger mirror sync webhook
+        if: steps.final-check.outputs.should_release == 'true'
+        env:
+          WEBHOOK_SECRET: ${{ secrets.MIRROR_WEBHOOK_SECRET }}
+          RELEASE_TAG: ${{ steps.prep.outputs.tag }}
+        run: |
+          WEBHOOK_URL="https://helper.bob-api.com/webhook/sync"
+          TAG="${RELEASE_TAG}"
+          TIMESTAMP="$(date +%s)"
+          PAYLOAD='{"tag":"'${TAG}'","timestamp":"'${TIMESTAMP}'"}'
+
+          # 生成 HMAC-SHA256 签名
+          SIGNATURE=$(echo -n "$PAYLOAD" | openssl dgst -sha256 -hmac "$WEBHOOK_SECRET" | cut -d' ' -f2)
+
+          echo "Triggering mirror sync for ${TAG}..."
+
+          # 发送 webhook 请求（失败不阻塞发布流程）
+          curl -X POST "$WEBHOOK_URL" \
+            -H "Content-Type: application/json" \
+            -H "X-Webhook-Signature: $SIGNATURE" \
+            -d "$PAYLOAD" \
+            --max-time 10 \
+            --retry 2 \
+            --fail-with-body || echo "Warning: Webhook trigger failed, but cron will sync within 10 minutes"
