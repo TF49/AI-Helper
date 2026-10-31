@@ -1,5 +1,14 @@
-import { Bell, X, ExternalLink } from "lucide-react";
+import { Bell, ExternalLink } from "lucide-react";
 import { openUrl } from "../lib/api";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from "./ui/dialog";
+import { Badge } from "./ui/badge";
+import { Button } from "./ui/button";
 
 interface AnnouncementModalProps {
   open: boolean;
@@ -33,38 +42,28 @@ export function AnnouncementModal({
   onClose,
   appVersion,
 }: AnnouncementModalProps) {
-  if (!open) return null;
-
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-md select-none animate-in fade-in duration-200">
-      <div className="relative w-full max-w-lg rounded-3xl border border-slate-200/90 dark:border-white/10 bg-white dark:bg-[#121526] p-6 shadow-2xl overflow-hidden flex flex-col max-h-[80vh]">
+    <Dialog open={open} onOpenChange={(v) => { if (!v) onClose(); }}>
+      <DialogContent className="max-w-lg max-h-[85vh] flex flex-col p-6 gap-0">
         {/* 头部 */}
-        <div className="flex items-center justify-between pb-4 border-b border-slate-100 dark:border-white/5">
+        <DialogHeader className="pb-4 border-b border-slate-100 dark:border-white/5 flex flex-row items-center justify-between text-left pr-6">
           <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-xl bg-blue-50 dark:bg-blue-500/10 text-blue-600 dark:text-blue-400 flex items-center justify-center">
+            <div className="w-8 h-8 rounded-xl bg-blue-50 dark:bg-blue-500/10 text-blue-600 dark:text-blue-400 flex items-center justify-center shrink-0">
               <Bell size={16} />
             </div>
             <div>
-              <h3 className="text-sm font-bold text-slate-900 dark:text-white">
+              <DialogTitle className="text-sm font-bold text-slate-900 dark:text-white">
                 公告中心与更新历史
-              </h3>
-              <p className="text-[11px] text-slate-400 dark:text-gray-500">
+              </DialogTitle>
+              <DialogDescription className="text-[11px] text-slate-400 dark:text-gray-500 mt-0.5">
                 当前运行版本: v{appVersion}
-              </p>
+              </DialogDescription>
             </div>
           </div>
-
-          <button
-            type="button"
-            onClick={onClose}
-            className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 dark:hover:text-gray-200 hover:bg-slate-100 dark:hover:bg-white/10 transition-colors cursor-pointer"
-          >
-            <X size={15} />
-          </button>
-        </div>
+        </DialogHeader>
 
         {/* 公告列表 */}
-        <div className="flex-1 overflow-y-auto py-4 space-y-4 pr-1">
+        <div className="flex-1 overflow-y-auto py-4 space-y-4 pr-1 my-1">
           {ANNOUNCEMENTS.map((item) => (
             <div
               key={item.id}
@@ -74,9 +73,9 @@ export function AnnouncementModal({
                 <span className="text-xs font-bold text-slate-900 dark:text-white">
                   {item.title}
                 </span>
-                <span className="text-[10px] px-2 py-0.5 rounded-full font-medium bg-blue-50 text-blue-600 dark:bg-blue-500/15 dark:text-blue-400 border border-blue-200/50 dark:border-blue-500/20 flex-shrink-0">
+                <Badge variant="default" className="text-[10px] px-2 py-0.2 shrink-0">
                   {item.tag}
-                </span>
+                </Badge>
               </div>
               <p className="text-xs text-slate-600 dark:text-gray-300 leading-relaxed">
                 {item.content}
@@ -100,15 +99,16 @@ export function AnnouncementModal({
             <ExternalLink size={12} />
           </button>
 
-          <button
+          <Button
             type="button"
+            variant="secondary"
+            size="sm"
             onClick={onClose}
-            className="px-4 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-white/10 dark:hover:bg-white/15 text-slate-700 dark:text-gray-200 text-xs font-semibold transition-colors cursor-pointer"
           >
             我知道了
-          </button>
+          </Button>
         </div>
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   );
 }

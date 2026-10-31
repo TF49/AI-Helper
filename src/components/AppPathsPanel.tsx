@@ -234,6 +234,16 @@ export function AppPathsPanel() {
       setAccioPath(saved.accio_client_path || "");
       setCursorPath(saved.cursor_client_path || "");
 
+      // 动态校准 ChatGPT 路径（若经历微软商店后台静默升级导致旧路径失效，自动纠偏为最新物理路径）
+      detectAppPath("chatgpt")
+        .then((info) => {
+          setChatgptInfo(info);
+          if (info.exists && info.path) {
+            setChatgptPath(info.path);
+          }
+        })
+        .catch(() => {});
+
       // 并发检查当前运行状态
       const [cRun, xRun, gRun, wbRun, accioRun, curRun] = await Promise.all([
         checkAppProcessStatus("claude").catch(() => false),

@@ -1855,6 +1855,18 @@ fn managed_destination(url: &str, default: &str) -> Result<String, String> {
     Ok(dest)
 }
 
+/// 本地配置尚未设置模型时使用的默认模型；已有模型一律保留用户选择
+const DEFAULT_CLAUDE_MODEL: &str = "claude-sonnet-5-5";
+const DEFAULT_CODEX_MODEL: &str = "gpt-5.6-sol";
+
+fn model_or_default(current: Option<&str>, default: &str) -> String {
+    current
+        .map(str::trim)
+        .filter(|m| !m.is_empty())
+        .unwrap_or(default)
+        .to_string()
+}
+
 /// 一键将 API Key 批量写入指定的 Agent 配置文件中
 pub async fn apply_api_key_to_agents(
     api_key: String,
@@ -1871,9 +1883,10 @@ pub async fn apply_api_key_to_agents(
                     .as_ref()
                     .map(|c| c.base_url.clone())
                     .unwrap_or_else(|| "https://bob-api.com/".to_string());
-                let model = cur.as_ref().map(|c| c.model.clone());
+                let model =
+                    model_or_default(cur.as_ref().map(|c| c.model.as_str()), DEFAULT_CODEX_MODEL);
                 match managed_destination(&url, "https://bob-api.com/").and_then(|url| {
-                    crate::codex::set_codex_config(url, api_key.clone(), model)
+                    crate::codex::set_codex_config(url, api_key.clone(), Some(model))
                         .map_err(|e| e.to_string())
                 }) {
                     Ok(_) => {
@@ -1891,9 +1904,10 @@ pub async fn apply_api_key_to_agents(
                     .as_ref()
                     .map(|c| c.base_url.clone())
                     .unwrap_or_else(|| "https://bob-api.com/".to_string());
-                let model = cur.as_ref().map(|c| c.model.clone());
+                let model =
+                    model_or_default(cur.as_ref().map(|c| c.model.as_str()), DEFAULT_CLAUDE_MODEL);
                 match managed_destination(&url, "https://bob-api.com/").and_then(|url| {
-                    crate::claude::set_claude_config(url, api_key.clone(), model)
+                    crate::claude::set_claude_config(url, api_key.clone(), Some(model))
                         .map_err(|e| e.to_string())
                 }) {
                     Ok(_) => {
@@ -1991,6 +2005,7 @@ pub async fn apply_api_key_to_agents(
             }
             "cursor" => {
                 let cur = crate::cursor::config::load_cursor_config();
+                let old_fp = crate::cursor::model_source_fingerprint(&cur.base_url, &cur.api_key);
                 let base_url = if cur.base_url.is_empty() {
                     "https://bob-api.com/".to_string()
                 } else {
@@ -2001,6 +2016,14 @@ pub async fn apply_api_key_to_agents(
                     results.insert("cursor".to_string(), false);
                     continue;
                 }
+                // 与 set_cursor_config 保持一致：Key 或地址变化后旧模型缓存失效
+                let new_fp = crate::cursor::model_source_fingerprint(&base_url, &api_key);
+                let source_changed = old_fp != new_fp;
+                let (cached_models, cached_models_fingerprint) = if source_changed {
+                    (Vec::new(), String::new())
+                } else {
+                    (cur.cached_models, cur.cached_models_fingerprint)
+                };
                 let config = crate::cursor::config::CursorConfig {
                     base_url,
                     api_key: api_key.clone(),
@@ -2008,12 +2031,18 @@ pub async fn apply_api_key_to_agents(
                     bridge_port: cur.bridge_port,
                     auto_start_bridge: cur.auto_start_bridge,
                     custom_models: cur.custom_models,
-                    cached_models: cur.cached_models,
-                    cached_models_fingerprint: cur.cached_models_fingerprint,
+                    cached_models,
+                    cached_models_fingerprint,
                     cursor_path: cur.cursor_path,
                 };
                 match crate::cursor::config::save_cursor_config(&config) {
                     Ok(_) => {
+                        if source_changed {
+                            crate::cursor::invalidate_model_list_cache();
+                            tauri::async_runtime::spawn(async {
+                                crate::cursor::refresh_model_list_cache().await;
+                            });
+                        }
                         results.insert("cursor".to_string(), true);
                     }
                     Err(e) => {

@@ -18,6 +18,8 @@ import {
 import type { FeedbackType, UserInfo } from "../types";
 import { cn } from "../lib/utils";
 import { ButtonToLoaderToSuccess } from "./ui/ButtonToLoaderToSuccess";
+import { Button } from "./ui/button";
+import { Dialog, DialogContent, DialogTitle, DialogDescription } from "./ui/dialog";
 
 interface FeedbackModalProps {
   open: boolean;
@@ -139,8 +141,6 @@ export function FeedbackModal({
     if (saved) setEmail(saved);
   }, [open, currentUser?.email, currentUser?.username]);
 
-  if (!open) return null;
-
   const handleTypeChange = (newType: FeedbackType) => {
     setFeedbackType(newType);
     setContent(getTemplate(newType, osInfo));
@@ -237,17 +237,20 @@ ${content.trim()}
   };
 
   return (
-    <div className="fixed inset-0 top-11 z-50 flex items-center justify-center p-4 bg-black/60 dark:bg-black/75 backdrop-blur-md animate-fade-in select-none">
-      <div className="relative w-full max-w-lg rounded-2xl border border-slate-200 dark:border-white/10 bg-white dark:bg-[#121524] text-slate-800 dark:text-gray-200 shadow-2xl overflow-hidden animate-slide-up flex flex-col">
+    <Dialog open={open} onOpenChange={(v) => { if (!v) onClose(); }}>
+      <DialogContent hideCloseButton className="max-w-lg p-0 overflow-hidden border-slate-200 dark:border-white/10 bg-white dark:bg-[#121524] gap-0">
         {/* ── 弹窗头部 Header ── */}
         <div className="flex items-center justify-between px-5 py-3.5 border-b border-slate-200 dark:border-white/10 bg-slate-50/80 dark:bg-[#16192a]">
           <div className="flex items-center gap-2.5">
             <div className="w-7 h-7 rounded-lg bg-cyan-500/10 border border-cyan-500/30 flex items-center justify-center text-cyan-600 dark:text-cyan-400">
               <MessageSquare size={16} />
             </div>
-            <h3 className="text-sm font-semibold text-slate-900 dark:text-white tracking-wide">
+            <DialogTitle className="text-sm font-semibold text-slate-900 dark:text-white tracking-wide">
               意见反馈
-            </h3>
+            </DialogTitle>
+            <DialogDescription className="sr-only">
+              向开发团队提交功能建议或BUG反馈
+            </DialogDescription>
           </div>
 
           {/* 关闭按钮 */}
@@ -421,13 +424,14 @@ ${content.trim()}
               </button>
 
               {/* 取消按钮 */}
-              <button
+              <Button
                 type="button"
+                variant="ghost"
+                size="sm"
                 onClick={onClose}
-                className="h-8 px-3 rounded-xl text-xs font-medium text-slate-600 hover:text-slate-900 dark:text-gray-400 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-white/5 transition-colors cursor-pointer"
               >
                 取消
-              </button>
+              </Button>
 
               {/* 提交按钮（状态形变链） */}
               <ButtonToLoaderToSuccess
@@ -450,7 +454,7 @@ ${content.trim()}
             </div>
           </div>
         </form>
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   );
 }

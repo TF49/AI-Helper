@@ -114,7 +114,11 @@ if [[ "${1:-}" != "" ]]; then
     log "Using specified version: v${VERSION}"
 else
     log "Fetching latest version from GitHub API..."
-    RELEASE_JSON=$(curl -fsSL --retry 3 "${GITHUB_API}")
+    auth_header=()
+    if [[ -n "${GITHUB_TOKEN:-}" ]]; then
+        auth_header=(-H "Authorization: Bearer ${GITHUB_TOKEN}")
+    fi
+    RELEASE_JSON=$(curl -fsSL --retry 3 -H "Cache-Control: no-cache" -H "Pragma: no-cache" -H "User-Agent: AI-Helper-Mirror-Sync" "${auth_header[@]}" "${GITHUB_API}?_t=$(date +%s)")
     VERSION=$(echo "${RELEASE_JSON}" | grep '"tag_name"' | head -1 | sed 's/.*"tag_name": *"v\?\([^"]*\)".*/\1/')
     log "Latest version on GitHub: v${VERSION}"
 fi
@@ -147,15 +151,15 @@ download_file() {
     local url="$1"
     local dest="$2"
     log "Downloading: ${url}"
-    curl -fsSL --retry 3 --retry-delay 5 -o "${dest}" "${url}"
+    curl -fsSL --retry 3 --retry-delay 5 -H "Cache-Control: no-cache" -o "${dest}" "${url}"
 }
 
 download_file_optional() {
     local url="$1"
     local dest="$2"
-    if curl -fsSL --head "${url}" >/dev/null 2>&1; then
+    if curl -fsSL --head -H "Cache-Control: no-cache" "${url}" >/dev/null 2>&1; then
         log "Downloading optional: ${url}"
-        curl -fsSL --retry 3 --retry-delay 5 -o "${dest}" "${url}" || true
+        curl -fsSL --retry 3 --retry-delay 5 -H "Cache-Control: no-cache" -o "${dest}" "${url}" || true
     fi
 }
 
@@ -166,6 +170,7 @@ download_file_optional "${GITHUB_BASE}/${ZIP_FILE}" "${TMP_DIR}/${ZIP_FILE}"
 # ── 5. 同步权威发布清单与验签文件（必须包含签名与发布日期）───────────────────
 download_file "${GITHUB_BASE}/latest.json"     "${TMP_DIR}/latest.json"
 download_file "${GITHUB_BASE}/latest.json.sig" "${TMP_DIR}/latest.json.sig"
+download_file_optional "${GITHUB_BASE}/SHA256SUMS.txt" "${TMP_DIR}/SHA256SUMS.txt"
 
 # ── 6. 同步 macOS 跨平台分发包与签名文件（若已发布）───────────────────────────
 DMG_ARM64="AI-Helper-${TAG}-macOS-arm64.dmg"

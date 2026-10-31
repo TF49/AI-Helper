@@ -424,6 +424,89 @@ pub fn detect_codex_cli_path() -> DetectedPathInfo {
     detect_codex_cli_path_internal(is_running, running_exe)
 }
 
+/// 探测 Microsoft Store 中的 ChatGPT (OpenAI.Codex) 客户端 (通过当前用户注册表无权限阻断快速定位)
+#[cfg(target_os = "windows")]
+fn find_chatgpt_in_store_registry() -> Option<(String, PathBuf)> {
+    use winreg::{enums::HKEY_CURRENT_USER, RegKey};
+
+    let hkcu = RegKey::predef(HKEY_CURRENT_USER);
+    let packages_path = r"Software\Classes\Local Settings\Software\Microsoft\Windows\CurrentVersion\AppModel\Repository\Packages";
+    let packages_key = hkcu.open_subkey(packages_path).ok()?;
+
+    let mut candidates: Vec<(String, PathBuf)> = Vec::new();
+
+    for key_name in packages_key.enum_keys().flatten() {
+        if key_name.starts_with("OpenAI.Codex_") {
+            if let Ok(pkg_key) = packages_key.open_subkey(&key_name) {
+                if let Ok(root_folder) = pkg_key.get_value::<String, _>("PackageRootFolder") {
+                    let exe_path = PathBuf::from(&root_folder).join("app").join("ChatGPT.exe");
+                    if exe_path.exists() {
+                        candidates.push((key_name, exe_path));
+                    }
+                }
+            }
+        }
+    }
+
+    // 按版本号降序排序，确保在版本升级/更新残留时始终选用最新版本
+    candidates.sort_by(|a, b| b.0.cmp(&a.0));
+    candidates.into_iter().next()
+}
+
+/// 降级通过 PowerShell Get-AppxPackage 检索 ChatGPT 微软商店安装路径
+#[cfg(target_os = "windows")]
+fn find_chatgpt_via_powershell() -> Option<PathBuf> {
+    use std::os::windows::process::CommandExt;
+    use std::process::Command;
+
+    let output = Command::new("powershell")
+        .args([
+            "-NoProfile",
+            "-NonInteractive",
+            "-Command",
+            "(Get-AppxPackage OpenAI.Codex).InstallLocation",
+        ])
+        .creation_flags(0x08000000)
+        .output()
+        .ok()?;
+
+    if output.status.success() {
+        let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
+        if !stdout.is_empty() {
+            let candidate_exe = PathBuf::from(stdout).join("app").join("ChatGPT.exe");
+            if candidate_exe.exists() {
+                return Some(candidate_exe);
+            }
+        }
+    }
+    None
+}
+
+/// macOS 下通过 Spotlight (mdfind) 依据官方 Bundle ID 探测非标准目录安装的 ChatGPT
+#[cfg(target_os = "macos")]
+fn find_chatgpt_via_mdfind() -> Option<PathBuf> {
+    use std::process::Command;
+
+    let output = Command::new("mdfind")
+        .arg("kMDItemCFBundleIdentifier == 'com.openai.chat'")
+        .output()
+        .ok()?;
+
+    if output.status.success() {
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        for line in stdout.lines() {
+            let trimmed = line.trim();
+            if !trimmed.is_empty() && trimmed.ends_with(".app") {
+                let p = PathBuf::from(trimmed);
+                if p.exists() {
+                    return Some(p);
+                }
+            }
+        }
+    }
+    None
+}
+
 /// 探测 ChatGPT 桌面客户端路径 (内部复用进程扫描结果)
 pub fn detect_chatgpt_client_path_internal(
     is_running: bool,
@@ -450,40 +533,34 @@ pub fn detect_chatgpt_client_path_internal(
         };
     }
 
-    // 2. 检查 Microsoft Store (WindowsApps/OpenAI.Codex)
+    // 2. 检查 Windows 平台安装 (Microsoft Store / AppData / Program Files)
     #[cfg(target_os = "windows")]
     {
-        let windows_apps = Path::new("C:\\Program Files\\WindowsApps");
-        if windows_apps.exists() {
-            if let Ok(entries) = std::fs::read_dir(windows_apps) {
-                let mut store_candidates = Vec::new();
-                for entry in entries.flatten() {
-                    let folder_name = entry.file_name().to_string_lossy().to_string();
-                    if folder_name.starts_with("OpenAI.Codex_") {
-                        let candidate_exe = entry.path().join("app").join("ChatGPT.exe");
-                        if candidate_exe.exists() {
-                            store_candidates.push((folder_name, candidate_exe));
-                        }
-                    }
-                }
-
-                // 按版本号降序排序，确保在版本升级/更新残留时始终选用最新版本
-                store_candidates.sort_by(|a, b| b.0.cmp(&a.0));
-
-                if let Some((latest_folder, latest_exe)) = store_candidates.into_iter().next() {
-                    return DetectedPathInfo {
-                        app_type: "chatgpt".to_string(),
-                        path: latest_exe.to_string_lossy().to_string(),
-                        exists: true,
-                        source: "windows_apps".to_string(),
-                        is_running,
-                        extra_info: Some(format!("Microsoft Store 应用包 ({})", latest_folder)),
-                    };
-                }
-            }
+        // 2.1 优先通过当前用户注册表秒级定位微软商店版 (免受 WindowsApps 权限阻断)
+        if let Some((pkg_name, exe_path)) = find_chatgpt_in_store_registry() {
+            return DetectedPathInfo {
+                app_type: "chatgpt".to_string(),
+                path: exe_path.to_string_lossy().to_string(),
+                exists: true,
+                source: "windows_apps".to_string(),
+                is_running,
+                extra_info: Some(format!("Microsoft Store 应用包 ({})", pkg_name)),
+            };
         }
 
-        // 3. 检查常见 LocalAppData 安装路径
+        // 2.2 降级通过 PowerShell Get-AppxPackage 检索
+        if let Some(exe_path) = find_chatgpt_via_powershell() {
+            return DetectedPathInfo {
+                app_type: "chatgpt".to_string(),
+                path: exe_path.to_string_lossy().to_string(),
+                exists: true,
+                source: "windows_apps".to_string(),
+                is_running,
+                extra_info: Some("探测自 Microsoft Store 应用包 (PowerShell Appx)".to_string()),
+            };
+        }
+
+        // 2.3 检查标准 LocalAppData 安装路径
         if let Ok(local_appdata) = std::env::var("LOCALAPPDATA") {
             let user_install = PathBuf::from(&local_appdata)
                 .join("Programs")
@@ -517,7 +594,7 @@ pub fn detect_chatgpt_client_path_internal(
             }
         }
 
-        // 4. 检查 Program Files
+        // 2.4 检查 Program Files
         if let Ok(prog_files) = std::env::var("ProgramFiles") {
             let pf_install = PathBuf::from(prog_files)
                 .join("ChatGPT")
@@ -554,6 +631,17 @@ pub fn detect_chatgpt_client_path_internal(
                     extra_info: Some("探测自 macOS /Applications 目录".to_string()),
                 };
             }
+        }
+
+        if let Some(app_path) = find_chatgpt_via_mdfind() {
+            return DetectedPathInfo {
+                app_type: "chatgpt".to_string(),
+                path: app_path.to_string_lossy().to_string(),
+                exists: true,
+                source: "spotlight_bundle_id".to_string(),
+                is_running,
+                extra_info: Some("通过系统 LaunchServices 定位到安装位置".to_string()),
+            };
         }
     }
 
@@ -1295,14 +1383,37 @@ pub fn detect_all_app_paths() -> Vec<DetectedPathInfo> {
     let (accio_run, accio_exe) = inspect_target_process_with_system("acciowork", &system);
     let (cursor_run, cursor_exe) = inspect_target_process_with_system("cursor", &system);
 
-    vec![
+    let results = vec![
         detect_claude_cli_path_internal(claude_run, claude_exe),
         detect_codex_cli_path_internal(codex_run, codex_exe),
         detect_chatgpt_client_path_internal(chatgpt_run, chatgpt_exe),
         detect_workbuddy_client_path_internal(workbuddy_run, workbuddy_exe),
         detect_accio_client_path_internal(accio_run, accio_exe),
         detect_cursor_client_path_internal(cursor_run, cursor_exe),
-    ]
+    ];
+
+    // 静默自愈：若保存的配置路径物理失效或尚未持久化，自动写回已探测到的最新有效路径
+    let mut config = load_app_paths();
+    let mut modified = false;
+
+    for info in &results {
+        if info.exists && !info.path.is_empty() && info.app_type == "chatgpt" {
+            let should_heal = config
+                .chatgpt_client_path
+                .as_deref()
+                .is_some_and(|old| !Path::new(old).exists());
+            if should_heal || config.chatgpt_client_path.is_none() {
+                config.chatgpt_client_path = Some(info.path.clone());
+                modified = true;
+            }
+        }
+    }
+
+    if modified {
+        let _ = save_app_paths(&config);
+    }
+
+    results
 }
 
 /// 弹出系统文件选择窗口

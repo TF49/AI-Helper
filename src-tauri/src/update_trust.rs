@@ -363,7 +363,8 @@ pub fn assert_artifact_allowed(
     Ok(())
 }
 
-/// 官方已验证「无更新」时，未认证镜像的更高版本声明一律丢弃。
+/// 官方已验证「无更新」时，未认证镜像的更高版本声明一律丢弃；
+/// 但若镜像具有经公钥验签的可信清单（且满足防回滚/同平台校验），则允许采用更新的可信版本。
 pub fn select_trusted_update(
     current_version: &str,
     official: Option<Result<VerifiedManifest, TrustError>>,
@@ -377,24 +378,40 @@ pub fn select_trusted_update(
         Some(Ok(official_manifest)) => {
             assert_artifact_allowed(&official_manifest, &current, state, expected_platform)?;
             let official_ver = normalize_version(&official_manifest.manifest.version);
-            if !is_newer(&official_ver, &current) {
-                for claim in claims {
-                    if claim.verified.is_none() && is_newer(&claim.version, &official_ver) {
-                        log::warn!(
-                            "忽略未认证镜像 {} 的版本声明 {}",
-                            claim.source,
-                            claim.version
-                        );
+
+            // 从官方和已验签镜像源中选取最高可信版本
+            let mut best_manifest = official_manifest;
+            let mut best_ver = official_ver.clone();
+
+            for claim in claims {
+                if let Some(verified) = &claim.verified {
+                    let claim_ver = normalize_version(&verified.manifest.version);
+                    if is_newer(&claim_ver, &best_ver)
+                        && assert_artifact_allowed(verified, &current, state, expected_platform)
+                            .is_ok()
+                    {
+                        best_ver = claim_ver;
+                        best_manifest = verified.clone();
                     }
+                } else if is_newer(&claim.version, &official_ver) {
+                    log::warn!(
+                        "忽略未认证镜像 {} 的版本声明 {}",
+                        claim.source,
+                        claim.version
+                    );
                 }
+            }
+
+            if is_newer(&best_ver, &current) {
+                return Ok(UpdateSelection::Update {
+                    version: best_ver,
+                    platform_key: best_manifest.platform_key,
+                });
+            } else {
                 return Ok(UpdateSelection::NoUpdate {
-                    latest_version: official_ver,
+                    latest_version: best_ver,
                 });
             }
-            return Ok(UpdateSelection::Update {
-                version: official_ver,
-                platform_key: official_manifest.platform_key,
-            });
         }
         Some(Err(ref err))
             if matches!(
@@ -638,6 +655,33 @@ mod tests {
             decision,
             UpdateSelection::NoUpdate {
                 latest_version: "1.0.70".into()
+            }
+        );
+    }
+
+    #[test]
+    fn official_no_update_accepts_verified_mirror_high_version() {
+        let official = verified("1.0.70", "windows-x86_64", None);
+        let mirror_verified = verified("1.0.71", "windows-x86_64", None);
+        let claims = [UntrustedVersionClaim {
+            source: "ghfast".into(),
+            version: "1.0.71".into(),
+            verified: Some(mirror_verified),
+        }];
+        let state = TrustState::initial("1.0.70");
+        let decision = select_trusted_update(
+            "1.0.70",
+            Some(Ok(official)),
+            &claims,
+            &state,
+            "windows-x86_64",
+        )
+        .unwrap();
+        assert_eq!(
+            decision,
+            UpdateSelection::Update {
+                version: "1.0.71".into(),
+                platform_key: "windows-x86_64".into(),
             }
         );
     }

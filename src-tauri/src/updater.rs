@@ -404,6 +404,7 @@ async fn check_for_updates_internal() -> Result<UpdateInfo, String> {
 
     let mut claims = Vec::new();
     for (url, name) in [
+        (UPDATER_JSON_OFFICIAL_URL, "updater.json (GitHub 官方直连)"),
         (UPDATER_JSON_MIRROR_URL, "updater.json (ghfast)"),
         (UPDATER_JSON_MIRROR_BACKUP_URL, "updater.json (gh-proxy)"),
         (
@@ -448,6 +449,7 @@ async fn check_for_updates_internal() -> Result<UpdateInfo, String> {
             let verified = official
                 .as_ref()
                 .and_then(|r| r.as_ref().ok())
+                .filter(|v| update_trust::normalize_version(&v.manifest.version) == *version)
                 .cloned()
                 .or_else(|| {
                     claims
@@ -510,8 +512,20 @@ async fn fetch_signed_manifest(
     let client = create_client(REQUEST_TIMEOUT).map_err(TrustError::ReadFailed)?;
     log::info!("Checking for signed updates via {}...", source_name);
 
+    let cache_buster = chrono::Utc::now().timestamp_millis();
+    let url_with_buster = if url.contains('?') {
+        format!("{}&_t={}", url, cache_buster)
+    } else {
+        format!("{}?_t={}", url, cache_buster)
+    };
+
     let response = client
-        .get(url)
+        .get(&url_with_buster)
+        .header(
+            reqwest::header::CACHE_CONTROL,
+            "no-cache, no-store, max-age=0",
+        )
+        .header(reqwest::header::PRAGMA, "no-cache")
         .send()
         .await
         .map_err(|e| TrustError::ReadFailed(e.to_string()))?;
@@ -523,8 +537,20 @@ async fn fetch_signed_manifest(
         .await
         .map_err(|e| TrustError::ReadFailed(e.to_string()))?;
 
+    let sig_url = signature_url_for(url);
+    let sig_url_with_buster = if sig_url.contains('?') {
+        format!("{}&_t={}", sig_url, cache_buster)
+    } else {
+        format!("{}?_t={}", sig_url, cache_buster)
+    };
+
     let sig_response = client
-        .get(signature_url_for(url))
+        .get(&sig_url_with_buster)
+        .header(
+            reqwest::header::CACHE_CONTROL,
+            "no-cache, no-store, max-age=0",
+        )
+        .header(reqwest::header::PRAGMA, "no-cache")
         .send()
         .await
         .map_err(|e| TrustError::ReadFailed(e.to_string()))?;
@@ -613,10 +639,29 @@ async fn fetch_release_sha256sums(client: &reqwest::Client, version: &str) -> Op
     ];
 
     for url in &candidate_urls {
-        if let Ok(resp) = client.get(url).timeout(Duration::from_secs(8)).send().await {
+        let cache_buster = chrono::Utc::now().timestamp_millis();
+        let url_with_buster = if url.contains('?') {
+            format!("{}&_t={}", url, cache_buster)
+        } else {
+            format!("{}?_t={}", url, cache_buster)
+        };
+
+        if let Ok(resp) = client
+            .get(&url_with_buster)
+            .header(
+                reqwest::header::CACHE_CONTROL,
+                "no-cache, no-store, max-age=0",
+            )
+            .header(reqwest::header::PRAGMA, "no-cache")
+            .timeout(Duration::from_secs(8))
+            .send()
+            .await
+        {
             if resp.status().is_success() {
                 if let Ok(text) = resp.text().await {
-                    if text.contains("AI-Helper") {
+                    if text.contains(&format!("AI-Helper-v{}", clean_ver))
+                        || text.contains(&format!("AI-Helper-{}", clean_ver))
+                    {
                         log::info!("成功从 {} 获取到权威 SHA256SUMS 校验清单", url);
                         return Some(text);
                     }

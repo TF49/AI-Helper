@@ -181,4 +181,146 @@ export const CursorIcon: React.FC<
   );
 };
 
+/**
+ * Google Gemini 品牌图标 (四芒彩虹星)
+ */
+export const GeminiIcon: React.FC<
+  BrandIconProps & { useMultiColor?: boolean }
+> = ({ size = 16, className = "", color, useMultiColor = true }) => {
+  return (
+    <svg
+      height={size}
+      width={size}
+      className={cn("flex-shrink-0 transition-colors", className)}
+      viewBox="0 0 24 24"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+    >
+      <title>Gemini</title>
+      <defs>
+        <linearGradient id="geminiGrad" x1="2" y1="2" x2="22" y2="22" gradientUnits="userSpaceOnUse">
+          <stop offset="0%" stopColor="#1E88E5" />
+          <stop offset="35%" stopColor="#7E57C2" />
+          <stop offset="70%" stopColor="#E91E63" />
+          <stop offset="100%" stopColor="#FF7043" />
+        </linearGradient>
+      </defs>
+      <path
+        d="M12 2C12 7.523 7.523 12 2 12C7.523 12 12 16.477 12 22C12 16.477 16.477 12 22 12C16.477 12 12 7.523 12 2Z"
+        fill={useMultiColor ? "url(#geminiGrad)" : color || "currentColor"}
+      />
+    </svg>
+  );
+};
+
+/**
+ * xAI Grok 品牌图标 (斜切圆环)
+ */
+export const GrokIcon: React.FC<BrandIconProps> = ({
+  size = 16,
+  className = "",
+  color,
+}) => {
+  return (
+    <svg
+      height={size}
+      width={size}
+      className={cn("flex-shrink-0 transition-colors", className)}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke={color || "currentColor"}
+      strokeWidth="2.2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      xmlns="http://www.w3.org/2000/svg"
+    >
+      <title>Grok</title>
+      <circle cx="12" cy="12" r="9" />
+      <line x1="5.6" y1="18.4" x2="18.4" y2="5.6" />
+    </svg>
+  );
+};
+
+/**
+ * Open Code 开源 AI 编程 Agent 图标 (极简窗格)
+ */
+export const OpenCodeIcon: React.FC<BrandIconProps> = ({
+  size = 16,
+  className = "",
+  color,
+}) => {
+  return (
+    <svg
+      height={size}
+      width={size}
+      className={cn("flex-shrink-0 transition-colors", className)}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke={color || "currentColor"}
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      xmlns="http://www.w3.org/2000/svg"
+    >
+      <title>Open Code</title>
+      <rect x="4" y="3" width="16" height="18" rx="3.5" />
+      <path d="M9 8h6" />
+      <path d="M8.5 12.5l2.5 2.5-2.5 2.5" />
+    </svg>
+  );
+};
+
+/**
+ * Claude Code 命令行 CLI 图标 (含终端提示符角标)
+ */
+export const ClaudeCliIcon: React.FC<BrandIconProps> = (props) => {
+  return (
+    <div className="relative inline-flex items-center justify-center">
+      <ClaudeIcon {...props} useOfficialColor />
+      <span className="absolute -bottom-1 -right-1 text-[8px] font-mono font-black text-slate-800 dark:text-slate-200">
+        &gt;_
+      </span>
+    </div>
+  );
+};
+
+/**
+ * Claude Code 桌面客户端图标 (保留兼容)
+ */
+export const ClaudeDesktopIcon: React.FC<BrandIconProps> = (props) => {
+  return (
+    <div className="relative inline-flex items-center justify-center">
+      <ClaudeIcon {...props} useOfficialColor />
+      <span className="absolute -bottom-1 -right-1.5 w-2.5 h-2 rounded-[2px] border border-slate-700 dark:border-slate-300 bg-white dark:bg-black" />
+    </div>
+  );
+};
+
+/**
+ * Codex 命令行 CLI 图标 (含终端提示符角标)
+ */
+export const CodexCliIcon: React.FC<BrandIconProps> = (props) => {
+  return (
+    <div className="relative inline-flex items-center justify-center">
+      <OpenAIIcon {...props} />
+      <span className="absolute -bottom-1 -right-1 text-[8px] font-mono font-black text-slate-800 dark:text-slate-200">
+        &gt;_
+      </span>
+    </div>
+  );
+};
+
+/**
+ * ChatGPT 桌面客户端图标 (含桌面屏幕角标)
+ */
+export const ChatGPTDesktopIcon: React.FC<BrandIconProps> = (props) => {
+  return (
+    <div className="relative inline-flex items-center justify-center">
+      <OpenAIIcon {...props} />
+      <span className="absolute -bottom-1 -right-1.5 w-2.5 h-2 rounded-[2px] border border-slate-700 dark:border-slate-300 bg-white dark:bg-black" />
+    </div>
+  );
+};
+
+
 

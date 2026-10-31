@@ -45,7 +45,7 @@ export function QuickToolsModal({
   const effectiveModel =
     currentModel ||
     (selectedProtocol === "claude"
-      ? "claude-3-7-sonnet-20250219"
+      ? "claude-sonnet-5-5"
       : selectedProtocol === "workbuddy"
         ? "gpt-5.6-sol"
         : selectedProtocol === "acciowork"

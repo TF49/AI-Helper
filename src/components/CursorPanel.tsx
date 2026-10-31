@@ -171,10 +171,19 @@ export function CursorPanel() {
     void load();
     const timer = setInterval(() => {
       void getCursorBridgeStatus()
-        .then(setBridgeStatus)
+        .then((s) => {
+          setBridgeStatus((prev) => {
+            if (prev.is_running === s.is_running && prev.port === s.port) {
+              return prev;
+            }
+            return s;
+          });
+        })
         .catch(() => {});
       void checkAppProcessStatus("cursor")
-        .then(setClientRunning)
+        .then((running) => {
+          setClientRunning((prev) => (prev === running ? prev : running));
+        })
         .catch(() => {});
     }, 5000);
     return () => clearInterval(timer);
@@ -745,7 +754,7 @@ export function CursorPanel() {
   };
 
   // ── 摘要视图 ──
-  const SummarySection = () => (
+  const renderSummarySection = () => (
     <div className="w-full flex flex-col gap-4">
       <SpotlightCard
         className="p-5 rounded-2xl border border-slate-200/90 dark:border-white/10 bg-white/80 dark:bg-black/60 shadow-sm"
@@ -967,7 +976,7 @@ export function CursorPanel() {
       {/* ── 主内容区 ── */}
       <div className="w-full flex-1 flex flex-col gap-4">
         {showSummary ? (
-          <SummarySection />
+          renderSummarySection()
         ) : (
           <AnimatePresence mode="wait" custom={direction}>
             <motion.div

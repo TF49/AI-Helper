@@ -77,7 +77,7 @@ function getMockResponse<T>(cmd: string, _args?: Record<string, unknown>): T {
         config_path: "~/.claude/settings.json",
         url: "https://bob-api.com",
         api_key: "",
-        model: "claude-3-7-sonnet",
+        model: "claude-sonnet-5-5",
       } as unknown as T;
     case "get_workbuddy_config":
       return {
@@ -99,6 +99,17 @@ function getMockResponse<T>(cmd: string, _args?: Record<string, unknown>): T {
         is_installed: false,
         bridge_running: false,
       } as unknown as T;
+    case "get_cursor_config":
+      return {
+        base_url: "https://bob-api.com",
+        api_key: "",
+        model: "claude-3-7-sonnet",
+        config_exists: true,
+        config_path: "~/.cursor/config.json",
+        is_installed: true,
+        bridge_port: 8788,
+        bridge_running: false,
+      } as unknown as T;
     case "get_accio_bridge_status":
       return { is_running: false, port: 8787 } as unknown as T;
     case "start_accio_bridge":
@@ -113,7 +124,7 @@ function getMockResponse<T>(cmd: string, _args?: Record<string, unknown>): T {
     case "fetch_claude_models":
       return [
         { id: "gpt-5.6-sol", name: "gpt-5.6-sol" },
-        { id: "claude-3-7-sonnet", name: "claude-3-7-sonnet" },
+        { id: "claude-sonnet-5-5", name: "claude-sonnet-5-5" },
       ] as unknown as T;
     case "get_site_status":
       return {

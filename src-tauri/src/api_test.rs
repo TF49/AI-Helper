@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::json;
 use tauri::ipc::Channel;
 
-const REQUEST_TIMEOUT: Duration = Duration::from_secs(20);
+const REQUEST_TIMEOUT: Duration = Duration::from_secs(60);
 
 fn test_http_client() -> Client {
     Client::builder()
@@ -59,6 +59,49 @@ pub enum TestStreamEvent {
         latency_ms: u64,
         status_code: Option<u16>,
     },
+}
+
+fn handle_stream_request_error(
+    err: &reqwest::Error,
+    latency_ms: u64,
+    on_event: &Channel<TestStreamEvent>,
+) -> ApiTestResult {
+    let msg = if err.is_timeout() {
+        "请求超时 (超过 60 秒未收到响应)".to_string()
+    } else if err.is_connect() {
+        "网络连接失败: 无法连接至服务节点".to_string()
+    } else {
+        format!("请求异常: {}", err)
+    };
+
+    let _ = on_event.send(TestStreamEvent::Log {
+        text: msg.clone(),
+        level: "error".to_string(),
+    });
+    if err.is_timeout() {
+        let _ = on_event.send(TestStreamEvent::Log {
+            text: "建议: 请检查网络环境或开启VPN进行重试。".to_string(),
+            level: "warn".to_string(),
+        });
+    }
+    let _ = on_event.send(TestStreamEvent::Log {
+        text: "建议: 请检查服务节点 URL 是否拼写正确、本地网络连通性及代理设置。".to_string(),
+        level: "warn".to_string(),
+    });
+    let _ = on_event.send(TestStreamEvent::Finish {
+        success: false,
+        message: msg.clone(),
+        latency_ms,
+        status_code: None,
+    });
+
+    ApiTestResult {
+        success: false,
+        message: msg,
+        status_code: None,
+        latency_ms: Some(latency_ms),
+        response_preview: None,
+    }
 }
 
 pub async fn test_codex_config(url: String, api_key: String, model: String) -> ApiTestResult {
@@ -229,39 +272,7 @@ pub async fn test_codex_stream(
                 }
             }
         }
-        Err(err) => {
-            let msg = if err.is_timeout() {
-                "请求超时 (超过 20 秒未收到响应)".to_string()
-            } else if err.is_connect() {
-                "网络连接失败: 无法连接至服务节点".to_string()
-            } else {
-                format!("请求异常: {}", err)
-            };
-
-            let _ = on_event.send(TestStreamEvent::Log {
-                text: msg.clone(),
-                level: "error".to_string(),
-            });
-            let _ = on_event.send(TestStreamEvent::Log {
-                text: "建议: 请检查服务节点 URL 是否拼写正确、本地网络连通性及代理设置。"
-                    .to_string(),
-                level: "warn".to_string(),
-            });
-            let _ = on_event.send(TestStreamEvent::Finish {
-                success: false,
-                message: msg.clone(),
-                latency_ms,
-                status_code: None,
-            });
-
-            ApiTestResult {
-                success: false,
-                message: msg,
-                status_code: None,
-                latency_ms: Some(latency_ms),
-                response_preview: None,
-            }
-        }
+        Err(err) => handle_stream_request_error(&err, latency_ms, &on_event),
     }
 }
 
@@ -406,39 +417,7 @@ pub async fn test_claude_stream(
                 }
             }
         }
-        Err(err) => {
-            let msg = if err.is_timeout() {
-                "请求超时 (超过 20 秒未收到响应)".to_string()
-            } else if err.is_connect() {
-                "网络连接失败: 无法连接至服务节点".to_string()
-            } else {
-                format!("请求异常: {}", err)
-            };
-
-            let _ = on_event.send(TestStreamEvent::Log {
-                text: msg.clone(),
-                level: "error".to_string(),
-            });
-            let _ = on_event.send(TestStreamEvent::Log {
-                text: "建议: 请检查服务节点 URL 是否拼写正确、本地网络连通性及代理设置。"
-                    .to_string(),
-                level: "warn".to_string(),
-            });
-            let _ = on_event.send(TestStreamEvent::Finish {
-                success: false,
-                message: msg.clone(),
-                latency_ms,
-                status_code: None,
-            });
-
-            ApiTestResult {
-                success: false,
-                message: msg,
-                status_code: None,
-                latency_ms: Some(latency_ms),
-                response_preview: None,
-            }
-        }
+        Err(err) => handle_stream_request_error(&err, latency_ms, &on_event),
     }
 }
 
@@ -572,39 +551,7 @@ pub async fn test_workbuddy_stream(
                 }
             }
         }
-        Err(err) => {
-            let msg = if err.is_timeout() {
-                "请求超时 (超过 20 秒未收到响应)".to_string()
-            } else if err.is_connect() {
-                "网络连接失败: 无法连接至服务节点".to_string()
-            } else {
-                format!("请求异常: {}", err)
-            };
-
-            let _ = on_event.send(TestStreamEvent::Log {
-                text: msg.clone(),
-                level: "error".to_string(),
-            });
-            let _ = on_event.send(TestStreamEvent::Log {
-                text: "建议: 请检查服务节点 URL 是否拼写正确、本地网络连通性及代理设置。"
-                    .to_string(),
-                level: "warn".to_string(),
-            });
-            let _ = on_event.send(TestStreamEvent::Finish {
-                success: false,
-                message: msg.clone(),
-                latency_ms,
-                status_code: None,
-            });
-
-            ApiTestResult {
-                success: false,
-                message: msg,
-                status_code: None,
-                latency_ms: Some(latency_ms),
-                response_preview: None,
-            }
-        }
+        Err(err) => handle_stream_request_error(&err, latency_ms, &on_event),
     }
 }
 
@@ -707,7 +654,7 @@ async fn send_test_request(request: reqwest::RequestBuilder) -> ApiTestResult {
         Err(err) => {
             let latency = start.elapsed().as_millis() as u64;
             let message = if err.is_timeout() {
-                "请求超时 (超过 20 秒未收到响应)".to_string()
+                "请求超时 (超过 60 秒未收到响应，请检查网络环境或开启VPN进行重试)".to_string()
             } else if err.is_connect() {
                 "网络连接失败: 无法连接至服务节点".to_string()
             } else {
@@ -945,39 +892,7 @@ pub async fn test_accio_stream(
                 }
             }
         }
-        Err(err) => {
-            let msg = if err.is_timeout() {
-                "请求超时 (超过 20 秒未收到响应)".to_string()
-            } else if err.is_connect() {
-                "网络连接失败: 无法连接至服务节点".to_string()
-            } else {
-                format!("请求异常: {}", err)
-            };
-
-            let _ = on_event.send(TestStreamEvent::Log {
-                text: msg.clone(),
-                level: "error".to_string(),
-            });
-            let _ = on_event.send(TestStreamEvent::Log {
-                text: "建议: 请检查服务节点 URL 是否拼写正确、本地网络连通性及代理设置。"
-                    .to_string(),
-                level: "warn".to_string(),
-            });
-            let _ = on_event.send(TestStreamEvent::Finish {
-                success: false,
-                message: msg.clone(),
-                latency_ms,
-                status_code: None,
-            });
-
-            ApiTestResult {
-                success: false,
-                message: msg,
-                status_code: None,
-                latency_ms: Some(latency_ms),
-                response_preview: None,
-            }
-        }
+        Err(err) => handle_stream_request_error(&err, latency_ms, &on_event),
     }
 }
 
@@ -1112,39 +1027,7 @@ pub async fn test_cursor_stream(
                 }
             }
         }
-        Err(err) => {
-            let msg = if err.is_timeout() {
-                "请求超时 (超过 20 秒未收到响应)".to_string()
-            } else if err.is_connect() {
-                "网络连接失败: 无法连接至服务节点".to_string()
-            } else {
-                format!("请求异常: {}", err)
-            };
-
-            let _ = on_event.send(TestStreamEvent::Log {
-                text: msg.clone(),
-                level: "error".to_string(),
-            });
-            let _ = on_event.send(TestStreamEvent::Log {
-                text: "建议: 请检查服务节点 URL 是否拼写正确、本地网络连通性及代理设置。"
-                    .to_string(),
-                level: "warn".to_string(),
-            });
-            let _ = on_event.send(TestStreamEvent::Finish {
-                success: false,
-                message: msg.clone(),
-                latency_ms,
-                status_code: None,
-            });
-
-            ApiTestResult {
-                success: false,
-                message: msg,
-                status_code: None,
-                latency_ms: Some(latency_ms),
-                response_preview: None,
-            }
-        }
+        Err(err) => handle_stream_request_error(&err, latency_ms, &on_event),
     }
 }
 

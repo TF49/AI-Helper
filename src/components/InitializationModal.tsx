@@ -2520,7 +2520,7 @@ export function InitializationModal({
                                 editTab === "chatgpt"
                                   ? "gpt-4o / gpt-5.6-sol"
                                   : editTab === "claude"
-                                    ? "claude-3-7-sonnet-20250219"
+                                    ? "claude-sonnet-5-5"
                                     : editTab === "workbuddy"
                                       ? "gpt-5.6-sol"
                                       : "选择或输入测试模型"

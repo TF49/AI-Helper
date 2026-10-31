@@ -22,8 +22,9 @@ import {
   TrendingUp,
 } from "lucide-react";
 import { toast } from "sonner";
+import { getVersion } from "@tauri-apps/api/app";
 import { useAuth } from "../../lib/useAuth";
-import { openUrl, checkBobApiNetwork } from "../../lib/api";
+import { openUrl, checkBobApiNetwork, isTauri } from "../../lib/api";
 import { cn } from "../../lib/utils";
 import type { MainNav, NetworkStatus } from "../../types";
 import { ButtonToLoaderToSuccess } from "../ui/ButtonToLoaderToSuccess";
@@ -44,6 +45,15 @@ export const PersonalCenterPanel: React.FC<PersonalCenterPanelProps> = ({
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
   const [networkStatus, setNetworkStatus] = useState<NetworkStatus | null>(null);
   const [checkingNetwork, setCheckingNetwork] = useState(false);
+  const [appVersion, setAppVersion] = useState("1.0.72");
+
+  useEffect(() => {
+    if (isTauri) {
+      void getVersion()
+        .then((v) => setAppVersion(v))
+        .catch(() => setAppVersion("1.0.72"));
+    }
+  }, []);
 
   // 检测节点网络延迟
   const runNetworkCheck = useCallback(async () => {
@@ -205,12 +215,12 @@ export const PersonalCenterPanel: React.FC<PersonalCenterPanelProps> = ({
   return (
     <div className={cn("w-full max-w-7xl mx-auto space-y-6 select-none pb-8", className)}>
       {/* ── 顶部个人基础资料横幅 (Profile Hero Banner) ── */}
-      <div className="p-6 rounded-3xl bg-white dark:bg-[#121524] border border-slate-200/80 dark:border-white/10 shadow-sm relative overflow-hidden flex flex-col md:flex-row md:items-center justify-between gap-5">
+      <div className="p-6 rounded-3xl bg-white dark:bg-[#121524] border border-slate-200/80 dark:border-white/10 shadow-sm relative overflow-hidden flex flex-col lg:flex-row lg:items-center justify-between gap-5">
         {/* 背景微晶极光晕染 */}
         <div className="absolute -right-16 -top-16 w-80 h-80 bg-gradient-to-br from-blue-500/10 via-indigo-500/10 to-transparent dark:from-blue-600/15 dark:via-purple-600/10 rounded-full blur-3xl pointer-events-none" />
 
         {/* 左侧个人信息 */}
-        <div className="flex items-center gap-4 relative z-10">
+        <div className="flex items-center gap-4 relative z-10 min-w-0 flex-1">
           {/* 头像 */}
           <div className="relative flex-shrink-0">
             <div className="w-16 h-16 rounded-2xl bg-gradient-to-tr from-blue-600 via-indigo-600 to-violet-500 text-white flex items-center justify-center font-extrabold text-2xl shadow-md ring-4 ring-white/60 dark:ring-white/5">
@@ -225,7 +235,7 @@ export const PersonalCenterPanel: React.FC<PersonalCenterPanelProps> = ({
             />
           </div>
 
-          <div className="space-y-1.5">
+          <div className="space-y-1.5 min-w-0 flex-1">
             <div className="flex items-center gap-2 flex-wrap">
               <h2 className="text-lg font-bold text-slate-900 dark:text-white tracking-tight">
                 {user?.display_name || user?.username}
@@ -313,13 +323,13 @@ export const PersonalCenterPanel: React.FC<PersonalCenterPanelProps> = ({
           </div>
         </div>
 
-        {/* 右侧操作工具栏 */}
-        <div className="flex items-center gap-2.5 relative z-10 self-start md:self-auto flex-wrap">
+        {/* 右侧操作工具栏 (严格在同一水平线，不换行) */}
+        <div className="flex items-center gap-2 sm:gap-2.5 relative z-10 flex-shrink-0 flex-nowrap self-start lg:self-center">
           {/* 刷新资产（状态形变链） */}
           <ButtonToLoaderToSuccess
             accent="blue"
             disabled={isRefreshing}
-            className="px-3.5 py-1.5 min-w-[105px] rounded-xl text-xs font-medium"
+            className="px-3.5 py-1.5 min-w-[102px] h-8 rounded-xl text-xs font-medium whitespace-nowrap"
             idleLabel={
               <>
                 <RefreshCw size={12} />
@@ -338,7 +348,7 @@ export const PersonalCenterPanel: React.FC<PersonalCenterPanelProps> = ({
           <button
             type="button"
             onClick={() => void openUrl("https://bob-api.com/console")}
-            className="px-3.5 py-1.5 rounded-xl border border-slate-200 dark:border-white/10 hover:bg-slate-100/80 dark:hover:bg-white/5 text-slate-700 dark:text-gray-300 text-xs font-medium transition-colors cursor-pointer flex items-center gap-1.5"
+            className="h-8 px-3.5 py-1.5 rounded-xl border border-slate-200 dark:border-white/10 hover:bg-slate-100/80 dark:hover:bg-white/5 text-slate-700 dark:text-gray-300 text-xs font-medium transition-colors cursor-pointer flex items-center gap-1.5 whitespace-nowrap flex-shrink-0"
             title="在浏览器中打开 Bob API 网页控制台"
           >
             <ExternalLink size={13} className="opacity-70" />
@@ -349,7 +359,7 @@ export const PersonalCenterPanel: React.FC<PersonalCenterPanelProps> = ({
           <button
             type="button"
             onClick={() => void logout()}
-            className="px-3.5 py-1.5 rounded-xl border border-red-200/80 dark:border-red-500/20 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-500/10 text-xs font-medium transition-colors cursor-pointer flex items-center gap-1.5"
+            className="h-8 px-3.5 py-1.5 rounded-xl border border-red-200/80 dark:border-red-500/20 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-500/10 text-xs font-medium transition-colors cursor-pointer flex items-center gap-1.5 whitespace-nowrap flex-shrink-0"
             title="退出当前账号登录"
           >
             <LogOut size={13} />
@@ -795,7 +805,7 @@ export const PersonalCenterPanel: React.FC<PersonalCenterPanelProps> = ({
               <div className="flex items-center justify-between py-1.5">
                 <span className="text-slate-400">客户端环境</span>
                 <span className="font-mono text-[11px] text-slate-500 dark:text-gray-400">
-                  AI Helper v1.0.65
+                  AI Helper v{appVersion}
                 </span>
               </div>
             </div>

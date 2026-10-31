@@ -424,7 +424,7 @@ export function ClaudePanel() {
                     value={model}
                     onChange={setModel}
                     models={models}
-                    placeholder="选择或输入测试模型名称 (如 claude-3-7-sonnet-20250219)"
+                    placeholder="选择或输入测试模型名称 (如 claude-sonnet-5-5)"
                     id="claude-models"
                     onRefresh={() => void refreshModels()}
                     refreshing={refreshingModels}
