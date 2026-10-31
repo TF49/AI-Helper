@@ -988,6 +988,16 @@ export async function updateUserTokenGroup(
   });
 }
 
+export async function createUserToken(
+  name: string,
+  group: string,
+): Promise<TokenItem> {
+  return invoke<TokenItem>("create_user_token", {
+    name,
+    group,
+  });
+}
+
 export async function setSelectedToken(
   tokenId?: number | null,
   tokenName?: string | null,

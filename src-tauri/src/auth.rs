@@ -1840,6 +1840,87 @@ pub async fn update_user_token_group(
     Ok(updated)
 }
 
+/// 创建新的 API Key 令牌 (调用 POST /api/token/)
+pub async fn create_user_token(name: String, group: String) -> Result<TokenItem, String> {
+    let clean_name = name.trim().to_string();
+    if clean_name.is_empty() {
+        return Err("令牌名称不能为空".to_string());
+    }
+    let clean_group = group.trim().to_string();
+
+    let token = ensure_access_token().await?;
+    let client = {
+        let mgr = AUTH_MGR.lock().await;
+        mgr.client.clone()
+    };
+
+    let url = format!("{}/api/token/", BASE_URL);
+    let payload = serde_json::json!({
+        "name": clean_name,
+        "remain_quota": 500000,
+        "expired_time": -1,
+        "unlimited_quota": true,
+        "group": clean_group,
+    });
+
+    let resp = client
+        .post(&url)
+        .header(AUTHORIZATION, format!("Bearer {}", token))
+        .json(&payload)
+        .send()
+        .await
+        .map_err(|e| format!("创建令牌网络请求失败: {e}"))?;
+
+    let status = resp.status();
+    let text = resp
+        .text()
+        .await
+        .map_err(|e| format!("读取创建令牌响应失败: {e}"))?;
+
+    let parsed: ApiResponse<serde_json::Value> =
+        parse_api_response_body(status, &text, "创建新令牌")?;
+
+    if !parsed.success {
+        return Err(if parsed.message.is_empty() {
+            "创建令牌失败".to_string()
+        } else {
+            parsed.message
+        });
+    }
+
+    let item_opt: Option<TokenItem> = parsed.data.and_then(|d| serde_json::from_value(d).ok());
+
+    let mut item = match item_opt {
+        Some(it) if it.id > 0 => it,
+        _ => {
+            // 服务端成功创建但 data 未返回完整对象时，重新拉取用户令牌列表并定位最新令牌
+            let tokens = get_user_tokens(None).await?;
+            tokens
+                .into_iter()
+                .filter(|t| {
+                    t.name == clean_name && t.group.as_deref().unwrap_or("").trim() == clean_group
+                })
+                .max_by_key(|t| t.id)
+                .ok_or_else(|| "令牌创建成功，但未能检索到新生成的令牌".to_string())?
+        }
+    };
+
+    // 无论服务端是否在创建接口中回显 Key，统一调用专用明文接口获取未截断明文并登记受管权限
+    match get_token_key(item.id).await {
+        Ok(plain_key) => {
+            item.key = plain_key;
+        }
+        Err(e) => {
+            if item.key.is_empty() {
+                return Err(format!("获取新令牌明文失败: {e}"));
+            }
+            crate::credential_policy::register_managed_key(&item.key);
+        }
+    }
+
+    Ok(item)
+}
+
 fn managed_destination(url: &str, default: &str) -> Result<String, String> {
     let dest = if url.trim().is_empty() {
         default.to_string()
@@ -1858,6 +1939,7 @@ fn managed_destination(url: &str, default: &str) -> Result<String, String> {
 /// 本地配置尚未设置模型时使用的默认模型；已有模型一律保留用户选择
 const DEFAULT_CLAUDE_MODEL: &str = "claude-sonnet-5-5";
 const DEFAULT_CODEX_MODEL: &str = "gpt-5.6-sol";
+const DEFAULT_DOMESTIC_MODEL: &str = "glm-5.3";
 
 fn model_or_default(current: Option<&str>, default: &str) -> String {
     current
@@ -1925,10 +2007,10 @@ pub async fn apply_api_key_to_agents(
                     .as_ref()
                     .map(|c| c.base_url.clone())
                     .unwrap_or_else(|| "https://bob-api.com/v1".to_string());
-                let model = cur
-                    .as_ref()
-                    .map(|c| c.model.clone())
-                    .unwrap_or_else(|| "gpt-5.6-sol".to_string());
+                let model = model_or_default(
+                    cur.as_ref().map(|c| c.model.as_str()),
+                    DEFAULT_DOMESTIC_MODEL,
+                );
                 let url = match managed_destination(&url, "https://bob-api.com/v1") {
                     Ok(url) => url,
                     Err(e) => {
@@ -1974,10 +2056,11 @@ pub async fn apply_api_key_to_agents(
                     results.insert("acciowork".to_string(), false);
                     continue;
                 }
+                let model = model_or_default(Some(cur.model.as_str()), DEFAULT_DOMESTIC_MODEL);
                 let config = crate::accio::config::AccioConfig {
                     base_url,
                     api_key: api_key.clone(),
-                    model: cur.model,
+                    model,
                     bridge_port: cur.bridge_port,
                     official_gateway: cur.official_gateway,
                     fallback_official: cur.fallback_official,
@@ -2024,10 +2107,11 @@ pub async fn apply_api_key_to_agents(
                 } else {
                     (cur.cached_models, cur.cached_models_fingerprint)
                 };
+                let model = model_or_default(Some(cur.model.as_str()), DEFAULT_DOMESTIC_MODEL);
                 let config = crate::cursor::config::CursorConfig {
                     base_url,
                     api_key: api_key.clone(),
-                    model: cur.model,
+                    model,
                     bridge_port: cur.bridge_port,
                     auto_start_bridge: cur.auto_start_bridge,
                     custom_models: cur.custom_models,

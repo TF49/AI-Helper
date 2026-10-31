@@ -29,7 +29,7 @@ fn default_base_url() -> String {
 }
 
 fn default_model() -> String {
-    "gpt-5.6-sol".to_string()
+    "glm-5.3".to_string()
 }
 
 fn default_bridge_port() -> u16 {

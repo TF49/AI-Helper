@@ -22,6 +22,7 @@ import {
   getAccioConfig,
   getUserTokens,
   getTokenKey,
+  createUserToken,
   applyApiKeyToAgents,
   restartTargetApp,
 } from "../../lib/api";
@@ -53,8 +54,29 @@ const TARGET_LABELS: Record<ApplyTarget, string> = {
   workbuddy: "WorkBuddy",
   acciowork: "Accio Work",
 };
-// localStorage 中 bound_token_* 只保存令牌元数据 {id, name, group}，不含明文 Key
-const BINDING_TOOL_IDS = ["claude", "chatgpt", "cursor", "workbuddy", "acciowork", "default"];
+
+// 各客户端默认分组与推荐模型配置
+const TARGET_DEFAULT_GROUP: Record<ApplyTarget, string> = {
+  claude: "CC-Kiro-Max",
+  chatgpt: "Codex-不降质",
+  cursor: "国产Token计划",
+  workbuddy: "国产Token计划",
+  acciowork: "国产Token计划",
+};
+
+const TARGET_DEFAULT_MODEL: Record<ApplyTarget, string> = {
+  claude: "claude-sonnet-5-5",
+  chatgpt: "gpt-5.6-sol",
+  cursor: "glm-5.3",
+  workbuddy: "glm-5.3",
+  acciowork: "glm-5.3",
+};
+
+const GROUP_DEFAULT_TOKEN_NAMES: Record<string, string> = {
+  "CC-Kiro-Max": "Claude Code 专属令牌 (CC-Kiro-Max)",
+  "Codex-不降质": "Codex 专属令牌 (Codex-不降质)",
+  "国产Token计划": "国产模型专属令牌 (国产Token计划)",
+};
 
 type ResolvedKey = { key: string; token: TokenItem | null };
 
@@ -75,7 +97,7 @@ export const AgentMatrixLobby: React.FC<AgentMatrixLobbyProps> = ({
   onOpenAppInstaller,
 }) => {
   const [configuringAll, setConfiguringAll] = useState(false);
-  const { authState, authSessionGeneration, setLoginModalOpen, setTokenModalOpen } = useAuth();
+  const { authState, authSessionGeneration, setLoginModalOpen } = useAuth();
   // 防止重复点击并发写入；会话切换或卸载后不再写入本地绑定记录
   const actionInFlight = useRef(false);
   const mountedRef = useRef(true);
@@ -255,6 +277,27 @@ export const AgentMatrixLobby: React.FC<AgentMatrixLobbyProps> = ({
     void refreshAgentStatuses();
   }, []);
 
+  // 记忆用户未登录时触发的一键配置意图，登录成功后自动无缝断点续传
+  type PendingConfig =
+    | { type: "single"; agent: AgentCardItem }
+    | { type: "all" };
+
+  const pendingConfigRef = useRef<PendingConfig | null>(null);
+
+  // 监听登录状态：一旦用户在弹窗中完成登录，自动恢复之前挂起的配置动作
+  useEffect(() => {
+    if (authState.is_logged_in && pendingConfigRef.current) {
+      const pending = pendingConfigRef.current;
+      pendingConfigRef.current = null;
+      toast.success("已成功登录 Bob API，正在为您自动执行一键配置...");
+      if (pending.type === "single") {
+        void handleCardAction(pending.agent);
+      } else if (pending.type === "all") {
+        void handleConfigureAll();
+      }
+    }
+  }, [authState.is_logged_in, authSessionGeneration]);
+
   // 执行单卡片动作 (一键配置或安装引导)
   const handleCardAction = async (agent: AgentCardItem) => {
     if (agent.status === "uninstalled") {
@@ -288,16 +331,27 @@ export const AgentMatrixLobby: React.FC<AgentMatrixLobbyProps> = ({
       if (agent.toolKey) onSelectTool(agent.toolKey);
       return;
     }
+
+    // 必须使用 Bob API：若未登录则记录意图并直接唤起登录窗，引导新用户注册/登录
+    if (!authState.is_logged_in) {
+      pendingConfigRef.current = { type: "single", agent };
+      toast.info("一键配置需要绑定您的 Bob API 账号，新用户登录立享体验额度", {
+        description: `将自动为您匹配并配置 ${agent.name}（分组: ${TARGET_DEFAULT_GROUP[target]}）`,
+      });
+      setLoginModalOpen(true);
+      return;
+    }
+
     if (actionInFlight.current || configuringAll) return;
     actionInFlight.current = true;
-    const toastId = toast.loading(`正在为 ${agent.name} 写入 API Key...`);
+    const toastId = toast.loading(`正在为 ${agent.name} 写入 API Key 与模型配置...`);
 
     try {
-      const resolved = await resolveApiKey(target);
+      const resolved = await resolveApiKeyForTarget(target);
       if (!mountedRef.current) return;
       if (!resolved) {
         toast.dismiss(toastId);
-        toast.info("未找到可用的 API Key，请在配置面板中关联令牌或填写 Key");
+        toast.info("未能获取或创建可用令牌，请在配置面板中查看");
         onSelectTool(target);
         return;
       }
@@ -307,17 +361,17 @@ export const AgentMatrixLobby: React.FC<AgentMatrixLobbyProps> = ({
       toast.dismiss(toastId);
       if (ok.length > 0) {
         toast.success(`${agent.name} 已配置完成`, {
-          description: describeKeySource(resolved),
+          description: describeKeySource(resolved, target),
         });
       } else {
         toast.error(`${agent.name} 写入失败，已打开配置面板`, {
-          description: "请检查该工具当前的接口地址是否为 Bob API，以及 Key 是否来自已登录账号",
+          description: "请检查该工具当前的接口地址是否为 Bob API，以及 Key 是否有效",
         });
         onSelectTool(target);
       }
     } catch (err) {
       toast.dismiss(toastId);
-      toast.error(`${agent.name} 配置失败，已打开配置面板`, { description: String(err) });
+      toast.error(`${agent.name} 配置失败: ${String(err)}`);
       onSelectTool(target);
     } finally {
       toast.dismiss(toastId);
@@ -326,51 +380,76 @@ export const AgentMatrixLobby: React.FC<AgentMatrixLobbyProps> = ({
   };
 
   /**
-   * 解析一键配置使用的 API Key。
-   * 1. 已登录：依次尝试目标工具 / 其他工具绑定的令牌，以及账号当前选中的令牌，通过 getTokenKey 取明文。
-   * 2. 回退：读取 Claude Code / Codex 本地已写入的 Key（后端凭据策略仍会校验来源）。
+   * 解析指定目标 Agent 一键配置所用的 API Key。
+   * 按照专属分组规则进行匹配：
+   * - Claude Code: CC-Kiro-Max (模型: claude-sonnet-5-5)
+   * - Codex / ChatGPT: Codex-不降质 (模型: gpt-5.6-sol)
+   * - Cursor / WorkBuddy / Accio: 国产Token计划 (模型: glm-5.3)
+   *
+   * 若用户账号下暂无对应分组的有效 Token，将自动在 Bob API 创建对应分组的专属令牌。
    */
-  const resolveApiKey = async (preferTool?: ApplyTarget): Promise<ResolvedKey | null> => {
-    if (authState.is_logged_in) {
-      const order = preferTool
-        ? [preferTool, ...BINDING_TOOL_IDS.filter((t) => t !== preferTool)]
-        : BINDING_TOOL_IDS;
-      const candidateIds: number[] = [];
-      for (const tid of order) {
-        const id = readBoundTokenId(tid);
-        if (id !== null && !candidateIds.includes(id)) candidateIds.push(id);
-      }
-      const selectedId = authState.selected_token_id;
-      if (typeof selectedId === "number" && !candidateIds.includes(selectedId)) {
-        candidateIds.push(selectedId);
-      }
+  const resolveApiKeyForTarget = async (target: ApplyTarget): Promise<ResolvedKey | null> => {
+    if (!authState.is_logged_in) {
+      return null;
+    }
 
-      if (candidateIds.length > 0) {
-        let tokens: TokenItem[] = [];
+    const targetGroup = TARGET_DEFAULT_GROUP[target];
+    let tokens: TokenItem[] = [];
+    try {
+      tokens = await getUserTokens();
+    } catch (err) {
+      console.warn("获取令牌列表失败:", err);
+    }
+
+    const isGroupMatch = (g?: string | null) => {
+      if (!g) return false;
+      const clean = g.trim();
+      return clean === targetGroup || clean.toLowerCase() === targetGroup.toLowerCase();
+    };
+
+    // 1. 优先检查该工具是否已经绑定过该分组的有效令牌
+    const boundId = readBoundTokenId(target);
+    if (boundId !== null) {
+      const boundToken = tokens.find((t) => t.id === boundId && t.status === 1);
+      if (boundToken && isGroupMatch(boundToken.group)) {
         try {
-          tokens = await getUserTokens();
+          const key = (await getTokenKey(boundToken.id)).trim();
+          if (key) return { key, token: boundToken };
         } catch (err) {
-          console.warn("获取令牌列表失败，改用本地已配置的 Key:", err);
-        }
-        for (const id of candidateIds) {
-          const token = tokens.find((t) => t.id === id);
-          if (!token) continue; // 绑定的令牌已在云端删除
-          try {
-            const key = (await getTokenKey(id)).trim();
-            if (key) return { key, token };
-          } catch (err) {
-            console.warn(`读取令牌 ${token.name} 明文失败:`, err);
-          }
+          console.warn(`读取已绑定令牌 ${boundToken.name} 失败:`, err);
         }
       }
     }
 
-    for (const read of [getClaudeConfig, getCodexConfig]) {
+    // 2. 在用户所有可用令牌中查找属于 targetGroup 的正常令牌 (status === 1)
+    const matchingToken = tokens.find(
+      (t) => t.status === 1 && isGroupMatch(t.group)
+    );
+    if (matchingToken) {
       try {
-        const key = (await read()).api_key?.trim();
-        if (key) return { key, token: null };
-      } catch {}
+        const key = (await getTokenKey(matchingToken.id)).trim();
+        if (key) return { key, token: matchingToken };
+      } catch (err) {
+        console.warn(`读取令牌 ${matchingToken.name} 失败:`, err);
+      }
     }
+
+    // 3. 用户账号下无对应分组的有效令牌：自动在 Bob API 创建专属令牌！
+    try {
+      const tokenName = GROUP_DEFAULT_TOKEN_NAMES[targetGroup] || `${targetGroup} 专属令牌`;
+      const created = await createUserToken(tokenName, targetGroup);
+      let key = created.key?.trim() || "";
+      if (!key || !key.startsWith("sk-")) {
+        key = (await getTokenKey(created.id)).trim();
+      }
+      if (key) {
+        return { key, token: created };
+      }
+    } catch (err) {
+      console.error(`自动创建 ${targetGroup} 分组令牌失败:`, err);
+      throw new Error(`自动创建「${targetGroup}」分组令牌失败: ${String(err)}`);
+    }
+
     return null;
   };
 
@@ -384,7 +463,7 @@ export const AgentMatrixLobby: React.FC<AgentMatrixLobbyProps> = ({
     const { token } = resolved;
     if (token && ok.length > 0 && mountedRef.current && session === sessionRef.current) {
       const bound = JSON.stringify({ id: token.id, name: token.name, group: token.group ?? undefined });
-      for (const tid of [...ok, "default"]) {
+      for (const tid of ok) {
         try {
           localStorage.setItem(`bound_token_${tid}`, bound);
         } catch {}
@@ -401,12 +480,16 @@ export const AgentMatrixLobby: React.FC<AgentMatrixLobbyProps> = ({
     return { ok, failed };
   };
 
-  const describeKeySource = (resolved: ResolvedKey) =>
-    resolved.token
-      ? `已写入令牌「${resolved.token.name}」，接口地址为 Bob API，已保留原有模型设置`
-      : "已写入本地已配置的 API Key，接口地址为 Bob API，已保留原有模型设置";
+  const describeKeySource = (resolved: ResolvedKey, target?: ApplyTarget) => {
+    const group = target ? TARGET_DEFAULT_GROUP[target] : resolved.token?.group || "专属分组";
+    const model = target ? TARGET_DEFAULT_MODEL[target] : undefined;
+    const modelDesc = model ? `，默认模型为 ${model}` : "";
+    return resolved.token
+      ? `已写入「${resolved.token.name}」（分组: ${group}），接口为 Bob API${modelDesc}`
+      : `已写入 Bob API 专属令牌（分组: ${group}）${modelDesc}`;
+  };
 
-  // 一键配置所有：为全部已安装的 Agent 写入同一个 API Key
+  // 一键配置所有：按各客户端所属分组分发配置
   const handleConfigureAll = async () => {
     if (actionInFlight.current) return;
     const targets = Array.from(
@@ -423,45 +506,73 @@ export const AgentMatrixLobby: React.FC<AgentMatrixLobbyProps> = ({
       return;
     }
 
+    // 必须使用 Bob API：未登录时记录意图并引导登录
+    if (!authState.is_logged_in) {
+      pendingConfigRef.current = { type: "all" };
+      toast.info("一键配置所有 Agent 需要绑定您的 Bob API 账号，新用户登录立享体验额度", {
+        description: "登录后将自动为各 Agent 分别写入专属分组令牌与推荐模型",
+      });
+      setLoginModalOpen(true);
+      return;
+    }
+
     actionInFlight.current = true;
     setConfiguringAll(true);
-    const toastId = toast.loading("正在为已安装的 Agent 写入 API Key...");
+    const toastId = toast.loading("正在为已安装的 Agent 写入专属 API Key 与推荐模型...");
 
     try {
-      const resolved = await resolveApiKey();
-      if (!mountedRef.current) return;
-      if (!resolved) {
-        toast.dismiss(toastId);
-        if (authState.is_logged_in) {
-          toast.warning("尚未选择 API 令牌，请先选择一个令牌后再一键配置");
-          setTokenModalOpen(true);
-        } else {
-          toast.warning("请先登录 Bob API 账号，登录后即可一键写入令牌");
-          setLoginModalOpen(true);
-        }
-        return;
+      // 按目标分组对 targets 进行归类 (CC-Kiro-Max / Codex-不降质 / 国产Token计划)
+      const targetsByGroup = new Map<string, ApplyTarget[]>();
+      for (const t of targets) {
+        const g = TARGET_DEFAULT_GROUP[t];
+        const list = targetsByGroup.get(g) || [];
+        list.push(t);
+        targetsByGroup.set(g, list);
       }
 
-      const { ok, failed } = await applyAndRecord(resolved, targets);
+      const allOk: ApplyTarget[] = [];
+      const allFailed: ApplyTarget[] = [];
+      const groupSummaries: string[] = [];
+
+      for (const [groupName, groupTargets] of targetsByGroup.entries()) {
+        const representativeTarget = groupTargets[0];
+        try {
+          const resolved = await resolveApiKeyForTarget(representativeTarget);
+          if (!mountedRef.current) return;
+          if (!resolved) {
+            allFailed.push(...groupTargets);
+            continue;
+          }
+
+          const { ok, failed } = await applyAndRecord(resolved, groupTargets);
+          allOk.push(...ok);
+          allFailed.push(...failed);
+          if (ok.length > 0) {
+            const names = ok.map((t) => TARGET_LABELS[t]).join("、");
+            groupSummaries.push(`${names}（${groupName}）`);
+          }
+        } catch (err) {
+          console.error(`写入分组 ${groupName} 失败:`, err);
+          allFailed.push(...groupTargets);
+        }
+      }
+
       if (!mountedRef.current) return;
       toast.dismiss(toastId);
-      const okNames = ok.map((t) => TARGET_LABELS[t]).join("、");
-      const failedNames = failed.map((t) => TARGET_LABELS[t]).join("、");
-      if (failed.length === 0) {
-        toast.success(`已为 ${ok.length} 个 Agent 完成配置`, {
-          description: `${okNames}。${describeKeySource(resolved)}`,
-          duration: 4000,
-        });
-      } else if (ok.length > 0) {
-        toast.warning(`配置成功 ${ok.length}/${targets.length}`, {
-          description: `失败：${failedNames}。请进入对应面板检查接口地址与 Key`,
+
+      if (allFailed.length === 0) {
+        toast.success(`已为 ${allOk.length} 个 Agent 完成一键配置`, {
+          description: groupSummaries.join("；"),
           duration: 5000,
+        });
+      } else if (allOk.length > 0) {
+        const failedNames = allFailed.map((t) => TARGET_LABELS[t]).join("、");
+        toast.warning(`部分 Agent 配置完成 (${allOk.length}/${targets.length})`, {
+          description: `成功：${groupSummaries.join("；")}。失败：${failedNames}`,
+          duration: 6000,
         });
       } else {
-        toast.error("所有 Agent 写入均失败", {
-          description: `失败：${failedNames}。请检查接口地址是否为 Bob API，或进入环境检测修复`,
-          duration: 5000,
-        });
+        toast.error("所有 Agent 写入均失败，请检查网络或进入环境检测修复");
       }
     } catch (err) {
       toast.dismiss(toastId);

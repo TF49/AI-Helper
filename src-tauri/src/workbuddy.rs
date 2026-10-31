@@ -923,7 +923,7 @@ pub fn get_workbuddy_config() -> Result<WorkbuddyUIConfig, AppError> {
 
     let mut base_url = "https://bob-api.com/".to_string();
     let mut api_key = String::new();
-    let mut model = "gpt-5.6-sol".to_string();
+    let mut model = "glm-5.3".to_string();
 
     let mut supports_tool_call = true;
     let mut supports_images = true;
