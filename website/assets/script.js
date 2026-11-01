@@ -15,17 +15,17 @@ const SIMULATOR_DATA = {
     desc: "统一管理 ~/.codex/config.toml，并兼容 Store 隔离包与 Win32 原生版。",
     configPath: "~/.codex/config.toml",
     apiUrl: "https://api.openai.com/v1",
-    model: "gpt-4o",
-    chips: ["gpt-4o", "gpt-4o-mini", "o1", "o3-mini"],
-    groupName: "SVIP-Codex-HighSpeed",
+    model: "gpt-5.6-sol",
+    chips: ["gpt-5.6-sol", "gpt-4o", "o1", "o3-mini"],
+    groupName: "Codex-不降质",
     groupRate: "99.9%",
-    groupLatency: "78ms",
+    groupLatency: "75ms",
     status: "Codex 已就绪",
     sampleTokens: [
       "> [CONNECT] POST https://api.openai.com/v1",
-      "> [GROUP] Channel SVIP-Codex: 99.9% success · 78ms avg",
-      "> [STREAM] First token received · 78ms",
-      "✓ Codex gateway is ready"
+      "> [GROUP] Channel Codex-不降质: 99.9% success · 75ms avg",
+      "> [STREAM] High-fidelity token stream · 75ms",
+      "✓ Codex & ChatGPT desktop ready"
     ]
   },
   claude: {
@@ -33,17 +33,35 @@ const SIMULATOR_DATA = {
     desc: "集中维护 ~/.claude.json 与 settings.json，并快速切换常用模型。",
     configPath: "~/.claude.json",
     apiUrl: "https://api.anthropic.com/v1",
-    model: "claude-3-7-sonnet",
-    chips: ["claude-3-7-sonnet", "claude-3-5-sonnet", "claude-3-5-haiku"],
-    groupName: "ClaudeCode-Kiro-SVIP",
+    model: "claude-sonnet-5-5",
+    chips: ["claude-sonnet-5-5", "claude-3-7-sonnet", "claude-3-5-haiku"],
+    groupName: "CC-Kiro-Max",
     groupRate: "100%",
-    groupLatency: "142ms",
+    groupLatency: "138ms",
     status: "Claude 已接管",
     sampleTokens: [
       "> [CONNECT] POST https://api.anthropic.com/v1",
-      "> [GROUP] Channel ClaudeCode-Kiro: 100% success · 142ms avg",
-      "> [STREAM] Thinking channel ready",
+      "> [GROUP] Channel CC-Kiro-Max: 100% success · 138ms avg",
+      "> [STREAM] Extended Thinking & Prompt Caching ready",
       "✓ Claude Code is ready"
+    ]
+  },
+  cursor: {
+    title: "Cursor IDE 本地 Bridge 挂接",
+    desc: "集成 Connect-RPC 规范协议转译与一键修补挂接，精准拦截官方域名并支持多模态防护。",
+    configPath: "~/.cursor/config.json",
+    apiUrl: "http://127.0.0.1:8787/cursor",
+    model: "glm-5.3",
+    chips: ["glm-5.3", "claude-sonnet-5-5", "gpt-5.6-sol", "deepseek-r1"],
+    groupName: "国产Token计划",
+    groupRate: "99.9%",
+    groupLatency: "42ms",
+    status: "Bridge 已挂接",
+    sampleTokens: [
+      "> [CONNECT] Connect-RPC h2c handshake on :8787",
+      "> [GROUP] Channel 国产Token计划: 99.9% · 42ms avg",
+      "> [PATCH] Agent/Composer domain rewrite active",
+      "✓ Cursor Bridge is online"
     ]
   },
   workbuddy: {
@@ -51,9 +69,9 @@ const SIMULATOR_DATA = {
     desc: "写入 ~/.workbuddy/models.json，并自动双向兼容 ~/.workbuddy-ai。",
     configPath: "~/.workbuddy/models.json",
     apiUrl: "https://api.workbuddy.cn/v1",
-    model: "deepseek-coder",
-    chips: ["deepseek-coder", "claude-3.5-sonnet", "gpt-4o", "kimi-latest"],
-    groupName: "WorkBuddy-AllModels",
+    model: "glm-5.3",
+    chips: ["glm-5.3", "claude-sonnet-5-5", "deepseek-coder", "gpt-4o"],
+    groupName: "国产Token计划",
     groupRate: "99.4%",
     groupLatency: "65ms",
     status: "Workbuddy 已同步",
@@ -69,9 +87,9 @@ const SIMULATOR_DATA = {
     desc: "通过本地 RLab Bridge 转译网关，让 Accio Work 使用自定义第三方模型。",
     configPath: "~/.ai-helper/accio_config.json",
     apiUrl: "http://127.0.0.1:8787",
-    model: "gpt-4o",
-    chips: ["gpt-4o", "claude-3-7-sonnet", "deepseek-chat", "自定义模型"],
-    groupName: "Accio-Enterprise-Bridge",
+    model: "glm-5.3",
+    chips: ["glm-5.3", "gpt-5.6-sol", "claude-sonnet-5-5", "自定义模型"],
+    groupName: "国产Token计划",
     groupRate: "99.8%",
     groupLatency: "120ms",
     status: "Bridge 在线 :8787",
@@ -104,15 +122,15 @@ const SIMULATOR_DATA = {
 
 const GROUP_MONITOR_DATA = {
   chatgpt: {
-    groupName: "SVIP-Codex-HighSpeed",
-    tag: "Codex 流式专用",
+    groupName: "Codex-不降质",
+    tag: "Codex 桌面/命令行专用",
     successRate: 99.9,
-    latency: "78ms",
-    latencyVal: 78,
+    latency: "75ms",
+    latencyVal: 75,
     totalRequests: "18,420",
     failed: "0 熔断",
     statusText: "99.9% 运行极佳",
-    guide: "Codex 命令行深度依赖高并发流式代码补全与特定上游模型，自动绑定拥有专属流式权限的分组，拒绝补全超时。",
+    guide: "Codex 命令行与 ChatGPT 官方桌面端深度依赖高保真流式代码补全与官方原版逻辑，自动对齐专属不降质分组，拒绝降级。",
     ribbonPoints: [
       { rate: 100, lat: 76 }, { rate: 100, lat: 75 }, { rate: 100, lat: 78 }, { rate: 99.8, lat: 82 },
       { rate: 100, lat: 74 }, { rate: 100, lat: 77 }, { rate: 100, lat: 79 }, { rate: 100, lat: 75 },
@@ -123,15 +141,15 @@ const GROUP_MONITOR_DATA = {
     ]
   },
   claude: {
-    groupName: "ClaudeCode-Kiro-SVIP",
+    groupName: "CC-Kiro-Max",
     tag: "Anthropic 深度推理",
     successRate: 100.0,
-    latency: "142ms",
-    latencyVal: 142,
+    latency: "138ms",
+    latencyVal: 138,
     totalRequests: "12,850",
     failed: "0 熔断",
     statusText: "100% 满额可用",
-    guide: "Claude Code CLI 深度依赖原生流式协议、Extended Thinking 思考链推理与 Prompt Caching，专属通道彻底规避 400/404 错误。",
+    guide: "Claude Code CLI 深度依赖原生流式协议、Extended Thinking 深度思考链与 Prompt Caching，专属 CC-Kiro-Max 彻底规避 400/404 错误。",
     ribbonPoints: [
       { rate: 100, lat: 140 }, { rate: 100, lat: 142 }, { rate: 100, lat: 139 }, { rate: 100, lat: 145 },
       { rate: 100, lat: 141 }, { rate: 100, lat: 144 }, { rate: 100, lat: 140 }, { rate: 100, lat: 142 },
@@ -139,6 +157,25 @@ const GROUP_MONITOR_DATA = {
       { rate: 100, lat: 142 }, { rate: 100, lat: 140 }, { rate: 100, lat: 145 }, { rate: 100, lat: 143 },
       { rate: 100, lat: 141 }, { rate: 100, lat: 142 }, { rate: 100, lat: 139 }, { rate: 100, lat: 146 },
       { rate: 100, lat: 140 }, { rate: 100, lat: 142 }, { rate: 100, lat: 144 }, { rate: 100, lat: 142 }
+    ]
+  },
+  cursor: {
+    groupName: "国产Token计划",
+    tag: "国产强力大模型专区",
+    successRate: 99.9,
+    latency: "42ms",
+    latencyVal: 42,
+    totalRequests: "32,450",
+    failed: "0 熔断",
+    statusText: "99.9% 极速流式",
+    guide: "专为 Cursor、WorkBuddy 与 Accio Work 打造的国内超低时延专属通道，默认全面预设高质高性价比 glm-5.3 基座，IDE 内代码补全秒级响应。",
+    ribbonPoints: [
+      { rate: 100, lat: 41 }, { rate: 100, lat: 42 }, { rate: 100, lat: 40 }, { rate: 100, lat: 44 },
+      { rate: 100, lat: 42 }, { rate: 100, lat: 43 }, { rate: 100, lat: 41 }, { rate: 100, lat: 42 },
+      { rate: 100, lat: 40 }, { rate: 100, lat: 45 }, { rate: 100, lat: 42 }, { rate: 100, lat: 41 },
+      { rate: 100, lat: 43 }, { rate: 100, lat: 42 }, { rate: 100, lat: 41 }, { rate: 100, lat: 44 },
+      { rate: 100, lat: 42 }, { rate: 100, lat: 40 }, { rate: 100, lat: 43 }, { rate: 100, lat: 42 },
+      { rate: 100, lat: 41 }, { rate: 100, lat: 42 }, { rate: 100, lat: 44 }, { rate: 100, lat: 42 }
     ]
   },
   workbuddy: {
@@ -150,7 +187,7 @@ const GROUP_MONITOR_DATA = {
     totalRequests: "24,190",
     failed: "2 告警",
     statusText: "99.5% 优质可用",
-    guide: "聚合管理异构模型（DeepSeek、Claude、GPT-4o），自动路由至 models.json 中目标模型权限与配额全覆盖分组。",
+    guide: "聚合管理异构模型（glm-5.3、Claude、DeepSeek、GPT-4o），自动路由至 models.json 中目标模型权限与配额全覆盖分组。",
     ribbonPoints: [
       { rate: 100, lat: 58 }, { rate: 100, lat: 60 }, { rate: 99.2, lat: 68 }, { rate: 100, lat: 61 },
       { rate: 100, lat: 59 }, { rate: 100, lat: 62 }, { rate: 100, lat: 63 }, { rate: 100, lat: 60 },
@@ -169,7 +206,7 @@ const GROUP_MONITOR_DATA = {
     totalRequests: "9,640",
     failed: "0 熔断",
     statusText: "99.8% 高度稳定",
-    guide: "专为 Accio Work 多 Agent 长链路复杂工作流设计，Rust 本地 Bridge 专属稳定中转，保障长时间无断连。",
+    guide: "专为 Accio Work 多 Agent 长链路复杂工作流设计，Rust 本地 Bridge 路径凭据鉴权与防泄露白名单守护，保障长时间无断连。",
     ribbonPoints: [
       { rate: 100, lat: 112 }, { rate: 100, lat: 114 }, { rate: 100, lat: 118 }, { rate: 100, lat: 115 },
       { rate: 100, lat: 113 }, { rate: 100, lat: 116 }, { rate: 99.8, lat: 122 }, { rate: 100, lat: 115 },
@@ -187,23 +224,24 @@ const SCENES = [
     tab: "chatgpt",
     overline: "SCENE 01 · DISCOVERY",
     workspaceTitle: "正在发现本机 AI 开发环境",
-    workspaceDesc: "自动扫描 PATH、NPM 全局脚本与 Store 隔离包，定位全部可用客户端。",
+    workspaceDesc: "自动扫描 PATH、注册表、NPM 全局脚本、Store 隔离包与 Spotlight，定位全部 6 席可用客户端。",
     status: "扫描完成",
     copyTitle: "自动发现，不再手动翻路径。",
-    copyBody: "启动即感知 Claude Code、Codex、Workbuddy 与 Accio Work 的安装位置和运行状态，并自动纠偏失效路径。",
-    bullets: ["PATH 与 NPM 全局脚本扫描", "Store 隔离包智能识别", "异常路径自动修复"],
+    copyBody: "启动即感知 Cursor、Claude Code、Codex、ChatGPT、Workbuddy 与 Accio Work 的安装位置和运行状态，并自动纠偏失效路径。",
+    bullets: ["PATH 与 NPM 全局脚本扫描", "Win32 注册表与 macOS Spotlight 深度探测", "Cursor Connect-RPC 与 Accio Bridge 自动挂接"],
     terminal: [
-      "> scanning PATH and package locations...",
-      "✓ OpenAI Codex · Win32",
+      "> scanning PATH, Registry, NPM & Spotlight...",
+      "✓ OpenAI Codex · Win32 / Store",
       "✓ Claude Code · NPM global",
+      "✓ Cursor IDE · Connect-RPC Bridge",
       "✓ Workbuddy · Native client",
-      "✓ Accio Work · RLab Bridge"
+      "✓ Accio Work · RLab Bridge :8787"
     ],
-    latency: "4 AGENTS FOUND",
+    latency: "6 AGENTS MATRIX",
     action: "环境扫描完成",
     writeMode: "complete",
     showDiscovery: true,
-    mobileRows: [["Codex", "Win32 · 已发现"], ["Claude Code", "NPM · 已发现"], ["Workbuddy", "Native · 已发现"], ["Accio Work", "Bridge · 已发现"]]
+    mobileRows: [["Codex / ChatGPT", "Win32 / Store"], ["Claude Code", "NPM · 已发现"], ["Cursor IDE", "Bridge · 已就绪"], ["Workbuddy", "Native · 已发现"], ["Accio Work", "Bridge · 已发现"]]
   },
   {
     id: "configure",

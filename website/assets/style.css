@@ -1116,6 +1116,11 @@ svg {
   color: #f0a423;
 }
 
+.dot-cyan {
+  background: #00d2ff;
+  color: #00d2ff;
+}
+
 .dot-blue {
   background: #278cf5;
   color: #278cf5;
