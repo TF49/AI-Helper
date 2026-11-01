@@ -22,7 +22,11 @@
   <link rel="modulepreload" href="assets/script.js">
 
   <!-- SEO & Social Meta -->
+  <link rel="canonical" href="https://helper.bob-api.com/">
+  <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1">
   <meta property="og:type" content="website">
+  <meta property="og:site_name" content="AI Helper">
+  <meta property="og:locale" content="zh_CN">
   <meta property="og:url" content="https://helper.bob-api.com/">
   <meta property="og:title" content="AI Helper - 下一代 AI 编程配置与调度中枢">
   <meta property="og:description"
@@ -37,20 +41,83 @@
   <script type="application/ld+json">
   {
     "@context": "https://schema.org",
-    "@type": "SoftwareApplication",
-    "name": "AI Helper",
-    "applicationCategory": "DeveloperApplication",
-    "operatingSystem": ["Windows 10", "Windows 11", "macOS 11+"],
-    "offers": {
-      "@type": "Offer",
-      "price": "0",
-      "priceCurrency": "USD"
-    },
-    "aggregateRating": {
-      "@type": "AggregateRating",
-      "ratingValue": "4.8",
-      "ratingCount": "256"
-    }
+    "@graph": [
+      {
+        "@type": "WebSite",
+        "@id": "https://helper.bob-api.com/#website",
+        "url": "https://helper.bob-api.com/",
+        "name": "AI Helper",
+        "description": "下一代 AI 编程配置与调度中枢",
+        "inLanguage": "zh-CN"
+      },
+      {
+        "@type": "SoftwareApplication",
+        "@id": "https://helper.bob-api.com/#software",
+        "name": "AI Helper",
+        "applicationCategory": "DeveloperApplication",
+        "operatingSystem": ["Windows 10", "Windows 11", "macOS 11+"],
+        "softwareVersion": "1.0.74",
+        "offers": {
+          "@type": "Offer",
+          "price": "0",
+          "priceCurrency": "USD"
+        },
+        "description": "集中纳管 Cursor、Claude Code、OpenAI Codex、ChatGPT 官方桌面端、Workbuddy 与 Accio Work 6 席主流 Agent。提供 2×3 Agent 矩阵大厅、智能分组场景化分发、缺省令牌全自动远程自愈创建。",
+        "image": "https://helper.bob-api.com/assets/app-preview.png",
+        "screenshot": "https://helper.bob-api.com/assets/app-preview.png",
+        "aggregateRating": {
+          "@type": "AggregateRating",
+          "ratingValue": "4.8",
+          "ratingCount": "256"
+        }
+      },
+      {
+        "@type": "FAQPage",
+        "@id": "https://helper.bob-api.com/#faq",
+        "mainEntity": [
+          {
+            "@type": "Question",
+            "name": "macOS 端应该选择哪个 DMG 安装包？",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "如果您使用的是 Apple Silicon 芯片（如 M1、M2、M3、M4、M5 及 Pro/Max/Ultra 版本），请务必下载 aarch64 (Apple Silicon) DMG，享受原生架构高能效与瞬时启动；如果是 Intel 老款 Mac，请选择 x64 (Intel) DMG。"
+            }
+          },
+          {
+            "@type": "Question",
+            "name": "AI Helper 是免费开源的吗？",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "是。AI Helper 遵循 MIT 开源协议，个人、团队和企业均可免费使用，不含广告和付费墙。"
+            }
+          },
+          {
+            "@type": "Question",
+            "name": "API Key 和本地配置会上传到云端服务器吗？",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "绝不会。全部配置写入均在您的本机电脑安全完成；只有在您主动点击测试连通性或发起代码生成补全时，才会向您指定的 API 网关安全通信。"
+            }
+          },
+          {
+            "@type": "Question",
+            "name": "支持哪些主流 Agent、客户端与自定义模型？",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "全景矩阵集中纳管 6 席主流工具：Cursor IDE、Claude Code CLI、OpenAI Codex CLI、ChatGPT 官方桌面端、Workbuddy AI 与 Accio Work。由 AI Helper 统一负责配置注入、密钥受管托管与进程安全热重启。"
+            }
+          },
+          {
+            "@type": "Question",
+            "name": "Cursor 编辑器是如何通过本地 Bridge 协议转译接入第三方模型的？",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "AI Helper 内置专为 Cursor 打造的 Rust Axum + Connect-RPC 规范本地 Bridge 协议转译器（支持 gzip 压缩、h2c 与即时握手心跳），彻底根除官方客户端因连接握手异常引发的重连循环问题。"
+            }
+          }
+        ]
+      }
+    ]
   }
   </script>
 </head>
@@ -159,7 +226,7 @@
   <header class="site-nav" id="site-nav">
     <div class="container nav-shell">
       <a href="#home" class="brand-unit" aria-label="返回 AI Helper 首页">
-        <img src="assets/logo.png" alt="" class="brand-symbol" width="36" height="36">
+        <img src="assets/logo.png" alt="AI Helper 官方 Logo" class="brand-symbol" width="36" height="36">
         <span class="brand-copy"><strong>AI Helper</strong><span
             class="version-pill current-version-tag">v1.0.74</span></span>
       </a>
@@ -224,7 +291,7 @@
       <div class="container hero-content">
         <div class="hero-brand-mark" aria-hidden="true">
           <span class="hero-brand-halo"></span>
-          <img src="assets/app-icon-squircle.png" alt="" width="82" height="82">
+          <img src="assets/app-icon-squircle.png" alt="AI Helper 应用图标 - AI 编程中枢" width="82" height="82">
         </div>
         <div class="hero-eyebrow shiny-badge">
           <span class="eyebrow-dot" aria-hidden="true"></span>
@@ -337,7 +404,7 @@
                       <span class="mac-light light-green" title="全屏"><i>+</i></span>
                     </div>
                   </div>
-                  <div class="window-title"><img src="assets/logo.png" alt="" width="18" height="18"><span
+                  <div class="window-title"><img src="assets/logo.png" alt="AI Helper Logo" width="18" height="18"><span
                       id="window-title-text">AI Helper Studio</span><span class="window-live"><i></i> LIVE</span></div>
                   <div class="window-right-group">
                     <div class="window-platform-toggle" role="radiogroup" aria-label="演示平台切换">
@@ -1365,7 +1432,7 @@
 
   <footer class="site-footer">
     <div class="container footer-grid">
-      <div class="footer-brand"><a href="#home" class="brand-unit"><img src="assets/logo.png" alt=""
+      <div class="footer-brand"><a href="#home" class="brand-unit"><img src="assets/logo.png" alt="AI Helper 官方标志"
             class="brand-symbol" width="36" height="36"><span class="brand-copy"><strong>AI Helper</strong></span></a>
         <p>专为 AI 开发者打造的配置管理、通道遥测与进程生命周期调度中枢。</p>
       </div>

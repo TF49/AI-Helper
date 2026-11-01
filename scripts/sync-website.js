@@ -79,6 +79,9 @@ if (fs.existsSync(indexHtmlPath)) {
     `$1AI-Helper-${tag}-Windows-x64-Setup.exe$2`
   );
 
+  // 1.8 结构化数据 Schema.org 软件版本号
+  html = html.replace(/"softwareVersion":\s*"[^"]*"/g, `"softwareVersion": "${targetVersion}"`);
+
   fs.writeFileSync(indexHtmlPath, html, 'utf8');
   console.log(`[sync-website] ✓ website/index.html 已同步 (版本: ${tag})`);
 }
@@ -186,6 +189,17 @@ if (fs.existsSync(downloadConfigPath)) {
   } catch (err) {
     console.warn(`[sync-website] 同步 download-config.json 警告:`, err.message);
   }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 5. 同步 website/sitemap.xml 中的 <lastmod>
+// ─────────────────────────────────────────────────────────────────────────────
+const sitemapPath = path.join(repoRoot, 'website', 'sitemap.xml');
+if (fs.existsSync(sitemapPath)) {
+  let sitemap = fs.readFileSync(sitemapPath, 'utf8');
+  sitemap = sitemap.replace(/<lastmod>[^<]+<\/lastmod>/g, `<lastmod>${today}</lastmod>`);
+  fs.writeFileSync(sitemapPath, sitemap, 'utf8');
+  console.log(`[sync-website] ✓ website/sitemap.xml 已同步 (lastmod: ${today})`);
 }
 
 console.log(`[sync-website] 全部官网文件同步完成！`);
