@@ -1,0 +1,13 @@
+# https://www.robotstxt.org/robotstxt.html
+User-agent: *
+Allow: /
+Allow: /assets/
+
+# 避免搜索引擎爬虫消耗服务器宽带扫描体积较大的二进制安装包
+Disallow: /downloads/
+
+# 内部开发者监控与诊断中心，不对外索引
+Disallow: /diagnostics.html
+
+# 站点地图
+Sitemap: https://helper.bob-api.com/sitemap.xml
