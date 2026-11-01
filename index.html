@@ -10,9 +10,9 @@
   <meta name="theme-color" content="#f8faff">
   <title>AI Helper - 下一代 AI 编程配置与调度中枢 (Windows &amp; macOS)</title>
   <meta name="description"
-    content="AI Helper 基于 Rust 2024 与 Tauri v2 打造，原生支持 Windows 10/11 与 macOS (Apple Silicon &amp; Intel 双架构)。统一管理 OpenAI Codex、Claude Code、Workbuddy 与 Accio Work，提供账号额度大盘、零感通道秒级热切换与进程安全热重启。">
+    content="AI Helper 基于 Rust 2024 与 Tauri v2 打造，原生支持 Windows 10/11 与 macOS (Apple Silicon &amp; Intel 双架构)。集中纳管 Cursor、Claude Code、OpenAI Codex、ChatGPT 官方桌面端、Workbuddy 与 Accio Work 6 席主流 Agent。提供 2×3 Agent 矩阵大厅、智能分组场景化分发、缺省令牌全自动远程自愈创建、国产顶级大模型 glm-5.3 默认预设与进程安全热重启。">
   <meta name="keywords"
-    content="AI Helper, macOS, Apple Silicon, Windows, Claude Code, OpenAI Codex, Workbuddy, Accio Work, Tauri v2, Rust 2024, AI Agent, 进程管理, 通道分组, 钱包额度">
+    content="AI Helper, Cursor, Connect-RPC, Claude Code, OpenAI Codex, ChatGPT Desktop, Workbuddy, Accio Work, Agent 矩阵, glm-5.3, 令牌自愈, 断点续传, 3D全息, macOS, Apple Silicon, Windows, Tauri v2, Rust 2024, 进程管理, 通道分组, 钱包额度">
   <link rel="icon" type="image/x-icon" href="assets/favicon.ico">
   <link rel="stylesheet" href="assets/style.css?v=1.0.74">
 
@@ -26,11 +26,11 @@
   <meta property="og:url" content="https://helper.bob-api.com/">
   <meta property="og:title" content="AI Helper - 下一代 AI 编程配置与调度中枢">
   <meta property="og:description"
-    content="统一管理 OpenAI Codex、Claude Code、Workbuddy 与 Accio Work。原生支持 Windows 与 macOS，提供零感热切换与进程安全热重启。">
+    content="集中纳管 Cursor、Claude Code、OpenAI Codex、ChatGPT 官方桌面端、Workbuddy 与 Accio Work。原生支持 Windows 与 macOS，提供 Agent 矩阵大厅、智能分组场景化分发与缺省令牌自愈创建。">
   <meta property="og:image" content="https://helper.bob-api.com/assets/app-preview.png">
   <meta name="twitter:card" content="summary_large_image">
-  <meta name="twitter:title" content="AI Helper - AI 编程配置中枢">
-  <meta name="twitter:description" content="统一管理主流 AI 编程工具，Windows & macOS 双端原生适配">
+  <meta name="twitter:title" content="AI Helper - AI 编程配置与调度中枢">
+  <meta name="twitter:description" content="统一管理主流 6 席 AI 编程工具与 IDE，智能分组精准分发，Windows &amp; macOS 双端原生适配">
   <meta name="twitter:image" content="https://helper.bob-api.com/assets/app-preview.png">
 
   <!-- Structured Data -->
@@ -199,13 +199,13 @@
           <svg class="badge-icon" viewBox="0 0 256 256" aria-hidden="true">
             <use href="#icon-apple" xlink:href="#icon-apple" />
           </svg>
-          <span class="badge-text"><strong>macOS 原生</strong><small>Apple Silicon M1-M4</small></span>
+          <span class="badge-text"><strong>macOS 原生</strong><small>Apple Silicon M1-M5</small></span>
         </div>
         <div class="parallax-badge badge-pos-top-right" data-parallax-speed="-0.35" data-depth="26">
           <svg class="badge-icon" viewBox="0 0 256 256" aria-hidden="true">
             <use href="#icon-lightning" xlink:href="#icon-lightning" />
           </svg>
-          <span class="badge-text"><strong>零感热切换</strong><small>四大 Agent 秒级同频</small></span>
+          <span class="badge-text"><strong>6 席 Agent 矩阵</strong><small>场景化智能分发</small></span>
         </div>
         <div class="parallax-badge badge-pos-bottom-left" data-parallax-speed="-0.25" data-depth="20">
           <svg class="badge-icon" viewBox="0 0 256 256" aria-hidden="true">
@@ -217,7 +217,7 @@
           <svg class="badge-icon" viewBox="0 0 256 256" aria-hidden="true">
             <use href="#icon-wallet" xlink:href="#icon-wallet" />
           </svg>
-          <span class="badge-text"><strong>钱包额度全景</strong><small>USD / CNY 双币折算</small></span>
+          <span class="badge-text"><strong>令牌自愈与续传</strong><small>缺省 Token 毫秒级开通</small></span>
         </div>
       </div>
 
@@ -228,15 +228,14 @@
         </div>
         <div class="hero-eyebrow shiny-badge">
           <span class="eyebrow-dot" aria-hidden="true"></span>
-          <span class="shiny-text">TAURI V2 · RUST 2024 · WINDOWS &amp; macOS 双端原生适配</span>
+          <span class="shiny-text">TAURI V2 · RUST 2024 · 6 席主流 AGENT 矩阵 · 全场景智能分发</span>
         </div>
         <h1 class="hero-title">
           <span class="hero-line"><span>AI Helper.</span></span>
-          <span class="hero-line hero-line-gradient"><span>配置、验证、重启，</span></span>
+          <span class="hero-line hero-line-gradient"><span>矩阵接入、智能分发、令牌自愈，</span></span>
           <span class="hero-line hero-line-gradient"><span>在一个中枢完成。</span></span>
         </h1>
-        <p class="hero-lead">统一管理 OpenAI Codex、Claude Code、Workbuddy 与 Accio Work。原生适配 Windows 与 macOS (Apple Silicon /
-          Intel)，从通道分组遥测、钱包额度大盘到无感热重启，全程不打断开发心流。</p>
+        <p class="hero-lead">集中纳管 <strong>Cursor</strong>、<strong>Claude Code</strong>、<strong>OpenAI Codex</strong>、<strong>ChatGPT 官方桌面端</strong>、<strong>Workbuddy</strong> 与 <strong>Accio Work</strong>。原生适配 Windows 与 macOS (Apple Silicon / Intel)，集成 2×3 Agent 矩阵大厅、智能分组精准分发、缺省令牌全自动远程创建与未登录断点续传，全面预设国产顶级大模型 <strong>glm-5.3</strong>，全程不打断开发心流。</p>
 
         <div class="hero-actions">
           <a id="btn-hero-download" class="button button-primary magnetic-target"
@@ -279,10 +278,10 @@
             </svg> Apple Silicon M 系列 &amp; Intel 双架构</li>
           <li><svg class="trust-check" viewBox="0 0 256 256" aria-hidden="true">
               <use href="#icon-check" xlink:href="#icon-check" />
-            </svg> 常驻内存低于 35MB</li>
+            </svg> 6 席主流 Agent 统一纳管与一键配置</li>
           <li><svg class="trust-check" viewBox="0 0 256 256" aria-hidden="true">
               <use href="#icon-check" xlink:href="#icon-check" />
-            </svg> MIT 永久开源免费</li>
+            </svg> MIT 永久开源免费 · 常驻内存 &lt; 35MB</li>
         </ul>
 
         <div class="signal-runway" aria-label="AI Helper 数据调度流程">
@@ -290,9 +289,9 @@
           <div class="runway-node runway-node-source"><span class="runway-icon">◎</span><span><small>INPUT</small>AI
               云端网关</span></div>
           <div class="runway-node runway-node-core"><span class="core-pulse" aria-hidden="true"></span><span
-              class="runway-icon">✦</span><span><small>ORCHESTRATE</small>AI Helper 中枢</span></div>
+              class="runway-icon">✦</span><span><small>ORCHESTRATE</small>AI Helper 矩阵中枢</span></div>
           <div class="runway-node runway-node-target"><span class="runway-icon">⌁</span><span><small>OUTPUT</small>Agent
-              / CLI 进程</span></div>
+              / IDE 进程</span></div>
         </div>
         <a class="scroll-cue" href="#story"><span>向下滚动，进入产品演示</span><span class="scroll-cue-line"
             aria-hidden="true"></span></a>
@@ -355,9 +354,11 @@
                 <div class="product-body">
                   <div class="agent-tabs" role="tablist" aria-label="选择 Agent">
                     <button class="agent-tab active" type="button" role="tab" aria-selected="true" data-tab="chatgpt"><i
-                        class="agent-dot dot-green"></i><span>Codex</span><small>v1</small></button>
+                        class="agent-dot dot-green"></i><span>Codex</span><small>5.6</small></button>
                     <button class="agent-tab" type="button" role="tab" aria-selected="false" data-tab="claude"><i
-                        class="agent-dot dot-purple"></i><span>Claude</span><small>3.7</small></button>
+                        class="agent-dot dot-purple"></i><span>Claude</span><small>Sonnet</small></button>
+                    <button class="agent-tab" type="button" role="tab" aria-selected="false" data-tab="cursor"><i
+                        class="agent-dot dot-cyan"></i><span>Cursor</span><small>Bridge</small></button>
                     <button class="agent-tab" type="button" role="tab" aria-selected="false" data-tab="workbuddy"><i
                         class="agent-dot dot-orange"></i><span>Workbuddy</span><small>Sync</small></button>
                     <button class="agent-tab" type="button" role="tab" aria-selected="false" data-tab="acciowork"><i
@@ -370,23 +371,26 @@
                       <div>
                         <div class="workspace-overline" id="scene-overline">SCENE 01 · DISCOVERY</div>
                         <h3 id="sim-title">正在发现本机 AI 开发环境</h3>
-                        <p id="sim-desc">自动扫描 PATH、NPM 全局脚本、Homebrew 与 Store 隔离包，定位可用客户端。</p>
+                        <p id="sim-desc">自动扫描 PATH、Win32 注册表、NPM 全局脚本、Homebrew、Spotlight 与 Store 隔离包，定位 6 席客户端。</p>
                       </div>
-                      <span class="status-badge" id="sim-status-badge"><i></i>扫描中</span>
+                      <span class="status-badge" id="sim-status-badge"><i></i>扫描完成</span>
                     </div>
                     <div class="discovery-strip" id="discovery-strip" aria-label="Agent 扫描结果">
                       <div class="discovery-item"><span class="discovery-check">✓</span><span><strong
-                            id="strip-item-1-title">OpenAI Codex</strong><small id="strip-item-1-desc">Win32 ·
+                            id="strip-item-1-title">OpenAI Codex &amp; ChatGPT</strong><small id="strip-item-1-desc">Win32 &amp; Store ·
                             已发现</small></span></div>
                       <div class="discovery-item"><span class="discovery-check">✓</span><span><strong
                             id="strip-item-2-title">Claude Code</strong><small id="strip-item-2-desc">NPM ·
                             已发现</small></span></div>
                       <div class="discovery-item"><span class="discovery-check">✓</span><span><strong
-                            id="strip-item-3-title">Workbuddy</strong><small id="strip-item-3-desc">Native ·
+                            id="strip-item-3-title">Cursor IDE</strong><small id="strip-item-3-desc">Connect-RPC ·
+                            已就绪</small></span></div>
+                      <div class="discovery-item"><span class="discovery-check">✓</span><span><strong
+                            id="strip-item-4-title">Workbuddy</strong><small id="strip-item-4-desc">Native ·
                             已发现</small></span></div>
                       <div class="discovery-item"><span class="discovery-check">✓</span><span><strong
-                            id="strip-item-4-title">Accio Work</strong><small id="strip-item-4-desc">Bridge ·
-                            已发现</small></span></div>
+                            id="strip-item-5-title">Accio Work</strong><small id="strip-item-5-desc">RLab Bridge ·
+                            已挂接</small></span></div>
                     </div>
                     <div class="config-panel">
                       <label class="field-wide"><span>配置文件路径 <button class="text-action" type="button"
@@ -394,11 +398,11 @@
                           readonly value="~/.codex/config.toml"></label>
                       <label><span>API 服务网关</span><input id="sim-input-api" type="text"
                           value="https://api.openai.com/v1"></label>
-                      <label><span>默认模型</span><input id="sim-input-model" type="text" value="gpt-4o"></label>
+                      <label><span>默认推荐模型</span><input id="sim-input-model" type="text" value="gpt-5.6-sol"></label>
                       <div class="model-chips field-wide" id="sim-chips" aria-label="快速选择模型"></div>
                       <div class="sim-group-preview field-wide" id="sim-group-row">
-                        <span class="sim-group-label"><i class="sim-group-dot"></i>通道分组检测</span>
-                        <span class="sim-group-val" id="sim-group-info">SVIP-Codex-HighSpeed · 99.9% 可用 (78ms)</span>
+                        <span class="sim-group-label"><i class="sim-group-dot"></i>专属场景分组</span>
+                        <span class="sim-group-val" id="sim-group-info">Codex-不降质 · 99.9% 可用 (75ms)</span>
                       </div>
                     </div>
                     <div class="terminal-panel">
@@ -423,11 +427,11 @@
             <aside class="scene-copy" aria-live="polite">
               <div class="scene-copy-index" id="scene-copy-index">01 / 05</div>
               <h3 id="scene-copy-title">自动发现，不再手动翻路径。</h3>
-              <p id="scene-copy-body">启动即感知 Claude Code、Codex、Workbuddy 与 Accio Work 的安装位置和运行状态，并自动纠偏失效路径。</p>
+              <p id="scene-copy-body">启动即感知 Cursor、Claude Code、Codex、ChatGPT、Workbuddy 与 Accio Work 的安装位置和运行状态，并自动纠偏失效路径。</p>
               <ul class="scene-bullets" id="scene-bullets">
-                <li>PATH 与 NPM 全局脚本扫描</li>
-                <li>Homebrew 与 NVM 多环境探测</li>
-                <li>异常路径自动纠偏与自愈</li>
+                <li>PATH、NPM 全局与 Windows 注册表扫描</li>
+                <li>macOS Spotlight 与 NVM 多环境探测</li>
+                <li>Cursor Connect-RPC 与 Accio Bridge 自动挂接</li>
               </ul>
               <button class="replay-button" id="replay-story" type="button"><svg viewBox="0 0 24 24" aria-hidden="true">
                   <path d="M4 12a8 8 0 1 0 2.34-5.66L4 8.68M4 4v4.68h4.68" fill="none" stroke="currentColor"
@@ -451,18 +455,15 @@
           <!-- Row 1 & 2: 统一纳管 (span 8, 2 rows) + 轻量常驻 (span 4) + 原子配置 (span 4) -->
           <article class="capability-card capability-card-main spotlight-card">
             <span class="card-glare" aria-hidden="true"></span>
-            <div class="card-label">统一纳管</div>
-            <h3>一个界面，接管主流 AI 编程终端。</h3>
-            <p>跨 Windows 与 macOS 原生环境适配各工具底层配置格式，告别在隐藏目录、TOML、JSON 与环境变量之间繁复穿梭。</p>
+            <div class="card-label">统一纳管 · 6 席 Agent 矩阵</div>
+            <h3>一个界面，统揽主流 6 席 AI 编程终端。</h3>
+            <p>集中纳管 Cursor、Claude Code、OpenAI Codex、ChatGPT 官方桌面端、Workbuddy 与 Accio Work。跨 Windows 与 macOS 原生环境适配各工具底层配置格式，告别在隐藏目录、TOML、JSON 与环境变量之间繁复穿梭。</p>
             <div class="agent-orbit" aria-label="支持的 Agent">
-              <div><i class="dot-purple"></i><span><strong>Claude
-                    Code</strong><small>~/.claude.json</small></span><b>READY</b></div>
-              <div><i class="dot-green"></i><span><strong>OpenAI
-                    Codex</strong><small>~/.codex/config.toml</small></span><b>READY</b></div>
-              <div><i class="dot-orange"></i><span><strong>Workbuddy
-                    AI</strong><small>models.json</small></span><b>READY</b></div>
-              <div><i class="dot-gold"></i><span><strong>Accio
-                    Work</strong><small>accio_config.json</small></span><b>BRIDGE</b></div>
+              <div><i class="dot-purple"></i><span><strong>Claude Code</strong><small>~/.claude.json</small></span><b>READY</b></div>
+              <div><i class="dot-green"></i><span><strong>OpenAI Codex</strong><small>~/.codex/config.toml</small></span><b>READY</b></div>
+              <div><i class="dot-cyan"></i><span><strong>Cursor IDE</strong><small>Connect-RPC / glm-5.3</small></span><b>READY</b></div>
+              <div><i class="dot-orange"></i><span><strong>Workbuddy AI</strong><small>models.json</small></span><b>READY</b></div>
+              <div><i class="dot-gold"></i><span><strong>Accio Work</strong><small>accio_config.json</small></span><b>BRIDGE</b></div>
             </div>
           </article>
           <article class="capability-card metric-card spotlight-card"><span class="card-glare"
@@ -474,7 +475,7 @@
           <article class="capability-card spotlight-card"><span class="card-glare" aria-hidden="true"></span>
             <div class="card-icon">◇</div>
             <h3>原子配置写入</h3>
-            <p>先校验、再落盘，同时注入进程内环境变量，彻底避免配置损坏与重复配置。</p>
+            <p>先校验、再落盘，同时注入进程内环境变量与受管凭据，彻底避免配置损坏与重复配置。</p>
             <div class="mini-flow"><span>VALIDATE</span><i></i><span>WRITE</span><i></i><span>SYNC</span></div>
           </article>
 
@@ -491,7 +492,7 @@
                   <use href="#icon-lightning" xlink:href="#icon-lightning" />
                 </svg>
                 <strong>ARM64 原生</strong>
-                <small>M1~M4 毫秒秒启</small>
+                <small>M1~M5 毫秒秒启</small>
               </div>
               <div class="mac-feat-item">
                 <svg class="mac-feat-icon" viewBox="0 0 256 256" aria-hidden="true">
@@ -522,18 +523,20 @@
             <span class="card-glare" aria-hidden="true"></span>
             <div class="group-monitor-head">
               <div class="group-head-copy">
-                <div class="card-label shiny-text"><span class="label-dot"></span>核心进化 · 通道分组 &amp; 钱包大盘</div>
-                <h3>通道分组健康雷达与钱包大盘</h3>
-                <p>实时监控上游通道近 1h / 3h / 6h 可用率与 TTFT 首字时延；结合 v1.0.57 全新上线的账户额度双币实时折算大盘与 401 会话凭据透明重试自愈，四大 Agent
-                  联动热广播，杜绝生成中断。</p>
+                <div class="card-label shiny-text"><span class="label-dot"></span>核心进化 · v1.0.74 智能分组分发 &amp; 令牌自愈</div>
+                <h3>场景化智能分组分发与通道健康雷达</h3>
+                <p>彻底推翻单一令牌一刀切模式！按各 Agent 适用场景精准对齐三大专属业务分组（CC-Kiro-Max、Codex-不降质、国产Token计划）；账号下无令牌时毫秒级自动远程开通专属 Token 并受管托管；结合实时汇率双币折算、401 会话自愈与未登录断点续传，全场景不打断开发心流。</p>
               </div>
               <div class="group-tabs-list" role="tablist" aria-label="选择 Agent 通道分组">
                 <button class="group-tab-btn active" type="button" role="tab" aria-selected="true"
                   data-group-key="chatgpt">
-                  <i class="dot-green"></i><span>Codex 流式专用</span><small>SVIP-Codex</small>
+                  <i class="dot-green"></i><span>Codex / ChatGPT</span><small>Codex-不降质</small>
                 </button>
                 <button class="group-tab-btn" type="button" role="tab" aria-selected="false" data-group-key="claude">
-                  <i class="dot-purple"></i><span>Claude 深度推理</span><small>Claude-Kiro</small>
+                  <i class="dot-purple"></i><span>Claude 深度推理</span><small>CC-Kiro-Max</small>
+                </button>
+                <button class="group-tab-btn" type="button" role="tab" aria-selected="false" data-group-key="cursor">
+                  <i class="dot-cyan"></i><span>Cursor 极速补全</span><small>国产Token计划</small>
                 </button>
                 <button class="group-tab-btn" type="button" role="tab" aria-selected="false" data-group-key="workbuddy">
                   <i class="dot-orange"></i><span>多模型异构聚合</span><small>WorkBuddy-All</small>
@@ -548,8 +551,8 @@
               <!-- 控制条与当前状态 -->
               <div class="widget-toolbar">
                 <div class="widget-active-meta">
-                  <strong id="widget-group-name">SVIP-Codex-HighSpeed</strong>
-                  <span class="widget-group-tag" id="widget-group-tag">Codex 流式专用</span>
+                  <strong id="widget-group-name">Codex-不降质</strong>
+                  <span class="widget-group-tag" id="widget-group-tag">Codex 桌面/命令行专用</span>
                   <div class="group-live-pill">
                     <i class="live-dot-pulse"></i>
                     <span class="decrypted-text" id="widget-live-status" data-text="99.9% 运行极佳">99.9% 运行极佳</span>
@@ -580,7 +583,7 @@
                   <small>近 1 小时成功率</small>
                 </div>
                 <div class="hud-item">
-                  <span class="hud-value text-blue" id="hud-metric-latency">78ms</span>
+                  <span class="hud-value text-blue" id="hud-metric-latency">75ms</span>
                   <small>平均 TTFT 延迟</small>
                 </div>
                 <div class="hud-item">
@@ -618,8 +621,8 @@
                       stroke-width="2.5" stroke-linecap="round" />
                   </svg>
                   <div class="area-stats-overlay">
-                    <span>时延波动区间: <strong>72ms ~ 82ms</strong></span>
-                    <span>抖动率: <strong>&lt; 3.2%</strong></span>
+                    <span>时延波动区间: <strong>42ms ~ 75ms</strong></span>
+                    <span>抖动率: <strong>&lt; 2.8%</strong></span>
                   </div>
                 </div>
 
@@ -632,11 +635,11 @@
                 </div>
               </div>
 
-              <!-- v1.0.57 账号额度大盘 HUD 预览 -->
+              <!-- v1.0.74 账号额度大盘 HUD 预览 -->
               <div class="wallet-quota-hud">
                 <div class="wallet-header">
-                  <span><i class="wallet-icon">💳</i> 账号钱包全景大盘 (v1.0.57)</span>
-                  <span class="wallet-badge"><i class="live-dot-pulse"></i> 401 透明自愈守卫</span>
+                  <span><i class="wallet-icon">💳</i> 账号钱包全景大盘 &amp; 缺省令牌自愈创建 (v1.0.74)</span>
+                  <span class="wallet-badge"><i class="live-dot-pulse"></i> 令牌自愈 &amp; 401 守卫</span>
                 </div>
                 <div class="wallet-metrics">
                   <div class="wallet-val-box">
@@ -648,31 +651,49 @@
                     </div>
                   </div>
                   <div class="wallet-val-box">
-                    <span class="wallet-label">零感通道热广播</span>
-                    <span class="wallet-rate text-emerald">四大 Agent 秒级同频生效</span>
+                    <span class="wallet-label">缺省令牌自动开通</span>
+                    <span class="wallet-rate text-emerald">毫秒级远程签发 · 意图断点续传</span>
                   </div>
                 </div>
               </div>
 
               <!-- 专属指南说明与避坑建议 (带 DecryptedText 解密效果) -->
               <div class="widget-guide-box">
-                <div class="guide-lead-tag">💡 专属匹配规则</div>
+                <div class="guide-lead-tag">💡 v1.0.74 场景专属规则</div>
                 <p class="decrypted-text" id="widget-guide-desc"
-                  data-text="Codex 命令行深度依赖高并发流式代码补全与特定上游模型，自动绑定拥有专属流式权限的分组，拒绝补全超时。">Codex
-                  命令行深度依赖高并发流式代码补全与特定上游模型，自动绑定拥有专属流式权限的分组，拒绝补全超时。</p>
+                  data-text="Codex 命令行与 ChatGPT 官方桌面端深度依赖高保真流式代码补全与官方原版逻辑，自动对齐专属不降质分组，拒绝降级。">Codex
+                  命令行与 ChatGPT 官方桌面端深度依赖高保真流式代码补全与官方原版逻辑，自动对齐专属不降质分组，拒绝降级。</p>
               </div>
 
               <!-- 底部特性芯片条 -->
               <div class="widget-chips-row">
                 <span><i>✓</i> 1h / 3h / 6h 历史遥测</span>
-                <span><i>✓</i> 美元/人民币双币实时折算</span>
+                <span><i>✓</i> 三大专属分组场景化对齐</span>
+                <span><i>✓</i> 缺省令牌全自动远程创建</span>
+                <span><i>✓</i> 未登录意图断点续传</span>
                 <span><i>✓</i> 401 凭据透明重试自愈</span>
-                <span><i>✓</i> 零感通道秒级热切换</span>
+                <span><i>✓</i> 全面预设 glm-5.3 基座</span>
               </div>
             </div>
           </article>
 
-          <!-- Row 5: 进程树热重启 (span 6) + 配置文件原生直达 (span 6) = 12 -->
+          <!-- Row 5: Cursor 本地 Bridge 协议转译 (span 6) + 2×3 Agent 矩阵大厅 (span 6) -->
+          <article class="capability-card capability-card-half spotlight-card">
+            <span class="card-glare" aria-hidden="true"></span>
+            <div class="card-label shiny-text"><span class="label-dot"></span>全新集成 · Cursor IDE 深度适配</div>
+            <h3>Cursor 本地 Bridge 协议转译</h3>
+            <p>基于 Rust Axum + Connect-RPC 规范协议转译，支持 gzip 压缩传输、h2c 与即时握手心跳，彻底根除重连循环；一键修补挂接（Patcher）拦截 Agent 与 Composer 域名，提供本地多模态图片安全沙盒防护。</p>
+            <div class="mini-flow"><span>CONNECT-RPC</span><i></i><span>DOMAIN REWRITE</span><i></i><span>IMAGE SANDBOX</span></div>
+          </article>
+          <article class="capability-card capability-card-half spotlight-card">
+            <span class="card-glare" aria-hidden="true"></span>
+            <div class="card-label shiny-text"><span class="label-dot"></span>交互革新 · Agent 矩阵大厅</div>
+            <h3>2×3 Agent 矩阵与意图断点续传</h3>
+            <p>2 列 × 3 行全景网格布局，毫秒级状态微徽标一目了然；「一键配置所有」智能多对多分组聚合批量注入；未登录点击时自动挂起配置意图，登录成功瞬间自动恢复执行，零二次点击打扰。</p>
+            <div class="mini-flow"><span>2×3 MATRIX</span><i></i><span>INTENT RESUME</span><i></i><span>AUTO-PROVISION</span></div>
+          </article>
+
+          <!-- Row 6: 进程树热重启 (span 6) + 配置文件原生直达 (span 6) = 12 -->
           <article class="capability-card capability-card-half spotlight-card"><span class="card-glare"
               aria-hidden="true"></span>
             <div class="card-icon">⌁</div>
@@ -683,8 +704,8 @@
           <article class="capability-card capability-card-half spotlight-card"><span class="card-glare"
               aria-hidden="true"></span>
             <div class="card-icon">↗</div>
-            <h3>配置文件原生直达</h3>
-            <p>默认编辑器、系统记事本、资源管理器三级降级，让每一份配置都能快速打开。</p><button class="inline-demo-button" id="native-open-demo"
+            <h3>配置文件原生直达 &amp; 3D 全息交互</h3>
+            <p>默认编辑器、系统记事本、资源管理器三级降级；融合莫比乌斯环 3D 全息视差 Logo 与全维使用日志分析。</p><button class="inline-demo-button" id="native-open-demo"
               type="button">演示原生调阅 <span>↗</span></button>
           </article>
         </div>
@@ -697,12 +718,12 @@
         <div class="horizontal-header container">
           <div class="header-left">
             <span class="section-kicker shiny-badge"><span class="shiny-text">PANORAMIC ARCHITECTURE ·
-                01—05</span></span>
+                01—06</span></span>
             <h2 id="showcase-title">全景画卷：极速跨端，一揽全景。</h2>
-            <p>向下滑动页面，横向漫游四大 Agent 矩阵、macOS 原生视界与零感通道技术架构。</p>
+            <p>向下滑动页面，横向漫游 6 席 Agent 矩阵、Cursor Bridge 转译、macOS 原生视界与令牌自愈架构。</p>
           </div>
           <div class="horizontal-nav-hint">
-            <span class="hint-text" id="showcase-card-counter">01 / 05</span>
+            <span class="hint-text" id="showcase-card-counter">01 / 06</span>
             <div class="h-progress-bar">
               <div class="h-progress-fill" id="horizontal-progress-fill"></div>
             </div>
@@ -724,12 +745,12 @@
                   Silicon &amp; Intel</span></div>
               <div class="panoramic-content">
                 <h3>Apple Silicon 纯原生飞驰，红绿灯沉浸设计。</h3>
-                <p>为 M1/M2/M3/M4 系列芯片提供纯原生 aarch64 构建，彻底消除 Rosetta 2 转译开销。独创原生红绿灯 Overlay 融合，80px 预留安全边距，与 macOS
+                <p>为 M1/M2/M3/M4/M5 系列芯片提供纯原生 aarch64 构建，彻底消除 Rosetta 2 转译开销。独创原生红绿灯 Overlay 融合，80px 预留安全边距，与 macOS
                   系统风格浑然一体。</p>
                 <div class="panoramic-pills">
                   <span>M系列 ARM64 原生架构</span>
                   <span>Homebrew / NVM 智能探测</span>
-                  <span>⌘+B 极客快捷键</span>
+                  <span>Spotlight 深度定位</span>
                   <span>AppleScript 终端会话拉起</span>
                 </div>
               </div>
@@ -742,7 +763,7 @@
                 <div class="mockup-body">
                   <div class="mockup-dock-preview">
                     <span class="dock-item active">Codex</span><span class="dock-item">Claude</span><span
-                      class="dock-item">WorkBuddy</span><span class="dock-item">Accio</span>
+                      class="dock-item">Cursor</span><span class="dock-item">WorkBuddy</span><span class="dock-item">Accio</span>
                   </div>
                   <div class="mockup-log">
                     <code>✓ /opt/homebrew/bin/node detected (v22.14.0)</code>
@@ -757,12 +778,12 @@
             <article class="panoramic-card panoramic-card-win spotlight-card">
               <span class="card-glare" aria-hidden="true"></span>
               <div class="panoramic-badge"><span class="os-pill">🪟 Windows 深度熔断</span><span class="version-tag">Win32
-                  &amp; Store</span></div>
+                  &amp; Store 商店版</span></div>
               <div class="panoramic-content">
-                <h3>单快照高并发进程扫描，杜绝僵尸进程与端口冲突。</h3>
-                <p>基于 Rust 2024 系统底层 API，实施进程树单快照并发探测。配置文件更新后，精准执行安全树状熔断与文件句柄释放轮询，确保目标客户端携最新配置平滑重启。</p>
+                <h3>单快照并发进程扫描，免特权精准定位应用。</h3>
+                <p>基于 Rust 2024 系统底层 API，实施进程树单快照并发探测。优先遍历用户 AppModel 注册表免特权秒级定位微软商店版 ChatGPT；配置文件更新后，精准执行安全树状熔断与文件句柄释放轮询。</p>
                 <div class="panoramic-pills">
-                  <span>Win32 &amp; Store 隔离包兼容</span>
+                  <span>Win32 &amp; 商店版秒级定位</span>
                   <span>句柄轮询毫秒级释放</span>
                   <span>Ctrl+B 侧边栏折叠</span>
                   <span>WebView2 独立渲染隔离</span>
@@ -777,24 +798,84 @@
                   <div class="process-tree-vis">
                     <div class="p-node root"><span>AI-Helper.exe (Parent)</span><span class="p-status green">32MB</span>
                     </div>
-                    <div class="p-node branch"><span>├─ node.exe (Claude Code CLI)</span><span
+                    <div class="p-node branch"><span>├─ Cursor.exe (Connect-RPC)</span><span
                         class="p-status blue">Active</span></div>
                     <div class="p-node branch"><span>└─ rlab_bridge.exe (Axum :8787)</span><span
                         class="p-status blue">Active</span></div>
                   </div>
                   <div class="mockup-log">
-                    <code>[RESTART] Snapshot PID scan: 3 handles traced</code>
+                    <code>[REGISTRY] HKCU AppModel scan: ChatGPT.exe located</code>
                     <code>[RESTART] Mutex unlocked · Restart completed in 180ms</code>
                   </div>
                 </div>
               </div>
             </article>
 
-            <!-- Card 3: 账号额度大盘与 401 凭据自愈 -->
+            <!-- Card 3: Cursor 本地 Bridge 协议转译 -->
+            <article class="panoramic-card panoramic-card-cursor spotlight-card">
+              <span class="card-glare" aria-hidden="true"></span>
+              <div class="panoramic-badge"><span class="os-pill">⚡ Cursor Bridge</span><span class="version-tag">Connect-RPC &amp; Patcher</span></div>
+              <div class="panoramic-content">
+                <h3>Connect-RPC 协议转译与一键修补挂接，根除重连循环。</h3>
+                <p>针对 Cursor 编辑器独家实现 Connect-RPC 规范协议转译与 h2c 支持，gzip 压缩传输与即时握手心跳彻底终结重连循环。一键修补挂接智能拦截 Agent / Composer 域名，内置路径规范化与符号链接安全沙盒，严防本地多模态图片识别攻击。</p>
+                <div class="panoramic-pills">
+                  <span>Connect-RPC 规范协议</span>
+                  <span>gzip 压缩与 h2c</span>
+                  <span>Agent/Composer 域名拦截</span>
+                  <span>多模态图片安全沙盒</span>
+                </div>
+              </div>
+              <div class="panoramic-preview cursor-mockup">
+                <div class="mockup-win-bar">
+                  <span class="mockup-title">Cursor Bridge · Connect-RPC Engine</span>
+                  <div class="win-controls"><span>—</span><span>□</span><span>×</span></div>
+                </div>
+                <div class="mockup-body">
+                  <div class="bridge-stream-vis">
+                    <div class="stream-line"><span class="stream-badge client">Cursor IDE</span><span class="stream-arrow">→</span><span class="stream-badge bridge">Connect-RPC :8787</span><span class="stream-arrow">→</span><span class="stream-badge upstream">glm-5.3</span></div>
+                    <div class="mockup-log">
+                      <code>✓ Handshake Heartbeat: 0ms lag · loop resolved</code>
+                      <code>✓ Image Security: safe_read_local_image sandboxed</code>
+                      <code>✓ Domain Interceptor: Agent/Composer rewritten</code>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </article>
+
+            <!-- Card 4: 智能分组与缺省令牌自愈创建 -->
+            <article class="panoramic-card panoramic-card-broadcast spotlight-card">
+              <span class="card-glare" aria-hidden="true"></span>
+              <div class="panoramic-badge"><span class="os-pill">🎯 智能场景分发</span><span class="version-tag">v1.0.74 令牌自愈</span>
+              </div>
+              <div class="panoramic-content">
+                <h3>三大专属业务分组对齐，缺省令牌全自动远程创建。</h3>
+                <p>告别单一令牌配置局限！Claude 自动对齐 CC-Kiro-Max、Codex 对齐 Codex-不降质、Cursor/WorkBuddy/Accio 对齐 国产Token计划。账号无令牌时毫秒级自动在 Bob API 创建专属 Token 并受管托管；未登录时智能记忆操作意图，登录成功瞬间自动断点续传。</p>
+                <div class="panoramic-pills">
+                  <span>三大专属业务分组</span>
+                  <span>缺省 Token 自动开通</span>
+                  <span>未登录意图断点续传</span>
+                  <span>全面预设 glm-5.3</span>
+                </div>
+              </div>
+              <div class="panoramic-preview broadcast-mockup">
+                <div class="broadcast-center-node">
+                  <span class="hub-circle">Agent 矩阵中枢</span>
+                  <div class="pulse-rings"><span></span><span></span></div>
+                </div>
+                <div class="broadcast-targets">
+                  <div class="target-item target-codex"><span>Codex-不降质</span><small>gpt-5.6-sol</small></div>
+                  <div class="target-item target-claude"><span>CC-Kiro-Max</span><small>sonnet-5-5</small></div>
+                  <div class="target-item target-workbuddy"><span>国产Token计划</span><small>glm-5.3</small></div>
+                  <div class="target-item target-accio"><span>令牌自愈创建</span><small>Auto-Provision</small></div>
+                </div>
+              </div>
+            </article>
+
+            <!-- Card 5: 账号额度大盘与 401 凭据自愈 -->
             <article class="panoramic-card panoramic-card-wallet spotlight-card">
               <span class="card-glare" aria-hidden="true"></span>
-              <div class="panoramic-badge"><span class="os-pill">💳 账号钱包大盘</span><span class="version-tag">v1.0.57
-                  全新上线</span></div>
+              <div class="panoramic-badge"><span class="os-pill">💳 账号钱包大盘</span><span class="version-tag">实时双币折算</span></div>
               <div class="panoramic-content">
                 <h3>双币实时折算与 401 会话透明重试自愈。</h3>
                 <p>实时汇率折算账户可用额度（USD / CNY），掌握每笔 Token 消耗。遭遇 401 会话失效时，自动触发后台无感静默续期与重试自愈，杜绝正在执行的代码生成或补全中断。</p>
@@ -819,7 +900,7 @@
                     <div class="dash-bar-item"><small>Claude 推理</small>
                       <div class="bar-fill fill-purple" style="width: 25%;"></div><span>25%</span>
                     </div>
-                    <div class="dash-bar-item"><small>WorkBuddy</small>
+                    <div class="dash-bar-item"><small>Cursor / glm</small>
                       <div class="bar-fill fill-orange" style="width: 10%;"></div><span>10%</span>
                     </div>
                   </div>
@@ -830,49 +911,17 @@
               </div>
             </article>
 
-            <!-- Card 4: 零感通道分组秒级广播 -->
-            <article class="panoramic-card panoramic-card-broadcast spotlight-card">
-              <span class="card-glare" aria-hidden="true"></span>
-              <div class="panoramic-badge"><span class="os-pill">⚡ 零感通道广播</span><span class="version-tag">热切换中枢</span>
-              </div>
-              <div class="panoramic-content">
-                <h3>一键热切换通道分组，四大 Agent 同步秒级生效。</h3>
-                <p>告别繁杂的逐个客户端修改。在 AI Helper 中枢秒级切换通道分组后，最新网关地址与 API Key 将立即通过全局事件总线广播至 OpenAI Codex、Claude
-                  Code、WorkBuddy 与 Accio Work。</p>
-                <div class="panoramic-pills">
-                  <span>全局总线秒级广播</span>
-                  <span>免去重启与配置落盘等待</span>
-                  <span>专属 SLA 通道规则匹配</span>
-                  <span>实时首字延迟遥测</span>
-                </div>
-              </div>
-              <div class="panoramic-preview broadcast-mockup">
-                <div class="broadcast-center-node">
-                  <span class="hub-circle">AI Helper 中枢</span>
-                  <div class="pulse-rings"><span></span><span></span></div>
-                </div>
-                <div class="broadcast-targets">
-                  <div class="target-item target-codex"><span>OpenAI Codex</span><small>Synced</small></div>
-                  <div class="target-item target-claude"><span>Claude Code</span><small>Synced</small></div>
-                  <div class="target-item target-workbuddy"><span>WorkBuddy</span><small>Synced</small></div>
-                  <div class="target-item target-accio"><span>Accio Work</span><small>Synced</small></div>
-                </div>
-              </div>
-            </article>
-
-            <!-- Card 5: Accio Work Local Bridge -->
+            <!-- Card 6: Accio Work Local Bridge -->
             <article class="panoramic-card panoramic-card-bridge spotlight-card">
               <span class="card-glare" aria-hidden="true"></span>
-              <div class="panoramic-badge"><span class="os-pill">🧩 本地网关协议</span><span class="version-tag">Axum +
-                  Tokio</span></div>
+              <div class="panoramic-badge"><span class="os-pill">🧩 本地网关协议</span><span class="version-tag">路径凭据鉴权</span></div>
               <div class="panoramic-content">
-                <h3>Rust Axum + Tokio 本地网关，自定义模型无缝注入。</h3>
-                <p>内置 RLab Bridge 本地高性能协议转译服务（127.0.0.1:8787），支持 DALL-E 3 生图协议自适应转译、SSE 流式错误自愈与 MCP 显式代理路由，赋予 Accio Work
-                  调用任何第三方大模型的无限能力。</p>
+                <h3>Rust Axum + Tokio 本地网关，路径凭据鉴权与防泄露。</h3>
+                <p>内置 RLab Bridge 本地高性能协议转译服务（127.0.0.1:8787），支持路径凭据鉴权 /i/&lt;token&gt; 与防官方泄露元数据白名单，支持 DALL-E 3 生图协议自适应转译、SSE 流式错误自愈与 MCP 显式代理路由。</p>
                 <div class="panoramic-pills">
                   <span>Axum 高并发网关</span>
-                  <span>DALL-E 3 协议翻译</span>
-                  <span>SSE 错误归一化</span>
+                  <span>路径凭据鉴权 /i/token</span>
+                  <span>元数据防泄露白名单</span>
                   <span>MCP 显式代理集成</span>
                 </div>
               </div>
@@ -880,7 +929,7 @@
                 <div class="bridge-stream-vis">
                   <div class="stream-line"><span class="stream-badge client">Accio Work</span><span
                       class="stream-arrow">→</span><span class="stream-badge bridge">RLab Bridge :8787</span><span
-                      class="stream-arrow">→</span><span class="stream-badge upstream">Any LLM API</span></div>
+                      class="stream-arrow">→</span><span class="stream-badge upstream">glm-5.3 / LLM API</span></div>
                   <div class="bridge-metrics">
                     <div><small>转译吞吐</small><strong>1,200 req/s</strong></div>
                     <div><small>网关开销</small><strong>&lt; 0.8ms</strong></div>
@@ -899,24 +948,24 @@
       <div class="container">
         <header class="section-heading"><span class="section-kicker">STREAMLINED WORKFLOW</span>
           <h2 id="workflow-title">从发现到生效，不到 10 秒。</h2>
-          <p>三步完成原本需要反复切换终端、编辑器和任务管理器的工作。</p>
+          <p>三步完成 6 席 Agent 矩阵的自动探测、智能场景化分组对齐与零感热重启。</p>
         </header>
         <div class="workflow-path">
           <div class="workflow-line" aria-hidden="true"><span id="workflow-line-fill"></span></div>
           <article class="workflow-step"><span class="workflow-number">01</span>
             <div class="workflow-dot"><i></i></div>
-            <h3>环境感知</h3>
-            <p>自动识别客户端、配置文件与运行状态，修复失效路径。</p><small>DISCOVER</small>
+            <h3>环境全域感知</h3>
+            <p>自动扫描 PATH、Win32 注册表、NPM 全局脚本、Store 隔离包与 macOS Spotlight，修复失效路径。</p><small>DISCOVER</small>
           </article>
           <article class="workflow-step"><span class="workflow-number">02</span>
             <div class="workflow-dot"><i></i></div>
-            <h3>配置与验证</h3>
-            <p>选择模型和网关，通过真实流式握手确认首字延迟与连通状态。</p><small>VERIFY</small>
+            <h3>智能分发与自愈</h3>
+            <p>按场景自动绑定三大专属分组，缺省令牌自动开通，流式握手验证延迟与 Token。</p><small>VERIFY &amp; PROVISION</small>
           </article>
           <article class="workflow-step"><span class="workflow-number">03</span>
             <div class="workflow-dot"><i></i></div>
-            <h3>写入与热重启</h3>
-            <p>原子写入配置，等待句柄释放，再携最新配置重新拉起客户端。</p><small>ACTIVATE</small>
+            <h3>原子写入与热重启</h3>
+            <p>原子写入配置，等待句柄释放，携最新配置与最优通道平滑重新拉起客户端。</p><small>ACTIVATE</small>
           </article>
         </div>
       </div>
@@ -928,8 +977,7 @@
         <header class="section-heading">
           <span class="section-kicker">OFFICIAL DOWNLOADS</span>
           <h2 id="downloads-title">现在开始，把配置工作交出去。</h2>
-          <p>当前官方版本 <strong class="current-version-tag" style="color: var(--accent-blue);">v1.0.74</strong> · 原生支持
-            Windows 与 macOS · 纯净无广告 · 永久开源免费</p>
+          <p>当前官方版本 <strong class="current-version-tag" style="color: var(--accent-blue);">v1.0.74</strong> · 6 席 Agent 矩阵大厅 · 智能分组场景化分发 · 缺省令牌自愈创建 · 原生支持 Windows 与 macOS</p>
         </header>
 
         <!-- 平台切换器 -->
@@ -1259,22 +1307,47 @@
             </div>
           </article>
           <article class="faq-item">
-            <h3><button class="faq-trigger" type="button" aria-expanded="false"><span>v1.0.57
-                  账号额度大盘与零感通道热切换是如何工作的？</span><i aria-hidden="true"></i></button></h3>
+            <h3><button class="faq-trigger" type="button" aria-expanded="false"><span>v1.0.74 的场景化智能分组分发与缺省令牌自愈创建是如何工作的？</span><i
+                  aria-hidden="true"></i></button></h3>
             <div class="faq-panel">
               <div>
-                <p>AI Helper 在 v1.0.57 引入钱包全景大盘，通过实时汇率将账户余额无感折算为美元 (USD) 与人民币 (CNY)；当通道或凭据遭遇 401
-                  会话失效时，自动触发后台无感静默续期与重试自愈；首创的「零感通道分组秒级热切换」可以在中枢秒级广播至四大 Agent，无需逐一修改或重启客户端。</p>
+                <p>AI Helper 在 v1.0.74 彻底告别以往“单一令牌一刀切配置”模式，根据各 Agent 的最佳工程场景自动划定三大专属分组：<strong>Claude Code CLI ➔ CC-Kiro-Max</strong>（推荐 <code>claude-sonnet-5-5</code>）、<strong>Codex / ChatGPT 桌面端 ➔ Codex-不降质</strong>（推荐 <code>gpt-5.6-sol</code>）、<strong>Cursor / WorkBuddy / Accio ➔ 国产Token计划</strong>（默认推荐 <code>glm-5.3</code>）。若当前账号下暂无对应分组的有效令牌，AI Helper 直接在云端开通专属永不过期令牌并登记受管凭据，全程无需手动前往网页建 Token！</p>
               </div>
             </div>
           </article>
           <article class="faq-item">
-            <h3><button class="faq-trigger" type="button" aria-expanded="false"><span>支持 Workbuddy、Accio Work
-                  与自定义模型吗？</span><i aria-hidden="true"></i></button></h3>
+            <h3><button class="faq-trigger" type="button" aria-expanded="false"><span>Cursor 编辑器是如何通过本地 Bridge 协议转译接入第三方模型的？</span><i
+                  aria-hidden="true"></i></button></h3>
             <div class="faq-panel">
               <div>
-                <p>完全支持。Workbuddy 可直接维护自定义模型配置；Accio Work 通过内置的 Rust Axum + Tokio 本地 RLab Bridge
-                  转译网关（127.0.0.1:8787）接入任意第三方模型，并由 AI Helper 负责配置和进程守护。</p>
+                <p>AI Helper 内置专为 Cursor 打造的 Rust Axum + Connect-RPC 规范本地 Bridge 协议转译器（支持 gzip 压缩、h2c 与即时握手心跳），彻底根除官方客户端因连接握手异常引发的“重连循环”问题；通过一键修补挂接（Patcher）精准拦截 Agent 与 Composer 官方域名，并在跨平台处理本地图片上传时通过 <code>safe_read_local_image</code> 实施路径规范化、符号链接检测与大小白名单沙盒，全面杜绝路径遍历与 DoS 安全风险。</p>
+              </div>
+            </div>
+          </article>
+          <article class="faq-item">
+            <h3><button class="faq-trigger" type="button" aria-expanded="false"><span>为什么 Cursor、WorkBuddy 与 Accio Work 默认全面升级预设为国产 glm-5.3 模型？</span><i
+                  aria-hidden="true"></i></button></h3>
+            <div class="faq-panel">
+              <div>
+                <p>为国内开发者带来极速响应速度与超高性价比的代码协作体验，<code>glm-5.3</code> 在代码补全、逻辑生成与长上下文多轮问答上均达到领先水准。同时 AI Helper 遵循智能的 <code>model_or_default</code> 原则：若您之前已在本地配置文件中设定过心仪模型，系统将百分之百尊重并保留原配置，绝不暴力覆盖。</p>
+              </div>
+            </div>
+          </article>
+          <article class="faq-item">
+            <h3><button class="faq-trigger" type="button" aria-expanded="false"><span>未登录状态下的“断点续传”机制是什么？</span><i
+                  aria-hidden="true"></i></button></h3>
+            <div class="faq-panel">
+              <div>
+                <p>当您尚未登录 Bob API 账号便在 Agent 矩阵大厅点击「一键配置」或「一键配置所有」时，系统会自动挂起并记忆当前操作意图（<code>pendingConfigRef</code>），并弹出友好登录引导；一旦您登录成功，系统立刻自动恢复执行先前挂起的配置任务，一键自动匹配分组、开通令牌并安全写入，无需再次寻找按钮重复点击。</p>
+              </div>
+            </div>
+          </article>
+          <article class="faq-item">
+            <h3><button class="faq-trigger" type="button" aria-expanded="false"><span>支持哪些主流 Agent、客户端与自定义模型？</span><i
+                  aria-hidden="true"></i></button></h3>
+            <div class="faq-panel">
+              <div>
+                <p>全景矩阵集中纳管 6 席主流工具：<strong>Cursor IDE</strong>、<strong>Claude Code CLI</strong>、<strong>OpenAI Codex CLI</strong>、<strong>ChatGPT 官方桌面端</strong>（支持 Win32 与商店版免特权定位）、<strong>Workbuddy AI</strong>（原生支持 <code>models.json</code>）与 <strong>Accio Work</strong>（通过本地 RLab Bridge 路径凭据鉴权 <code>/i/&lt;token&gt;</code> 与防泄露元数据白名单接入）。并由 AI Helper 统一负责配置注入、密钥受管托管与进程安全热重启。</p>
               </div>
             </div>
           </article>
