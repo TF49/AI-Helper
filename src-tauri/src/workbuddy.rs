@@ -1002,6 +1002,19 @@ pub fn get_workbuddy_config() -> Result<WorkbuddyUIConfig, AppError> {
 }
 
 pub fn set_workbuddy_config(payload: WorkbuddySavePayload) -> Result<(), AppError> {
+    set_workbuddy_config_inner(payload, false)
+}
+
+/// 一键配置专用：写入模型后将其提升为列表首项，使 `get_workbuddy_config`
+/// 和 WorkBuddy 默认选中同一个推荐模型，同时保留其他手动模型。
+pub(crate) fn set_workbuddy_default_config(payload: WorkbuddySavePayload) -> Result<(), AppError> {
+    set_workbuddy_config_inner(payload, true)
+}
+
+fn set_workbuddy_config_inner(
+    payload: WorkbuddySavePayload,
+    make_default: bool,
+) -> Result<(), AppError> {
     crate::credential_policy::validate_key_destination(
         &payload.api_key,
         payload.url.trim(),
@@ -1078,12 +1091,19 @@ pub fn set_workbuddy_config(payload: WorkbuddySavePayload) -> Result<(), AppErro
             extra: serde_json::Map::new(),
         };
 
-        // 核心变更：仅当在已配置模型中存在完全相同 model_id 时更新该项；
-        // 否则直接作为新模型追加（拼接）至模型数组末尾，绝不覆盖已有模型
+        // 普通保存维持“更新原位置 / 新模型追加”的既有行为；一键配置则把目标模型
+        // 提升到首项，因为 WorkBuddy 与本应用都以首个 Custom 模型作为默认项。
         if let Some(idx) = entries.iter().position(|e| e.id == model_id) {
             let mut updated = new_entry;
             preserve_unmanaged_fields(&mut updated, &entries[idx]);
-            entries[idx] = updated;
+            if make_default {
+                entries.remove(idx);
+                entries.insert(0, updated);
+            } else {
+                entries[idx] = updated;
+            }
+        } else if make_default {
+            entries.insert(0, new_entry);
         } else {
             entries.push(new_entry);
         }
@@ -1339,6 +1359,39 @@ mod tests {
         for path in profiles(directory.path()) {
             assert_eq!(ids(&path), ["keep"]);
         }
+    }
+
+    #[test]
+    fn one_click_configuration_promotes_recommended_model_without_removing_others() {
+        let directory = tempfile::tempdir().unwrap();
+        fixture(directory.path());
+        in_profile(directory.path(), || {
+            // 普通保存仍追加，保持手动多模型配置的既有语义。
+            set_workbuddy_config(payload("glm-5.3")).unwrap();
+            for path in profiles(directory.path()) {
+                let entries = read_workbuddy_entries(&path).unwrap();
+                assert_eq!(
+                    entries
+                        .iter()
+                        .map(|entry| entry.id.as_str())
+                        .collect::<Vec<_>>(),
+                    ["keep", "glm-5.3"]
+                );
+            }
+
+            // 一键配置更新同名模型并提升为默认首项，其他模型必须保留。
+            set_workbuddy_default_config(payload("glm-5.3")).unwrap();
+            for path in profiles(directory.path()) {
+                let entries = read_workbuddy_entries(&path).unwrap();
+                assert_eq!(
+                    entries
+                        .iter()
+                        .map(|entry| entry.id.as_str())
+                        .collect::<Vec<_>>(),
+                    ["glm-5.3", "keep"]
+                );
+            }
+        });
     }
 
     #[test]

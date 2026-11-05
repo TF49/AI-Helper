@@ -1936,17 +1936,22 @@ fn managed_destination(url: &str, default: &str) -> Result<String, String> {
     Ok(dest)
 }
 
-/// 本地配置尚未设置模型时使用的默认模型；已有模型一律保留用户选择
+/// 一键配置会按目标 Agent 覆盖为对应分组的推荐模型。
+///
+/// 这里不能保留旧模型：API Key 已切换到专属分组后，旧模型可能不在该分组的
+/// 可用渠道中，最终会出现 `model_not_found`，形成“Key 已切换但模型未切换”的
+/// 半配置状态。
 const DEFAULT_CLAUDE_MODEL: &str = "claude-sonnet-5-5";
 const DEFAULT_CODEX_MODEL: &str = "gpt-5.6-sol";
 const DEFAULT_DOMESTIC_MODEL: &str = "glm-5.3";
 
-fn model_or_default(current: Option<&str>, default: &str) -> String {
-    current
-        .map(str::trim)
-        .filter(|m| !m.is_empty())
-        .unwrap_or(default)
-        .to_string()
+fn default_model_for_target(target: &str) -> Option<&'static str> {
+    match target {
+        "codex" | "chatgpt" => Some(DEFAULT_CODEX_MODEL),
+        "claude" => Some(DEFAULT_CLAUDE_MODEL),
+        "workbuddy" | "accio" | "acciowork" | "cursor" => Some(DEFAULT_DOMESTIC_MODEL),
+        _ => None,
+    }
 }
 
 /// 一键将 API Key 批量写入指定的 Agent 配置文件中
@@ -1965,8 +1970,9 @@ pub async fn apply_api_key_to_agents(
                     .as_ref()
                     .map(|c| c.base_url.clone())
                     .unwrap_or_else(|| "https://bob-api.com/".to_string());
-                let model =
-                    model_or_default(cur.as_ref().map(|c| c.model.as_str()), DEFAULT_CODEX_MODEL);
+                let model = default_model_for_target(&target)
+                    .expect("已知 Codex 目标必须有默认模型")
+                    .to_string();
                 match managed_destination(&url, "https://bob-api.com/").and_then(|url| {
                     crate::codex::set_codex_config(url, api_key.clone(), Some(model))
                         .map_err(|e| e.to_string())
@@ -1986,8 +1992,9 @@ pub async fn apply_api_key_to_agents(
                     .as_ref()
                     .map(|c| c.base_url.clone())
                     .unwrap_or_else(|| "https://bob-api.com/".to_string());
-                let model =
-                    model_or_default(cur.as_ref().map(|c| c.model.as_str()), DEFAULT_CLAUDE_MODEL);
+                let model = default_model_for_target(&target)
+                    .expect("已知 Claude 目标必须有默认模型")
+                    .to_string();
                 match managed_destination(&url, "https://bob-api.com/").and_then(|url| {
                     crate::claude::set_claude_config(url, api_key.clone(), Some(model))
                         .map_err(|e| e.to_string())
@@ -2007,10 +2014,9 @@ pub async fn apply_api_key_to_agents(
                     .as_ref()
                     .map(|c| c.base_url.clone())
                     .unwrap_or_else(|| "https://bob-api.com/v1".to_string());
-                let model = model_or_default(
-                    cur.as_ref().map(|c| c.model.as_str()),
-                    DEFAULT_DOMESTIC_MODEL,
-                );
+                let model = default_model_for_target(&target)
+                    .expect("已知 WorkBuddy 目标必须有默认模型")
+                    .to_string();
                 let url = match managed_destination(&url, "https://bob-api.com/v1") {
                     Ok(url) => url,
                     Err(e) => {
@@ -2034,7 +2040,7 @@ pub async fn apply_api_key_to_agents(
                     max_input_tokens: None,
                     max_output_tokens: None,
                 };
-                match crate::workbuddy::set_workbuddy_config(payload) {
+                match crate::workbuddy::set_workbuddy_default_config(payload) {
                     Ok(_) => {
                         results.insert("workbuddy".to_string(), true);
                     }
@@ -2056,7 +2062,9 @@ pub async fn apply_api_key_to_agents(
                     results.insert("acciowork".to_string(), false);
                     continue;
                 }
-                let model = model_or_default(Some(cur.model.as_str()), DEFAULT_DOMESTIC_MODEL);
+                let model = default_model_for_target(&target)
+                    .expect("已知 Accio Work 目标必须有默认模型")
+                    .to_string();
                 let config = crate::accio::config::AccioConfig {
                     base_url,
                     api_key: api_key.clone(),
@@ -2107,7 +2115,9 @@ pub async fn apply_api_key_to_agents(
                 } else {
                     (cur.cached_models, cur.cached_models_fingerprint)
                 };
-                let model = model_or_default(Some(cur.model.as_str()), DEFAULT_DOMESTIC_MODEL);
+                let model = default_model_for_target(&target)
+                    .expect("已知 Cursor 目标必须有默认模型")
+                    .to_string();
                 let config = crate::cursor::config::CursorConfig {
                     base_url,
                     api_key: api_key.clone(),
@@ -2872,6 +2882,22 @@ mod tests {
             access_expires_at: i64::MAX,
             session_sid: Some(format!("fake-sid-{id}")),
         }
+    }
+
+    #[test]
+    fn one_click_configuration_uses_the_model_for_each_target_group() {
+        for (target, expected) in [
+            ("codex", DEFAULT_CODEX_MODEL),
+            ("chatgpt", DEFAULT_CODEX_MODEL),
+            ("claude", DEFAULT_CLAUDE_MODEL),
+            ("workbuddy", DEFAULT_DOMESTIC_MODEL),
+            ("accio", DEFAULT_DOMESTIC_MODEL),
+            ("acciowork", DEFAULT_DOMESTIC_MODEL),
+            ("cursor", DEFAULT_DOMESTIC_MODEL),
+        ] {
+            assert_eq!(default_model_for_target(target), Some(expected));
+        }
+        assert_eq!(default_model_for_target("unknown"), None);
     }
 
     fn fixture() -> (tempfile::TempDir, SessionStore) {
