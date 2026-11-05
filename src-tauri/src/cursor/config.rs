@@ -107,12 +107,24 @@ pub fn merge_config_update(
     existing: &CursorConfig,
 ) -> Result<CursorConfig, AppError> {
     let mut config: CursorConfig = serde_json::from_value(payload)?;
+    let source_changed = model_source_fingerprint(&config.base_url, &config.api_key)
+        != model_source_fingerprint(&existing.base_url, &existing.api_key);
+
     if config.custom_models.is_empty() {
         config.custom_models = existing.custom_models.clone();
     }
-    if config.cached_models.is_empty() && !existing.cached_models.is_empty() {
+
+    if source_changed {
+        // A model list belongs to one upstream credential pair. Never carry it
+        // across to a new endpoint or key, even when the frontend omits cache fields.
+        config.cached_models.clear();
+        config.cached_models_fingerprint.clear();
+    } else if config.cached_models.is_empty() && !existing.cached_models.is_empty() {
         config.cached_models = existing.cached_models.clone();
         config.cached_models_fingerprint = existing.cached_models_fingerprint.clone();
+    } else if !config.cached_models.is_empty() {
+        config.cached_models_fingerprint =
+            model_source_fingerprint(&config.base_url, &config.api_key);
     }
     Ok(config)
 }
@@ -175,5 +187,58 @@ mod tests {
         assert_eq!(fp1, "https://bob-api.com||sk-test123");
         assert_eq!(fp2, "https://bob-api.com||sk-test123");
         assert_eq!(fp3, "https://bob-api.com||sk-test123");
+    }
+
+    #[test]
+    fn merge_config_update_preserves_cache_for_same_source() {
+        let existing = CursorConfig {
+            api_key: "sk-existing".to_string(),
+            custom_models: vec!["custom-model".to_string()],
+            cached_models: vec!["cached-model".to_string()],
+            cached_models_fingerprint: "https://bob-api.com||sk-existing".to_string(),
+            ..CursorConfig::default()
+        };
+        let payload = serde_json::json!({
+            "base_url": "https://bob-api.com/v1/",
+            "api_key": "sk-existing",
+            "model": "selected-model",
+            "bridge_port": 8969,
+            "auto_start_bridge": true,
+            "cursor_path": null
+        });
+
+        let merged = merge_config_update(payload, &existing).unwrap();
+
+        assert_eq!(merged.custom_models, vec!["custom-model"]);
+        assert_eq!(merged.cached_models, vec!["cached-model"]);
+        assert_eq!(
+            merged.cached_models_fingerprint,
+            "https://bob-api.com||sk-existing"
+        );
+    }
+
+    #[test]
+    fn merge_config_update_clears_cache_for_changed_source() {
+        let existing = CursorConfig {
+            api_key: "sk-old".to_string(),
+            cached_models: vec!["old-model".to_string()],
+            cached_models_fingerprint: "https://bob-api.com||sk-old".to_string(),
+            ..CursorConfig::default()
+        };
+        let payload = serde_json::json!({
+            "base_url": "https://new.example.com/",
+            "api_key": "sk-new",
+            "model": "new-model",
+            "bridge_port": 8969,
+            "auto_start_bridge": true,
+            "cached_models": ["stale-model-from-payload"],
+            "cached_models_fingerprint": "stale-fingerprint",
+            "cursor_path": null
+        });
+
+        let merged = merge_config_update(payload, &existing).unwrap();
+
+        assert!(merged.cached_models.is_empty());
+        assert!(merged.cached_models_fingerprint.is_empty());
     }
 }

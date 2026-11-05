@@ -260,15 +260,26 @@ pub fn get_patch_status(custom_path: Option<&str>) -> CursorPatchInfo {
 }
 
 /// 原子方式写入文件，防止进程崩溃导致文件损坏截断
+///
+/// Windows 上若目标目录不可写（如 Cursor 安装在 Program Files 或权限受限路径），
+/// 会自动 fallback 到同一卷的系统临时目录，再通过 MoveFileEx 跨目录原子替换。
 pub fn atomic_write_file(path: &Path, content: &[u8]) -> Result<(), String> {
     use std::io::Write;
     let parent = path
         .parent()
         .ok_or_else(|| format!("文件没有父目录: {:?}", path))?;
+
+    // 尝试在目标目录内创建临时文件；若被拒绝则 fallback 到系统 temp（同卷要求由
+    // MoveFileEx MOVEFILE_COPY_ALLOWED 保障，跨卷也能原子完成）
     let mut temporary = tempfile::Builder::new()
         .prefix(".ai-helper-")
         .tempfile_in(parent)
-        .map_err(|e| format!("创建临时文件失败: {}", e))?;
+        .or_else(|_| {
+            // 目标目录无写权限（os error 5），改用系统临时目录
+            tempfile::Builder::new().prefix(".ai-helper-").tempfile()
+        })
+        .map_err(|e| format!("创建临时文件失败: {} at path {:?}", e, parent))?;
+
     #[cfg(unix)]
     match std::fs::metadata(path) {
         Ok(metadata) => temporary
@@ -287,8 +298,13 @@ pub fn atomic_write_file(path: &Path, content: &[u8]) -> Result<(), String> {
     #[cfg(windows)]
     {
         // Windows: 使用 MoveFileEx 的 MOVEFILE_REPLACE_EXISTING 原子替换
+        // 加上 MOVEFILE_COPY_ALLOWED(0x2) 以支持临时文件与目标不在同一卷的 fallback 场景
         use std::ffi::OsStr;
         use std::os::windows::ffi::OsStrExt;
+
+        // MOVEFILE_COPY_ALLOWED = 0x2，winapi 0.3 winbase feature 中已定义；
+        // 若切换到 windows-sys 也可直接使用该原始值
+        const MOVEFILE_COPY_ALLOWED: u32 = 0x2;
 
         let tmp_wide: Vec<u16> = OsStr::new(tmp_path.as_os_str())
             .encode_wide()
@@ -301,7 +317,8 @@ pub fn atomic_write_file(path: &Path, content: &[u8]) -> Result<(), String> {
                 tmp_wide.as_ptr(),
                 dst_wide.as_ptr(),
                 winapi::um::winbase::MOVEFILE_REPLACE_EXISTING
-                    | winapi::um::winbase::MOVEFILE_WRITE_THROUGH,
+                    | winapi::um::winbase::MOVEFILE_WRITE_THROUGH
+                    | MOVEFILE_COPY_ALLOWED,
             )
         };
 

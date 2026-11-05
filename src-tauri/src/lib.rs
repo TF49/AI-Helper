@@ -354,30 +354,24 @@ fn get_cursor_config() -> cursor::CursorUIConfig {
 #[tauri::command]
 fn set_cursor_config(config: serde_json::Value) -> Result<(), error::AppError> {
     let existing = cursor::load_cursor_config();
-    let mut config = cursor::config::merge_config_update(config, &existing)?;
+    let config = cursor::config::merge_config_update(config, &existing)?;
     let old_fp = cursor::model_source_fingerprint(&existing.base_url, &existing.api_key);
     let new_fp = cursor::model_source_fingerprint(&config.base_url, &config.api_key);
+    let source_changed = old_fp != new_fp;
 
-    if config.cached_models.is_empty() {
-        if old_fp == new_fp && !existing.cached_models.is_empty() {
-            config.cached_models = existing.cached_models;
-            config.cached_models_fingerprint = new_fp.clone();
-        } else {
-            config.cached_models.clear();
-            config.cached_models_fingerprint.clear();
-        }
-    } else {
-        config.cached_models_fingerprint = new_fp.clone();
-    }
+    // Persist before scheduling a refresh so the background task always reads
+    // the new endpoint and key rather than racing against this write.
+    cursor::save_cursor_config(&config)?;
 
-    if old_fp != new_fp {
+    if source_changed {
         cursor::invalidate_model_list_cache();
-        tokio::spawn(async {
+        // Tauri executes synchronous commands on a blocking thread where there
+        // may be no entered Tokio runtime. Its global runtime is safe here.
+        tauri::async_runtime::spawn(async {
             cursor::refresh_model_list_cache().await;
         });
     }
 
-    cursor::save_cursor_config(&config)?;
     Ok(())
 }
 

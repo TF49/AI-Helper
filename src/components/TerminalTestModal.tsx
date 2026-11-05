@@ -99,6 +99,11 @@ export function TerminalTestModal({
   const countdownTimerRef = useRef<number | null>(null);
   const hasStartedRef = useRef(false);
   const openRef = useRef(open);
+  // 用 ref 保存最新 onClose，避免倒计时 effect 因 onClose 引用变化被频繁重触发
+  const onCloseRef = useRef(onClose);
+  useEffect(() => {
+    onCloseRef.current = onClose;
+  });
 
   useEffect(() => {
     openRef.current = open;
@@ -135,7 +140,7 @@ export function TerminalTestModal({
   useEffect(() => {
     if (countdown === null) return;
     if (countdown <= 0) {
-      onClose();
+      onCloseRef.current();
       return;
     }
     countdownTimerRef.current = window.setTimeout(() => {
@@ -147,7 +152,7 @@ export function TerminalTestModal({
         clearTimeout(countdownTimerRef.current);
       }
     };
-  }, [countdown, onClose]);
+  }, [countdown]);
 
   const handleRestart = async (
     target: "chatgpt" | "codex" | "claude" | "workbuddy" | "acciowork" | "cursor",
@@ -455,8 +460,9 @@ export function TerminalTestModal({
         );
         setStatus("success");
         setShowRestartCard(true);
-        onSuccess?.();
         toast.success(`${platformName} 连通性测试通过，配置已成功保存！`);
+        // 在所有本地状态更新完成后再通知父组件（避免父组件立即重渲染导致倒计时 effect 冲突）
+        onSuccess?.();
       } else {
         if (!openRef.current) return;
         setStatus("error");

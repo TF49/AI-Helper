@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
 import {
   Loader2,
@@ -753,6 +753,20 @@ export function CursorPanel() {
     }
   };
 
+  // ── 稳定化 TerminalTestModal 的 onClose / onSuccess，避免倒计时 effect 被频繁重触发 ──
+  const handleTestModalClose = useCallback(() => {
+    setTestModalOpen(false);
+  }, []);
+
+  const handleTestModalSuccess = useCallback(() => {
+    setConfigExists(true);
+    setShowSummary(true);
+    setMaxStepReached(TOTAL_STEPS - 1);
+    setConfigConfirmed(false);
+    void load(true);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // ── 摘要视图 ──
   const renderSummarySection = () => (
     <div className="w-full flex flex-col gap-4">
@@ -1183,19 +1197,13 @@ export function CursorPanel() {
 
       <TerminalTestModal
         open={testModalOpen}
-        onClose={() => setTestModalOpen(false)}
+        onClose={handleTestModalClose}
         type="cursor"
         url={url}
         apiKey={apiKey}
         model={model}
         cursorPayload={currentPayload}
-        onSuccess={() => {
-          setConfigExists(true);
-          setShowSummary(true);
-          setMaxStepReached(TOTAL_STEPS - 1);
-          setConfigConfirmed(false);
-          void load(true);
-        }}
+        onSuccess={handleTestModalSuccess}
       />
     </div>
   );
