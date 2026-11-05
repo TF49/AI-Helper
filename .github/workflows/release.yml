@@ -66,7 +66,31 @@ jobs:
         env:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-        run: pnpm tauri build --bundles nsis
+        run: |
+          $maxAttempts = 3
+          for ($attempt = 1; $attempt -le $maxAttempts; $attempt++) {
+            $buildOutput = [System.Collections.Generic.List[string]]::new()
+            pnpm tauri build --bundles nsis 2>&1 | ForEach-Object {
+              $line = $_.ToString()
+              Write-Host $line
+              $buildOutput.Add($line)
+            }
+            $exitCode = $LASTEXITCODE
+
+            if ($exitCode -eq 0) {
+              break
+            }
+
+            $outputText = $buildOutput -join "`n"
+            $isTransientNsisDownloadFailure = $outputText -match 'http status: 50[234]' -and $outputText -match 'nsis'
+            if (-not $isTransientNsisDownloadFailure -or $attempt -eq $maxAttempts) {
+              exit $exitCode
+            }
+
+            $delaySeconds = 15 * $attempt
+            Write-Host "Tauri NSIS utility download failed with a transient HTTP error; retrying build in $delaySeconds seconds ($($attempt + 1)/$maxAttempts)."
+            Start-Sleep -Seconds $delaySeconds
+          }
       - name: Package release
         id: package
         env:
