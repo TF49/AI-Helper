@@ -19,10 +19,10 @@
 </p>
 
 <p align="center">
-  <a href="https://helper.bob-api.com">官方网站</a> ·
-  <a href="https://github.com/TF49/AI-Helper/releases/latest">下载最新版</a> ·
-  <a href="./docs/releases/v1.0.76.md">v1.0.76 更新说明</a> ·
-  <a href="https://github.com/TF49/AI-Helper/issues">问题反馈</a>
+  <a href="https://helper.bob-api.com">🌐 官方网站</a> ·
+  <a href="https://github.com/TF49/AI-Helper/releases/latest">📥 下载最新版</a> ·
+  <a href="./docs/releases/v1.0.76.md">📋 v1.0.76 更新说明</a> ·
+  <a href="https://github.com/TF49/AI-Helper/issues">🐞 问题反馈</a>
 </p>
 
 AI Helper 是一款面向 Windows 和 macOS 的开源 AI Agent 配置管理工具。它统一处理 API 地址、API Key、模型、客户端路径、本地 Bridge、连通性测试和应用启动，减少在多个配置文件之间反复切换的工作。
@@ -49,24 +49,24 @@ AI Helper 是一款面向 Windows 和 macOS 的开源 AI Agent 配置管理工�
 
 ## AI Helper 能做什么
 
-- 在一个工作台中查看 6 个 Agent 的安装状态，并打开对应配置入口。
-- 将账号中的 API Key 按 Agent 分组写入本地配置，自动匹配推荐模型。
-- 手动配置自定义 API 地址、API Key 和模型，并在保存前完成真实流式连通性测试。
-- 自动探测 CLI、桌面客户端和配置文件路径，支持启动、重启与安装包下载。
-- 为 Cursor 和 Accio Work 提供本地协议 Bridge，让不直接支持第三方 OpenAI 兼容接口的客户端使用自定义模型。
-- 查看账号额度、令牌分组、通道健康状态和调用记录。
-- 使用多源、签名校验的更新流程获取新版本。
+- 🧭 在一个工作台中查看 6 个 Agent 的安装状态，并打开对应配置入口。
+- 🔑 将账号中的 API Key 按 Agent 分组写入本地配置，自动匹配推荐模型。
+- 🔌 手动配置自定义 API 地址、API Key 和模型，并在保存前完成真实流式连通性测试。
+- 🖥️ 自动探测 CLI、桌面客户端和配置文件路径，支持启动、重启与安装包下载。
+- 🌉 为 Cursor 和 Accio Work 提供本地协议 Bridge，让不直接支持第三方 OpenAI 兼容接口的客户端使用自定义模型。
+- 📊 查看账号额度、令牌分组、通道健康状态和调用记录。
+- 🔄 使用多源、签名校验的更新流程获取新版本。
 
 ## 支持的客户端
 
-| 客户端           | AI Helper 提供的能力                                                       | 主要配置位置                      |
-| ---------------- | -------------------------------------------------------------------------- | --------------------------------- |
-| Claude Code      | CLI 探测、API 地址与 Auth Token 配置、模型选择、流式测试、启动与重启       | `~/.claude/settings.json`         |
-| OpenAI Codex CLI | CLI 探测、API 地址与 API Key 配置、模型选择、流式测试、启动与重启          | `~/.codex/config.toml`            |
-| ChatGPT Desktop  | 安装状态与路径探测、客户端启动、设备管理                                   | 系统安装目录                      |
-| Cursor IDE       | 自定义模型配置、Connect-RPC / HTTP2 Bridge、客户端修补与还原、运行状态管理 | `~/.ai-helper/cursor_config.json` |
-| WorkBuddy        | 多模型维护、推荐模型排序、配置合并、路径兼容与客户端启动                   | `~/.workbuddy/models.json`        |
-| Accio Work       | 自定义模型配置、本地 Bridge、模型列表注入、协议转译与客户端启动            | `~/.ai-helper/accio_config.json`  |
+| 客户端              | AI Helper 提供的能力                                                       | 主要配置位置                      |
+| ------------------- | -------------------------------------------------------------------------- | --------------------------------- |
+| 🟠 Claude Code      | CLI 探测、API 地址与 Auth Token 配置、模型选择、流式测试、启动与重启       | `~/.claude/settings.json`         |
+| ⌨️ OpenAI Codex CLI | CLI 探测、API 地址与 API Key 配置、模型选择、流式测试、启动与重启          | `~/.codex/config.toml`            |
+| 💬 ChatGPT Desktop  | 安装状态与路径探测、客户端启动、设备管理                                   | 系统安装目录                      |
+| 🖱️ Cursor IDE       | 自定义模型配置、Connect-RPC / HTTP2 Bridge、客户端修补与还原、运行状态管理 | `~/.ai-helper/cursor_config.json` |
+| 🧩 WorkBuddy        | 多模型维护、推荐模型排序、配置合并、路径兼容与客户端启动                   | `~/.workbuddy/models.json`        |
+| ⚡ Accio Work       | 自定义模型配置、本地 Bridge、模型列表注入、协议转译与客户端启动            | `~/.ai-helper/accio_config.json`  |
 
 > WorkBuddy 同时兼容部分历史版本使用的 `~/.workbuddy-ai/models.json`。AI Helper 会识别实际配置位置并保持多模型条目。
 
@@ -86,7 +86,7 @@ WorkBuddy 的处理方式也做了调整：一键配置会把推荐模型移到�
 
 ## 核心功能
 
-### Agent 矩阵与一键配置
+### Agent 矩阵与一键配置 🎛️
 
 首页按客户端展示安装状态和操作入口。登录后可以选择已有令牌，也可以在缺少可用令牌时创建受管令牌，再按 Codex、Claude 和国内模型三类分组分发到对应 Agent。
 
@@ -98,13 +98,13 @@ WorkBuddy 的处理方式也做了调整：一键配置会把推荐模型移到�
 4. 保留不属于 AI Helper 管理范围的配置字段。
 5. 刷新界面状态，并在需要时启动本地 Bridge。
 
-### 自定义节点、模型发现与流式测试
+### 自定义节点、模型发现与流式测试 🔌
 
 每个配置面板都支持手动选择节点、填写外部 API 地址、读取模型列表和指定模型。连通性测试会发起真实流式请求，并给出 HTTP 状态、首包时间和常见错误的排查提示。
 
 当 API 地址或 API Key 发生变化时，模型缓存会按来源隔离，避免把上一组凭据对应的模型列表带入新配置。
 
-### Cursor 本地 Bridge
+### Cursor 本地 Bridge 🌉
 
 Cursor 使用 Connect-RPC / HTTP2 等内部协议，不能只靠修改一个 OpenAI Base URL 接入所有第三方模型。AI Helper 提供本地 Bridge 和可恢复的客户端修补流程，用于：
 
@@ -116,11 +116,11 @@ Cursor 使用 Connect-RPC / HTTP2 等内部协议，不能只靠修改一个 Ope
 
 关闭主窗口后，AI Helper 可以留在系统托盘中继续维持 Bridge 运行。
 
-### Accio Work 本地 Bridge
+### Accio Work 本地 Bridge 🛠️
 
 Accio Work Bridge 负责模型列表、聊天、图像生成、Responses API 和 MCP 代理等协议的适配。Bridge 包含实例凭据、来源校验、请求限流和请求体大小限制，避免本地端口被无关进程直接调用。
 
-### 设备管理与环境检测
+### 设备管理与环境检测 🖥️
 
 设备管理页面集中处理客户端路径和运行状态：
 
@@ -131,7 +131,7 @@ Accio Work Bridge 负责模型列表、聊天、图像生成、Responses API 和
 - 下载官方安装包并在本地运行安装程序；
 - 打开配置文件或在文件管理器中定位文件。
 
-### 账号、分组与用量
+### 账号、分组与用量 📊
 
 登录 Bob API 账号后，可以在客户端内查看：
 
@@ -141,7 +141,7 @@ Accio Work Bridge 负责模型列表、聊天、图像生成、Responses API 和
 - 调用日志、模型、令牌、请求时间、消耗和错误信息；
 - 分组切换与本地 Agent 同步结果。
 
-### 更新与故障反馈
+### 更新与故障反馈 🔄
 
 更新器会依次检查官网、国内镜像和 GitHub Release，并验证签名、版本序列和文件 SHA-256。更新失败时可以切换来源重试，不需要手动寻找安装包。
 
@@ -169,12 +169,12 @@ flowchart LR
 
 AI Helper 会修改本地 Agent 配置，因此写入和凭据流向是项目的重点保护范围。
 
-- **系统级凭据保护**：Windows 使用 DPAPI；macOS 和 Linux 使用 Keychain / Secret Service 引用保护会话信息，不在应用目录维护自有明文密钥文件。
-- **凭据出口策略**：受管 API Key 只能发送到允许的精确 Origin；外部地址需要用户确认，并默认要求 HTTPS，本地回环地址按 Bridge 场景单独处理。
-- **原子写入与恢复**：配置写入使用文件锁、临时文件替换和备份恢复，降低进程中断或磁盘异常造成配置损坏的风险。
-- **保留用户配置**：Codex、Claude 和 WorkBuddy 采用合并写入，只更新 AI Helper 管理的字段。Cursor 修补提供状态检查、备份和还原。
-- **本地 Bridge 防护**：实例令牌、Host / Origin 校验、速率限制与载荷上限共同限制本地代理入口。
-- **可信更新**：更新清单和安装包经过签名、SHA-256 与防回滚检查后才会进入安装流程。
+- 🔐 **系统级凭据保护**：Windows 使用 DPAPI；macOS 和 Linux 使用 Keychain / Secret Service 引用保护会话信息，不在应用目录维护自有明文密钥文件。
+- 🛡️ **凭据出口策略**：受管 API Key 只能发送到允许的精确 Origin；外部地址需要用户确认，并默认要求 HTTPS，本地回环地址按 Bridge 场景单独处理。
+- 💾 **原子写入与恢复**：配置写入使用文件锁、临时文件替换和备份恢复，降低进程中断或磁盘异常造成配置损坏的风险。
+- 🧩 **保留用户配置**：Codex、Claude 和 WorkBuddy 采用合并写入，只更新 AI Helper 管理的字段。Cursor 修补提供状态检查、备份和还原。
+- 🌉 **本地 Bridge 防护**：实例令牌、Host / Origin 校验、速率限制与载荷上限共同限制本地代理入口。
+- ✅ **可信更新**：更新清单和安装包经过签名、SHA-256 与防回滚检查后才会进入安装流程。
 
 建议始终从 [AI Helper 官网](https://helper.bob-api.com) 或 [GitHub Releases](https://github.com/TF49/AI-Helper/releases) 下载客户端，不要运行来源不明的二次打包版本。
 
@@ -182,12 +182,12 @@ AI Helper 会修改本地 Agent 配置，因此写入和凭据流向是项目的
 
 当前稳定版本：**v1.0.76**（2026-11-05）
 
-| 平台                    | 安装包                  | 官方下载                                                                                                 |
-| ----------------------- | ----------------------- | -------------------------------------------------------------------------------------------------------- |
-| Windows 10 / 11 x64     | 安装版 `Setup.exe`      | [下载 Windows 安装版](https://helper.bob-api.com/downloads/AI-Helper-v1.0.76-Windows-x64-Setup.exe)      |
-| Windows 10 / 11 x64     | 便携版 `Standalone.zip` | [下载 Windows 便携版](https://helper.bob-api.com/downloads/AI-Helper-v1.0.76-Windows-x64-Standalone.zip) |
-| macOS 11+ Apple Silicon | `aarch64.dmg`           | [下载 Apple Silicon 版](https://helper.bob-api.com/downloads/AI-Helper-v1.0.76-macOS-aarch64.dmg)        |
-| macOS 11+ Intel         | `x64.dmg`               | [下载 Intel 版](https://helper.bob-api.com/downloads/AI-Helper-v1.0.76-macOS-x64.dmg)                    |
+| 平台                       | 安装包                  | 官方下载                                                                                                 |
+| -------------------------- | ----------------------- | -------------------------------------------------------------------------------------------------------- |
+| 🪟 Windows 10 / 11 x64     | 安装版 `Setup.exe`      | [下载 Windows 安装版](https://helper.bob-api.com/downloads/AI-Helper-v1.0.76-Windows-x64-Setup.exe)      |
+| 🪟 Windows 10 / 11 x64     | 便携版 `Standalone.zip` | [下载 Windows 便携版](https://helper.bob-api.com/downloads/AI-Helper-v1.0.76-Windows-x64-Standalone.zip) |
+| 🍎 macOS 11+ Apple Silicon | `aarch64.dmg`           | [下载 Apple Silicon 版](https://helper.bob-api.com/downloads/AI-Helper-v1.0.76-macOS-aarch64.dmg)        |
+| 🍎 macOS 11+ Intel         | `x64.dmg`               | [下载 Intel 版](https://helper.bob-api.com/downloads/AI-Helper-v1.0.76-macOS-x64.dmg)                    |
 
 还可以通过以下入口获取安装包：
 
@@ -199,11 +199,11 @@ Windows 版依赖 Microsoft Edge WebView2 Runtime，Windows 11 通常已预装�
 
 ## 快速开始
 
-1. 下载并安装适合当前系统架构的 AI Helper。
-2. 启动客户端并完成环境检测，确认需要管理的 Agent 已被识别。
-3. 登录并选择 API Key，或进入具体 Agent 面板手动填写自定义配置。
-4. 使用“一键配置所有”，或逐个 Agent 保存并执行流式连通性测试。
-5. Cursor 和 Accio Work 用户按面板提示启动 Bridge；需要时再启动或重启目标客户端。
+1. 📥 下载并安装适合当前系统架构的 AI Helper。
+2. 🔍 启动客户端并完成环境检测，确认需要管理的 Agent 已被识别。
+3. 🔑 登录并选择 API Key，或进入具体 Agent 面板手动填写自定义配置。
+4. ⚡ 使用“一键配置所有”，或逐个 Agent 保存并执行流式连通性测试。
+5. 🚀 Cursor 和 Accio Work 用户按面板提示启动 Bridge；需要时再启动或重启目标客户端。
 
 如果升级前已经使用过一键配置，v1.0.76 建议重新执行一次，让 API Key 与分组推荐模型重新对齐。
 
@@ -297,13 +297,13 @@ Cursor 的部分通信使用 Connect-RPC / HTTP2 和内部消息格式，不是�
 
 可以。官方提供 Windows x64、macOS Apple Silicon 和 macOS Intel 安装包。客户端路径探测、窗口控制和 CLI 环境识别会按操作系统分别处理。
 
-## English overview
+## English overview 🌍
 
 AI Helper is an open-source, cross-platform desktop configuration manager for AI coding agents. It supports Claude Code, OpenAI Codex CLI, ChatGPT Desktop, Cursor IDE, WorkBuddy, and Accio Work on Windows and macOS.
 
 The app manages API endpoints, API keys, models, local configuration files, application discovery, streaming connection tests, local protocol bridges, process launching, and signed updates. It is built with Tauri 2, Rust, React, and TypeScript.
 
-## 文档、贡献与许可
+## 文档、贡献与许可 📚
 
 - [v1.0.76 发布说明](./docs/releases/v1.0.76.md)
 - [用户迁移指南](./docs/USER_MIGRATION_GUIDE.md)
