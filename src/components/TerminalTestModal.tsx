@@ -53,7 +53,7 @@ export interface TerminalTestModalProps {
   workbuddyPayload?: WorkbuddySavePayload;
   accioPayload?: AccioConfig;
   cursorPayload?: CursorConfig;
-  onSuccess?: () => void;
+  onSuccess?: () => void | Promise<void>;
 }
 
 interface LogEntry {
@@ -98,6 +98,8 @@ export function TerminalTestModal({
   const terminalRef = useRef<HTMLDivElement | null>(null);
   const countdownTimerRef = useRef<number | null>(null);
   const hasStartedRef = useRef(false);
+  // 父组件 onSuccess 的后续同步任务（如 Cursor 补丁挂接），重启前必须等待其完成
+  const successTaskRef = useRef<Promise<void> | null>(null);
   const openRef = useRef(open);
   // 用 ref 保存最新 onClose，避免倒计时 effect 因 onClose 引用变化被频繁重触发
   const onCloseRef = useRef(onClose);
@@ -171,9 +173,22 @@ export function TerminalTestModal({
                 ? "Cursor 客户端"
                 : "Claude Code CLI";
 
+    // 用户已选择立即重启：停止自动关闭倒计时，避免重启进行中弹窗被卸载
+    if (countdownTimerRef.current) {
+      clearTimeout(countdownTimerRef.current);
+      countdownTimerRef.current = null;
+    }
+    setCountdown(null);
+
     addLog(`🚀 正在执行 ${targetName} 重启/拉起流程...`, "info");
     try {
-      const result = await restartTargetApp(target);
+      if (successTaskRef.current) {
+        addLog(`⏳ 正在等待配置同步任务完成...`, "dim");
+        await successTaskRef.current;
+      }
+      const customPath =
+        target === "cursor" ? cursorPayload?.cursor_path || undefined : undefined;
+      const result = await restartTargetApp(target, customPath);
       addLog(`✓ ${result}`, "success");
       addLog(
         `💡 目标应用已拉起，您可以继续测试重启其他应用或点击下方“完成”退出`,
@@ -204,6 +219,7 @@ export function TerminalTestModal({
       countdownTimerRef.current = null;
     }
     setCountdown(null);
+    successTaskRef.current = null;
     setStatus("running");
     setShowRestartCard(false);
     setRestartingTarget(null);
@@ -462,7 +478,11 @@ export function TerminalTestModal({
         setShowRestartCard(true);
         toast.success(`${platformName} 连通性测试通过，配置已成功保存！`);
         // 在所有本地状态更新完成后再通知父组件（避免父组件立即重渲染导致倒计时 effect 冲突）
-        onSuccess?.();
+        successTaskRef.current = Promise.resolve()
+          .then(() => onSuccess?.())
+          .catch((e) => {
+            console.warn("配置成功后的同步任务异常:", e);
+          });
       } else {
         if (!openRef.current) return;
         setStatus("error");

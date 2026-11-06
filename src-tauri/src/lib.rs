@@ -66,9 +66,23 @@ fn save_app_paths(config: app_paths::AppPathsConfig) -> Result<(), error::AppErr
     app_paths::save_app_paths(&config)
 }
 
+/// 在阻塞线程池中执行进程扫描、路径探测、大文件读写等耗时同步逻辑。
+///
+/// Tauri 的同步命令运行在主线程上，长时间占用会让 WebView 窗口整体卡死
+/// （按钮点击无响应、倒计时停止刷新）。
+async fn run_blocking<T, F>(task: F) -> Result<T, String>
+where
+    F: FnOnce() -> T + Send + 'static,
+    T: Send + 'static,
+{
+    tokio::task::spawn_blocking(task)
+        .await
+        .map_err(|e| format!("后台任务执行异常: {}", e))
+}
+
 #[tauri::command]
-fn detect_app_path(app_type: String) -> Result<app_paths::DetectedPathInfo, String> {
-    match app_type.as_str() {
+async fn detect_app_path(app_type: String) -> Result<app_paths::DetectedPathInfo, String> {
+    run_blocking(move || match app_type.as_str() {
         "claude" => Ok(app_paths::detect_claude_cli_path()),
         "codex" => Ok(app_paths::detect_codex_cli_path()),
         "chatgpt" => Ok(app_paths::detect_chatgpt_client_path()),
@@ -76,12 +90,13 @@ fn detect_app_path(app_type: String) -> Result<app_paths::DetectedPathInfo, Stri
         "acciowork" => Ok(app_paths::detect_accio_client_path()),
         "cursor" => Ok(app_paths::detect_cursor_client_path()),
         _ => Err(format!("未知应用类型: {}", app_type)),
-    }
+    })
+    .await?
 }
 
 #[tauri::command]
-fn detect_all_app_paths() -> Vec<app_paths::DetectedPathInfo> {
-    app_paths::detect_all_app_paths()
+async fn detect_all_app_paths() -> Result<Vec<app_paths::DetectedPathInfo>, String> {
+    run_blocking(app_paths::detect_all_app_paths).await
 }
 
 #[tauri::command]
@@ -90,8 +105,8 @@ fn browse_app_path(app_type: String) -> Result<Option<String>, String> {
 }
 
 #[tauri::command]
-fn check_app_process_status(app_type: String) -> bool {
-    app_paths::is_target_running(&app_type)
+async fn check_app_process_status(app_type: String) -> Result<bool, String> {
+    run_blocking(move || app_paths::is_target_running(&app_type)).await
 }
 
 #[tauri::command]
@@ -150,8 +165,10 @@ async fn open_system_uri(uri_id: String) -> Result<(), String> {
 }
 
 #[tauri::command]
-fn get_codex_config() -> Result<codex::CodexConfig, error::AppError> {
-    codex::get_codex_config()
+async fn get_codex_config() -> Result<codex::CodexConfig, error::AppError> {
+    run_blocking(codex::get_codex_config)
+        .await
+        .map_err(error::AppError::Other)?
 }
 
 #[tauri::command]
@@ -164,8 +181,10 @@ fn set_codex_config(
 }
 
 #[tauri::command]
-fn get_claude_config() -> Result<claude::ClaudeConfig, error::AppError> {
-    claude::get_claude_config()
+async fn get_claude_config() -> Result<claude::ClaudeConfig, error::AppError> {
+    run_blocking(claude::get_claude_config)
+        .await
+        .map_err(error::AppError::Other)?
 }
 
 #[tauri::command]
@@ -178,8 +197,10 @@ fn set_claude_config(
 }
 
 #[tauri::command]
-fn get_workbuddy_config() -> Result<workbuddy::WorkbuddyUIConfig, error::AppError> {
-    workbuddy::get_workbuddy_config()
+async fn get_workbuddy_config() -> Result<workbuddy::WorkbuddyUIConfig, error::AppError> {
+    run_blocking(workbuddy::get_workbuddy_config)
+        .await
+        .map_err(error::AppError::Other)?
 }
 
 #[tauri::command]
@@ -263,10 +284,13 @@ pub struct AccioBridgeStatus {
 }
 
 #[tauri::command]
-fn get_accio_config() -> accio::AccioUIConfig {
-    let running = accio::is_bridge_running();
-    let port = accio::get_bridge_port();
-    accio::get_accio_ui_config(running, port)
+async fn get_accio_config() -> Result<accio::AccioUIConfig, String> {
+    run_blocking(|| {
+        let running = accio::is_bridge_running();
+        let port = accio::get_bridge_port();
+        accio::get_accio_ui_config(running, port)
+    })
+    .await
 }
 
 #[tauri::command]
@@ -345,10 +369,13 @@ pub struct CursorBridgeStatus {
 }
 
 #[tauri::command]
-fn get_cursor_config() -> cursor::CursorUIConfig {
-    let running = cursor::is_bridge_running();
-    let port = cursor::get_bridge_port();
-    cursor::get_cursor_ui_config(running, port)
+async fn get_cursor_config() -> Result<cursor::CursorUIConfig, String> {
+    run_blocking(|| {
+        let running = cursor::is_bridge_running();
+        let port = cursor::get_bridge_port();
+        cursor::get_cursor_ui_config(running, port)
+    })
+    .await
 }
 
 #[tauri::command]
@@ -394,24 +421,29 @@ fn get_cursor_bridge_status() -> CursorBridgeStatus {
 }
 
 #[tauri::command]
-fn get_cursor_patch_status(custom_path: Option<String>) -> cursor::CursorPatchInfo {
-    cursor::get_patch_status(custom_path.as_deref())
+async fn get_cursor_patch_status(
+    custom_path: Option<String>,
+) -> Result<cursor::CursorPatchInfo, String> {
+    run_blocking(move || cursor::get_patch_status(custom_path.as_deref())).await
 }
 
 #[tauri::command]
-fn patch_cursor_client(
+async fn patch_cursor_client(
     custom_path: Option<String>,
     bridge_port: Option<u16>,
 ) -> Result<String, String> {
-    let port = bridge_port
-        .or_else(cursor::get_bridge_port)
-        .unwrap_or_else(|| cursor::load_cursor_config().bridge_port);
-    cursor::apply_patch(custom_path.as_deref(), port)
+    run_blocking(move || {
+        let port = bridge_port
+            .or_else(cursor::get_bridge_port)
+            .unwrap_or_else(|| cursor::load_cursor_config().bridge_port);
+        cursor::apply_patch(custom_path.as_deref(), port)
+    })
+    .await?
 }
 
 #[tauri::command]
-fn restore_cursor_client(custom_path: Option<String>) -> Result<String, String> {
-    cursor::restore_patch(custom_path.as_deref())
+async fn restore_cursor_client(custom_path: Option<String>) -> Result<String, String> {
+    run_blocking(move || cursor::restore_patch(custom_path.as_deref())).await?
 }
 
 #[tauri::command]

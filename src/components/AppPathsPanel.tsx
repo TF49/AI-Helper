@@ -2480,7 +2480,7 @@ export function AppPathsPanel() {
             <div className="text-[11px] text-slate-500 dark:text-gray-400 bg-slate-50/60 dark:bg-white/[0.03] px-2.5 py-1.5 rounded-lg border border-slate-200/60 dark:border-white/5 flex items-start gap-1.5">
               <span className="text-black dark:text-white font-bold">ℹ️</span>
               <span>
-                挂接说明：在此拉起 Cursor 客户端时，AI-Helper 将在进程中注入本地 Bridge 网关环境变量并激活转译中继，配合一键修补挂接即可无缝接入自有模型站点，支持 Agent 模式与全模型中继。
+                接入说明：在此拉起 Cursor 客户端时，AI-Helper 会注入本地 Bridge 网关并启用转译中继；先点击“接入 AI Helper”，即可使用自有模型站点，支持 Agent 模式与全模型中继。
               </span>
             </div>
           </div>

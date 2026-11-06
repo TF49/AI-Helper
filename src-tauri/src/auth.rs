@@ -2073,7 +2073,8 @@ pub async fn apply_api_key_to_agents(
                     official_gateway: cur.official_gateway,
                     fallback_official: cur.fallback_official,
                     prevent_official_leak: cur.prevent_official_leak,
-                    auto_start_bridge: cur.auto_start_bridge,
+                    // 一键配置的目标是“配置后即可用”：同步打开并持久化 Bridge 守护。
+                    auto_start_bridge: true,
                     cached_models: Vec::new(),
                     cached_models_fingerprint: String::new(),
                     image_model: cur.image_model,
@@ -2081,11 +2082,18 @@ pub async fn apply_api_key_to_agents(
                 crate::accio::invalidate_model_list_cache();
                 match crate::accio::config::save_accio_config(&config) {
                     Ok(_) => {
-                        if crate::accio::is_bridge_running() {
-                            tauri::async_runtime::spawn(async {
-                                crate::accio::refresh_model_list_cache().await;
-                            });
+                        // 一键配置必须和手动配置保持一致：保存凭据后立即启动
+                        // Bridge，再按新 Key 刷新模型目录。
+                        if config.auto_start_bridge && !config.api_key.trim().is_empty() {
+                            if let Err(e) =
+                                crate::accio::start_bridge(Some(config.bridge_port)).await
+                            {
+                                error!("一键配置后启动 Accio Work Bridge 失败: {e}");
+                                results.insert("acciowork".to_string(), false);
+                                continue;
+                            }
                         }
+                        crate::accio::refresh_model_list_cache().await;
                         results.insert("acciowork".to_string(), true);
                     }
                     Err(e) => {
@@ -2123,7 +2131,8 @@ pub async fn apply_api_key_to_agents(
                     api_key: api_key.clone(),
                     model,
                     bridge_port: cur.bridge_port,
-                    auto_start_bridge: cur.auto_start_bridge,
+                    // Cursor 只有在 Bridge 常驻且挂接后才能真正使用自有模型。
+                    auto_start_bridge: true,
                     custom_models: cur.custom_models,
                     cached_models,
                     cached_models_fingerprint,
@@ -2133,9 +2142,75 @@ pub async fn apply_api_key_to_agents(
                     Ok(_) => {
                         if source_changed {
                             crate::cursor::invalidate_model_list_cache();
-                            tauri::async_runtime::spawn(async {
-                                crate::cursor::refresh_model_list_cache().await;
-                            });
+                        }
+
+                        // Cursor 的模型目录和 Bridge 必须跟随刚写入的 Key
+                        // 同步生效，不能等用户再次打开配置面板才后台刷新。
+                        let actual_port =
+                            if config.auto_start_bridge && !config.api_key.trim().is_empty() {
+                                match crate::cursor::start_bridge(Some(config.bridge_port)).await {
+                                    Ok(port) => port,
+                                    Err(e) => {
+                                        error!("一键配置后启动 Cursor Bridge 失败: {e}");
+                                        results.insert("cursor".to_string(), false);
+                                        continue;
+                                    }
+                                }
+                            } else {
+                                config.bridge_port
+                            };
+                        crate::cursor::refresh_model_list_cache().await;
+                        let mut latest = crate::cursor::config::load_cursor_config();
+                        let models = crate::cursor::load_key_model_ids(&latest).await;
+                        if !models.is_empty() && latest.custom_models != models {
+                            latest.custom_models = models;
+                            if let Err(e) = crate::cursor::config::save_cursor_config(&latest) {
+                                error!("一键配置后保存 Cursor 模型列表失败: {e}");
+                            }
+                        }
+
+                        // Cursor 的一键配置必须包含客户端接入，不能再要求用户
+                        // 进入详细页手动点击“接入 AI Helper”。仅在原本运行时
+                        // 恢复启动，避免擅自打开用户原先关闭的客户端。
+                        let cursor_path = latest.cursor_path.clone();
+                        let patch = crate::cursor::get_patch_status(cursor_path.as_deref());
+                        let expected_target = format!("http://127.0.0.1:{actual_port}");
+                        if !patch.is_patched
+                            || patch.current_bridge_target.as_deref()
+                                != Some(expected_target.as_str())
+                        {
+                            let was_running = crate::app_paths::is_target_running("cursor");
+                            let patch_path = cursor_path.clone();
+                            let patch_result = tokio::task::spawn_blocking(move || {
+                                crate::cursor::apply_patch(patch_path.as_deref(), actual_port)
+                            })
+                            .await
+                            .map_err(|e| format!("Cursor 接入任务执行异常: {e}"))
+                            .and_then(|result| result);
+
+                            if let Err(e) = patch_result {
+                                error!("一键配置后接入 Cursor 到 AI Helper 失败: {e}");
+                                results.insert("cursor".to_string(), false);
+                                continue;
+                            }
+
+                            if was_running {
+                                let launch_path = cursor_path.clone();
+                                let restart_result = tokio::task::spawn_blocking(move || {
+                                    crate::process_manager::restart_target_app(
+                                        "cursor",
+                                        launch_path.as_deref(),
+                                    )
+                                })
+                                .await
+                                .map_err(|e| format!("Cursor 恢复启动任务异常: {e}"))
+                                .and_then(|result| result);
+                                if let Err(e) = restart_result {
+                                    error!("Cursor 已接入但恢复启动失败: {e}");
+                                    results.insert("cursor".to_string(), false);
+                                    continue;
+                                }
+                            }
                         }
                         results.insert("cursor".to_string(), true);
                     }

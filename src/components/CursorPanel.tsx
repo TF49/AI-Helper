@@ -213,13 +213,13 @@ export function CursorPanel() {
     } catch (e) {
       const errMsg = String(e);
       if (
-        errMsg.includes("无法绑定本地端口") ||
+        errMsg.includes("端口") ||
         errMsg.includes("Address already in use") ||
         errMsg.includes("bind")
       ) {
         toast.error(
-          `端口 ${bridgePort} 已被占用，请在配置中更换端口号（建议 8000-65535）或关闭占用该端口的程序`,
-          { duration: 6000 },
+          `Cursor Bridge 无法找到可用端口：${errMsg}。AI Helper 只会自动避让自己的网关，不会强杀未知程序。`,
+          { duration: 7000 },
         );
       } else {
         toast.error(`Bridge 网关操作失败: ${e}`);
@@ -235,6 +235,7 @@ export function CursorPanel() {
       await stopCursorBridge().catch(() => {});
       const boundPort = await startCursorBridge(bridgePort);
       setBridgeStatus({ is_running: true, port: boundPort });
+      if (boundPort !== bridgePort) setBridgePort(boundPort);
       toast.success(`Cursor Bridge 已重启，监听端口: ${boundPort}`);
     } catch (e) {
       toast.error(`重启 Bridge 失败: ${e}`);
@@ -246,12 +247,16 @@ export function CursorPanel() {
   const handleApplyPatch = async () => {
     setPatchActionLoading(true);
     try {
-      const msg = await patchCursorClient(cursorPath || undefined, bridgePort);
+      // 修补前先确保网关真的在线，并使用实际监听端口，避免“已挂接但端口不通”。
+      const actualPort = await startCursorBridge(bridgePort);
+      setBridgeStatus({ is_running: true, port: actualPort });
+      if (actualPort !== bridgePort) setBridgePort(actualPort);
+      const msg = await patchCursorClient(cursorPath || undefined, actualPort);
       toast.success(msg);
       const patch = await getCursorPatchStatus(cursorPath || undefined);
       setPatchInfo(patch);
     } catch (e) {
-      toast.error(`修补 Cursor 失败: ${e}`);
+      toast.error(`Cursor 接入 AI Helper 失败: ${e}`);
     } finally {
       setPatchActionLoading(false);
     }
@@ -265,7 +270,7 @@ export function CursorPanel() {
       const patch = await getCursorPatchStatus(cursorPath || undefined);
       setPatchInfo(patch);
     } catch (e) {
-      toast.error(`还原 Cursor 失败: ${e}`);
+      toast.error(`恢复 Cursor 官方连接失败: ${e}`);
     } finally {
       setPatchActionLoading(false);
     }
@@ -309,9 +314,17 @@ export function CursorPanel() {
     setRestartingClient(true);
     try {
       // 启动前确保 Bridge 在运行
+      let actualPort = bridgeStatus.port || bridgePort;
       if (!bridgeStatus.is_running) {
-        const port = await startCursorBridge(bridgePort);
-        setBridgeStatus({ is_running: true, port });
+        actualPort = await startCursorBridge(bridgePort);
+        setBridgeStatus({ is_running: true, port: actualPort });
+        if (actualPort !== bridgePort) setBridgePort(actualPort);
+      }
+      if (
+        patchInfo?.is_patched &&
+        patchInfo.current_bridge_target !== `http://127.0.0.1:${actualPort}`
+      ) {
+        await patchCursorClient(cursorPath || undefined, actualPort);
       }
       const msg = await restartTargetApp("cursor", cursorPath || undefined);
       toast.success(msg || "已拉起 Cursor 客户端");
@@ -533,10 +546,10 @@ export function CursorPanel() {
                 />
                 <div className="space-y-0.5 text-[11px]">
                   <span className="font-semibold text-black dark:text-white">
-                    核心说明：必须挂接 Bridge 才能在 Cursor 中使用自定义大模型
+                    核心说明：先接入 AI Helper，Cursor 才能使用自定义大模型
                   </span>
                   <p className="text-slate-600 dark:text-gray-300 leading-relaxed">
-                    Cursor 客户端通过专有的 Connect-RPC / HTTP2 协议通信，不支持直接配置第三方 API。通过一键修补挂接本地 Bridge 网关，实现透明转译分发，无缝兼容各类通用大模型。AI Helper 支持托盘守护，关闭主窗口时网关不中断。
+                    Cursor 客户端使用专有通信协议，不能直接填写第三方 API。点击“接入 AI Helper”后，客户端会连接本地 Bridge 网关，再由网关转发到您选择的模型服务。AI Helper 支持托盘守护，关闭主窗口时网关仍会继续运行。
                   </p>
                 </div>
               </div>
@@ -662,7 +675,7 @@ export function CursorPanel() {
                       ) : (
                         <Sparkles size={12} />
                       )}
-                      <span>一键修补挂接</span>
+                      <span>接入 AI Helper</span>
                     </button>
                   ) : (
                     <button
@@ -676,7 +689,7 @@ export function CursorPanel() {
                       ) : (
                         <RotateCcw size={12} />
                       )}
-                      <span>还原原生状态</span>
+                      <span>恢复官方连接</span>
                     </button>
                   )}
                   <button
@@ -918,7 +931,7 @@ export function CursorPanel() {
               </span>
             </div>
             <p className="text-xs text-slate-500 dark:text-gray-400 mt-0.5">
-              为 Cursor 客户端提供智能转译网关与流式中继，一键修补挂接自有大模型
+              为 Cursor 客户端提供智能转译网关与流式中继，一键接入自有大模型
             </p>
           </div>
         </div>
@@ -1169,7 +1182,7 @@ export function CursorPanel() {
               ) : (
                 <Sparkles size={12} />
               )}
-              <span>{patchInfo?.is_patched ? "还原原生" : "修补挂接"}</span>
+              <span>{patchInfo?.is_patched ? "恢复官方连接" : "接入 AI Helper"}</span>
             </button>
             {/* 启动客户端 */}
             <button

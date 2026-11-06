@@ -135,7 +135,16 @@ async function matchTokenByFetchingKeys(
  * 读取并跟踪当前工具绑定 API Key 所属分组。
  * 传入 apiKey 后，即使未挂载 ApiKeyInput（概览/确认页），也会按 Key 自动匹配云端分组。
  */
-export function useBoundTokenGroup(toolId: string, apiKey?: string) {
+export function useBoundTokenGroup(
+  toolId: string,
+  apiKey?: string,
+  options?: {
+    /** 云端解析期间保留本地缓存分组，避免卡片在重新挂载时出现「有 → 无 → 有」的闪烁；Key 变化时仍会清空 */
+    preserveWhileResolving?: boolean;
+  },
+) {
+  const preserveWhileResolving = options?.preserveWhileResolving ?? false;
+  const resolvedKeyRef = useRef(apiKey?.trim() ?? "");
   const { authState, authSessionGeneration } = useAuth();
   const userId = authState.is_logged_in ? authState.user?.id ?? null : null;
   const key = apiKey?.trim() ?? "";
@@ -219,11 +228,17 @@ export function useBoundTokenGroup(toolId: string, apiKey?: string) {
       writeBoundToStorage(toolId, info);
       if (isCurrent()) setGroup(normalizeGroup(info.group));
     };
-    if (isCurrent()) setGroup(null);
+    const keyChanged = resolvedKeyRef.current !== key;
+    resolvedKeyRef.current = key;
+    const loggedIn = authState.is_logged_in && userId !== null;
+    // 默认每次重新解析都先清空；保留模式下仅在 Key 变化、无 Key 或未登录时清空
+    if (isCurrent() && (!preserveWhileResolving || keyChanged || !key || !loggedIn)) {
+      setGroup(null);
+    }
     if (!key) {
       return;
     }
-    if (!authState.is_logged_in || userId === null) return;
+    if (!loggedIn) return;
 
     (async () => {
       try {
@@ -300,6 +315,7 @@ export function useBoundTokenGroup(toolId: string, apiKey?: string) {
     authState.selected_token_id,
     key,
     toolId,
+    preserveWhileResolving,
     isContextCurrent,
   ]);
 

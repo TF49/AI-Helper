@@ -234,13 +234,10 @@ pub fn get_patch_status(custom_path: Option<&str>) -> CursorPatchInfo {
                 current_bridge_target,
                 backup_exists,
                 message: if is_patched {
-                    format!(
-                        "{} 已成功挂接 AI-Helper 本地 Bridge 网关",
-                        architecture_label
-                    )
+                    format!("{} 已接入 AI Helper，可使用自定义模型", architecture_label)
                 } else {
                     format!(
-                        "{} 处于原生官方连接模式，可一键修补接入",
+                        "{} 当前使用 Cursor 官方连接，可接入 AI Helper 使用自定义模型",
                         architecture_label
                     )
                 },
@@ -684,7 +681,10 @@ pub fn apply_patch(custom_path: Option<&str>, bridge_port: u16) -> Result<String
     }
 
     let target_url = format!("http://127.0.0.1:{}", bridge_port);
-    Ok(format!("成功修补 Cursor！请求已重定向至 {}", target_url))
+    Ok(format!(
+        "Cursor 已接入 AI Helper，本地连接地址：{}",
+        target_url
+    ))
 }
 
 pub fn get_cursor_user_settings_path() -> Option<PathBuf> {
@@ -1021,7 +1021,7 @@ pub fn restore_patch(custom_path: Option<&str>) -> Result<String, String> {
         ));
     }
 
-    Ok("成功还原 Cursor 至官方原始连接状态！".to_string())
+    Ok("Cursor 已恢复使用官方连接".to_string())
 }
 
 #[cfg(test)]

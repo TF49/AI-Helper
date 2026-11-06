@@ -22,7 +22,10 @@ use std::{
     task::{Context, Poll},
     time::{Duration, Instant},
 };
-use tokio::{net::TcpListener, sync::oneshot};
+use tokio::{
+    net::TcpListener,
+    sync::{oneshot, Mutex as TokioMutex},
+};
 use tower_http::cors::CorsLayer;
 
 /// 用于 Axum Body::from_stream 的 MPSC Receiver Stream 适配器
@@ -42,6 +45,9 @@ pub struct BridgeHandle {
 }
 
 static RUNNING_BRIDGE: Mutex<Option<BridgeHandle>> = Mutex::new(None);
+// Serialize startup and port recovery so concurrent callers cannot create
+// two bridges that race for the same preferred port.
+static START_BRIDGE: TokioMutex<()> = TokioMutex::const_new(());
 static INSTANCE_TOKEN: Mutex<Option<String>> = Mutex::new(None);
 
 pub fn current_instance_token() -> Option<String> {
@@ -314,7 +320,13 @@ pub async fn bind_listener(start_port: u16) -> Result<(TcpListener, u16), String
     // 1. 优先尝试首选端口，带有平滑重试以允许刚停机的 socket 彻底释放
     for retry in 0..6 {
         match TcpListener::bind(("127.0.0.1", start_port)).await {
-            Ok(listener) => return Ok((listener, start_port)),
+            Ok(listener) => {
+                let actual_port = listener
+                    .local_addr()
+                    .map_err(|e| format!("无法获取 Accio Bridge 实际端口: {e}"))?
+                    .port();
+                return Ok((listener, actual_port));
+            }
             Err(e) => {
                 log::debug!(
                     "尝试绑定端口 {} 遇到 (重试 {}/6): {}",
@@ -331,7 +343,9 @@ pub async fn bind_listener(start_port: u16) -> Result<(TcpListener, u16), String
 
     // 2. 首选端口无法获取，递增避让扫描可用端口
     for offset in 1..=20 {
-        let port = start_port.saturating_add(offset);
+        let Some(port) = start_port.checked_add(offset) else {
+            break;
+        };
         if let Ok(listener) = TcpListener::bind(("127.0.0.1", port)).await {
             log::info!("首选端口 {} 被占用，已避让至可用端口 {}", start_port, port);
             return Ok((listener, port));
@@ -661,6 +675,8 @@ fn build_bridge_app(routes: Router) -> Router {
 
 /// 启动 Accio Local Bridge 中继服务器
 pub async fn start_bridge(preferred_port: Option<u16>) -> Result<u16, String> {
+    let _start_guard = START_BRIDGE.lock().await;
+
     {
         let mut guard = RUNNING_BRIDGE.lock().unwrap();
         if let Some(ref handle) = *guard {
@@ -670,9 +686,6 @@ pub async fn start_bridge(preferred_port: Option<u16>) -> Result<u16, String> {
                         "Accio Local Bridge 已经在端口 {} 上稳定运行，直接复用",
                         handle.port
                     );
-                    tokio::spawn(async {
-                        refresh_model_list_cache().await;
-                    });
                     return Ok(handle.port);
                 }
             } else {
@@ -734,10 +747,6 @@ pub async fn start_bridge(preferred_port: Option<u16>) -> Result<u16, String> {
 
     let (shutdown_tx, shutdown_rx) = oneshot::channel::<()>();
 
-    tokio::spawn(async {
-        refresh_model_list_cache().await;
-    });
-
     let join_handle = tokio::spawn(async move {
         log::info!(
             "Accio Local Bridge 启动成功，监听于 http://127.0.0.1:{}",
@@ -777,11 +786,23 @@ pub async fn stop_bridge() -> Result<(), String> {
         guard.take()
     };
     if let Some(handle) = handle_opt {
-        let _ = handle.shutdown_tx.send(());
-        let _ = tokio::time::timeout(Duration::from_millis(1500), handle.join_handle).await;
+        let BridgeHandle {
+            port,
+            shutdown_tx,
+            mut join_handle,
+        } = handle;
+        let _ = shutdown_tx.send(());
+        if tokio::time::timeout(Duration::from_millis(1500), &mut join_handle)
+            .await
+            .is_err()
+        {
+            log::warn!("Accio Bridge 未在超时内退出，正在中止自有后台任务");
+            join_handle.abort();
+            let _ = join_handle.await;
+        }
         // 给予底层系统短暂缓冲以释放套接字
         tokio::time::sleep(Duration::from_millis(150)).await;
-        log::info!("已安全停止并释放 Accio Bridge 端口 {}", handle.port);
+        log::info!("已安全停止并释放 Accio Bridge 端口 {}", port);
     }
     // 实例凭据保留至 AI Helper 退出：Bridge 停止后不再监听，凭据本身不构成可用入口
     Ok(())

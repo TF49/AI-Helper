@@ -349,6 +349,14 @@ pub mod proto {
         pub name: String,
         #[prost(bool, tag = "2")]
         pub default_on: bool,
+        #[prost(bool, optional, tag = "5")]
+        pub supports_agent: Option<bool>,
+        #[prost(string, optional, tag = "17")]
+        pub client_display_name: Option<String>,
+        /// Cursor 3.x 模型选择器只展示带有该字段的“命名模型”，
+        /// 缺失时下拉框仅保留当前已选中的模型。
+        #[prost(int32, optional, tag = "38")]
+        pub named_model_section_index: Option<i32>,
     }
 
     #[derive(Clone, PartialEq, ::prost::Message)]
@@ -957,6 +965,9 @@ pub fn encode_connect_available_models_proto(custom_models: &[String]) -> Vec<u8
         .map(|m| proto::AvailableModel {
             name: m.clone(),
             default_on: true,
+            supports_agent: Some(true),
+            client_display_name: Some(m.clone()),
+            named_model_section_index: Some(0),
         })
         .collect();
     let resp = proto::AvailableModelsResponse {
@@ -2120,7 +2131,11 @@ pub fn format_connect_available_models(custom_models: &[String]) -> Value {
                 "displayName": display_name,
                 "isAvailable": true,
                 "pricingType": "promptAndCompletion",
-                "supportsStreaming": true
+                "supportsStreaming": true,
+                "defaultOn": true,
+                "supportsAgent": true,
+                "clientDisplayName": m,
+                "namedModelSectionIndex": 0
             })
         })
         .collect();
@@ -2508,6 +2523,10 @@ pub mod tests {
             proto::AvailableModelsResponse::decode(&avail_proto[..]).expect("decode avail");
         assert_eq!(decoded_avail.models.len(), 2);
         assert_eq!(decoded_avail.model_names.len(), 2);
+        assert!(decoded_avail
+            .models
+            .iter()
+            .all(|m| m.named_model_section_index == Some(0) && m.supports_agent == Some(true)));
     }
 
     #[test]

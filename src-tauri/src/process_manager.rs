@@ -12,6 +12,48 @@ use std::time::{Duration, Instant};
 #[cfg(target_os = "windows")]
 use std::os::windows::process::CommandExt;
 
+/// 将用户输入、历史配置或自动探测结果规整为可真正启动的路径。
+/// Windows 上目录本身不能传给 `Command::new`，否则会得到 os error 5；
+/// 对常见安装根目录尝试补齐客户端文件名，其余无效目录交给自动探测自愈。
+fn normalize_launch_path(app_type: &str, raw_path: &str) -> Option<String> {
+    let trimmed = raw_path.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+
+    let path = Path::new(trimmed);
+
+    #[cfg(target_os = "windows")]
+    {
+        if path.is_file() {
+            return Some(path.to_string_lossy().to_string());
+        }
+        if path.is_dir() {
+            let executable_names: &[&str] = match app_type {
+                "claude" => &["claude.exe", "claude.cmd"],
+                "codex" => &["codex.exe", "codex.cmd"],
+                "chatgpt" => &["ChatGPT.exe"],
+                "workbuddy" => &["WorkBuddyAI.exe", "WorkBuddy.exe"],
+                "acciowork" => &["Accio.exe", "AccioWork.exe"],
+                "cursor" => &["Cursor.exe"],
+                _ => &[],
+            };
+            for executable_name in executable_names {
+                let candidate = path.join(executable_name);
+                if candidate.is_file() {
+                    return Some(candidate.to_string_lossy().to_string());
+                }
+            }
+        }
+        None
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    {
+        path.exists().then(|| path.to_string_lossy().to_string())
+    }
+}
+
 /// 安全静默清理目标应用进程树 (CREATE_NO_WINDOW 避免控制台闪烁)
 pub fn kill_app_processes(app_type: &str) -> Result<usize, String> {
     let pids = get_target_pids(app_type);
@@ -85,10 +127,14 @@ pub fn wait_for_app_exit(app_type: &str, timeout_ms: u64) -> bool {
 /// 解析目标应用的实际执行路径 (优先级: 手动参数 -> 配置文件 -> 自动探测)
 pub fn resolve_app_path(app_type: &str, custom_path: Option<&str>) -> Option<String> {
     if let Some(p) = custom_path {
-        let trimmed = p.trim();
-        if !trimmed.is_empty() {
-            return Some(trimmed.to_string());
+        if let Some(resolved) = normalize_launch_path(app_type, p) {
+            return Some(resolved);
         }
+        log::warn!(
+            "忽略无法启动的 {} 自定义路径 ({})，改用已保存路径或自动探测",
+            app_type,
+            p
+        );
     }
 
     let saved = load_app_paths();
@@ -126,13 +172,13 @@ pub fn resolve_app_path(app_type: &str, custom_path: Option<&str>) -> Option<Str
         _ => None,
     };
 
-    // 如果已配置路径在磁盘上真实存在，直接使用
+    // 已配置路径必须能规整为真实启动文件；仅“目录存在”不代表可以执行。
     if let Some(ref path_str) = candidate {
-        if Path::new(path_str).exists() {
-            return candidate;
+        if let Some(resolved) = normalize_launch_path(app_type, path_str) {
+            return Some(resolved);
         }
         log::warn!(
-            "配置的 {} 物理路径不存在 ({})，可能刚经历过客户端版本更新，正在触发自动探测自愈...",
+            "配置的 {} 路径不可启动 ({})，可能是目录、文件已移动或刚经历版本更新，正在触发自动探测自愈...",
             app_type,
             path_str
         );
@@ -150,28 +196,36 @@ pub fn resolve_app_path(app_type: &str, custom_path: Option<&str>) -> Option<Str
     };
 
     if detected.exists && !detected.path.is_empty() {
+        let Some(detected_path) = normalize_launch_path(app_type, &detected.path) else {
+            log::warn!(
+                "自动探测到的 {} 路径仍不可启动，已拒绝执行: {}",
+                app_type,
+                detected.path
+            );
+            return None;
+        };
         // 静默自愈回写配置
         let mut updated = saved;
         if app_type == "chatgpt" {
-            updated.chatgpt_client_path = Some(detected.path.clone());
+            updated.chatgpt_client_path = Some(detected_path.clone());
             let _ = crate::app_paths::save_app_paths(&updated);
         } else if app_type == "claude" {
-            updated.claude_cli_path = Some(detected.path.clone());
+            updated.claude_cli_path = Some(detected_path.clone());
             let _ = crate::app_paths::save_app_paths(&updated);
         } else if app_type == "codex" {
-            updated.codex_cli_path = Some(detected.path.clone());
+            updated.codex_cli_path = Some(detected_path.clone());
             let _ = crate::app_paths::save_app_paths(&updated);
         } else if app_type == "workbuddy" {
-            updated.workbuddy_client_path = Some(detected.path.clone());
+            updated.workbuddy_client_path = Some(detected_path.clone());
             let _ = crate::app_paths::save_app_paths(&updated);
         } else if app_type == "acciowork" {
-            updated.accio_client_path = Some(detected.path.clone());
+            updated.accio_client_path = Some(detected_path.clone());
             let _ = crate::app_paths::save_app_paths(&updated);
         } else if app_type == "cursor" {
-            updated.cursor_client_path = Some(detected.path.clone());
+            updated.cursor_client_path = Some(detected_path.clone());
             let _ = crate::app_paths::save_app_paths(&updated);
         }
-        Some(detected.path)
+        Some(detected_path)
     } else {
         None
     }
@@ -739,6 +793,38 @@ end tell"#,
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn client_directories_resolve_to_their_real_executable() {
+        let directory = tempfile::tempdir().unwrap();
+        for (app_type, executable_name) in [
+            ("claude", "claude.cmd"),
+            ("codex", "codex.exe"),
+            ("chatgpt", "ChatGPT.exe"),
+            ("workbuddy", "WorkBuddyAI.exe"),
+            ("acciowork", "Accio.exe"),
+            ("cursor", "Cursor.exe"),
+        ] {
+            let executable = directory.path().join(executable_name);
+            std::fs::write(&executable, b"test").unwrap();
+            assert_eq!(
+                normalize_launch_path(app_type, directory.path().to_str().unwrap()),
+                Some(executable.to_string_lossy().to_string())
+            );
+            std::fs::remove_file(executable).unwrap();
+        }
+    }
+
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn unrelated_directory_is_never_treated_as_an_executable() {
+        let directory = tempfile::tempdir().unwrap();
+        assert_eq!(
+            normalize_launch_path("cursor", directory.path().to_str().unwrap()),
+            None
+        );
+    }
 
     #[test]
     fn terminal_ops_accept_only_fixed_commands() {

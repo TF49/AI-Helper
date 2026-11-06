@@ -26,7 +26,7 @@ use once_cell::sync::Lazy;
 use reqwest::Client;
 use serde_json::{json, Value};
 use std::{
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     pin::Pin,
     sync::Arc,
     task::{Context, Poll},
@@ -55,6 +55,9 @@ pub struct CursorBridgeHandle {
 }
 
 static RUNNING_CURSOR_BRIDGE: TokioMutex<Option<CursorBridgeHandle>> = TokioMutex::const_new(None);
+// Serialize start/port-recovery sequences so two callers cannot both bind a
+// preferred port before either one publishes its bridge handle.
+static START_CURSOR_BRIDGE: TokioMutex<()> = TokioMutex::const_new(());
 
 const MODEL_LIST_TTL: Duration = Duration::from_secs(300);
 
@@ -120,10 +123,11 @@ async fn fetch_and_cache_model_ids(config: &crate::cursor::config::CursorConfig)
 
     match crate::model_fetch::fetch_models(&config.base_url, &config.api_key).await {
         Ok(models) => {
+            let mut seen = HashSet::new();
             let ids: Vec<String> = models
                 .into_iter()
                 .map(|m| m.id.trim().to_string())
-                .filter(|id| !id.is_empty())
+                .filter(|id| !id.is_empty() && seen.insert(id.clone()))
                 .collect();
             remember_model_list(fingerprint.clone(), ids.clone());
 
@@ -150,11 +154,40 @@ async fn fetch_and_cache_model_ids(config: &crate::cursor::config::CursorConfig)
 
 fn with_selected_model(selected: &str, mut models: Vec<String>) -> Vec<String> {
     let selected_trim = selected.trim();
-    if !selected_trim.is_empty() {
-        models.retain(|m| m.trim() != selected_trim);
-        models.insert(0, selected_trim.to_string());
+    let mut seen = HashSet::new();
+    let mut ordered = Vec::with_capacity(models.len() + 1);
+
+    // Only promote the selected model when the current API Key actually
+    // advertises it.  This keeps Cursor's list consistent with Accio and
+    // avoids presenting an unavailable model as usable.
+    if !selected_trim.is_empty() && models.iter().any(|model| model.trim() == selected_trim) {
+        ordered.push(selected_trim.to_string());
+        seen.insert(selected_trim.to_string());
+    }
+
+    for model in models.drain(..) {
+        let trimmed = model.trim();
+        if !trimmed.is_empty() && seen.insert(trimmed.to_string()) {
+            ordered.push(trimmed.to_string());
+        }
+    }
+
+    ordered
+}
+
+fn default_model_from_available(configured: &str, models: &[String]) -> String {
+    let configured = configured.trim();
+    if !configured.is_empty() && models.iter().any(|model| model.trim() == configured) {
+        return configured.to_string();
     }
     models
+        .iter()
+        .find_map(|model| {
+            let trimmed = model.trim();
+            (!trimmed.is_empty()).then(|| trimmed.to_string())
+        })
+        .or_else(|| (!configured.is_empty()).then(|| configured.to_string()))
+        .unwrap_or_else(|| "gpt-5.6-sol".to_string())
 }
 
 pub async fn load_key_model_ids(config: &crate::cursor::config::CursorConfig) -> Vec<String> {
@@ -510,38 +543,124 @@ static SESSION_MAP: Lazy<Arc<TokioMutex<HashMap<String, BidiSession>>>> =
 static SESSION_NOTIFY: Lazy<Arc<Notify>> = Lazy::new(|| Arc::new(Notify::new()));
 
 pub fn is_bridge_running() -> bool {
-    RUNNING_CURSOR_BRIDGE.blocking_lock().is_some()
+    let mut guard = RUNNING_CURSOR_BRIDGE.blocking_lock();
+    if guard
+        .as_ref()
+        .is_some_and(|handle| handle.join_handle.is_finished())
+    {
+        *guard = None;
+    }
+    guard.is_some()
 }
 
 pub fn get_bridge_port() -> Option<u16> {
-    RUNNING_CURSOR_BRIDGE
-        .blocking_lock()
+    let mut guard = RUNNING_CURSOR_BRIDGE.blocking_lock();
+    if guard
         .as_ref()
-        .map(|h| h.port)
+        .is_some_and(|handle| handle.join_handle.is_finished())
+    {
+        *guard = None;
+    }
+    guard.as_ref().map(|h| h.port)
+}
+
+/// 直接持有成功绑定的监听器，避免“先探测再 bind”产生竞态。
+/// 首选端口被其他程序占用时，在有限范围内自动避让到下一个空闲端口。
+pub async fn bind_listener(start_port: u16) -> Result<(TcpListener, u16), String> {
+    for retry in 0..6 {
+        match TcpListener::bind(("127.0.0.1", start_port)).await {
+            Ok(listener) => {
+                let actual_port = listener
+                    .local_addr()
+                    .map_err(|e| format!("无法获取 Cursor Bridge 实际端口: {e}"))?
+                    .port();
+                return Ok((listener, actual_port));
+            }
+            Err(error) => {
+                log::debug!(
+                    "Cursor Bridge 绑定端口 {} 失败（重试 {}/6）: {}",
+                    start_port,
+                    retry + 1,
+                    error
+                );
+                if retry < 5 {
+                    tokio::time::sleep(Duration::from_millis(150)).await;
+                }
+            }
+        }
+    }
+
+    for offset in 1..=20 {
+        let Some(candidate) = start_port.checked_add(offset) else {
+            break;
+        };
+        if let Ok(listener) = TcpListener::bind(("127.0.0.1", candidate)).await {
+            log::warn!(
+                "Cursor Bridge 首选端口 {} 被占用，已自动切换到 {}",
+                start_port,
+                candidate
+            );
+            return Ok((listener, candidate));
+        }
+    }
+
+    Err(format!(
+        "无法在端口 {}..={} 建立 Cursor Bridge，请检查本机端口占用",
+        start_port,
+        start_port.saturating_add(20)
+    ))
 }
 
 pub async fn start_bridge(port: Option<u16>) -> Result<u16, String> {
+    let _start_guard = START_CURSOR_BRIDGE.lock().await;
+
     {
         let guard = RUNNING_CURSOR_BRIDGE.lock().await;
 
         if let Some(ref handle) = *guard {
-            if !handle.join_handle.is_finished() {
+            if !handle.join_handle.is_finished() && (port.is_none() || port == Some(handle.port)) {
                 return Ok(handle.port);
             }
         }
     }
 
+    // 配置端口发生变化时，先优雅停止旧实例再重新绑定；只有 AI Helper
+    // 自己持有的 Bridge 会走到这里，不会触碰其他程序的端口进程。
+    // 这里仍在 Tokio 异步上下文中，必须使用异步锁，不能调用
+    // `is_bridge_running()` 的 `blocking_lock()`，否则会触发运行时 panic。
+    let should_stop_existing = {
+        let mut guard = RUNNING_CURSOR_BRIDGE.lock().await;
+        if guard
+            .as_ref()
+            .is_some_and(|handle| handle.join_handle.is_finished())
+        {
+            *guard = None;
+            false
+        } else {
+            guard.is_some()
+        }
+    };
+    if should_stop_existing {
+        stop_bridge().await?;
+        tokio::time::sleep(Duration::from_millis(200)).await;
+    }
+
     let config = load_cursor_config();
     let target_port = port.unwrap_or(config.bridge_port);
 
-    let listener = TcpListener::bind(("127.0.0.1", target_port))
-        .await
-        .map_err(|e| format!("无法绑定本地端口 127.0.0.1:{}: {}", target_port, e))?;
+    let (listener, actual_port) = bind_listener(target_port).await?;
 
-    let actual_port = listener
-        .local_addr()
-        .map_err(|e| format!("无法获取实际端口: {}", e))?
-        .port();
+    if actual_port != config.bridge_port {
+        let mut updated = config.clone();
+        updated.bridge_port = actual_port;
+        crate::cursor::config::save_cursor_config(&updated)
+            .map_err(|e| format!("Bridge 已切换端口，但写回 Cursor 配置失败: {e}"))?;
+        log::warn!(
+            "Cursor Bridge 端口已自适应切换: {} -> {}；下次挂接将使用新端口",
+            config.bridge_port,
+            actual_port
+        );
+    }
 
     let (shutdown_tx, shutdown_rx) = oneshot::channel::<()>();
 
@@ -738,10 +857,22 @@ pub async fn stop_bridge() -> Result<(), String> {
     };
 
     if let Some(handle) = handle_opt {
-        let _ = handle.shutdown_tx.send(());
-        let _ = tokio::time::timeout(Duration::from_millis(1500), handle.join_handle).await;
+        let CursorBridgeHandle {
+            port,
+            shutdown_tx,
+            mut join_handle,
+        } = handle;
+        let _ = shutdown_tx.send(());
+        if tokio::time::timeout(Duration::from_millis(1500), &mut join_handle)
+            .await
+            .is_err()
+        {
+            log::warn!("Cursor Bridge 未在超时内退出，正在中止自有后台任务");
+            join_handle.abort();
+            let _ = join_handle.await;
+        }
         tokio::time::sleep(Duration::from_millis(150)).await;
-        log::info!("AI-Helper Cursor Bridge 已停止 (释放端口 {})", handle.port);
+        log::info!("AI-Helper Cursor Bridge 已停止 (释放端口 {})", port);
     }
     Ok(())
 }
@@ -813,15 +944,8 @@ async fn handle_get_usable_models(headers: HeaderMap) -> Response {
 
 async fn handle_default_model_for_cli(headers: HeaderMap) -> Response {
     let cfg = load_cursor_config();
-    let default_m = if !cfg.model.trim().is_empty() {
-        cfg.model.clone()
-    } else {
-        let models = load_key_model_ids(&cfg).await;
-        models
-            .into_iter()
-            .next()
-            .unwrap_or_else(|| "gpt-5.6-sol".to_string())
-    };
+    let models = load_key_model_ids(&cfg).await;
+    let default_m = default_model_from_available(&cfg.model, &models);
     if is_proto_request(&headers) {
         let body = encode_connect_default_model_for_cli_proto(&default_m);
         Response::builder()
@@ -846,15 +970,8 @@ async fn handle_default_model_for_cli(headers: HeaderMap) -> Response {
 
 async fn handle_get_default_model(headers: HeaderMap) -> Response {
     let cfg = load_cursor_config();
-    let default_m = if !cfg.model.trim().is_empty() {
-        cfg.model.clone()
-    } else {
-        let models = load_key_model_ids(&cfg).await;
-        models
-            .into_iter()
-            .next()
-            .unwrap_or_else(|| "gpt-5.6-sol".to_string())
-    };
+    let models = load_key_model_ids(&cfg).await;
+    let default_m = default_model_from_available(&cfg.model, &models);
     if is_proto_request(&headers) {
         let body = encode_connect_default_model_proto(&default_m);
         Response::builder()
@@ -2750,5 +2867,60 @@ mod tests {
         // 清理测试会话
         let mut map = SESSION_MAP.lock().await;
         map.remove(&req_id);
+    }
+
+    #[tokio::test]
+    async fn occupied_preferred_port_is_avoided_without_killing_owner() {
+        let occupied = TcpListener::bind(("127.0.0.1", 0)).await.unwrap();
+        let preferred = occupied.local_addr().unwrap().port();
+        let (fallback, actual) = bind_listener(preferred).await.unwrap();
+
+        assert_ne!(actual, preferred);
+        drop(fallback);
+        // The unrelated listener remains alive: port recovery must never kill
+        // an unknown process merely because it owns the preferred port.
+        assert!(occupied.local_addr().is_ok());
+    }
+
+    #[test]
+    fn selected_model_is_first_but_all_key_models_are_retained() {
+        let models = with_selected_model(
+            "glm-5.3",
+            vec![
+                "gpt-5.6-sol".into(),
+                "glm-5.3".into(),
+                "claude-sonnet-5-5".into(),
+            ],
+        );
+        assert_eq!(models, ["glm-5.3", "gpt-5.6-sol", "claude-sonnet-5-5"]);
+    }
+
+    #[test]
+    fn unavailable_selected_model_is_not_injected_into_key_models() {
+        let models = with_selected_model(
+            "glm-5.3",
+            vec!["gpt-5.6-sol".into(), "claude-sonnet-5-5".into()],
+        );
+        assert_eq!(models, ["gpt-5.6-sol", "claude-sonnet-5-5"]);
+    }
+
+    #[test]
+    fn unavailable_configured_default_falls_back_to_first_key_model() {
+        let models = vec!["gpt-5.6-sol".into(), "claude-sonnet-5-5".into()];
+        assert_eq!(
+            default_model_from_available("glm-5.3", &models),
+            "gpt-5.6-sol"
+        );
+        assert_eq!(
+            default_model_from_available("claude-sonnet-5-5", &models),
+            "claude-sonnet-5-5"
+        );
+    }
+
+    #[tokio::test]
+    async fn ephemeral_port_returns_the_actual_listener_port() {
+        let (listener, actual) = bind_listener(0).await.unwrap();
+        assert_ne!(actual, 0);
+        assert_eq!(listener.local_addr().unwrap().port(), actual);
     }
 }

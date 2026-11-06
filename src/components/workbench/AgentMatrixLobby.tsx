@@ -1,9 +1,18 @@
 import React, { useState, useEffect, useRef } from "react";
-import { Sparkles, FileText, ShieldCheck, RefreshCw, Cpu, CheckCircle2 } from "lucide-react";
+import {
+  Sparkles,
+  FileText,
+  ShieldCheck,
+  RefreshCw,
+  Cpu,
+  CheckCircle2,
+} from "lucide-react";
 import { toast } from "sonner";
 import { motion } from "motion/react";
-import { HolographicBrandLogo } from "../react-bits/HolographicBrandLogo";
+import { VoxelMorphHero } from "./VoxelMorphHero";
 import { AgentCard, type AgentCardItem } from "./AgentCard";
+import { TerminalTestModal } from "../TerminalTestModal";
+import { BatchTerminalModal, type BatchApplyTarget } from "./BatchTerminalModal";
 import {
   ClaudeCliIcon,
   CodexCliIcon,
@@ -20,14 +29,23 @@ import {
   getCursorConfig,
   getWorkbuddyConfig,
   getAccioConfig,
+  startAccioBridge,
+  startCursorBridge,
+  getCursorPatchStatus,
+  patchCursorClient,
   getUserTokens,
   getTokenKey,
   createUserToken,
-  applyApiKeyToAgents,
   restartTargetApp,
 } from "../../lib/api";
 import { useAuth } from "../../lib/useAuth";
-import type { AgentTool, TokenItem } from "../../types";
+import type {
+  AgentTool,
+  TokenItem,
+  CursorConfig,
+  AccioConfig,
+  WorkbuddySavePayload,
+} from "../../types";
 
 interface AgentMatrixLobbyProps {
   onSelectTool: (tool: AgentTool) => void;
@@ -35,11 +53,23 @@ interface AgentMatrixLobbyProps {
   onOpenAppInstaller?: (appName: string) => void;
 }
 
-// 缓存已探测到的客户端状态，跨页面切换时直接复用，消除由于初始态不一致导致的异步闪烁
+// 缓存已探测到的客户端状态与配置，跨页面切换时直接复用，消除由于初始态不一致导致的异步闪烁
 let cachedAgentsStatusMap: Record<string, AgentCardItem["status"]> | null = null;
+let cachedAgentsConfigMap: Record<
+  string,
+  { key: string | null; model: string | null }
+> | null = null;
 
 // 卡片 → 后端 apply_api_key_to_agents 的写入目标（ChatGPT 桌面端无需写配置，不在此列）
 type ApplyTarget = "claude" | "chatgpt" | "cursor" | "workbuddy" | "acciowork";
+type RestartTarget =
+  | "claude"
+  | "codex"
+  | "chatgpt"
+  | "cursor"
+  | "workbuddy"
+  | "acciowork";
+
 const APPLY_TARGET_BY_CARD: Record<string, ApplyTarget> = {
   "claude-cli": "claude",
   "codex-cli": "chatgpt",
@@ -47,12 +77,14 @@ const APPLY_TARGET_BY_CARD: Record<string, ApplyTarget> = {
   "workbuddy-app": "workbuddy",
   "accio-work": "acciowork",
 };
-const TARGET_LABELS: Record<ApplyTarget, string> = {
-  claude: "Claude Code",
-  chatgpt: "Codex",
-  cursor: "Cursor",
-  workbuddy: "WorkBuddy",
-  acciowork: "Accio Work",
+
+const RESTART_TARGET_BY_CARD: Record<string, RestartTarget> = {
+  "claude-cli": "claude",
+  "codex-cli": "codex",
+  "chatgpt-app": "chatgpt",
+  "cursor-ide": "cursor",
+  "workbuddy-app": "workbuddy",
+  "accio-work": "acciowork",
 };
 
 // 各客户端默认分组与推荐模型配置
@@ -96,7 +128,25 @@ export const AgentMatrixLobby: React.FC<AgentMatrixLobbyProps> = ({
   onOpenEnvironmentCheck,
   onOpenAppInstaller,
 }) => {
-  const [configuringAll, setConfiguringAll] = useState(false);
+  const [restartingAgentId, setRestartingAgentId] = useState<string | null>(null);
+
+  // 单卡片类终端连通性测试模态框状态
+  const [activeTerminalTarget, setActiveTerminalTarget] = useState<{
+    type: "codex" | "claude" | "workbuddy" | "acciowork" | "cursor";
+    target: ApplyTarget;
+    url: string;
+    apiKey: string;
+    model: string;
+    token: TokenItem | null;
+    cursorPayload?: CursorConfig;
+    accioPayload?: AccioConfig;
+    workbuddyPayload?: WorkbuddySavePayload;
+  } | null>(null);
+
+  // 矩阵批量连通性测试终端模态框状态
+  const [batchModalOpen, setBatchModalOpen] = useState(false);
+  const [batchTargets, setBatchTargets] = useState<BatchApplyTarget[]>([]);
+
   const { authState, authSessionGeneration, setLoginModalOpen } = useAuth();
   // 防止重复点击并发写入；会话切换或卸载后不再写入本地绑定记录
   const actionInFlight = useRef(false);
@@ -120,6 +170,8 @@ export const AgentMatrixLobby: React.FC<AgentMatrixLobbyProps> = ({
       icon: ClaudeCliIcon,
       status: cachedAgentsStatusMap?.["claude-cli"] ?? "unconfigured",
       toolKey: "claude",
+      configuredKey: cachedAgentsConfigMap?.["claude-cli"]?.key ?? null,
+      configuredModel: cachedAgentsConfigMap?.["claude-cli"]?.model ?? null,
     },
     {
       id: "codex-cli",
@@ -129,6 +181,8 @@ export const AgentMatrixLobby: React.FC<AgentMatrixLobbyProps> = ({
       icon: CodexCliIcon,
       status: cachedAgentsStatusMap?.["codex-cli"] ?? "unconfigured",
       toolKey: "chatgpt",
+      configuredKey: cachedAgentsConfigMap?.["codex-cli"]?.key ?? null,
+      configuredModel: cachedAgentsConfigMap?.["codex-cli"]?.model ?? null,
     },
     {
       id: "chatgpt-app",
@@ -139,6 +193,8 @@ export const AgentMatrixLobby: React.FC<AgentMatrixLobbyProps> = ({
       status: cachedAgentsStatusMap?.["chatgpt-app"] ?? "unconfigured",
       toolKey: "chatgpt",
       actionLabel: "打开客户端",
+      configuredKey: cachedAgentsConfigMap?.["chatgpt-app"]?.key ?? null,
+      configuredModel: cachedAgentsConfigMap?.["chatgpt-app"]?.model ?? null,
     },
     {
       id: "cursor-ide",
@@ -148,6 +204,8 @@ export const AgentMatrixLobby: React.FC<AgentMatrixLobbyProps> = ({
       icon: CursorIcon,
       status: cachedAgentsStatusMap?.["cursor-ide"] ?? "unconfigured",
       toolKey: "cursor",
+      configuredKey: cachedAgentsConfigMap?.["cursor-ide"]?.key ?? null,
+      configuredModel: cachedAgentsConfigMap?.["cursor-ide"]?.model ?? null,
     },
     {
       id: "workbuddy-app",
@@ -157,6 +215,8 @@ export const AgentMatrixLobby: React.FC<AgentMatrixLobbyProps> = ({
       icon: WorkbuddyIcon,
       status: cachedAgentsStatusMap?.["workbuddy-app"] ?? "unconfigured",
       toolKey: "workbuddy",
+      configuredKey: cachedAgentsConfigMap?.["workbuddy-app"]?.key ?? null,
+      configuredModel: cachedAgentsConfigMap?.["workbuddy-app"]?.model ?? null,
     },
     {
       id: "accio-work",
@@ -166,6 +226,8 @@ export const AgentMatrixLobby: React.FC<AgentMatrixLobbyProps> = ({
       icon: AccioWorkIcon,
       status: cachedAgentsStatusMap?.["accio-work"] ?? "unconfigured",
       toolKey: "acciowork",
+      configuredKey: cachedAgentsConfigMap?.["accio-work"]?.key ?? null,
+      configuredModel: cachedAgentsConfigMap?.["accio-work"]?.model ?? null,
     },
   ]);
 
@@ -212,6 +274,8 @@ export const AgentMatrixLobby: React.FC<AgentMatrixLobbyProps> = ({
             return {
               ...item,
               status: (hasKey ? "installed" : exists ? "unconfigured" : "uninstalled") as AgentCardItem["status"],
+              configuredKey: claudeCfg?.api_key?.trim() || null,
+              configuredModel: claudeCfg?.model?.trim() || null,
             };
           }
           if (item.id === "codex-cli") {
@@ -220,6 +284,8 @@ export const AgentMatrixLobby: React.FC<AgentMatrixLobbyProps> = ({
             return {
               ...item,
               status: (hasKey ? "installed" : exists ? "unconfigured" : "uninstalled") as AgentCardItem["status"],
+              configuredKey: codexCfg?.api_key?.trim() || null,
+              configuredModel: codexCfg?.model?.trim() || null,
             };
           }
           if (item.id === "chatgpt-app") {
@@ -230,6 +296,9 @@ export const AgentMatrixLobby: React.FC<AgentMatrixLobbyProps> = ({
             return {
               ...item,
               status: (exists ? "installed" : "uninstalled") as AgentCardItem["status"],
+              // ChatGPT 桌面端与 Codex 共享 OpenAI 配置
+              configuredKey: codexCfg?.api_key?.trim() || null,
+              configuredModel: codexCfg?.model?.trim() || null,
             };
           }
           if (item.id === "cursor-ide") {
@@ -238,14 +307,23 @@ export const AgentMatrixLobby: React.FC<AgentMatrixLobbyProps> = ({
             return {
               ...item,
               status: (hasKey ? "installed" : exists ? "unconfigured" : "uninstalled") as AgentCardItem["status"],
+              configuredKey: cursorCfg?.api_key?.trim() || null,
+              configuredModel: cursorCfg?.model?.trim() || null,
             };
           }
           if (item.id === "workbuddy-app") {
             const hasKey = Boolean(workbuddyCfg?.api_key && workbuddyCfg.api_key.trim());
             const exists = Boolean(pathMap["workbuddy"]?.exists || workbuddyCfg?.config_exists);
+            const wbModel =
+              workbuddyCfg?.model?.trim() ||
+              workbuddyCfg?.configured_models?.[0]?.name ||
+              workbuddyCfg?.configured_models?.[0]?.id ||
+              null;
             return {
               ...item,
               status: (hasKey ? "installed" : exists ? "unconfigured" : "uninstalled") as AgentCardItem["status"],
+              configuredKey: workbuddyCfg?.api_key?.trim() || null,
+              configuredModel: wbModel,
             };
           }
           if (item.id === "accio-work") {
@@ -254,6 +332,8 @@ export const AgentMatrixLobby: React.FC<AgentMatrixLobbyProps> = ({
             return {
               ...item,
               status: (hasKey ? "installed" : exists ? "unconfigured" : "uninstalled") as AgentCardItem["status"],
+              configuredKey: accioCfg?.api_key?.trim() || null,
+              configuredModel: accioCfg?.model?.trim() || null,
             };
           }
           return item;
@@ -261,10 +341,16 @@ export const AgentMatrixLobby: React.FC<AgentMatrixLobbyProps> = ({
 
         // 写入缓存供跨视图切页秒级无感复用
         const map: Record<string, AgentCardItem["status"]> = {};
+        const configMap: Record<string, { key: string | null; model: string | null }> = {};
         for (const it of next) {
           map[it.id] = it.status;
+          configMap[it.id] = {
+            key: it.configuredKey ?? null,
+            model: it.configuredModel ?? null,
+          };
         }
         cachedAgentsStatusMap = map;
+        cachedAgentsConfigMap = configMap;
 
         return next;
       });
@@ -275,6 +361,18 @@ export const AgentMatrixLobby: React.FC<AgentMatrixLobbyProps> = ({
 
   useEffect(() => {
     void refreshAgentStatuses();
+
+    // 监听窗口聚焦与外部 Token 同步事件，实时对齐已配置参数
+    const handleSync = () => {
+      void refreshAgentStatuses();
+    };
+    window.addEventListener("focus", handleSync);
+    window.addEventListener("ai_helper_sync_all_tokens", handleSync);
+
+    return () => {
+      window.removeEventListener("focus", handleSync);
+      window.removeEventListener("ai_helper_sync_all_tokens", handleSync);
+    };
   }, []);
 
   // 记忆用户未登录时触发的一键配置意图，登录成功后自动无缝断点续传
@@ -298,7 +396,7 @@ export const AgentMatrixLobby: React.FC<AgentMatrixLobbyProps> = ({
     }
   }, [authState.is_logged_in, authSessionGeneration]);
 
-  // 执行单卡片动作 (一键配置或安装引导)
+  // 执行单卡片动作 (一键配置连通性测试或安装引导)
   const handleCardAction = async (agent: AgentCardItem) => {
     if (agent.status === "uninstalled") {
       if (agent.id === "chatgpt-app") {
@@ -342,9 +440,9 @@ export const AgentMatrixLobby: React.FC<AgentMatrixLobbyProps> = ({
       return;
     }
 
-    if (actionInFlight.current || configuringAll) return;
+    if (actionInFlight.current || activeTerminalTarget || batchModalOpen) return;
     actionInFlight.current = true;
-    const toastId = toast.loading(`正在为 ${agent.name} 写入 API Key 与模型配置...`);
+    const toastId = toast.loading(`正在为 ${agent.name} 匹配专属令牌并准备连通性测试...`);
 
     try {
       const resolved = await resolveApiKeyForTarget(target);
@@ -356,25 +454,97 @@ export const AgentMatrixLobby: React.FC<AgentMatrixLobbyProps> = ({
         return;
       }
 
-      const { ok } = await applyAndRecord(resolved, [target]);
-      if (!mountedRef.current) return;
       toast.dismiss(toastId);
-      if (ok.length > 0) {
-        toast.success(`${agent.name} 已配置完成`, {
-          description: describeKeySource(resolved, target),
-        });
-      } else {
-        toast.error(`${agent.name} 写入失败，已打开配置面板`, {
-          description: "请检查该工具当前的接口地址是否为 Bob API，以及 Key 是否有效",
-        });
-        onSelectTool(target);
+
+      // 映射到 TerminalTestModal 对应的 target type
+      const modalType: "codex" | "claude" | "workbuddy" | "acciowork" | "cursor" =
+        target === "chatgpt" ? "codex" : target;
+      const defaultModel = TARGET_DEFAULT_MODEL[target];
+
+      let targetUrl =
+        target === "workbuddy" ? "https://bob-api.com/v1" : "https://bob-api.com/";
+
+      let cursorPayload: CursorConfig | undefined;
+      let accioPayload: AccioConfig | undefined;
+      let workbuddyPayload: WorkbuddySavePayload | undefined;
+
+      if (modalType === "cursor") {
+        const curCfg = await getCursorConfig().catch(() => null);
+        if (curCfg?.base_url?.trim()) {
+          targetUrl = curCfg.base_url.trim();
+        }
+        cursorPayload = {
+          base_url: targetUrl,
+          api_key: resolved.key.trim(),
+          model: defaultModel,
+          bridge_port: curCfg?.bridge_port || 8969,
+          auto_start_bridge: true,
+          cursor_path: curCfg?.cursor_path || null,
+        };
+      } else if (modalType === "acciowork") {
+        const accCfg = await getAccioConfig().catch(() => null);
+        if (accCfg?.base_url?.trim()) {
+          targetUrl = accCfg.base_url.trim();
+        }
+        accioPayload = {
+          base_url: targetUrl,
+          api_key: resolved.key.trim(),
+          model: defaultModel,
+          bridge_port: accCfg?.bridge_port || 8787,
+          official_gateway:
+            accCfg?.official_gateway || "https://phoenix-gw.alibaba.com",
+          fallback_official: accCfg?.fallback_official ?? false,
+          prevent_official_leak: accCfg?.prevent_official_leak ?? true,
+        };
+      } else if (modalType === "workbuddy") {
+        const wbCfg = await getWorkbuddyConfig().catch(() => null);
+        if (wbCfg?.base_url?.trim()) {
+          targetUrl = wbCfg.base_url.trim();
+        }
+        workbuddyPayload = {
+          url: targetUrl,
+          api_key: resolved.key.trim(),
+          model: defaultModel,
+          supports_tool_call: true,
+          supports_images: true,
+          supports_reasoning: true,
+          only_reasoning: false,
+          can_disable_thinking: true,
+          use_custom_protocol: false,
+          default_effort: null,
+          supported_efforts: ["medium"],
+          max_input_tokens: 32768,
+          max_output_tokens: 32768,
+        };
+      } else if (modalType === "claude") {
+        const cCfg = await getClaudeConfig().catch(() => null);
+        if (cCfg?.base_url?.trim()) {
+          targetUrl = cCfg.base_url.trim();
+        }
+      } else if (modalType === "codex") {
+        const xCfg = await getCodexConfig().catch(() => null);
+        if (xCfg?.base_url?.trim()) {
+          targetUrl = xCfg.base_url.trim();
+        }
       }
+
+      // 打开类终端连通性测试模态框
+      setActiveTerminalTarget({
+        type: modalType,
+        target,
+        url: targetUrl,
+        apiKey: resolved.key,
+        model: defaultModel,
+        token: resolved.token,
+        cursorPayload,
+        accioPayload,
+        workbuddyPayload,
+      });
     } catch (err) {
       toast.dismiss(toastId);
-      toast.error(`${agent.name} 配置失败: ${String(err)}`);
+      toast.error(`${agent.name} 准备连通性测试失败: ${String(err)}`);
       onSelectTool(target);
     } finally {
-      toast.dismiss(toastId);
       actionInFlight.current = false;
     }
   };
@@ -453,43 +623,57 @@ export const AgentMatrixLobby: React.FC<AgentMatrixLobbyProps> = ({
     return null;
   };
 
-  /** 调用后端统一写入，并仅为写入成功的工具记录令牌绑定 */
-  const applyAndRecord = async (resolved: ResolvedKey, targets: ApplyTarget[]) => {
-    const session = sessionRef.current;
-    const results = await applyApiKeyToAgents(resolved.key, targets);
-    const ok = targets.filter((t) => results[t]);
-    const failed = targets.filter((t) => !results[t]);
-
-    const { token } = resolved;
-    if (token && ok.length > 0 && mountedRef.current && session === sessionRef.current) {
-      const bound = JSON.stringify({ id: token.id, name: token.name, group: token.group ?? undefined });
-      for (const tid of ok) {
-        try {
-          localStorage.setItem(`bound_token_${tid}`, bound);
-        } catch {}
-      }
-      // 只广播元数据，不在 DOM 事件中携带明文 Key
-      window.dispatchEvent(
-        new CustomEvent("ai_helper_sync_all_tokens", {
-          detail: { id: token.id, name: token.name, group: token.group ?? undefined, toolIds: ok },
-        }),
-      );
+  /** 首页卡片仅重启当前客户端，不影响其他工具。 */
+  const handleRestartAgent = async (agent: AgentCardItem) => {
+    if (
+      agent.status === "uninstalled" ||
+      restartingAgentId ||
+      actionInFlight.current
+    ) {
+      return;
     }
+    const appType = RESTART_TARGET_BY_CARD[agent.id];
+    if (!appType) return;
 
-    if (mountedRef.current) await refreshAgentStatuses();
-    return { ok, failed };
+    actionInFlight.current = true;
+    setRestartingAgentId(agent.id);
+    const toastId = toast.loading(`正在重启 ${agent.name}...`);
+    try {
+      let customPath: string | undefined;
+      if (agent.id === "cursor-ide") {
+        const cfg = await getCursorConfig();
+        // cfg.app_path 是补丁模块返回的安装根目录，并非 Cursor.exe。
+        // 未手动指定可执行文件时交给后端路径管理器解析已保存的 Cursor.exe。
+        customPath = cfg.cursor_path || undefined;
+        if (cfg.api_key.trim()) {
+          const port = await startCursorBridge(cfg.bridge_port);
+          // 已接入的 Cursor 若曾自动换端口，重启当前客户端前同步实际地址。
+          const patch = await getCursorPatchStatus(customPath);
+          if (
+            patch.is_patched &&
+            patch.current_bridge_target !== `http://127.0.0.1:${port}`
+          ) {
+            await patchCursorClient(customPath, port);
+          }
+        }
+      } else if (agent.id === "accio-work") {
+        const cfg = await getAccioConfig();
+        if (cfg.api_key.trim()) await startAccioBridge(cfg.bridge_port);
+      }
+
+      const result = await restartTargetApp(appType, customPath);
+      toast.success(`${agent.name} 已完成一键重启`, { description: result });
+    } catch (error) {
+      console.warn(`重启 ${agent.name} 失败`, error);
+      toast.error(`${agent.name} 重启失败`, { description: String(error) });
+    } finally {
+      toast.dismiss(toastId);
+      actionInFlight.current = false;
+      if (mountedRef.current) setRestartingAgentId(null);
+    }
   };
 
-  const describeKeySource = (resolved: ResolvedKey, target?: ApplyTarget) => {
-    const group = target ? TARGET_DEFAULT_GROUP[target] : resolved.token?.group || "专属分组";
-    const model = target ? TARGET_DEFAULT_MODEL[target] : undefined;
-    const modelDesc = model ? `，默认模型为 ${model}` : "";
-    return resolved.token
-      ? `已写入「${resolved.token.name}」（分组: ${group}），接口为 Bob API${modelDesc}`
-      : `已写入 Bob API 专属令牌（分组: ${group}）${modelDesc}`;
-  };
-
-  // 一键配置所有：按各客户端所属分组分发配置
+  // 一键配置所有：唤起矩阵批量连通性测试与配置终端
   const handleConfigureAll = async () => {
     if (actionInFlight.current) return;
     const targets = Array.from(
@@ -497,7 +681,7 @@ export const AgentMatrixLobby: React.FC<AgentMatrixLobbyProps> = ({
         agents
           .filter((a) => a.status !== "uninstalled")
           .map((a) => APPLY_TARGET_BY_CARD[a.id])
-          .filter((t): t is ApplyTarget => Boolean(t)),
+          .filter((t): t is BatchApplyTarget => Boolean(t)),
       ),
     );
     if (targets.length === 0) {
@@ -516,97 +700,28 @@ export const AgentMatrixLobby: React.FC<AgentMatrixLobbyProps> = ({
       return;
     }
 
-    actionInFlight.current = true;
-    setConfiguringAll(true);
-    const toastId = toast.loading("正在为已安装的 Agent 写入专属 API Key 与推荐模型...");
-
-    try {
-      // 按目标分组对 targets 进行归类 (CC-Kiro-Max / Codex-不降质 / 国产Token计划)
-      const targetsByGroup = new Map<string, ApplyTarget[]>();
-      for (const t of targets) {
-        const g = TARGET_DEFAULT_GROUP[t];
-        const list = targetsByGroup.get(g) || [];
-        list.push(t);
-        targetsByGroup.set(g, list);
-      }
-
-      const allOk: ApplyTarget[] = [];
-      const allFailed: ApplyTarget[] = [];
-      const groupSummaries: string[] = [];
-
-      for (const [groupName, groupTargets] of targetsByGroup.entries()) {
-        const representativeTarget = groupTargets[0];
-        try {
-          const resolved = await resolveApiKeyForTarget(representativeTarget);
-          if (!mountedRef.current) return;
-          if (!resolved) {
-            allFailed.push(...groupTargets);
-            continue;
-          }
-
-          const { ok, failed } = await applyAndRecord(resolved, groupTargets);
-          allOk.push(...ok);
-          allFailed.push(...failed);
-          if (ok.length > 0) {
-            const names = ok.map((t) => TARGET_LABELS[t]).join("、");
-            groupSummaries.push(`${names}（${groupName}）`);
-          }
-        } catch (err) {
-          console.error(`写入分组 ${groupName} 失败:`, err);
-          allFailed.push(...groupTargets);
-        }
-      }
-
-      if (!mountedRef.current) return;
-      toast.dismiss(toastId);
-
-      if (allFailed.length === 0) {
-        toast.success(`已为 ${allOk.length} 个 Agent 完成一键配置`, {
-          description: groupSummaries.join("；"),
-          duration: 5000,
-        });
-      } else if (allOk.length > 0) {
-        const failedNames = allFailed.map((t) => TARGET_LABELS[t]).join("、");
-        toast.warning(`部分 Agent 配置完成 (${allOk.length}/${targets.length})`, {
-          description: `成功：${groupSummaries.join("；")}。失败：${failedNames}`,
-          duration: 6000,
-        });
-      } else {
-        toast.error("所有 Agent 写入均失败，请检查网络或进入环境检测修复");
-      }
-    } catch (err) {
-      toast.dismiss(toastId);
-      toast.error("一键配置遇到问题，建议进入环境检测向导修复", {
-        description: String(err),
-      });
-    } finally {
-      toast.dismiss(toastId);
-      actionInFlight.current = false;
-      if (mountedRef.current) setConfiguringAll(false);
-    }
+    // 打开矩阵批量连通性测试与部署终端
+    setBatchTargets(targets);
+    setBatchModalOpen(true);
   };
 
   const installedCount = agents.filter((a) => a.status === "installed").length;
+  const isConfiguringAny = Boolean(activeTerminalTarget) || batchModalOpen;
 
   return (
-    <div className="w-full h-full flex items-center justify-center min-h-0 select-none py-1 lg:py-2 px-1 sm:px-2">
+    // 窄窗口（< 900px）上下堆叠时整体可纵向滚动；≥ 900px 左右并排，由内部网格自行适配高度
+    <div className="w-full h-full flex items-start [@media(min-width:900px)]:items-center justify-center min-h-0 select-none py-1 lg:py-2 px-1 sm:px-2 overflow-x-hidden overflow-y-auto">
       {/* ── 主视口全屏自适应画布：自适应居中对齐，高度严格 1:1 平齐 ── */}
-      <div className="w-full h-full max-w-[1360px] 2xl:max-w-[1480px] max-h-[860px] flex flex-col lg:flex-row items-stretch gap-5 lg:gap-6 xl:gap-8 min-h-0 mx-auto">
+      <div className="w-full [@media(min-width:900px)]:h-full max-w-[1360px] 2xl:max-w-[1480px] [@media(min-width:900px)]:max-h-[860px] flex flex-col [@media(min-width:900px)]:flex-row items-stretch gap-5 [@media(min-width:900px)_and_(max-width:1023px)]:gap-4 lg:gap-6 xl:gap-8 min-h-0 mx-auto">
         {/* ──── 左侧：通透沉浸 Hero 展台 (保留上方全部元素，无外层白底卡片托起) ──── */}
-        <div className="w-full lg:w-[380px] xl:w-[410px] 2xl:w-[440px] flex-shrink-0 flex flex-col justify-between h-full py-1.5 lg:py-2.5 select-none">
+        <div className="w-full [@media(min-width:900px)_and_(max-width:1023px)]:w-[300px] lg:w-[380px] xl:w-[410px] 2xl:w-[440px] flex-shrink-0 flex flex-col justify-between gap-4 [@media(min-width:900px)]:h-full py-1.5 lg:py-2.5 select-none">
           {/* 上半部：3D 全息品牌 Logo 展台 + 核心标题 + 描述 + 特性微卡片 */}
           <div className="flex flex-col space-y-3.5 xl:space-y-4">
-            {/* 3D 全息精细交互 Logo */}
-            <div className="flex items-center justify-start -ml-1 py-0.5">
-              <HolographicBrandLogo size={142} />
-            </div>
+            {/* 3D 丝滑四形态相变全息体素展台 + 动态状态徽章 */}
+            <VoxelMorphHero />
 
-            {/* 主标题与微状态标签 */}
+            {/* 主标题与描述 */}
             <div className="space-y-1 xl:space-y-1.5">
-              <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-sky-50 dark:bg-sky-500/10 border border-sky-200/60 dark:border-sky-400/20 text-[10px] font-semibold text-sky-700 dark:text-sky-300">
-                <span className="w-1.5 h-1.5 rounded-full bg-sky-500 animate-pulse" />
-                <span>AI-Helper Engine Ready</span>
-              </div>
               <h1 className="text-2xl lg:text-[27px] xl:text-[29px] font-extrabold text-slate-900 dark:text-white tracking-tight leading-snug">
                 一键接入你的 Agent
               </h1>
@@ -616,7 +731,8 @@ export const AgentMatrixLobby: React.FC<AgentMatrixLobbyProps> = ({
             </div>
 
             {/* 核心特性交互微卡片 */}
-            <div className="space-y-2.5 xl:space-y-3 pt-1">
+            {/* 窗口高度 ≤ 640px 时隐藏这两张宣传卡片，把空间让给 Hero 与操作按钮 */}
+            <div className="space-y-2.5 xl:space-y-3 pt-1 [@media(max-height:640px)]:hidden">
               {/* 特性 1：自动凭证与 Key 管理 */}
               <motion.div
                 whileHover={{ y: -1, scale: 1.01 }}
@@ -674,10 +790,10 @@ export const AgentMatrixLobby: React.FC<AgentMatrixLobbyProps> = ({
               <button
                 type="button"
                 onClick={handleConfigureAll}
-                disabled={configuringAll}
+                disabled={isConfiguringAny || restartingAgentId !== null}
                 className="flex-1 flex items-center justify-center gap-2 py-2.5 xl:py-3 px-4 rounded-full bg-[#111827] hover:bg-black text-white text-xs xl:text-[13px] font-bold shadow-md shadow-black/15 transition-all duration-200 active:scale-95 cursor-pointer dark:bg-white dark:hover:bg-slate-100 dark:text-black disabled:opacity-50 group/btn"
               >
-                {configuringAll ? (
+                {batchModalOpen ? (
                   <RefreshCw size={13} className="animate-spin text-white dark:text-black" />
                 ) : (
                   <Sparkles size={13} className="text-white fill-white dark:text-black dark:fill-black group-hover/btn:rotate-12 transition-transform" />
@@ -697,14 +813,22 @@ export const AgentMatrixLobby: React.FC<AgentMatrixLobbyProps> = ({
         </div>
 
         {/* ──── 右侧：2 列 × 3 行 纯白高质感 Agent 矩阵网格 (全屏大屏舒展对齐) ──── */}
-        <div className="flex-1 min-w-0 h-full flex flex-col justify-between">
-          <div className="grid grid-cols-2 grid-rows-3 gap-3.5 xl:gap-4 w-full h-full">
+        {/* 容器高度不足以容纳 3 行卡片（每行最小 160px）时，卡片区自身纵向滚动，保证按钮始终可达；
+            p-2/-m-2 为卡片阴影与悬停位移预留空间，避免被滚动容器裁切 */}
+        <div className="flex-1 min-w-0 min-h-0 p-2 -m-2 [@media(min-width:900px)]:overflow-y-auto">
+          <div className="grid grid-cols-2 gap-3.5 xl:gap-4 w-full auto-rows-[minmax(160px,auto)] [@media(min-width:900px)]:h-full [@media(min-width:900px)]:min-h-[512px] [@media(min-width:900px)]:grid-rows-[repeat(3,minmax(160px,1fr))]">
             {agents.map((agent, idx) => (
               <AgentCard
                 key={agent.id}
                 agent={agent}
                 index={idx}
                 onAction={handleCardAction}
+                onRestart={(target) => void handleRestartAgent(target)}
+                actionDisabled={
+                  isConfiguringAny || restartingAgentId !== null
+                }
+                restartDisabled={isConfiguringAny || restartingAgentId !== null}
+                restarting={restartingAgentId === agent.id}
                 onOpenDetail={(target) => {
                   if (target.toolKey) {
                     onSelectTool(target.toolKey);
@@ -715,6 +839,69 @@ export const AgentMatrixLobby: React.FC<AgentMatrixLobbyProps> = ({
           </div>
         </div>
       </div>
+
+      {/* ── 单客户端连通性测试与配置终端模态框 ── */}
+      {activeTerminalTarget && (
+        <TerminalTestModal
+          open={Boolean(activeTerminalTarget)}
+          onClose={() => setActiveTerminalTarget(null)}
+          type={activeTerminalTarget.type}
+          url={activeTerminalTarget.url}
+          apiKey={activeTerminalTarget.apiKey}
+          model={activeTerminalTarget.model}
+          cursorPayload={activeTerminalTarget.cursorPayload}
+          accioPayload={activeTerminalTarget.accioPayload}
+          workbuddyPayload={activeTerminalTarget.workbuddyPayload}
+          onSuccess={async () => {
+            if (activeTerminalTarget?.token) {
+              const { token, target } = activeTerminalTarget;
+              const bound = JSON.stringify({
+                id: token.id,
+                name: token.name,
+                group: token.group ?? undefined,
+              });
+              try {
+                localStorage.setItem(`bound_token_${target}`, bound);
+              } catch {}
+              window.dispatchEvent(
+                new CustomEvent("ai_helper_sync_all_tokens", {
+                  detail: {
+                    id: token.id,
+                    name: token.name,
+                    group: token.group ?? undefined,
+                    toolIds: [target],
+                  },
+                }),
+              );
+            }
+            if (activeTerminalTarget?.target === "cursor") {
+              try {
+                const cfg = await getCursorConfig().catch(() => null);
+                await patchCursorClient(
+                  cfg?.cursor_path || undefined,
+                  cfg?.bridge_port || 8969,
+                );
+              } catch (e) {
+                console.warn("Cursor 自动补丁告警:", e);
+              }
+            }
+            await refreshAgentStatuses();
+          }}
+        />
+      )}
+
+      {/* ── 矩阵批量一键配置与连通性测试终端模态框 ── */}
+      {batchModalOpen && (
+        <BatchTerminalModal
+          open={batchModalOpen}
+          onClose={() => setBatchModalOpen(false)}
+          targets={batchTargets}
+          onResolveKey={resolveApiKeyForTarget}
+          onSuccess={async () => {
+            await refreshAgentStatuses();
+          }}
+        />
+      )}
     </div>
   );
 };

@@ -4,6 +4,10 @@ module.exports = {
   darkMode: ["selector", ".dark"],
   theme: {
     extend: {
+      screens: {
+        // 按窗口高度响应：首页 Agent 卡片在高窗口下才启用宽松排版
+        tall: { raw: "(min-height: 820px)" },
+      },
       spacing: {
         4.5: "1.125rem",
         5.5: "1.375rem",
