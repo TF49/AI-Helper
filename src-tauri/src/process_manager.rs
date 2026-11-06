@@ -50,6 +50,11 @@ fn normalize_launch_path(app_type: &str, raw_path: &str) -> Option<String> {
 
     #[cfg(not(target_os = "windows"))]
     {
+        // `app_type` is only needed to map installation directories to
+        // executable names on Windows. Keep the parameter in the shared
+        // signature so callers remain platform-independent without tripping
+        // `-D warnings` on Unix/macOS builds.
+        let _ = app_type;
         path.exists().then(|| path.to_string_lossy().to_string())
     }
 }
