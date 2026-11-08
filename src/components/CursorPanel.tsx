@@ -54,6 +54,7 @@ import { SpotlightCard } from "./react-bits/SpotlightCard";
 import { TerminalTestModal } from "./TerminalTestModal";
 import { StepIndicator, type StepDef } from "./StepIndicator";
 import { ConfigConfirmStep } from "./ConfigConfirmStep";
+import { WorkspaceAuthManager } from "./WorkspaceAuthManager";
 
 const stepVariants = {
   enter: (dir: number) => ({ x: dir * 32, opacity: 0 }),
@@ -1019,6 +1020,9 @@ export function CursorPanel() {
             </motion.div>
           </AnimatePresence>
         )}
+
+        {/* Agent 写入授权：面板打开期间轮询待授权请求 */}
+        <WorkspaceAuthManager />
       </div>
 
       {/* ── 底部导航栏 (苹果风毛玻璃悬浮 Dock 栏) ── */}

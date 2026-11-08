@@ -160,6 +160,32 @@ pub fn workbuddy_config_path() -> Result<PathBuf, AppError> {
     workbuddy_primary_config_path()
 }
 
+type CleanFn = fn(&[u8]) -> Result<Option<Vec<u8>>, AppError>;
+
+/// Remove only legacy AI Helper-owned entries when no reset baseline exists.
+pub fn reset_legacy_configs(clean: CleanFn) -> Result<bool, AppError> {
+    let paths = transaction_paths()?;
+    with_workbuddy_transaction_mode(&paths, false, |active| {
+        let mut changed = false;
+        for path in active {
+            for target in [model_backup(path), path.clone()] {
+                if let Some(raw) = crate::safe_fs::read_optional_no_recovery_locked(&target)? {
+                    if let Some(cleaned) = clean(&raw)? {
+                        crate::safe_fs::atomic_write_locked(&target, cleaned)?;
+                        changed = true;
+                    }
+                }
+            }
+        }
+        Ok(changed)
+    })
+}
+
+pub fn prepare_for_reset() -> Result<(), AppError> {
+    let paths = transaction_paths()?;
+    with_workbuddy_transaction(&paths, |_| Ok(()))
+}
+
 /// 获取 WorkBuddy 所有可能探测和同步写入的配置文件候选路径
 /// 包含官方标准路径 ~/.workbuddy/models.json 以及兼容历史/特定版本的 ~/.workbuddy-ai/models.json
 pub fn get_all_workbuddy_config_paths() -> Vec<PathBuf> {
@@ -558,6 +584,40 @@ fn with_workbuddy_transaction<T>(
     paths: &WorkbuddyPaths,
     operation: impl FnOnce(&[PathBuf]) -> Result<T, AppError>,
 ) -> Result<T, AppError> {
+    with_workbuddy_transaction_inner(paths, true, false, |active, _, _| operation(active))
+}
+
+fn with_workbuddy_transaction_mode<T>(
+    paths: &WorkbuddyPaths,
+    recover_missing_backups: bool,
+    operation: impl FnOnce(&[PathBuf]) -> Result<T, AppError>,
+) -> Result<T, AppError> {
+    with_workbuddy_transaction_inner(paths, recover_missing_backups, false, |active, _, _| {
+        operation(active)
+    })
+}
+
+fn with_workbuddy_transaction_and_capture<T>(
+    paths: &WorkbuddyPaths,
+    operation: impl FnOnce(
+        &[PathBuf],
+        &mut Option<crate::reset::CaptureReceipt>,
+        bool,
+    ) -> Result<T, AppError>,
+) -> Result<T, AppError> {
+    with_workbuddy_transaction_inner(paths, true, true, operation)
+}
+
+fn with_workbuddy_transaction_inner<T>(
+    paths: &WorkbuddyPaths,
+    recover_missing_backups: bool,
+    capture_before_recovery: bool,
+    operation: impl FnOnce(
+        &[PathBuf],
+        &mut Option<crate::reset::CaptureReceipt>,
+        bool,
+    ) -> Result<T, AppError>,
+) -> Result<T, AppError> {
     // All application profiles share this coordinator. Configuration and backup
     // locks are acquired in one stable order, including paths in a crash journal.
     crate::safe_fs::with_file_lock(&paths.journal, || {
@@ -607,14 +667,125 @@ fn with_workbuddy_transaction<T>(
             if let Some(pending) = pending {
                 recover_transaction(&paths.journal, &pending)?;
             }
+            let mut capture = if capture_before_recovery {
+                Some(capture_reset_baseline(&active)?)
+            } else {
+                None
+            };
+            let mut recovered_missing_primary = false;
+            // Capture the exact pre-recovery primary/backup state before the
+            // generic backup recovery can recreate a missing primary file.
             // Recovery must precede the read/merge snapshot, not the final write.
-            for path in &active {
-                remove_broken_symlink_locked(path)?;
-                crate::safe_fs::recover_missing_file_locked(path)?;
+            let recovery_result = (|| {
+                for path in &active {
+                    remove_broken_symlink_locked(path)?;
+                    if recover_missing_backups {
+                        let recovering = crate::safe_fs::read_optional_no_recovery_locked(path)?
+                            .is_none()
+                            && crate::safe_fs::read_optional_no_recovery_locked(&model_backup(
+                                path,
+                            ))?
+                            .is_some();
+                        if recovering {
+                            recovered_missing_primary = true;
+                        }
+                        crate::safe_fs::recover_missing_file_locked(path)?;
+                        // Recovery is an AI Helper write. Record it like a commit
+                        // so reset can tell the materialized file apart from a
+                        // later external edit and remove it again.
+                        if recovering && capture.is_some() {
+                            if let Some(contents) =
+                                crate::safe_fs::read_optional_no_recovery_locked(path)?
+                            {
+                                if let Err(error) =
+                                    crate::reset::record_file_write("WorkBuddy", path, &contents)
+                                {
+                                    log::warn!("WorkBuddy 恢复文件的哈希记录失败: {error}");
+                                }
+                            }
+                        }
+                    }
+                }
+                Ok::<_, AppError>(())
+            })();
+            if let Err(error) = recovery_result {
+                if let Some(capture) = capture.take() {
+                    return Err(finish_failed_config_commit(
+                        paths,
+                        capture,
+                        error,
+                        recovered_missing_primary,
+                    ));
+                }
+                return Err(error);
             }
-            operation(&active)
+            let result = operation(&active, &mut capture, recovered_missing_primary);
+            if let Err(error) = result {
+                if let Some(capture) = capture.take() {
+                    return Err(finish_failed_config_commit(
+                        paths,
+                        capture,
+                        error,
+                        recovered_missing_primary,
+                    ));
+                }
+                return Err(error);
+            }
+            result
         })
     })
+}
+
+fn capture_reset_baseline(active: &[PathBuf]) -> Result<crate::reset::CaptureReceipt, AppError> {
+    let mut capture = crate::reset::CaptureReceipt::new("WorkBuddy");
+    for path in active {
+        if let Err(error) = crate::reset::capture_file_locked(&mut capture, path) {
+            return Err(crate::reset::discard_capture_locked(capture, error));
+        }
+    }
+    Ok(capture)
+}
+
+fn finish_failed_config_commit(
+    paths: &WorkbuddyPaths,
+    capture: crate::reset::CaptureReceipt,
+    error: AppError,
+    recovered_missing_primary: bool,
+) -> AppError {
+    // A remaining journal means commit/rollback is unresolved or its durable
+    // completion marker was ambiguous. Keep the baseline so reset can first
+    // recover that journal and then restore the original snapshot.
+    if paths.journal.exists() || recovered_missing_primary {
+        error
+    } else {
+        crate::reset::discard_capture_locked(capture, error)
+    }
+}
+
+fn validate_reset_capture_snapshot(
+    documents: &[ModelDocument],
+    capture: &crate::reset::CaptureReceipt,
+    recovered_missing_primary: bool,
+) -> Result<(), AppError> {
+    for document in documents {
+        let backup = model_backup(&document.path);
+        if let Some(expected_backup) = capture.captured_file(&backup) {
+            if read_optional_bytes(&backup)? != expected_backup {
+                return Err(transaction_conflict(&backup));
+            }
+        }
+        if let Some(captured) = capture.captured_file(&document.path) {
+            let expected = if recovered_missing_primary && captured.is_none() {
+                capture.captured_file(&backup).flatten()
+            } else {
+                captured
+            };
+            if document.raw != expected {
+                return Err(transaction_conflict(&document.path));
+            }
+        }
+    }
+    Ok(())
 }
 
 struct ModelDocument {
@@ -832,31 +1003,65 @@ fn commit_documents(
     if let Err(error) = crate::safe_fs::remove_file_locked(&paths.journal) {
         log::warn!("WorkBuddy 配置事务已提交，清理记录将在下次操作重试: {error}");
     }
+
+    // Record file write hashes for intelligent reset
+    for file in &transaction.files {
+        if let Err(e) = crate::reset::record_file_write("WorkBuddy", &file.path, &file.after) {
+            log::warn!("WorkBuddy 配置哈希记录失败: {e}");
+        }
+    }
+
     Ok(())
 }
 
 /// Read, backup recovery, merging, and synchronization share one transaction.
 pub fn read_all_workbuddy_entries() -> Result<(Vec<WorkbuddyModelEntry>, PathBuf, bool), AppError> {
     let paths = transaction_paths()?;
-    with_workbuddy_transaction(&paths, |active| {
-        let documents = load_documents(active)?;
-        let entries = aggregate_models(&documents);
-        let mut exists = documents.iter().any(|document| document.raw.is_some());
-        let needs_sync = documents.iter().any(|document| {
-            document.raw.is_none()
-                || document.entries.len() != entries.len()
-                || entries.iter().any(|entry| {
-                    !document
-                        .entries
-                        .iter()
-                        .any(|existing| existing.id == entry.id)
-                })
-        });
-        if !entries.is_empty() && needs_sync {
-            commit_documents(&paths, &documents, &entries)?;
-            exists = true;
-        }
-        Ok((entries, paths.primary.clone(), exists))
+    crate::reset::with_config_write(|| {
+        with_workbuddy_transaction_and_capture(
+            &paths,
+            |active, capture, recovered_missing_primary| {
+                let documents = load_documents(active)?;
+                if let Some(capture) = capture.as_ref() {
+                    validate_reset_capture_snapshot(
+                        &documents,
+                        capture,
+                        recovered_missing_primary,
+                    )?;
+                }
+                let entries = aggregate_models(&documents);
+                let mut exists = documents.iter().any(|document| document.raw.is_some());
+                let needs_sync = documents.iter().any(|document| {
+                    document.raw.is_none()
+                        || document.entries.len() != entries.len()
+                        || entries.iter().any(|entry| {
+                            !document
+                                .entries
+                                .iter()
+                                .any(|existing| existing.id == entry.id)
+                        })
+                });
+                if !entries.is_empty() && needs_sync {
+                    let capture = capture
+                        .take()
+                        .ok_or_else(|| AppError::Other("WorkBuddy 恢复基线未捕获".into()))?;
+                    commit_documents(&paths, &documents, &entries).map_err(|error| {
+                        finish_failed_config_commit(
+                            &paths,
+                            capture,
+                            error,
+                            recovered_missing_primary,
+                        )
+                    })?;
+                    exists = true;
+                } else if !recovered_missing_primary {
+                    if let Some(capture) = capture.take() {
+                        crate::reset::discard_capture(capture)?;
+                    }
+                }
+                Ok((entries, paths.primary.clone(), exists))
+            },
+        )
     })
 }
 
@@ -1002,18 +1207,27 @@ pub fn get_workbuddy_config() -> Result<WorkbuddyUIConfig, AppError> {
 }
 
 pub fn set_workbuddy_config(payload: WorkbuddySavePayload) -> Result<(), AppError> {
-    set_workbuddy_config_inner(payload, false)
+    set_workbuddy_config_inner(payload, false, None)
 }
 
 /// 一键配置专用：写入模型后将其提升为列表首项，使 `get_workbuddy_config`
 /// 和 WorkBuddy 默认选中同一个推荐模型，同时保留其他手动模型。
+#[cfg(test)]
 pub(crate) fn set_workbuddy_default_config(payload: WorkbuddySavePayload) -> Result<(), AppError> {
-    set_workbuddy_config_inner(payload, true)
+    set_workbuddy_config_inner(payload, true, None)
+}
+
+pub(crate) fn set_workbuddy_default_config_at_generation(
+    payload: WorkbuddySavePayload,
+    generation: u64,
+) -> Result<(), AppError> {
+    set_workbuddy_config_inner(payload, true, Some(generation))
 }
 
 fn set_workbuddy_config_inner(
     payload: WorkbuddySavePayload,
     make_default: bool,
+    generation: Option<u64>,
 ) -> Result<(), AppError> {
     crate::credential_policy::validate_key_destination(
         &payload.api_key,
@@ -1024,106 +1238,157 @@ fn set_workbuddy_config_inner(
     .map_err(|e| AppError::Other(e.to_string()))?;
 
     let paths = transaction_paths()?;
-    with_workbuddy_transaction(&paths, |active| {
-        let documents = load_documents(active)?;
-        let mut entries = aggregate_models(&documents);
-        let normalized_url = if payload.use_custom_protocol {
-            payload.url.trim().to_string()
-        } else {
-            let trimmed = payload.url.trim().trim_end_matches('/');
-            if trimmed.ends_with("/v1") {
-                trimmed.to_string()
-            } else {
-                format!("{}/v1", trimmed)
-            }
-        };
+    let operation = || {
+        with_workbuddy_transaction_and_capture(
+            &paths,
+            |active, capture, recovered_missing_primary| {
+                let documents = load_documents(active)?;
+                if let Some(capture) = capture.as_ref() {
+                    validate_reset_capture_snapshot(
+                        &documents,
+                        capture,
+                        recovered_missing_primary,
+                    )?;
+                }
+                let mut entries = aggregate_models(&documents);
+                let normalized_url = if payload.use_custom_protocol {
+                    payload.url.trim().to_string()
+                } else {
+                    let trimmed = payload.url.trim().trim_end_matches('/');
+                    if trimmed.ends_with("/v1") {
+                        trimmed.to_string()
+                    } else {
+                        format!("{}/v1", trimmed)
+                    }
+                };
 
-        let model_id = payload.model.trim().to_string();
+                let model_id = payload.model.trim().to_string();
 
-        let reasoning_config = if payload.supports_reasoning {
-            Some(WorkbuddyReasoning {
-                supported_efforts: if payload.supported_efforts.is_empty() {
+                let reasoning_config = if payload.supports_reasoning {
+                    Some(WorkbuddyReasoning {
+                        supported_efforts: if payload.supported_efforts.is_empty() {
+                            None
+                        } else {
+                            Some(payload.supported_efforts)
+                        },
+                        default_effort: if payload
+                            .default_effort
+                            .as_deref()
+                            .unwrap_or("")
+                            .is_empty()
+                        {
+                            None
+                        } else {
+                            payload.default_effort
+                        },
+                        can_disable_thinking: if payload.can_disable_thinking {
+                            None // WorkBuddy 默认为 true
+                        } else {
+                            Some(false)
+                        },
+                        extra: serde_json::Map::new(),
+                    })
+                } else {
                     None
-                } else {
-                    Some(payload.supported_efforts)
-                },
-                default_effort: if payload.default_effort.as_deref().unwrap_or("").is_empty() {
-                    None
-                } else {
-                    payload.default_effort
-                },
-                can_disable_thinking: if payload.can_disable_thinking {
-                    None // WorkBuddy 默认为 true
-                } else {
-                    Some(false)
-                },
-                extra: serde_json::Map::new(),
-            })
-        } else {
-            None
-        };
+                };
 
-        let new_entry = WorkbuddyModelEntry {
-            id: model_id.clone(),
-            name: model_id.clone(),
-            vendor: "Custom".to_string(),
-            url: normalized_url,
-            api: Some("openai-responses".to_string()),
-            api_key: if payload.api_key.trim().is_empty() {
-                None
-            } else {
-                Some(payload.api_key.trim().to_string())
+                let new_entry = WorkbuddyModelEntry {
+                    id: model_id.clone(),
+                    name: model_id.clone(),
+                    vendor: "Custom".to_string(),
+                    url: normalized_url,
+                    api: Some("openai-responses".to_string()),
+                    api_key: if payload.api_key.trim().is_empty() {
+                        None
+                    } else {
+                        Some(payload.api_key.trim().to_string())
+                    },
+                    supports_tool_call: payload.supports_tool_call,
+                    supports_images: payload.supports_images,
+                    supports_reasoning: payload.supports_reasoning,
+                    only_reasoning: if payload.only_reasoning {
+                        Some(true)
+                    } else {
+                        None
+                    },
+                    use_custom_protocol: payload.use_custom_protocol,
+                    reasoning: reasoning_config,
+                    max_input_tokens: payload.max_input_tokens,
+                    max_output_tokens: payload.max_output_tokens,
+                    temperature: None,
+                    disabled: None,
+                    extra: serde_json::Map::new(),
+                };
+
+                // 普通保存维持“更新原位置 / 新模型追加”的既有行为；一键配置则把目标模型
+                // 提升到首项，因为 WorkBuddy 与本应用都以首个 Custom 模型作为默认项。
+                if let Some(idx) = entries.iter().position(|e| e.id == model_id) {
+                    let mut updated = new_entry;
+                    preserve_unmanaged_fields(&mut updated, &entries[idx]);
+                    if make_default {
+                        entries.remove(idx);
+                        entries.insert(0, updated);
+                    } else {
+                        entries[idx] = updated;
+                    }
+                } else if make_default {
+                    entries.insert(0, new_entry);
+                } else {
+                    entries.push(new_entry);
+                }
+
+                let capture = capture
+                    .take()
+                    .ok_or_else(|| AppError::Other("WorkBuddy 恢复基线未捕获".into()))?;
+                commit_documents(&paths, &documents, &entries).map_err(|error| {
+                    finish_failed_config_commit(&paths, capture, error, recovered_missing_primary)
+                })?;
+                Ok(())
             },
-            supports_tool_call: payload.supports_tool_call,
-            supports_images: payload.supports_images,
-            supports_reasoning: payload.supports_reasoning,
-            only_reasoning: if payload.only_reasoning {
-                Some(true)
-            } else {
-                None
-            },
-            use_custom_protocol: payload.use_custom_protocol,
-            reasoning: reasoning_config,
-            max_input_tokens: payload.max_input_tokens,
-            max_output_tokens: payload.max_output_tokens,
-            temperature: None,
-            disabled: None,
-            extra: serde_json::Map::new(),
-        };
-
-        // 普通保存维持“更新原位置 / 新模型追加”的既有行为；一键配置则把目标模型
-        // 提升到首项，因为 WorkBuddy 与本应用都以首个 Custom 模型作为默认项。
-        if let Some(idx) = entries.iter().position(|e| e.id == model_id) {
-            let mut updated = new_entry;
-            preserve_unmanaged_fields(&mut updated, &entries[idx]);
-            if make_default {
-                entries.remove(idx);
-                entries.insert(0, updated);
-            } else {
-                entries[idx] = updated;
-            }
-        } else if make_default {
-            entries.insert(0, new_entry);
-        } else {
-            entries.push(new_entry);
-        }
-
-        commit_documents(&paths, &documents, &entries)?;
-        Ok(())
-    })
+        )
+    };
+    if let Some(generation) = generation {
+        crate::reset::with_config_write_at_generation(generation, operation)
+    } else {
+        crate::reset::with_config_write(operation)
+    }
 }
 
 pub fn delete_workbuddy_model(model_id: String) -> Result<Vec<WorkbuddyModelEntry>, AppError> {
     let paths = transaction_paths()?;
-    with_workbuddy_transaction(&paths, |active| {
-        let documents = load_documents(active)?;
-        let mut entries = aggregate_models(&documents);
-        let original_len = entries.len();
-        entries.retain(|entry| entry.id != model_id.trim());
-        if entries.len() != original_len {
-            commit_documents(&paths, &documents, &entries)?;
-        }
-        Ok(entries)
+    crate::reset::with_config_write(|| {
+        with_workbuddy_transaction_and_capture(
+            &paths,
+            |active, capture, recovered_missing_primary| {
+                let documents = load_documents(active)?;
+                if let Some(capture) = capture.as_ref() {
+                    validate_reset_capture_snapshot(
+                        &documents,
+                        capture,
+                        recovered_missing_primary,
+                    )?;
+                }
+                let mut entries = aggregate_models(&documents);
+                let original_len = entries.len();
+                entries.retain(|entry| entry.id != model_id.trim());
+                if entries.len() != original_len {
+                    let capture = capture
+                        .take()
+                        .ok_or_else(|| AppError::Other("WorkBuddy 恢复基线未捕获".into()))?;
+                    commit_documents(&paths, &documents, &entries).map_err(|error| {
+                        finish_failed_config_commit(
+                            &paths,
+                            capture,
+                            error,
+                            recovered_missing_primary,
+                        )
+                    })?;
+                } else if let Some(capture) = capture.take() {
+                    crate::reset::discard_capture(capture)?;
+                }
+                Ok(entries)
+            },
+        )
     })
 }
 
@@ -1162,6 +1427,110 @@ mod tests {
             max_input_tokens: Some(32768),
             max_output_tokens: Some(4096),
         }
+    }
+
+    #[test]
+    fn legacy_reset_cleans_both_workbuddy_profiles_and_backups() {
+        let directory = tempfile::tempdir().unwrap();
+        let standard = directory.path().join(".workbuddy/models.json");
+        let compatibility = directory.path().join(".workbuddy-ai/models.json");
+        std::fs::create_dir_all(standard.parent().unwrap()).unwrap();
+        std::fs::create_dir_all(compatibility.parent().unwrap()).unwrap();
+        let contents = serde_json::to_vec(&serde_json::json!([
+            {"id":"managed", "vendor":"Custom", "url":"https://bob-api.com/v1", "apiKey":"secret"},
+            {"id":"native", "vendor":"Anthropic", "url":"https://api.anthropic.com"}
+        ]))
+        .unwrap();
+        std::fs::write(&standard, &contents).unwrap();
+        std::fs::write(model_backup(&standard), &contents).unwrap();
+        std::fs::write(&compatibility, &contents).unwrap();
+
+        let changed = in_profile(directory.path(), || {
+            reset_legacy_configs(crate::reset::clean_legacy_workbuddy).unwrap()
+        });
+
+        assert!(changed);
+        for path in [&standard, &compatibility, &model_backup(&standard)] {
+            let value: serde_json::Value =
+                serde_json::from_slice(&std::fs::read(path).unwrap()).unwrap();
+            assert_eq!(value.as_array().unwrap().len(), 1);
+            assert_eq!(value[0]["id"], "native");
+        }
+    }
+
+    #[test]
+    fn legacy_reset_does_not_recreate_a_missing_primary_from_backup() {
+        let directory = tempfile::tempdir().unwrap();
+        let primary = directory.path().join(".workbuddy/models.json");
+        let backup = model_backup(&primary);
+        std::fs::create_dir_all(primary.parent().unwrap()).unwrap();
+        let native = serde_json::to_vec(&serde_json::json!([
+            {"id":"native", "vendor":"Anthropic", "url":"https://api.anthropic.com"}
+        ]))
+        .unwrap();
+        std::fs::write(&backup, &native).unwrap();
+
+        let changed = in_profile(directory.path(), || {
+            reset_legacy_configs(crate::reset::clean_legacy_workbuddy).unwrap()
+        });
+
+        assert!(!changed);
+        assert!(!primary.exists());
+        assert_eq!(std::fs::read(backup).unwrap(), native);
+    }
+
+    #[test]
+    fn read_recovery_keeps_original_missing_primary_in_reset_baseline() {
+        let directory = tempfile::tempdir().unwrap();
+        let primary = directory.path().join(".workbuddy/models.json");
+        let backup = model_backup(&primary);
+        std::fs::create_dir_all(primary.parent().unwrap()).unwrap();
+        let original_backup = serde_json::to_vec(&serde_json::json!([
+            {"id":"native", "name":"native", "vendor":"Anthropic", "url":"https://api.anthropic.com"}
+        ]))
+        .unwrap();
+        std::fs::write(&backup, &original_backup).unwrap();
+
+        let state_path = directory.path().join("reset-state.json");
+        crate::reset::with_test_state_path(&state_path, || {
+            in_profile(directory.path(), || {
+                let (_, _, _) = read_all_workbuddy_entries().unwrap();
+                assert!(primary.exists()); // normal backup recovery materialized it
+                crate::reset::restore_client_for_test("WorkBuddy").unwrap();
+            })
+        });
+
+        assert!(!primary.exists());
+        assert_eq!(std::fs::read(backup).unwrap(), original_backup);
+    }
+
+    #[test]
+    fn capture_snapshot_rejects_an_intervening_external_profile_edit() {
+        let directory = tempfile::tempdir().unwrap();
+        let profile = directory.path().join(".workbuddy/models.json");
+        std::fs::create_dir_all(profile.parent().unwrap()).unwrap();
+        std::fs::write(&profile, b"before capture").unwrap();
+        let state_path = directory.path().join("reset-state.json");
+
+        crate::reset::with_test_state_path(&state_path, || {
+            in_profile(directory.path(), || {
+                let paths = transaction_paths().unwrap();
+                let active = vec![profile.clone()];
+                let capture = capture_reset_baseline(&active).unwrap();
+                let externally_updated = b"external edit".to_vec();
+                std::fs::write(&profile, &externally_updated).unwrap();
+                let document = ModelDocument {
+                    path: profile.clone(),
+                    raw: Some(externally_updated),
+                    value: serde_json::json!([]),
+                    entries: Vec::new(),
+                };
+
+                assert!(validate_reset_capture_snapshot(&[document], &capture, false).is_err());
+                crate::reset::discard_capture(capture).unwrap();
+                assert!(!paths.journal.exists());
+            })
+        });
     }
 
     fn profiles(root: &std::path::Path) -> [PathBuf; 2] {
@@ -1528,6 +1897,40 @@ mod tests {
             read_all_workbuddy_entries().unwrap();
             assert!(!paths.journal.exists());
             for (index, path) in profiles(directory.path()).iter().enumerate() {
+                assert_eq!(std::fs::read(path).unwrap(), before[index]);
+            }
+        });
+    }
+
+    #[test]
+    fn reset_preparation_resolves_a_prepared_transaction_before_baseline_restore() {
+        let directory = tempfile::tempdir().unwrap();
+        let before = fixture(directory.path());
+        in_profile(directory.path(), || {
+            let paths = transaction_paths().unwrap();
+            let transaction = WorkbuddyTransaction {
+                version: 2,
+                phase: TransactionPhase::Prepared,
+                files: paths
+                    .candidates
+                    .iter()
+                    .enumerate()
+                    .map(|(index, path)| FileChange {
+                        path: path.clone(),
+                        before: Some(before[index].clone()),
+                        after: b"[]".to_vec(),
+                    })
+                    .collect(),
+                read_dependencies: Vec::new(),
+            };
+            std::fs::create_dir_all(paths.journal.parent().unwrap()).unwrap();
+            std::fs::write(&paths.journal, serde_json::to_vec(&transaction).unwrap()).unwrap();
+            std::fs::write(&paths.candidates[0], b"[]").unwrap();
+
+            prepare_for_reset().unwrap();
+
+            assert!(!paths.journal.exists());
+            for (index, path) in paths.candidates.iter().enumerate() {
                 assert_eq!(std::fs::read(path).unwrap(), before[index]);
             }
         });

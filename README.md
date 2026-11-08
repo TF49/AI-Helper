@@ -113,6 +113,7 @@ Cursor 使用 Connect-RPC / HTTP2 等内部协议，不能只靠修改一个 Ope
 - 提供可用模型与默认模型信息；
 - 检查 Bridge 状态、端口和客户端完整性；
 - 备份并还原被修改的客户端文件与本地状态。
+- 让 Cursor Agent 在当前工作区读取、搜索和查看图片；修改文件前需要在面板中授权该工作区。
 
 关闭主窗口后，AI Helper 可以留在系统托盘中继续维持 Bridge 运行。
 
@@ -172,8 +173,10 @@ AI Helper 会修改本地 Agent 配置，因此写入和凭据流向是项目的
 - 🔐 **系统级凭据保护**：Windows 使用 DPAPI；macOS 和 Linux 使用 Keychain / Secret Service 引用保护会话信息，不在应用目录维护自有明文密钥文件。
 - 🛡️ **凭据出口策略**：受管 API Key 只能发送到允许的精确 Origin；外部地址需要用户确认，并默认要求 HTTPS，本地回环地址按 Bridge 场景单独处理。
 - 💾 **原子写入与恢复**：配置写入使用文件锁、临时文件替换和备份恢复，降低进程中断或磁盘异常造成配置损坏的风险。
+- ♻️ **一键恢复客户端原生配置**：设置页可停止 Cursor / Accio Bridge、恢复 Cursor 补丁，并恢复 Codex、Claude Code 与 WorkBuddy 首次由 AI Helper 修改前的配置快照。旧版本没有快照时，只清理可识别的受管配置；被覆盖的旧值无法推断恢复。快照保存在用户目录下的 `.ai-helper/reset_state.json`，并沿用本地配置文件的访问保护。
 - 🧩 **保留用户配置**：Codex、Claude 和 WorkBuddy 采用合并写入，只更新 AI Helper 管理的字段。Cursor 修补提供状态检查、备份和还原。
-- 🌉 **本地 Bridge 防护**：实例令牌、Host / Origin 校验、速率限制与载荷上限共同限制本地代理入口。
+- 🌉 **本地 Bridge 防护**：Accio Work Bridge 使用实例令牌、Host / Origin 校验、速率限制与载荷上限限制本地代理入口。Cursor Bridge 在每条连接的第一个请求上，根据对端端口找到发起连接的进程，只接受与 AI Helper 属于同一系统用户的进程（Windows 比较进程令牌 SID，Linux 读取 `/proc/net/tcp`，macOS 使用 libproc）；无法确认时一律拒绝，并叠加 Host / Origin 与 Content-Type 校验。
+- 📂 **Cursor Agent 工作区授权**：Agent 只把 Cursor 提供的工作区目录作为根，拒绝磁盘根目录、用户主目录本身和 `~/.ai-helper`。读取文件不需要授权；写入、替换、新建目录和删除必须先在 Cursor 面板的「Agent 工作区授权」中允许对应工作区，授权保存在 `~/.ai-helper/agent_workspaces.json`，可随时撤销，一键恢复时一并清除。删除只会移入系统回收站，任何 `.git` 目录都禁止修改。
 - ✅ **可信更新**：更新清单和安装包经过签名、SHA-256 与防回滚检查后才会进入安装流程。
 
 建议始终从 [AI Helper 官网](https://helper.bob-api.com) 或 [GitHub Releases](https://github.com/TF49/AI-Helper/releases) 下载客户端，不要运行来源不明的二次打包版本。
@@ -306,7 +309,6 @@ The app manages API endpoints, API keys, models, local configuration files, appl
 ## 文档、贡献与许可 📚
 
 - [v1.0.76 发布说明](./docs/releases/v1.0.76.md)
-- [用户迁移指南](./docs/USER_MIGRATION_GUIDE.md)
 - [安全文档](./docs/security/)
 - [问题与功能建议](https://github.com/TF49/AI-Helper/issues)
 - [版本发布页](https://github.com/TF49/AI-Helper/releases)

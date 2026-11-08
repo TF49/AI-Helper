@@ -26,6 +26,11 @@ pub const MAX_TOTAL_CONTEXT_BYTES: usize = 200_000;
 pub const MAX_SSE_LINE_BYTES: usize = 1024 * 1024;
 /// 单次生成最大输出字节数（10MB），防止异常上游持续输出
 pub const MAX_GENERATION_BYTES: usize = 10 * 1024 * 1024;
+/// conversation_id / message_id 的最大字节数，超出视为无效标识
+pub const MAX_CONVERSATION_ID_BYTES: usize = 256;
+const MAX_MESSAGE_ID_BYTES: usize = 256;
+/// 结构摘要最多列出的字段数
+const MAX_WIRE_SHAPE_FIELDS: usize = 24;
 
 /// 用户上传或粘贴的图像上下文
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -383,8 +388,32 @@ pub mod proto {
     pub struct UserMessageAction {
         #[prost(message, optional, tag = "1")]
         pub user_message: Option<UserMessage>,
+        #[prost(message, optional, tag = "2")]
+        pub request_context: Option<RequestContext>,
         #[prost(message, optional, tag = "7")]
         pub conversation_history: Option<ConversationHistory>,
+    }
+
+    #[derive(Clone, PartialEq, ::prost::Message)]
+    pub struct RequestContext {
+        #[prost(message, optional, tag = "4")]
+        pub env: Option<RequestContextEnv>,
+    }
+
+    #[derive(Clone, PartialEq, ::prost::Message)]
+    pub struct RequestContextEnv {
+        #[prost(string, tag = "1")]
+        pub os_version: String,
+        #[prost(string, repeated, tag = "2")]
+        pub workspace_paths: Vec<String>,
+        #[prost(string, tag = "3")]
+        pub shell: String,
+        #[prost(bool, tag = "5")]
+        pub sandbox_enabled: bool,
+        #[prost(string, tag = "11")]
+        pub project_folder: String,
+        #[prost(string, optional, tag = "21")]
+        pub process_working_directory: Option<String>,
     }
 
     #[derive(Clone, PartialEq, ::prost::Message)]
@@ -1044,6 +1073,36 @@ pub fn decode_connect_or_json(bytes: &[u8]) -> Option<Value> {
     serde_json::from_slice::<Value>(slice).ok()
 }
 
+/// BidiAppend 中实际解出的消息类型，用于区分用户轮次与协议控制包。
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum BidiMessageKind {
+    /// AgentClientMessage.run_request / 裸 AgentRunRequest
+    RunRequest,
+    /// AgentClientMessage.conversation_action
+    ConversationAction,
+    /// JSON 形式的请求
+    Json,
+    /// 只有 request_id 的控制包（心跳、KV、exec 等未建模消息）
+    #[default]
+    Control,
+}
+
+impl BidiMessageKind {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::RunRequest => "run_request",
+            Self::ConversationAction => "conversation_action",
+            Self::Json => "json",
+            Self::Control => "control",
+        }
+    }
+
+    /// 是否携带了用户轮次内容（而非纯协议控制包）
+    pub fn carries_turn(self) -> bool {
+        !matches!(self, Self::Control)
+    }
+}
+
 /// 解析上行的 BidiAppend 请求消息内容
 #[derive(Clone, Debug, Default)]
 pub struct DecodedBidiMessage {
@@ -1051,8 +1110,13 @@ pub struct DecodedBidiMessage {
     pub seqno: i64,
     pub user_text: String,
     pub model: Option<String>,
-    #[allow(dead_code)]
     pub conversation_id: Option<String>,
+    /// 当前用户消息的 message_id（用于识别重新生成/编辑旧消息）
+    pub message_id: Option<String>,
+    /// 解出的消息类型
+    pub kind: BidiMessageKind,
+    /// 仅含字段 tag 号与长度的结构摘要（不含任何正文），用于诊断协议差异
+    pub wire_shape: String,
     /// 多轮历史对话 [(role, text)]，例如 ("user", "..."), ("assistant", "...")
     pub history: Vec<(String, String)>,
     /// 附加的上下文文件 [(path, content)]
@@ -1065,6 +1129,14 @@ pub struct DecodedBidiMessage {
     pub extra_context: Vec<String>,
     /// 当前请求附带的用户上传/粘贴图片
     pub images: Vec<CursorImageData>,
+    /// Cursor 当前工作区根目录。Agent 工具只能访问这些目录。
+    pub workspace_paths: Vec<String>,
+    /// Cursor 当前使用的 shell 描述。
+    pub shell: Option<String>,
+    /// Cursor 当前项目目录（在部分版本中比 workspace_paths 更稳定）。
+    pub project_folder: Option<String>,
+    /// Cursor Agent 进程的工作目录。
+    pub process_working_directory: Option<String>,
 }
 
 /// 解析 AgentRunRequest 核心内容（提取历史对话、用户消息与工作区上下文）
@@ -1073,7 +1145,9 @@ pub fn parse_agent_run_request(
     request_id: String,
     seqno: i64,
 ) -> DecodedBidiMessage {
-    let conversation_id = run_req.conversation_id;
+    let conversation_id = run_req
+        .conversation_id
+        .filter(|id| !id.trim().is_empty() && id.len() <= MAX_CONVERSATION_ID_BYTES);
     let model = run_req
         .requested_model
         .map(|m| m.model_id)
@@ -1092,9 +1166,30 @@ pub fn parse_agent_run_request(
     let mut context_rules = Vec::new();
     let mut extra_context = Vec::new();
     let mut images = Vec::new();
+    let mut workspace_paths = Vec::new();
+    let mut shell = None;
+    let mut project_folder = None;
+    let mut process_working_directory = None;
+    let mut message_id = None;
 
     if let Some(action) = run_req.action {
         if let Some(user_action) = action.user_message_action {
+            if let Some(request_context) = user_action.request_context {
+                if let Some(env) = request_context.env {
+                    workspace_paths = env
+                        .workspace_paths
+                        .into_iter()
+                        .filter(|path| !path.trim().is_empty())
+                        .collect();
+                    shell = (!env.shell.trim().is_empty()).then_some(env.shell);
+                    project_folder =
+                        (!env.project_folder.trim().is_empty()).then_some(env.project_folder);
+                    process_working_directory = env
+                        .process_working_directory
+                        .filter(|path| !path.trim().is_empty());
+                }
+            }
+
             // 1. 提取多轮历史对话
             if let Some(hist) = user_action.conversation_history {
                 for item in hist.messages {
@@ -1153,6 +1248,8 @@ pub fn parse_agent_run_request(
             // 2. 提取当前轮次用户输入及 SelectedContext (带安全上限保护)
             if let Some(u_msg) = user_action.user_message {
                 user_text = u_msg.text;
+                message_id = Some(u_msg.message_id)
+                    .filter(|id| !id.trim().is_empty() && id.len() <= MAX_MESSAGE_ID_BYTES);
 
                 if let Some(sel) = u_msg.selected_context {
                     for img in sel.selected_images.into_iter().take(MAX_IMAGES_COUNT) {
@@ -1250,18 +1347,197 @@ pub fn parse_agent_run_request(
         user_text,
         model,
         conversation_id,
+        message_id,
+        kind: BidiMessageKind::RunRequest,
+        wire_shape: String::new(),
         history,
         context_files,
         context_codes,
         context_rules,
         extra_context,
         images,
+        workspace_paths,
+        shell,
+        project_folder,
+        process_working_directory,
     }
+}
+
+/// 读取一个 protobuf varint
+fn read_proto_varint(bytes: &[u8], pos: &mut usize) -> Option<u64> {
+    let mut value = 0u64;
+    for shift in (0..64).step_by(7) {
+        let byte = *bytes.get(*pos)?;
+        *pos += 1;
+        value |= u64::from(byte & 0x7f) << shift;
+        if byte & 0x80 == 0 {
+            return Some(value);
+        }
+    }
+    None
+}
+
+/// protobuf 顶层字段的位置信息（不含字段内容）
+struct ProtoField {
+    tag: u32,
+    wire_type: u8,
+    start: usize,
+    len: usize,
+}
+
+/// 扫描 protobuf 消息的顶层字段；遇到非法编码返回 None。
+fn scan_proto_fields(bytes: &[u8]) -> Option<Vec<ProtoField>> {
+    let mut fields = Vec::new();
+    let mut pos = 0;
+    while pos < bytes.len() {
+        let key = read_proto_varint(bytes, &mut pos)?;
+        let tag = u32::try_from(key >> 3).ok().filter(|tag| *tag > 0)?;
+        let wire_type = (key & 0x7) as u8;
+        let (start, len) = match wire_type {
+            0 => {
+                let start = pos;
+                read_proto_varint(bytes, &mut pos)?;
+                (start, pos - start)
+            }
+            1 | 5 => {
+                let len = if wire_type == 1 { 8 } else { 4 };
+                let start = pos;
+                pos = pos.checked_add(len).filter(|end| *end <= bytes.len())?;
+                (start, len)
+            }
+            2 => {
+                let len = usize::try_from(read_proto_varint(bytes, &mut pos)?).ok()?;
+                let start = pos;
+                pos = pos.checked_add(len).filter(|end| *end <= bytes.len())?;
+                (start, len)
+            }
+            _ => return None,
+        };
+        fields.push(ProtoField {
+            tag,
+            wire_type,
+            start,
+            len,
+        });
+    }
+    Some(fields)
+}
+
+/// 生成形如 `1:L120,5:L36,9:V` 的字段摘要，只包含 tag 号、类型与长度。
+fn proto_shape(bytes: &[u8]) -> String {
+    let Some(fields) = scan_proto_fields(bytes) else {
+        return format!("?{}", bytes.len());
+    };
+    let mut parts: Vec<String> = fields
+        .iter()
+        .take(MAX_WIRE_SHAPE_FIELDS)
+        .map(|field| match field.wire_type {
+            2 => format!("{}:L{}", field.tag, field.len),
+            0 => format!("{}:V", field.tag),
+            1 => format!("{}:F64", field.tag),
+            _ => format!("{}:F32", field.tag),
+        })
+        .collect();
+    if fields.len() > MAX_WIRE_SHAPE_FIELDS {
+        parts.push(format!("+{}", fields.len() - MAX_WIRE_SHAPE_FIELDS));
+    }
+    parts.join(",")
+}
+
+/// 取出指定 tag 的嵌套消息字节（protobuf 语义下取最后一次出现）。
+fn proto_sub_message(bytes: &[u8], tag: u32) -> Option<&[u8]> {
+    scan_proto_fields(bytes)?
+        .into_iter()
+        .rev()
+        .find(|field| field.tag == tag && field.wire_type == 2)
+        .map(|field| &bytes[field.start..field.start + field.len])
+}
+
+/// 描述 AgentClientMessage 及其关键嵌套消息的结构（不含任何正文）。
+/// 用于在日志中确认 Cursor 实际通过哪些字段发送历史，例如
+/// `client[1:L900] run[1:L64,2:L800,5:L36] action[1:L790] uma[1:L40,2:L700]`。
+pub fn describe_agent_client_message(bytes: &[u8]) -> String {
+    let mut parts = vec![format!("client[{}]", proto_shape(bytes))];
+    let run = proto_sub_message(bytes, 1);
+    if let Some(run) = run {
+        parts.push(format!("run[{}]", proto_shape(run)));
+    }
+    let action = run
+        .and_then(|run| proto_sub_message(run, 2))
+        .or_else(|| proto_sub_message(bytes, 4));
+    if let Some(action) = action {
+        parts.push(format!("action[{}]", proto_shape(action)));
+        if let Some(user_action) = proto_sub_message(action, 1) {
+            parts.push(format!("uma[{}]", proto_shape(user_action)));
+            if let Some(message) = proto_sub_message(user_action, 1) {
+                parts.push(format!("msg[{}]", proto_shape(message)));
+            }
+        }
+    }
+    parts.join(" ")
+}
+
+fn tagged(
+    mut msg: DecodedBidiMessage,
+    kind: BidiMessageKind,
+    wire_shape: String,
+) -> DecodedBidiMessage {
+    msg.kind = kind;
+    msg.wire_shape = wire_shape;
+    msg
+}
+
+/// 将 AgentClientMessage 解码为轮次数据；既不是 run_request 也不是
+/// conversation_action 时返回 None（由调用方按控制包处理）。
+fn decode_client_message_turn(
+    bytes: &[u8],
+    request_id: impl FnOnce(Option<&str>) -> String,
+    seqno: i64,
+) -> Option<DecodedBidiMessage> {
+    use prost::Message;
+    let client_msg = proto::AgentClientMessage::decode(bytes).ok()?;
+    if let Some(run_req) = client_msg.run_request {
+        let id = request_id(run_req.conversation_id.as_deref());
+        return Some(tagged(
+            parse_agent_run_request(run_req, id, seqno),
+            BidiMessageKind::RunRequest,
+            describe_agent_client_message(bytes),
+        ));
+    }
+    let action = client_msg.conversation_action?;
+    let run_req = proto::AgentRunRequest {
+        action: Some(action),
+        ..Default::default()
+    };
+    Some(tagged(
+        parse_agent_run_request(run_req, request_id(None), seqno),
+        BidiMessageKind::ConversationAction,
+        describe_agent_client_message(bytes),
+    ))
+}
+
+/// 将裸 AgentRunRequest 解码为轮次数据
+fn decode_bare_run_request(
+    bytes: &[u8],
+    request_id: impl FnOnce(Option<&str>) -> String,
+    seqno: i64,
+    accept_model_only: bool,
+) -> Option<DecodedBidiMessage> {
+    use prost::Message;
+    let run_req = proto::AgentRunRequest::decode(bytes).ok()?;
+    if run_req.action.is_none() && !(accept_model_only && run_req.requested_model.is_some()) {
+        return None;
+    }
+    let id = request_id(run_req.conversation_id.as_deref());
+    Some(tagged(
+        parse_agent_run_request(run_req, id, seqno),
+        BidiMessageKind::RunRequest,
+        format!("run[{}]", proto_shape(bytes)),
+    ))
 }
 
 /// 解码现代 Cursor AgentService/Run 双向流中的 AgentClientMessage
 pub fn decode_agent_client_message(bytes: &[u8]) -> Option<DecodedBidiMessage> {
-    use prost::Message;
     let decompressed = decompress_gzip_if_needed(bytes);
     let slice = decompressed.as_slice();
 
@@ -1278,36 +1554,15 @@ pub fn decode_agent_client_message(bytes: &[u8]) -> Option<DecodedBidiMessage> {
         slice.to_vec()
     };
 
-    if let Ok(client_msg) = proto::AgentClientMessage::decode(payload_bytes.as_slice()) {
-        if let Some(run_req) = client_msg.run_request {
-            let req_id = run_req
-                .conversation_id
-                .clone()
-                .unwrap_or_else(|| "run_client_req".to_string());
-            return Some(parse_agent_run_request(run_req, req_id, 0));
-        }
-        if let Some(action) = client_msg.conversation_action {
-            let run_req = proto::AgentRunRequest {
-                action: Some(action),
-                ..Default::default()
-            };
-            return Some(parse_agent_run_request(
-                run_req,
-                "run_client_req".to_string(),
-                0,
-            ));
-        }
-    }
-    if let Ok(run_req) = proto::AgentRunRequest::decode(payload_bytes.as_slice()) {
-        if run_req.action.is_some() {
-            let req_id = run_req
-                .conversation_id
-                .clone()
-                .unwrap_or_else(|| "run_client_req".to_string());
-            return Some(parse_agent_run_request(run_req, req_id, 0));
-        }
-    }
-    None
+    // Run 双向流没有 BidiRequestId；request_id 仅用于日志，不参与会话关联。
+    let run_id = |conversation_id: Option<&str>| {
+        conversation_id
+            .filter(|id| !id.is_empty())
+            .unwrap_or("run_client_req")
+            .to_string()
+    };
+    decode_client_message_turn(&payload_bytes, run_id, 0)
+        .or_else(|| decode_bare_run_request(&payload_bytes, run_id, 0, false))
 }
 
 /// 单个负载块的尝试解析
@@ -1348,77 +1603,39 @@ fn decode_single_bidi_append_payload(payload_bytes: &[u8]) -> Option<DecodedBidi
         }
 
         if let Some(ref c_bytes) = client_bytes {
-            // 尝试作为 AgentClientMessage 解包
-            if let Ok(client_msg) = proto::AgentClientMessage::decode(c_bytes.as_slice()) {
-                if let Some(run_req) = client_msg.run_request {
-                    return Some(parse_agent_run_request(
-                        run_req,
-                        request_id,
-                        req.append_seqno,
-                    ));
-                }
-                if let Some(action) = client_msg.conversation_action {
-                    let run_req = proto::AgentRunRequest {
-                        action: Some(action),
-                        ..Default::default()
-                    };
-                    return Some(parse_agent_run_request(
-                        run_req,
-                        request_id,
-                        req.append_seqno,
-                    ));
-                }
-            }
-            // 尝试直接作为 AgentRunRequest 解包
-            if let Ok(run_req) = proto::AgentRunRequest::decode(c_bytes.as_slice()) {
-                if run_req.action.is_some() || run_req.requested_model.is_some() {
-                    return Some(parse_agent_run_request(
-                        run_req,
-                        request_id,
-                        req.append_seqno,
-                    ));
-                }
+            let bidi_id = |_: Option<&str>| request_id.clone();
+            // 先作为 AgentClientMessage 解包，其次直接作为 AgentRunRequest 解包
+            if let Some(msg) = decode_client_message_turn(c_bytes, bidi_id, req.append_seqno)
+                .or_else(|| decode_bare_run_request(c_bytes, bidi_id, req.append_seqno, true))
+            {
+                return Some(msg);
             }
         }
 
         if !request_id.is_empty() {
+            // 控制包：心跳、KV、exec 等未建模的 AgentClientMessage。
+            // 保留结构摘要，便于区分“空追加包”与“未能解析的用户轮次”。
+            let wire_shape = client_bytes
+                .as_deref()
+                .map(describe_agent_client_message)
+                .unwrap_or_else(|| "empty".to_string());
             return Some(DecodedBidiMessage {
                 request_id,
                 seqno: req.append_seqno,
-                user_text: String::new(),
-                model: None,
-                conversation_id: None,
-                history: Vec::new(),
-                context_files: Vec::new(),
-                context_codes: Vec::new(),
-                context_rules: Vec::new(),
-                extra_context: Vec::new(),
-                images: Vec::new(),
+                kind: BidiMessageKind::Control,
+                wire_shape,
+                ..Default::default()
             });
         }
     }
 
-    // 2. 尝试直接作为 AgentClientMessage 解包
-    if let Ok(client_msg) = proto::AgentClientMessage::decode(payload_bytes) {
-        if let Some(run_req) = client_msg.run_request {
-            let req_id = run_req.conversation_id.clone().unwrap_or_default();
-            return Some(parse_agent_run_request(run_req, req_id, 0));
-        }
-        if let Some(action) = client_msg.conversation_action {
-            let run_req = proto::AgentRunRequest {
-                action: Some(action),
-                ..Default::default()
-            };
-            return Some(parse_agent_run_request(run_req, String::new(), 0));
-        }
-    }
-
-    // 3. 尝试直接作为 AgentRunRequest 解包
-    if let Ok(run_req) = proto::AgentRunRequest::decode(payload_bytes) {
-        if run_req.action.is_some() {
-            let req_id = run_req.conversation_id.clone().unwrap_or_default();
-            return Some(parse_agent_run_request(run_req, req_id, 0));
-        }
+    // 2. 尝试直接作为 AgentClientMessage / AgentRunRequest 解包。没有 BidiRequestId
+    // 时 request_id 留空并由 BidiAppend 处理器拒绝，不再以 conversation_id 冒充请求标识。
+    let no_id = |_: Option<&str>| String::new();
+    if let Some(msg) = decode_client_message_turn(payload_bytes, no_id, 0)
+        .or_else(|| decode_bare_run_request(payload_bytes, no_id, 0, false))
+    {
+        return Some(msg);
     }
 
     // 4. 尝试作为 JSON 解包
@@ -1476,6 +1693,49 @@ fn decode_single_bidi_append_payload(payload_bytes: &[u8]) -> Option<DecodedBidi
         let mut extra_context = Vec::new();
         let mut images = Vec::new();
         let mut total_context_bytes = 0usize;
+
+        let request_context = val
+            .get("requestContext")
+            .or_else(|| val.get("request_context"))
+            .or_else(|| val.pointer("/runRequest/action/userMessageAction/requestContext"))
+            .or_else(|| val.pointer("/run_request/action/user_message_action/request_context"));
+        let env = request_context.and_then(|ctx| ctx.get("env"));
+        let workspace_paths = env
+            .and_then(|env| {
+                env.get("workspacePaths")
+                    .or_else(|| env.get("workspace_paths"))
+            })
+            .and_then(Value::as_array)
+            .map(|paths| {
+                paths
+                    .iter()
+                    .filter_map(Value::as_str)
+                    .filter(|path| !path.trim().is_empty())
+                    .map(str::to_string)
+                    .collect::<Vec<_>>()
+            })
+            .unwrap_or_default();
+        let shell = env
+            .and_then(|env| env.get("shell"))
+            .and_then(Value::as_str)
+            .filter(|value| !value.trim().is_empty())
+            .map(str::to_string);
+        let project_folder = env
+            .and_then(|env| {
+                env.get("projectFolder")
+                    .or_else(|| env.get("project_folder"))
+            })
+            .and_then(Value::as_str)
+            .filter(|value| !value.trim().is_empty())
+            .map(str::to_string);
+        let process_working_directory = env
+            .and_then(|env| {
+                env.get("processWorkingDirectory")
+                    .or_else(|| env.get("process_working_directory"))
+            })
+            .and_then(Value::as_str)
+            .filter(|value| !value.trim().is_empty())
+            .map(str::to_string);
 
         if let Some(ctx_val) = val
             .get("selectedContext")
@@ -1636,18 +1896,37 @@ fn decode_single_bidi_append_payload(payload_bytes: &[u8]) -> Option<DecodedBidi
             || !history.is_empty()
             || !images.is_empty()
         {
+            let carries_turn =
+                !user_text.trim().is_empty() || !history.is_empty() || !images.is_empty();
+            let conversation_id = val
+                .get("conversationId")
+                .or_else(|| val.get("conversation_id"))
+                .and_then(Value::as_str)
+                .filter(|id| !id.trim().is_empty() && id.len() <= MAX_CONVERSATION_ID_BYTES)
+                .map(str::to_string);
             return Some(DecodedBidiMessage {
                 request_id,
                 seqno,
                 user_text,
                 model,
-                conversation_id: None,
+                conversation_id,
+                message_id: None,
+                kind: if carries_turn {
+                    BidiMessageKind::Json
+                } else {
+                    BidiMessageKind::Control
+                },
+                wire_shape: "json".to_string(),
                 history,
                 context_files,
                 context_codes,
                 context_rules,
                 extra_context,
                 images,
+                workspace_paths,
+                shell,
+                project_folder,
+                process_working_directory,
             });
         }
     }
@@ -1728,6 +2007,33 @@ pub fn decode_bidi_append(bytes: &[u8]) -> Option<DecodedBidiMessage> {
                     }
                     if existing.images.is_empty() && !msg.images.is_empty() {
                         existing.images = msg.images;
+                    }
+                    if existing.workspace_paths.is_empty() {
+                        existing.workspace_paths = msg.workspace_paths;
+                    }
+                    if existing.shell.is_none() {
+                        existing.shell = msg.shell;
+                    }
+                    if existing.project_folder.is_none() {
+                        existing.project_folder = msg.project_folder;
+                    }
+                    if existing.process_working_directory.is_none() {
+                        existing.process_working_directory = msg.process_working_directory;
+                    }
+                    if existing.conversation_id.is_none() {
+                        existing.conversation_id = msg.conversation_id;
+                    }
+                    if existing.message_id.is_none() {
+                        existing.message_id = msg.message_id;
+                    }
+                    if !existing.kind.carries_turn() && msg.kind.carries_turn() {
+                        existing.kind = msg.kind;
+                    }
+                    if !msg.wire_shape.is_empty() && existing.wire_shape.len() < 1024 {
+                        if !existing.wire_shape.is_empty() {
+                            existing.wire_shape.push_str(" | ");
+                        }
+                        existing.wire_shape.push_str(&msg.wire_shape);
                     }
                     if msg.seqno > existing.seqno {
                         existing.seqno = msg.seqno;
@@ -2229,6 +2535,21 @@ pub mod tests {
     }
 
     #[test]
+    fn json_selected_context_does_not_grant_its_parent_as_a_workspace() {
+        let selected_file = std::env::temp_dir().join("outside-project.txt");
+        let value = json!({
+            "requestId": "selected-file-only",
+            "text": "Summarize the attached file",
+            "selectedContext": {
+                "files": [{"path": selected_file.to_string_lossy(), "content": "data"}]
+            }
+        });
+        let decoded = decode_bidi_append(&serde_json::to_vec(&value).unwrap()).unwrap();
+        assert!(decoded.workspace_paths.is_empty());
+        assert_eq!(decoded.context_files.len(), 1);
+    }
+
+    #[test]
     fn test_truncate_with_ellipsis_short_content() {
         let short_text = "Hello World";
         let result = truncate_with_ellipsis(short_text, 100);
@@ -2305,6 +2626,16 @@ pub mod tests {
                                 }],
                             }),
                         }),
+                        request_context: Some(proto::RequestContext {
+                            env: Some(proto::RequestContextEnv {
+                                os_version: "Windows 11".into(),
+                                workspace_paths: vec!["E:/Projects/demo".into()],
+                                shell: "powershell.exe".into(),
+                                sandbox_enabled: false,
+                                project_folder: "E:/Projects/demo".into(),
+                                process_working_directory: Some("E:/Projects/demo".into()),
+                            }),
+                        }),
                         conversation_history: Some(proto::ConversationHistory {
                             messages: vec![
                                 proto::ConversationHistoryMessage {
@@ -2366,6 +2697,13 @@ pub mod tests {
         assert_eq!(decoded.user_text, "Explain async in Rust");
         assert_eq!(decoded.model, Some("claude-3-7-sonnet".to_string()));
         assert_eq!(decoded.conversation_id, Some("conv_456".to_string()));
+        assert_eq!(decoded.workspace_paths, vec!["E:/Projects/demo"]);
+        assert_eq!(decoded.project_folder.as_deref(), Some("E:/Projects/demo"));
+        assert_eq!(decoded.shell.as_deref(), Some("powershell.exe"));
+        assert_eq!(
+            decoded.process_working_directory.as_deref(),
+            Some("E:/Projects/demo")
+        );
 
         // 验证多轮历史对话
         assert_eq!(decoded.history.len(), 2);
@@ -2540,6 +2878,7 @@ pub mod tests {
                             message_id: "m1".to_string(),
                             selected_context: None,
                         }),
+                        request_context: None,
                         conversation_history: Some(proto::ConversationHistory {
                             messages: vec![proto::ConversationHistoryMessage {
                                 user: Some(proto::ConversationHistoryUserMessage {

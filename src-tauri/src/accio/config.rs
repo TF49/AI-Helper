@@ -225,9 +225,45 @@ pub fn save_accio_config(config: &AccioConfig) -> Result<(), AppError> {
     )
     .map_err(|e| AppError::Other(e.to_string()))?;
     let path = get_accio_config_path()?;
+    crate::reset::with_config_write(|| save_accio_config_unlocked(config, &path))
+}
+
+pub(crate) fn save_accio_config_at_generation(
+    config: &AccioConfig,
+    generation: u64,
+) -> Result<(), AppError> {
+    validate_official_gateway(&config.official_gateway).map_err(AppError::Other)?;
+    crate::credential_policy::validate_key_destination(
+        &config.api_key,
+        &config.base_url,
+        &crate::credential_policy::default_managed_origins(),
+        crate::credential_policy::loopback_http_allowed(),
+    )
+    .map_err(|e| AppError::Other(e.to_string()))?;
+    let path = get_accio_config_path()?;
+    crate::reset::with_config_write_at_generation(generation, || {
+        save_accio_config_unlocked(config, &path)
+    })
+}
+
+pub(crate) fn save_accio_config_unlocked(
+    config: &AccioConfig,
+    path: &std::path::Path,
+) -> Result<(), AppError> {
+    validate_official_gateway(&config.official_gateway).map_err(AppError::Other)?;
+    crate::credential_policy::validate_key_destination(
+        &config.api_key,
+        &config.base_url,
+        &crate::credential_policy::default_managed_origins(),
+        crate::credential_policy::loopback_http_allowed(),
+    )
+    .map_err(|e| AppError::Other(e.to_string()))?;
     let content = serde_json::to_string_pretty(config)?;
-    crate::safe_fs::safe_write_file(&path, content.as_bytes())?;
-    Ok(())
+    // AI Helper owns this file and reset deletes it outright, so no reset
+    // snapshot is taken (it would only duplicate the plaintext API key).
+    crate::safe_fs::with_file_lock(path, || {
+        crate::safe_fs::atomic_write_locked(path, content.as_bytes())
+    })
 }
 
 pub fn get_accio_ui_config(bridge_running: bool, actual_port: Option<u16>) -> AccioUIConfig {

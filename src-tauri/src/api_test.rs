@@ -6,6 +6,7 @@ use serde_json::json;
 use tauri::ipc::Channel;
 
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(60);
+const MAX_CURSOR_PROBE_RESPONSE_BYTES: usize = 1024 * 1024;
 
 fn test_http_client() -> Client {
     Client::builder()
@@ -626,6 +627,100 @@ fn api_root(url: &str) -> &str {
     trimmed.strip_suffix("/v1").unwrap_or(trimmed)
 }
 
+fn cursor_probe_endpoint(root: &str, responses: bool) -> String {
+    if responses {
+        format!("{root}/v1/responses")
+    } else {
+        format!("{root}/v1/chat/completions")
+    }
+}
+
+fn cursor_probe_body(model: &str, responses: bool) -> serde_json::Value {
+    const NAME: &str = "ai_helper_tool_probe";
+    const DESCRIPTION: &str =
+        "Verify that the upstream supports function calling. Do not access external resources.";
+    // Reasoning models spend part of the budget before emitting the call; 16
+    // tokens made them stop early and look like they lack tool support.
+    const MAX_OUTPUT: u32 = 256;
+    let parameters = json!({"type":"object","properties":{"ok":{"type":"boolean"}},"required":["ok"],"additionalProperties":false});
+    if responses {
+        json!({
+            "model": model,
+            "input": [{"role":"user","content":[{"type":"input_text","text":"调用探测函数并返回结果，不要只回复文本。"}]}],
+            "stream": false,
+            "tools": [{
+                "type": "function",
+                "name": NAME,
+                "description": DESCRIPTION,
+                "parameters": parameters,
+                "strict": false
+            }],
+            "tool_choice": {"type": "function", "name": NAME},
+            "max_output_tokens": MAX_OUTPUT
+        })
+    } else {
+        json!({
+            "model": model,
+            "max_tokens": MAX_OUTPUT,
+            "stream": false,
+            "messages": [{ "role": "user", "content": "调用探测函数并返回结果，不要只回复文本。" }],
+            "tools": [{
+                "type": "function",
+                "function": {"name": NAME, "description": DESCRIPTION, "parameters": parameters}
+            }],
+            "tool_choice": {"type": "function", "function": {"name": NAME}}
+        })
+    }
+}
+
+fn cursor_probe_has_tool_call(value: &serde_json::Value, responses: bool) -> bool {
+    if responses {
+        value
+            .get("output")
+            .and_then(serde_json::Value::as_array)
+            .into_iter()
+            .flatten()
+            .any(|item| {
+                item.get("type").and_then(serde_json::Value::as_str) == Some("function_call")
+                    && item.get("name").and_then(serde_json::Value::as_str)
+                        == Some("ai_helper_tool_probe")
+            })
+    } else {
+        value
+            .pointer("/choices/0/message/tool_calls")
+            .and_then(serde_json::Value::as_array)
+            .into_iter()
+            .flatten()
+            .any(|call| {
+                call.pointer("/function/name")
+                    .and_then(serde_json::Value::as_str)
+                    == Some("ai_helper_tool_probe")
+            })
+    }
+}
+
+async fn read_cursor_probe_response(mut response: reqwest::Response) -> Result<String, String> {
+    if response
+        .content_length()
+        .is_some_and(|length| length > MAX_CURSOR_PROBE_RESPONSE_BYTES as u64)
+    {
+        return Err("上游探测响应超过 1MB 限制".into());
+    }
+
+    let mut bytes = Vec::new();
+    while let Some(chunk) = response
+        .chunk()
+        .await
+        .map_err(|error| format!("读取上游探测响应失败: {error}"))?
+    {
+        if chunk.len() > MAX_CURSOR_PROBE_RESPONSE_BYTES.saturating_sub(bytes.len()) {
+            return Err("上游探测响应超过 1MB 限制".into());
+        }
+        bytes.extend_from_slice(&chunk);
+    }
+    Ok(String::from_utf8_lossy(&bytes).into_owned())
+}
+
 async fn send_test_request(request: reqwest::RequestBuilder) -> ApiTestResult {
     let start = Instant::now();
     match request.timeout(REQUEST_TIMEOUT).send().await {
@@ -906,7 +1001,8 @@ pub async fn test_cursor_stream(
         return rejected;
     }
     let root = api_root(&url);
-    let endpoint = format!("{root}/v1/chat/completions");
+    let mut use_responses = crate::cursor::agent::prefers_responses(&model);
+    let mut endpoint = cursor_probe_endpoint(root, use_responses);
     let masked_key = mask_api_key(&api_key);
 
     let _ = on_event.send(TestStreamEvent::Log {
@@ -922,20 +1018,43 @@ pub async fn test_cursor_stream(
         level: "dim".to_string(),
     });
     let _ = on_event.send(TestStreamEvent::Log {
-        text: "发送轻量握手消息: [POST /v1/chat/completions] payload: \"Hi\" (max_tokens: 16)..."
-            .to_string(),
+        text: "发送工具调用能力探测: 要求模型调用只读探测函数，验证 Cursor 项目工具所需的 Function Calling...".to_string(),
         level: "info".to_string(),
     });
 
     let client = test_http_client();
-    let request = client.post(&endpoint).bearer_auth(&api_key).json(&json!({
-        "model": model,
-        "max_tokens": 16,
-        "messages": [{ "role": "user", "content": "Hi" }],
-    }));
-
     let start = Instant::now();
-    let send_result = request.timeout(REQUEST_TIMEOUT).send().await;
+    let mut send_result = client
+        .post(&endpoint)
+        .bearer_auth(&api_key)
+        .json(&cursor_probe_body(&model, use_responses))
+        .timeout(REQUEST_TIMEOUT)
+        .send()
+        .await;
+    let fallback = use_responses
+        && send_result.as_ref().ok().is_some_and(|response| {
+            matches!(
+                response.status(),
+                StatusCode::NOT_FOUND
+                    | StatusCode::METHOD_NOT_ALLOWED
+                    | StatusCode::NOT_IMPLEMENTED
+            )
+        });
+    if fallback {
+        let _ = on_event.send(TestStreamEvent::Log {
+            text: "上游未提供 Responses 端点，按 Cursor Agent 的兼容路径改测 Chat Completions 工具调用。".into(),
+            level: "warn".into(),
+        });
+        use_responses = false;
+        endpoint = cursor_probe_endpoint(root, false);
+        send_result = client
+            .post(&endpoint)
+            .bearer_auth(&api_key)
+            .json(&cursor_probe_body(&model, use_responses))
+            .timeout(REQUEST_TIMEOUT)
+            .send()
+            .await;
+    }
     let latency_ms = start.elapsed().as_millis() as u64;
 
     match send_result {
@@ -952,7 +1071,31 @@ pub async fn test_cursor_stream(
                     level: "success".to_string(),
                 });
 
-                let body_text = response.text().await.unwrap_or_default();
+                let body_text = match read_cursor_probe_response(response).await {
+                    Ok(body) => body,
+                    Err(error) => {
+                        let _ = on_event.send(TestStreamEvent::Log {
+                            text: error.clone(),
+                            level: "error".to_string(),
+                        });
+                        let _ = on_event.send(TestStreamEvent::Finish {
+                            success: false,
+                            message: error.clone(),
+                            latency_ms,
+                            status_code: Some(status_code),
+                        });
+                        return ApiTestResult {
+                            success: false,
+                            message: error,
+                            status_code: Some(status_code),
+                            latency_ms: Some(latency_ms),
+                            response_preview: None,
+                        };
+                    }
+                };
+                let parsed: serde_json::Value =
+                    serde_json::from_str(&body_text).unwrap_or_default();
+                let tool_call = cursor_probe_has_tool_call(&parsed, use_responses);
                 let reply_preview = extract_response_text(&body_text);
 
                 if let Some(ref reply) = reply_preview {
@@ -965,22 +1108,34 @@ pub async fn test_cursor_stream(
                     });
                 }
 
+                let success = tool_call;
+                let message = if success {
+                    "连接成功，且已验证工具调用能力".to_string()
+                } else {
+                    let _ = on_event.send(TestStreamEvent::Log {
+                        text: "上游可连接，但没有返回被要求的工具调用；Cursor 将无法使用项目文件与 Agent 工具。请切换支持 OpenAI Function Calling 的模型或中转站。".to_string(),
+                        level: "error".to_string(),
+                    });
+                    "连接成功，但未验证工具调用能力".to_string()
+                };
                 let _ = on_event.send(TestStreamEvent::Finish {
-                    success: true,
-                    message: "测试成功".to_string(),
+                    success,
+                    message: message.clone(),
                     latency_ms,
                     status_code: Some(status_code),
                 });
 
                 ApiTestResult {
-                    success: true,
-                    message: "测试成功".to_string(),
+                    success,
+                    message,
                     status_code: Some(status_code),
                     latency_ms: Some(latency_ms),
                     response_preview: reply_preview,
                 }
             } else {
-                let body = response.text().await.unwrap_or_default();
+                let body = read_cursor_probe_response(response)
+                    .await
+                    .unwrap_or_else(|error| error);
                 let cleaned_body = sanitize_error(&body, &api_key);
                 let _ = on_event.send(TestStreamEvent::Log {
                     text: format!(
@@ -1059,5 +1214,48 @@ mod tests {
         crate::credential_policy::register_managed_key(managed_key);
         let res = reject_unsafe_test_target("https://bob-api.com/v1", managed_key);
         assert!(res.is_none());
+    }
+
+    #[test]
+    fn cursor_probe_uses_the_runtime_protocol_and_forces_the_probe_function() {
+        assert!(cursor_probe_endpoint("https://example.test", true).ends_with("/v1/responses"));
+        assert!(
+            cursor_probe_endpoint("https://example.test", false).ends_with("/v1/chat/completions")
+        );
+        let responses = cursor_probe_body("test-model", true);
+        assert_eq!(
+            responses["tool_choice"],
+            json!({"type":"function","name":"ai_helper_tool_probe"})
+        );
+        assert!(responses["max_output_tokens"].as_u64().unwrap() >= 256);
+        assert_eq!(responses["tools"][0]["name"], "ai_helper_tool_probe");
+
+        let chat = cursor_probe_body("test-model", false);
+        assert_eq!(
+            chat["tool_choice"],
+            json!({"type":"function","function":{"name":"ai_helper_tool_probe"}})
+        );
+        assert!(chat["max_tokens"].as_u64().unwrap() >= 256);
+        let function = chat["tools"][0]["function"].as_object().unwrap();
+        assert_eq!(function["name"], "ai_helper_tool_probe");
+        // Chat function objects carry no Responses-only fields.
+        assert!(!function.contains_key("type"));
+        assert!(!function.contains_key("strict"));
+        assert!(crate::cursor::agent::prefers_responses("gpt-5.6-sol"));
+        assert!(!crate::cursor::agent::prefers_responses("glm-5.3"));
+    }
+
+    #[test]
+    fn cursor_probe_recognizes_calls_in_both_protocol_shapes() {
+        let chat = json!({"choices":[{"message":{"tool_calls":[{
+            "function":{"name":"ai_helper_tool_probe"}
+        }]}}]});
+        let responses = json!({"output":[{
+            "type":"function_call","name":"ai_helper_tool_probe"
+        }]});
+        assert!(cursor_probe_has_tool_call(&chat, false));
+        assert!(cursor_probe_has_tool_call(&responses, true));
+        assert!(!cursor_probe_has_tool_call(&chat, true));
+        assert!(!cursor_probe_has_tool_call(&responses, false));
     }
 }

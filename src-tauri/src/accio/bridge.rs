@@ -200,6 +200,7 @@ fn cached_model_list(fingerprint: &str, allow_stale: bool) -> Option<Vec<String>
 }
 
 async fn fetch_and_cache_model_ids(config: &AccioConfig) -> Vec<String> {
+    let reset_generation = crate::reset::current_generation();
     let fingerprint = model_source_fingerprint(&config.base_url, &config.api_key);
     if config.api_key.trim().is_empty() || config.base_url.trim().is_empty() {
         return Vec::new();
@@ -212,21 +213,39 @@ async fn fetch_and_cache_model_ids(config: &AccioConfig) -> Vec<String> {
                 .map(|m| m.id.trim().to_string())
                 .filter(|id| !id.is_empty())
                 .collect();
-            remember_model_list(fingerprint.clone(), ids.clone());
-
-            // 安全写盘：重新从磁盘加载当前最新的配置，防止覆盖网络请求期间用户的新修改
-            let mut latest = load_accio_config();
-            let latest_fp = model_source_fingerprint(&latest.base_url, &latest.api_key);
-            if latest_fp == fingerprint {
-                if latest.cached_models != ids || latest.cached_models_fingerprint != fingerprint {
-                    latest.cached_models = ids.clone();
-                    latest.cached_models_fingerprint = fingerprint;
-                    if let Err(e) = save_accio_config(&latest) {
-                        log::warn!("回写 Accio 模型缓存失败: {e}");
+            // 安全写盘：重新从磁盘加载当前最新的配置，防止覆盖网络请求期间用户的新修改。
+            // 配置锁与文件 I/O 都是阻塞操作，放到阻塞线程池中执行。
+            let cache_ids = ids.clone();
+            let written = tokio::task::spawn_blocking(move || {
+                crate::reset::with_config_write_at_generation(reset_generation, || {
+                    remember_model_list(fingerprint.clone(), cache_ids.clone());
+                    let mut latest = load_accio_config();
+                    let latest_fp = model_source_fingerprint(&latest.base_url, &latest.api_key);
+                    if latest_fp == fingerprint {
+                        if latest.cached_models != cache_ids
+                            || latest.cached_models_fingerprint != fingerprint
+                        {
+                            latest.cached_models = cache_ids;
+                            latest.cached_models_fingerprint = fingerprint;
+                            if let Ok(path) = crate::accio::get_accio_config_path() {
+                                if let Err(e) =
+                                    crate::accio::config::save_accio_config_unlocked(&latest, &path)
+                                {
+                                    log::warn!("回写 Accio 模型缓存失败: {e}");
+                                }
+                            }
+                        }
+                    } else {
+                        log::debug!("用户在拉取模型期间切换了凭据，丢弃向磁盘写回旧 Key 缓存");
                     }
-                }
-            } else {
-                log::debug!("用户在拉取模型期间切换了凭据，丢弃向磁盘写回旧 Key 缓存");
+                    Ok(())
+                })
+            })
+            .await;
+            match written {
+                Ok(Ok(())) => {}
+                Ok(Err(e)) => log::warn!("回写 Accio 模型缓存前配置锁失败: {e}"),
+                Err(e) => log::warn!("回写 Accio 模型缓存任务异常: {e}"),
             }
             ids
         }
@@ -674,8 +693,20 @@ fn build_bridge_app(routes: Router) -> Router {
 }
 
 /// 启动 Accio Local Bridge 中继服务器
-pub async fn start_bridge(preferred_port: Option<u16>) -> Result<u16, String> {
+///
+/// `generation` 由属于某次配置任务的调用方传入：持有启动锁期间校验它，
+/// 使重置开始后（或已完成后）才恢复执行的过期任务无法再拉起 Bridge。
+pub async fn start_bridge(
+    preferred_port: Option<u16>,
+    generation: Option<u64>,
+) -> Result<u16, String> {
     let _start_guard = START_BRIDGE.lock().await;
+    if crate::reset::is_resetting() {
+        return Err("客户端配置正在清除，暂不能启动 Accio Bridge".into());
+    }
+    if let Some(generation) = generation {
+        crate::reset::ensure_generation(generation).map_err(|error| error.to_string())?;
+    }
 
     {
         let mut guard = RUNNING_BRIDGE.lock().unwrap();
@@ -718,7 +749,16 @@ pub async fn start_bridge(preferred_port: Option<u16>) -> Result<u16, String> {
     if target_port != config.bridge_port {
         let mut updated = config.clone();
         updated.bridge_port = target_port;
-        let _ = save_accio_config(&updated);
+        match generation {
+            // 过期任务不能回写端口，也不应继续拉起 Bridge。
+            Some(generation) => {
+                crate::accio::config::save_accio_config_at_generation(&updated, generation)
+                    .map_err(|e| format!("Accio Bridge 已切换端口，但写回配置失败: {e}"))?;
+            }
+            None => {
+                let _ = save_accio_config(&updated);
+            }
+        }
         log::info!(
             "Accio Bridge 端口已自适应切换: {} -> {}",
             config.bridge_port,
@@ -781,6 +821,19 @@ pub async fn start_bridge(preferred_port: Option<u16>) -> Result<u16, String> {
 
 /// 停止 Accio Local Bridge 服务
 pub async fn stop_bridge() -> Result<(), String> {
+    stop_bridge_inner().await
+}
+
+pub async fn stop_bridge_for_reset() -> Result<(), String> {
+    let _start_guard = START_BRIDGE.lock().await;
+    stop_bridge_inner().await?;
+    if let Ok(mut token) = INSTANCE_TOKEN.lock() {
+        *token = None;
+    }
+    Ok(())
+}
+
+async fn stop_bridge_inner() -> Result<(), String> {
     let handle_opt = {
         let mut guard = RUNNING_BRIDGE.lock().unwrap();
         guard.take()
@@ -3259,5 +3312,15 @@ mod tests {
         // Free endpoints must not be throttled by monetized limiter
         assert!(!is_monetized_bridge_path("/health"));
         assert!(!is_monetized_bridge_path("/api/llm/config/v2"));
+    }
+
+    #[tokio::test]
+    async fn stale_generation_cannot_start_bridge_after_reset() {
+        // A task that read the generation before (or during) a reset must not
+        // start the Accio bridge once that reset has finished.
+        let stale = crate::reset::current_generation();
+        drop(crate::reset::begin_reset().unwrap());
+        let error = start_bridge(Some(0), Some(stale)).await.unwrap_err();
+        assert!(error.contains("已取消过期的配置任务"), "{error}");
     }
 }

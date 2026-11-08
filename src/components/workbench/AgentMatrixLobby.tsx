@@ -33,9 +33,7 @@ import {
   startCursorBridge,
   getCursorPatchStatus,
   patchCursorClient,
-  getUserTokens,
-  getTokenKey,
-  createUserToken,
+  ensureUserToken,
   restartTargetApp,
 } from "../../lib/api";
 import { useAuth } from "../../lib/useAuth";
@@ -138,6 +136,7 @@ export const AgentMatrixLobby: React.FC<AgentMatrixLobbyProps> = ({
     apiKey: string;
     model: string;
     token: TokenItem | null;
+    session: number;
     cursorPayload?: CursorConfig;
     accioPayload?: AccioConfig;
     workbuddyPayload?: WorkbuddySavePayload;
@@ -146,12 +145,15 @@ export const AgentMatrixLobby: React.FC<AgentMatrixLobbyProps> = ({
   // 矩阵批量连通性测试终端模态框状态
   const [batchModalOpen, setBatchModalOpen] = useState(false);
   const [batchTargets, setBatchTargets] = useState<BatchApplyTarget[]>([]);
+  // 批量终端打开时的会话；之后切换账号或会话，未完成的批量写入即视为过期
+  const [batchSession, setBatchSession] = useState<number | null>(null);
 
   const { authState, authSessionGeneration, setLoginModalOpen } = useAuth();
   // 防止重复点击并发写入；会话切换或卸载后不再写入本地绑定记录
   const actionInFlight = useRef(false);
   const mountedRef = useRef(true);
   const sessionRef = useRef(authSessionGeneration);
+  const observedSessionRef = useRef(authSessionGeneration);
   sessionRef.current = authSessionGeneration;
   useEffect(() => {
     mountedRef.current = true;
@@ -159,6 +161,14 @@ export const AgentMatrixLobby: React.FC<AgentMatrixLobbyProps> = ({
       mountedRef.current = false;
     };
   }, []);
+  useEffect(() => {
+    if (observedSessionRef.current === authSessionGeneration) return;
+    observedSessionRef.current = authSessionGeneration;
+    setActiveTerminalTarget((current) =>
+      current && current.session !== authSessionGeneration ? null : current,
+    );
+    setBatchModalOpen(false);
+  }, [authSessionGeneration]);
 
   // 严格基于 AI-Helper 真实可接入的 6 席原生客户端矩阵 (2 列 × 3 行)
   const [agents, setAgents] = useState<AgentCardItem[]>(() => [
@@ -441,12 +451,13 @@ export const AgentMatrixLobby: React.FC<AgentMatrixLobbyProps> = ({
     }
 
     if (actionInFlight.current || activeTerminalTarget || batchModalOpen) return;
+    const requestSession = sessionRef.current;
     actionInFlight.current = true;
     const toastId = toast.loading(`正在为 ${agent.name} 匹配专属令牌并准备连通性测试...`);
 
     try {
       const resolved = await resolveApiKeyForTarget(target);
-      if (!mountedRef.current) return;
+      if (!mountedRef.current || requestSession !== sessionRef.current) return;
       if (!resolved) {
         toast.dismiss(toastId);
         toast.info("未能获取或创建可用令牌，请在配置面板中查看");
@@ -528,6 +539,8 @@ export const AgentMatrixLobby: React.FC<AgentMatrixLobbyProps> = ({
         }
       }
 
+      if (!mountedRef.current || requestSession !== sessionRef.current) return;
+
       // 打开类终端连通性测试模态框
       setActiveTerminalTarget({
         type: modalType,
@@ -536,6 +549,7 @@ export const AgentMatrixLobby: React.FC<AgentMatrixLobbyProps> = ({
         apiKey: resolved.key,
         model: defaultModel,
         token: resolved.token,
+        session: requestSession,
         cursorPayload,
         accioPayload,
         workbuddyPayload,
@@ -563,64 +577,23 @@ export const AgentMatrixLobby: React.FC<AgentMatrixLobbyProps> = ({
       return null;
     }
 
+    const requestSession = sessionRef.current;
     const targetGroup = TARGET_DEFAULT_GROUP[target];
-    let tokens: TokenItem[] = [];
+    const tokenName = GROUP_DEFAULT_TOKEN_NAMES[targetGroup] || `${targetGroup} 专属令牌`;
     try {
-      tokens = await getUserTokens();
+      // Backend refreshes the list before deciding whether to create. A lookup
+      // or key-read failure is surfaced instead of turning into a duplicate POST.
+      const token = await ensureUserToken(tokenName, targetGroup, readBoundTokenId(target));
+      if (!mountedRef.current || requestSession !== sessionRef.current) {
+        throw new Error("会话已切换，已丢弃旧令牌结果");
+      }
+      const key = token.key?.trim() || "";
+      if (!key) throw new Error("服务器返回的令牌没有明文 Key");
+      return { key, token };
     } catch (err) {
-      console.warn("获取令牌列表失败:", err);
+      console.error(`解析 ${targetGroup} 分组令牌失败:`, err);
+      throw new Error(`获取「${targetGroup}」分组令牌失败: ${String(err)}`);
     }
-
-    const isGroupMatch = (g?: string | null) => {
-      if (!g) return false;
-      const clean = g.trim();
-      return clean === targetGroup || clean.toLowerCase() === targetGroup.toLowerCase();
-    };
-
-    // 1. 优先检查该工具是否已经绑定过该分组的有效令牌
-    const boundId = readBoundTokenId(target);
-    if (boundId !== null) {
-      const boundToken = tokens.find((t) => t.id === boundId && t.status === 1);
-      if (boundToken && isGroupMatch(boundToken.group)) {
-        try {
-          const key = (await getTokenKey(boundToken.id)).trim();
-          if (key) return { key, token: boundToken };
-        } catch (err) {
-          console.warn(`读取已绑定令牌 ${boundToken.name} 失败:`, err);
-        }
-      }
-    }
-
-    // 2. 在用户所有可用令牌中查找属于 targetGroup 的正常令牌 (status === 1)
-    const matchingToken = tokens.find(
-      (t) => t.status === 1 && isGroupMatch(t.group)
-    );
-    if (matchingToken) {
-      try {
-        const key = (await getTokenKey(matchingToken.id)).trim();
-        if (key) return { key, token: matchingToken };
-      } catch (err) {
-        console.warn(`读取令牌 ${matchingToken.name} 失败:`, err);
-      }
-    }
-
-    // 3. 用户账号下无对应分组的有效令牌：自动在 Bob API 创建专属令牌！
-    try {
-      const tokenName = GROUP_DEFAULT_TOKEN_NAMES[targetGroup] || `${targetGroup} 专属令牌`;
-      const created = await createUserToken(tokenName, targetGroup);
-      let key = created.key?.trim() || "";
-      if (!key || !key.startsWith("sk-")) {
-        key = (await getTokenKey(created.id)).trim();
-      }
-      if (key) {
-        return { key, token: created };
-      }
-    } catch (err) {
-      console.error(`自动创建 ${targetGroup} 分组令牌失败:`, err);
-      throw new Error(`自动创建「${targetGroup}」分组令牌失败: ${String(err)}`);
-    }
-
-    return null;
   };
 
   /** 首页卡片仅重启当前客户端，不影响其他工具。 */
@@ -701,6 +674,7 @@ export const AgentMatrixLobby: React.FC<AgentMatrixLobbyProps> = ({
     }
 
     // 打开矩阵批量连通性测试与部署终端
+    setBatchSession(sessionRef.current);
     setBatchTargets(targets);
     setBatchModalOpen(true);
   };
@@ -852,8 +826,18 @@ export const AgentMatrixLobby: React.FC<AgentMatrixLobbyProps> = ({
           cursorPayload={activeTerminalTarget.cursorPayload}
           accioPayload={activeTerminalTarget.accioPayload}
           workbuddyPayload={activeTerminalTarget.workbuddyPayload}
+          isSessionCurrent={() =>
+            mountedRef.current &&
+            activeTerminalTarget.session === sessionRef.current
+          }
           onSuccess={async () => {
-            if (activeTerminalTarget?.token) {
+            if (
+              !activeTerminalTarget ||
+              activeTerminalTarget.session !== sessionRef.current
+            ) {
+              return;
+            }
+            if (activeTerminalTarget.token) {
               const { token, target } = activeTerminalTarget;
               const bound = JSON.stringify({
                 id: token.id,
@@ -897,6 +881,9 @@ export const AgentMatrixLobby: React.FC<AgentMatrixLobbyProps> = ({
           onClose={() => setBatchModalOpen(false)}
           targets={batchTargets}
           onResolveKey={resolveApiKeyForTarget}
+          isSessionCurrent={() =>
+            mountedRef.current && batchSession !== null && batchSession === sessionRef.current
+          }
           onSuccess={async () => {
             await refreshAgentStatuses();
           }}

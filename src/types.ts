@@ -247,6 +247,18 @@ export interface CursorConfig {
   is_process_running?: boolean;
 }
 
+/** Cursor Agent 请求写入、但尚未获得授权的工作区根目录 */
+export interface AgentWorkspaceRequest {
+  path: string;
+  requested_at: number;
+}
+
+/** 已授权 Cursor Agent 写入的工作区根目录（保存在 ~/.ai-helper/agent_workspaces.json） */
+export interface AgentWorkspaceGrant {
+  path: string;
+  granted_at: number;
+}
+
 export interface CursorBridgeStatus {
   is_running: boolean;
   port?: number | null;
@@ -430,6 +442,34 @@ export interface AppSettings {
   showAnnouncementModal: boolean;
   language: string;
   enableAurora: boolean;
+}
+
+export interface ClientResetResult {
+  client: string;
+  status: "restored" | "cleaned" | "skipped" | "failed" | string;
+  message: string;
+}
+
+export interface ResetResult {
+  clients: ClientResetResult[];
+  warnings: string[];
+  requires_restart: boolean;
+}
+
+export interface ResetPreview {
+  clients: ClientResetPlan[];
+}
+
+export interface ClientResetPlan {
+  client: string;
+  action: string; // restore_snapshot, clean_managed_fields, remove_owned, restore_cursor_patch, skip
+  files: FileResetPlan[];
+  reason: string;
+}
+
+export interface FileResetPlan {
+  path: string;
+  action: string; // restore_snapshot, clean_managed_fields, delete, skip
 }
 
 // ── 使用日志模型 ──

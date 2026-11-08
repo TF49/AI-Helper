@@ -54,6 +54,7 @@ export interface TerminalTestModalProps {
   accioPayload?: AccioConfig;
   cursorPayload?: CursorConfig;
   onSuccess?: () => void | Promise<void>;
+  isSessionCurrent?: () => boolean;
 }
 
 interface LogEntry {
@@ -74,6 +75,7 @@ export function TerminalTestModal({
   accioPayload,
   cursorPayload,
   onSuccess,
+  isSessionCurrent = () => true,
 }: TerminalTestModalProps) {
   const [status, setStatus] = useState<"running" | "success" | "error">(
     "running",
@@ -212,6 +214,7 @@ export function TerminalTestModal({
   };
 
   const runTestAndSave = async () => {
+    if (!isSessionCurrent()) return;
     hasStartedRef.current = true;
     // 重置状态
     if (countdownTimerRef.current) {
@@ -328,10 +331,14 @@ export function TerminalTestModal({
       }
       testSuccess = testResult.success;
 
+      if (!openRef.current || !isSessionCurrent()) return;
+
       if (testSuccess) {
+        if (!isSessionCurrent()) return;
         // 保存配置
         if (type === "codex") {
           addLog(`💾 正在备份并更新 ~/.codex/config.toml 与环境变量...`, "info");
+          if (!isSessionCurrent()) return;
           await setCodexConfig(url, apiKey.trim(), model.trim());
           addLog(`✓ 配置文件 ~/.codex/config.toml 已更新 (旧配置已备份至 .bak)`, "success");
           addLog(`✓ CUSTOM_OPENAI_API_KEY 已更新；独立终端的持久化方式取决于操作系统`, "success");
@@ -341,8 +348,10 @@ export function TerminalTestModal({
             "info",
           );
           if (workbuddyPayload) {
+            if (!isSessionCurrent()) return;
             await setWorkbuddyConfig(workbuddyPayload);
           } else {
+            if (!isSessionCurrent()) return;
             await setWorkbuddyConfig({
               url,
               api_key: apiKey.trim(),
@@ -375,9 +384,12 @@ export function TerminalTestModal({
             fallback_official: false,
             prevent_official_leak: true,
           };
+          if (!isSessionCurrent()) return;
           await setAccioConfig(payload);
           addLog(`✓ 配置文件 ~/.ai-helper/accio_config.json 已成功写入`, "success");
           addLog(`🔌 正在唤醒/刷新本地 Bridge 中继网关服务...`, "info");
+          // 写入期间账号或会话可能已切换；过期会话不再启动 Bridge
+          if (!isSessionCurrent()) return;
           try {
             const port = await startAccioBridge(payload.bridge_port);
             addLog(`✓ 本地中继网关已就绪，监听于 http://127.0.0.1:${port}`, "success");
@@ -394,9 +406,12 @@ export function TerminalTestModal({
             auto_start_bridge: true,
             cursor_path: null,
           };
+          if (!isSessionCurrent()) return;
           await setCursorConfig(payload);
           addLog(`✓ 配置文件 ~/.ai-helper/cursor_config.json 已成功写入`, "success");
           addLog(`🔌 正在唤醒/刷新本地 Cursor Connect-RPC Bridge 中继服务...`, "info");
+          // 写入期间账号或会话可能已切换；过期会话不再启动 Bridge
+          if (!isSessionCurrent()) return;
           try {
             const port = await startCursorBridge(payload.bridge_port);
             addLog(`✓ 本地中继网关已就绪，监听于 http://127.0.0.1:${port}`, "success");
@@ -405,6 +420,7 @@ export function TerminalTestModal({
           }
         } else {
           addLog(`💾 正在备份旧配置并纯净写入 ~/.claude/settings.json...`, "info");
+          if (!isSessionCurrent()) return;
           await setClaudeConfig(url, apiKey.trim(), model.trim());
           addLog(`✓ 配置文件 ~/.claude/settings.json 已清除旧内容并纯净写入 (旧配置已备份至 .bak)`, "success");
           addLog(
@@ -479,7 +495,9 @@ export function TerminalTestModal({
         toast.success(`${platformName} 连通性测试通过，配置已成功保存！`);
         // 在所有本地状态更新完成后再通知父组件（避免父组件立即重渲染导致倒计时 effect 冲突）
         successTaskRef.current = Promise.resolve()
-          .then(() => onSuccess?.())
+          .then(async () => {
+            if (isSessionCurrent()) await onSuccess?.();
+          })
           .catch((e) => {
             console.warn("配置成功后的同步任务异常:", e);
           });

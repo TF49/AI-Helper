@@ -89,7 +89,7 @@ fn write_temp(path: &Path, contents: &[u8]) -> Result<TemporaryFile, AppError> {
     Ok(tmp)
 }
 
-fn backup_path(path: &Path) -> PathBuf {
+pub(crate) fn backup_path(path: &Path) -> PathBuf {
     match path.extension().and_then(|ext| ext.to_str()) {
         Some(ext) => path.with_extension(format!("{ext}.bak")),
         None => path.with_extension("bak"),
@@ -103,6 +103,13 @@ fn read_optional(path: &Path) -> Result<Option<Vec<u8>>, AppError> {
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(None),
         Err(error) => Err(error.into()),
     }
+}
+
+/// Read the file currently present on disk without recovering a `.bak` file.
+/// Reset baselines must describe the pre-takeover state exactly, including a
+/// genuinely absent primary file.
+pub(crate) fn read_optional_no_recovery_locked(path: &Path) -> Result<Option<Vec<u8>>, AppError> {
+    read_optional(path)
 }
 
 pub(crate) fn recover_missing_file_locked(path: &Path) -> Result<(), AppError> {
@@ -192,6 +199,7 @@ pub(crate) fn replace_with_backup_locked(
     atomic_write_locked(path, contents)
 }
 
+#[allow(dead_code)]
 pub fn atomic_write(path: &Path, contents: impl AsRef<[u8]>) -> Result<(), AppError> {
     with_file_lock(path, || {
         recover_missing_file_locked(path)?;
@@ -227,6 +235,7 @@ pub fn backup_then_atomic_write(path: &Path, contents: impl AsRef<[u8]>) -> Resu
     update_file(path, |_| Ok(contents.as_ref().to_vec()))
 }
 
+#[allow(dead_code)]
 pub fn safe_write_file(path: &Path, contents: impl AsRef<[u8]>) -> Result<(), AppError> {
     atomic_write(path, contents)
 }

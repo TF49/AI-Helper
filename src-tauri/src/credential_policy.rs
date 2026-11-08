@@ -321,7 +321,6 @@ pub fn register_managed_key(key: &str) {
     }
 }
 
-#[allow(dead_code)]
 pub fn is_managed_key(key: &str) -> bool {
     let trimmed = key.trim();
     if trimmed.is_empty() {

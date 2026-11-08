@@ -619,6 +619,24 @@ pub fn set_codex_config(
     api_key: String,
     model: Option<String>,
 ) -> Result<(), AppError> {
+    set_codex_config_inner(url, api_key, model, None)
+}
+
+pub(crate) fn set_codex_config_at_generation(
+    url: String,
+    api_key: String,
+    model: Option<String>,
+    generation: u64,
+) -> Result<(), AppError> {
+    set_codex_config_inner(url, api_key, model, Some(generation))
+}
+
+fn set_codex_config_inner(
+    url: String,
+    api_key: String,
+    model: Option<String>,
+    generation: Option<u64>,
+) -> Result<(), AppError> {
     if api_key.contains('\0') {
         return Err(AppError::Other("API Key 不允许包含 NUL".into()));
     }
@@ -638,40 +656,68 @@ pub fn set_codex_config(
     };
     let path = codex_config_path()?;
 
-    crate::safe_fs::with_file_lock(&path, || {
-        let previous_file = crate::safe_fs::read_optional_locked(&path)?;
-        let previous_env = EnvironmentSnapshot::capture(LEGACY_ENV_KEY)?;
-        let expected =
-            edited_codex_contents(previous_file.as_deref(), &base_url, model.as_deref())?;
+    let operation = || {
+        crate::safe_fs::with_file_lock(&path, || {
+            let mut capture = crate::reset::CaptureReceipt::new("Codex / ChatGPT");
+            if let Err(error) = crate::reset::capture_file_locked(&mut capture, &path) {
+                return Err(crate::reset::rollback_capture_locked(capture, error));
+            }
+            if let Err(error) = crate::reset::capture_environment(&mut capture, LEGACY_ENV_KEY) {
+                return Err(crate::reset::rollback_capture_locked(capture, error));
+            }
+            let prepared = (|| {
+                let previous_file = crate::safe_fs::read_optional_locked(&path)?;
+                let previous_env = EnvironmentSnapshot::capture(LEGACY_ENV_KEY)?;
+                let expected =
+                    edited_codex_contents(previous_file.as_deref(), &base_url, model.as_deref())?;
+                Ok::<_, AppError>((previous_file, previous_env, expected))
+            })();
+            let (previous_file, previous_env, expected) = match prepared {
+                Ok(prepared) => prepared,
+                Err(error) => {
+                    return Err(crate::reset::rollback_capture_locked(capture, error));
+                }
+            };
 
-        let result = (|| {
-            write_codex_environment(LEGACY_ENV_KEY, api_key.trim())?;
-            crate::safe_fs::replace_with_backup_locked(&path, previous_file.as_deref(), &expected)?;
+            let result = (|| {
+                write_codex_environment(LEGACY_ENV_KEY, api_key.trim())?;
+                crate::safe_fs::replace_with_backup_locked(
+                    &path,
+                    previous_file.as_deref(),
+                    &expected,
+                )?;
 
-            let persisted = crate::safe_fs::read_optional_locked(&path)?;
-            let expected_process =
-                (!api_key.trim().is_empty()).then(|| std::ffi::OsString::from(api_key.trim()));
-            if persisted.as_deref() != Some(expected.as_slice())
-                || read_registry_env(LEGACY_ENV_KEY)? != api_key.trim()
-                || std::env::var_os(LEGACY_ENV_KEY) != expected_process
-            {
-                return Err(AppError::Other("Codex 配置写后验证失败".into()));
+                let persisted = crate::safe_fs::read_optional_locked(&path)?;
+                let expected_process =
+                    (!api_key.trim().is_empty()).then(|| std::ffi::OsString::from(api_key.trim()));
+                if persisted.as_deref() != Some(expected.as_slice())
+                    || read_registry_env(LEGACY_ENV_KEY)? != api_key.trim()
+                    || std::env::var_os(LEGACY_ENV_KEY) != expected_process
+                {
+                    return Err(AppError::Other("Codex 配置写后验证失败".into()));
+                }
+
+                // Record the file write hash for intelligent reset
+                crate::reset::record_file_write("Codex / ChatGPT", &path, &expected)?;
+
+                Ok(())
+            })();
+
+            if let Err(primary) = result {
+                let file_rollback =
+                    crate::safe_fs::restore_optional_locked(&path, previous_file.as_deref());
+                let env_rollback = previous_env.restore(LEGACY_ENV_KEY);
+                let error = combine_transaction_errors(primary, file_rollback, env_rollback);
+                return Err(crate::reset::rollback_capture_locked(capture, error));
             }
             Ok(())
-        })();
-
-        if let Err(primary) = result {
-            let file_rollback =
-                crate::safe_fs::restore_optional_locked(&path, previous_file.as_deref());
-            let env_rollback = previous_env.restore(LEGACY_ENV_KEY);
-            return Err(combine_transaction_errors(
-                primary,
-                file_rollback,
-                env_rollback,
-            ));
-        }
-        Ok(())
-    })
+        })
+    };
+    if let Some(generation) = generation {
+        crate::reset::with_config_write_at_generation(generation, operation)
+    } else {
+        crate::reset::with_config_write(operation)
+    }
 }
 
 #[cfg(any(target_os = "windows", test))]
@@ -693,6 +739,22 @@ pub fn read_registry_env(name: &str) -> Result<String, AppError> {
         Err(error) => return Err(AppError::Registry(error.to_string())),
     };
     checked_environment_read(env.get_value(name))
+}
+
+#[cfg(target_os = "windows")]
+pub fn read_registry_env_optional(name: &str) -> Result<Option<String>, AppError> {
+    use winreg::{enums::HKEY_CURRENT_USER, RegKey};
+    let hkcu = RegKey::predef(HKEY_CURRENT_USER);
+    let env = match hkcu.open_subkey("Environment") {
+        Ok(env) => env,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(error) => return Err(AppError::Registry(error.to_string())),
+    };
+    match env.get_value::<String, _>(name) {
+        Ok(value) => Ok(Some(value)),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(None),
+        Err(error) => Err(AppError::Registry(error.to_string())),
+    }
 }
 
 #[cfg(not(target_os = "windows"))]

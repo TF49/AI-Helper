@@ -165,6 +165,24 @@ pub fn set_claude_config(
     api_key: String,
     model: Option<String>,
 ) -> Result<(), AppError> {
+    set_claude_config_inner(url, api_key, model, None)
+}
+
+pub(crate) fn set_claude_config_at_generation(
+    url: String,
+    api_key: String,
+    model: Option<String>,
+    generation: u64,
+) -> Result<(), AppError> {
+    set_claude_config_inner(url, api_key, model, Some(generation))
+}
+
+fn set_claude_config_inner(
+    url: String,
+    api_key: String,
+    model: Option<String>,
+    generation: Option<u64>,
+) -> Result<(), AppError> {
     crate::credential_policy::validate_key_destination(
         &api_key,
         &url,
@@ -174,18 +192,49 @@ pub fn set_claude_config(
     .map_err(|e| AppError::Other(e.to_string()))?;
 
     let path = claude_config_path()?;
-    crate::safe_fs::update_file(&path, |previous| {
-        let raw = previous.unwrap_or_default();
-        let existing = if raw.iter().all(u8::is_ascii_whitespace) {
-            Value::Object(serde_json::Map::new())
-        } else {
-            serde_json::from_slice(raw).map_err(|_| {
-                AppError::Other("现有 Claude 配置损坏，已停止写入以免丢失安全规则".into())
-            })?
-        };
-        let json = merge_claude_settings(existing, &url, &api_key, model.as_deref())?;
-        Ok(serde_json::to_vec_pretty(&json)?)
-    })
+    let operation = || {
+        crate::safe_fs::with_file_lock(&path, || {
+            let mut capture = crate::reset::CaptureReceipt::new("Claude Code");
+            if let Err(error) = crate::reset::capture_file_locked(&mut capture, &path) {
+                return Err(crate::reset::rollback_capture_locked(capture, error));
+            }
+            let result = crate::safe_fs::update_file_locked(&path, |previous| {
+                let raw = previous.unwrap_or_default();
+                let existing = if raw.iter().all(u8::is_ascii_whitespace) {
+                    Value::Object(serde_json::Map::new())
+                } else {
+                    serde_json::from_slice(raw).map_err(|_| {
+                        AppError::Other("现有 Claude 配置损坏，已停止写入以免丢失安全规则".into())
+                    })?
+                };
+                let json = merge_claude_settings(existing, &url, &api_key, model.as_deref())?;
+                Ok(serde_json::to_vec_pretty(&json)?)
+            });
+
+            match result {
+                Ok(()) => {
+                    // Record the file write hash for intelligent reset
+                    // Read the file content that was just written
+                    if let Ok(Some(written_content)) =
+                        crate::safe_fs::read_optional_no_recovery_locked(&path)
+                    {
+                        if let Err(e) =
+                            crate::reset::record_file_write("Claude Code", &path, &written_content)
+                        {
+                            return Err(crate::reset::rollback_capture_locked(capture, e));
+                        }
+                    }
+                    Ok(())
+                }
+                Err(error) => Err(crate::reset::rollback_capture_locked(capture, error)),
+            }
+        })
+    };
+    if let Some(generation) = generation {
+        crate::reset::with_config_write_at_generation(generation, operation)
+    } else {
+        crate::reset::with_config_write(operation)
+    }
 }
 
 #[cfg(test)]

@@ -3,13 +3,13 @@ import { getTokenKey, getUserTokens } from "./api";
 import { useAuth } from "./useAuth";
 import type { TokenItem } from "../types";
 
+const KNOWN_TOOL_IDS = ["chatgpt", "claude", "workbuddy", "acciowork", "cursor", "default"];
+
 export type BoundTokenInfo = {
   id: number;
   name: string;
   group?: string | null;
 };
-
-const ALL_TOOL_IDS = ["chatgpt", "claude", "workbuddy", "acciowork", "default"];
 
 export function normalizeApiKey(k?: string | null): string {
   if (!k) return "";
@@ -31,6 +31,17 @@ export function isKeyMatch(a?: string | null, b?: string | null): boolean {
     return preA === preB && sufA === sufB;
   }
   return false;
+}
+
+/**
+ * 限流（HTTP 429）和网络故障只说明这次没查到，不能证明绑定分组已失效。
+ * Tauri 命令错误以字符串形式到达前端，后端对 429 统一附带 "HTTP 429" 标记。
+ */
+export function isTransientLookupError(error: unknown): boolean {
+  const text = error instanceof Error ? error.message : String(error ?? "");
+  return /429|请求受限|网络|响应失败|network|timed? ?out|error sending request|connection|dns error|failed to fetch/i.test(
+    text,
+  );
 }
 
 export function normalizeGroup(group: unknown): string | null {
@@ -68,64 +79,28 @@ function matchTokenByKey(tokens: TokenItem[], apiKey: string): TokenItem | null 
   return tokens.find((t) => isKeyMatch(t.key, val)) ?? null;
 }
 
-/** 复用其他工具已绑定的同一 Key（Accio 有绑定、Claude 无绑定时的关键路径） */
-async function matchViaOtherToolBindings(
+/** Reuse only keys already bound by a tool; never fan out over the whole list. */
+async function matchViaKnownBindings(
   toolId: string,
   apiKey: string,
   tokens: TokenItem[],
   isCurrent: () => boolean,
 ): Promise<BoundTokenInfo | null> {
-  const val = apiKey.trim();
   const seen = new Set<number>();
-
-  for (const otherId of ALL_TOOL_IDS) {
+  for (const otherToolId of KNOWN_TOOL_IDS) {
     if (!isCurrent()) return null;
-    if (otherId === toolId) continue;
-    const other = readBoundFromStorage(otherId);
-    if (!other?.id || seen.has(other.id)) continue;
-    seen.add(other.id);
-
+    if (otherToolId === toolId) continue;
+    const bound = readBoundFromStorage(otherToolId);
+    if (!bound?.id || seen.has(bound.id)) continue;
+    seen.add(bound.id);
+    const cloudToken = tokens.find((token) => token.id === bound.id);
+    if (!cloudToken) continue;
     try {
-      const plain = (await getTokenKey(other.id)).trim();
+      const plain = (await getTokenKey(bound.id)).trim();
       if (!isCurrent()) return null;
-      if (!plain || !isKeyMatch(plain, val)) continue;
-
-      const cloud = tokens.find((t) => t.id === other.id);
-      return toBoundInfo({
-        id: other.id,
-        name: cloud?.name || other.name,
-        group: cloud?.group ?? other.group,
-      });
+      if (plain && isKeyMatch(plain, apiKey)) return toBoundInfo(cloudToken);
     } catch {
-      // 继续尝试其它工具绑定
-    }
-  }
-  return null;
-}
-
-/** 列表未带回完整 Key 时，逐个拉取明文比对 */
-async function matchTokenByFetchingKeys(
-  tokens: TokenItem[],
-  apiKey: string,
-  isCurrent: () => boolean,
-): Promise<TokenItem | null> {
-  const val = apiKey.trim();
-  if (!val) return null;
-
-  for (const token of tokens) {
-    if (!isCurrent()) return null;
-    if (token.key && normalizeApiKey(token.key).length >= 10) {
-      if (!isKeyMatch(token.key, val)) {
-        continue;
-      }
-    }
-
-    try {
-      const plain = (await getTokenKey(token.id)).trim();
-      if (!isCurrent()) return null;
-      if (plain && isKeyMatch(plain, val)) return token;
-    } catch {
-      // ignore
+      // Keep resolving from the current tool's own binding below.
     }
   }
   return null;
@@ -157,6 +132,9 @@ export function useBoundTokenGroup(
   const [group, setGroup] = useState<string | null>(() =>
     normalizeGroup(readBoundFromStorage(toolId)?.group),
   );
+  // 上一次解析时展示的分组及其上下文；仅同一账号、会话、工具和 Key 下才可沿用
+  const shownRef = useRef<{ context: typeof context; group: string | null } | null>(null);
+  shownRef.current = { context: shownRef.current?.context ?? context, group };
   const isContextCurrent = useCallback((snapshot: typeof context) => {
     const current = contextRef.current;
     return mounted.current && snapshot.userId === current.userId &&
@@ -230,6 +208,21 @@ export function useBoundTokenGroup(
     };
     const keyChanged = resolvedKeyRef.current !== key;
     resolvedKeyRef.current = key;
+    const shown = shownRef.current;
+    // 限流或网络错误时保留解析前已展示的分组，不因一次失败把卡片清空
+    const previousGroup =
+      shown &&
+      !keyChanged &&
+      shown.context.userId === userId &&
+      shown.context.session === authSessionGeneration &&
+      shown.context.toolId === toolId &&
+      shown.context.key === key
+        ? shown.group
+        : null;
+    shownRef.current = { context: snapshot, group: shown?.group ?? null };
+    const keepOnTransient = (error: unknown) => {
+      if (isCurrent()) setGroup(isTransientLookupError(error) ? previousGroup : null);
+    };
     const loggedIn = authState.is_logged_in && userId !== null;
     // 默认每次重新解析都先清空；保留模式下仅在 Key 变化、无 Key 或未登录时清空
     if (isCurrent() && (!preserveWhileResolving || keyChanged || !key || !loggedIn)) {
@@ -244,7 +237,11 @@ export function useBoundTokenGroup(
       try {
         if (!isCurrent()) return;
         const tokens = await getUserTokens();
-        if (!isCurrent() || !tokens?.length) return;
+        if (!isCurrent()) return;
+        if (!tokens?.length) {
+          setGroup(null);
+          return;
+        }
 
         // 1) 列表明文 / 前后缀匹配
         let matched = matchTokenByKey(tokens, key);
@@ -254,15 +251,15 @@ export function useBoundTokenGroup(
           return;
         }
 
-        // 2) 复用其它工具已绑定的同一 Key（Claude 缺绑定、Accio 已有时）
-        const fromOther = await matchViaOtherToolBindings(toolId, key, tokens, isCurrent);
+        // 2) Check previously bound tool IDs, not every Key in the account.
+        const fromKnownBinding = await matchViaKnownBindings(toolId, key, tokens, isCurrent);
         if (!isCurrent()) return;
-        if (fromOther) {
-          commit(fromOther);
+        if (fromKnownBinding) {
+          commit(fromKnownBinding);
           return;
         }
 
-        // 3) 账号当前选中 Token
+        // 3) Check the one selected token rather than retrieving every Key.
         if (authState.selected_token_id) {
           const selected = tokens.find(
             (t) => t.id === authState.selected_token_id,
@@ -282,26 +279,37 @@ export function useBoundTokenGroup(
           }
         }
 
-        // 4) 逐个拉取明文比对
-        if (!isCurrent()) return;
-        matched = await matchTokenByFetchingKeys(tokens, key, isCurrent);
-        if (!isCurrent()) return;
-        if (matched) {
-          const info = toBoundInfo(matched);
-          commit(info);
-          return;
-        }
-
-        // 5) 回退本地绑定 id
+        // 4) Fall back to this tool's stored binding only.
         if (!isCurrent()) return;
         const existing = readBoundFromStorage(toolId);
         if (!existing) return;
         const byId = tokens.find((t) => t.id === existing.id);
-        if (!byId) return;
-        const info = toBoundInfo(byId);
-        commit(info);
-      } catch {
-        // 保留本地缓存
+        if (!byId) {
+          // An incomplete list cannot validate the cached group. Avoid showing
+          // stale metadata until the bound token can be confirmed again.
+          if (isCurrent()) setGroup(null);
+          return;
+        }
+        try {
+          const plain = (await getTokenKey(byId.id)).trim();
+          if (!isCurrent()) return;
+          if (plain && isKeyMatch(plain, key)) {
+            commit(toBoundInfo(byId));
+            return;
+          }
+          try {
+            localStorage.removeItem(`bound_token_${toolId}`);
+          } catch {}
+          if (isCurrent()) setGroup(null);
+        } catch (error) {
+          // A failed Key read is not proof that the saved group is still valid,
+          // unless it failed only because of a rate limit or the network.
+          keepOnTransient(error);
+        }
+      } catch (error) {
+        // A completed failure cannot validate stale metadata from local
+        // storage; a rate limit or network failure keeps what was shown.
+        keepOnTransient(error);
       }
     })();
 

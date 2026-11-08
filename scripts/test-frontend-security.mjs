@@ -171,7 +171,7 @@ class Harness {
       if (capture === "BoundTokenGroupHost") {
         // Mount the real hook with the same mocked React/IPC runtime as the
         // components. The resolver and its asynchronous helpers stay unmodified.
-        source += "\nexport function BoundTokenGroupHost({ toolId, value }: { toolId: string; value: string }) { const { group, onBoundTokenChange } = useBoundTokenGroup(toolId, value); return null; }";
+        source += "\nexport function BoundTokenGroupHost({ toolId, value, preserveWhileResolving }: { toolId: string; value: string; preserveWhileResolving?: boolean }) { const { group, onBoundTokenChange } = useBoundTokenGroup(toolId, value, { preserveWhileResolving }); return null; }";
       }
       const output = ts.transpileModule(source, {
         compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.ReactJSX },
@@ -300,69 +300,132 @@ function findByTitle(tree, title) {
 const tests = [];
 const test = (name, run) => tests.push({ name, run });
 
-const rawWallet = (extra = {}) => {
-  const quota = extra.quota !== undefined ? extra.quota : 1234567;
-  const used_quota = extra.used_quota !== undefined ? extra.used_quota : 42;
-  const quota_per_unit = 500000;
-  const rmb_to_usd_rate = 4.0;
-  const quota_usd = typeof quota === "number" ? quota / quota_per_unit : 0;
-  const quota_cny = quota_usd / rmb_to_usd_rate;
-  const used_quota_usd = typeof used_quota === "number" ? used_quota / quota_per_unit : 0;
-  const used_quota_cny = used_quota_usd / rmb_to_usd_rate;
-  return {
-    quota,
-    used_quota,
-    request_count: 0,
-    quota_usd,
-    quota_cny,
-    used_quota_usd,
-    used_quota_cny,
-    quota_per_unit,
-    rmb_to_usd_rate,
-    group: "test",
-    ...extra,
-  };
-};
-
-test("wallet cards display USD and CNY balances accurately using 1:4 rate and 500k quota per unit", async () => {
-  for (const component of ["AccountBalanceCard", "PersonalCenterPanel"]) {
-    const env = environment();
-    env.authContext.wallet = rawWallet({
-      quota: 163638029,
-      used_quota: 380572158,
-      quota_usd: 163638029 / 500000,
-      quota_cny: (163638029 / 500000) / 4,
-      used_quota_usd: 380572158 / 500000,
-      used_quota_cny: (380572158 / 500000) / 4,
-      request_count: 22649,
-    });
-    const h = await ready(component, env);
-    const text = textOf(h.tree);
-    assert.ok(text.includes("327.2761"), `${component} did not display correct USD balance`);
-    assert.ok(text.includes("81.82") || text.includes("81.8190"), `${component} did not display correct CNY balance`);
-    assert.ok(text.includes("1¥=4$") || text.includes("1¥ = $4.00"), `${component} did not display exchange rate`);
-  }
-});
-
-test("wallet balance copy copies USD amount to clipboard", async () => {
-  for (const value of [null, undefined, NaN]) {
-    const env = environment(); env.authContext.wallet = rawWallet({ quota_usd: value });
-    const h = await ready("AccountBalanceCard", env);
-    const copy = findByTitle(h.tree, "复制美元余额");
-    assert.equal(copy.props.disabled, true);
-    await copy.props.onClick();
-    assert.equal(env.clipboard.length, 0);
-  }
-  const env = environment();
-  env.authContext.wallet = rawWallet({ quota_usd: 327.2761 });
-  const h = await ready("AccountBalanceCard", env);
-  await findByTitle(h.tree, "复制美元余额").props.onClick();
-  assert.deepEqual(env.clipboard, ["327.2761"]);
-  env.authContext.wallet = rawWallet({ quota_usd: 0 }); h.render();
-  await findByTitle(h.tree, "复制美元余额").props.onClick();
-  assert.deepEqual(env.clipboard, ["327.2761", "0.0000"]);
-});
-
+const rawWallet = (extra = {}) => {
+
+  const quota = extra.quota !== undefined ? extra.quota : 1234567;
+
+  const used_quota = extra.used_quota !== undefined ? extra.used_quota : 42;
+
+  const quota_per_unit = 500000;
+
+  const rmb_to_usd_rate = 4.0;
+
+  const quota_usd = typeof quota === "number" ? quota / quota_per_unit : 0;
+
+  const quota_cny = quota_usd / rmb_to_usd_rate;
+
+  const used_quota_usd = typeof used_quota === "number" ? used_quota / quota_per_unit : 0;
+
+  const used_quota_cny = used_quota_usd / rmb_to_usd_rate;
+
+  return {
+
+    quota,
+
+    used_quota,
+
+    request_count: 0,
+
+    quota_usd,
+
+    quota_cny,
+
+    used_quota_usd,
+
+    used_quota_cny,
+
+    quota_per_unit,
+
+    rmb_to_usd_rate,
+
+    group: "test",
+
+    ...extra,
+
+  };
+
+};
+
+
+
+test("wallet cards display USD and CNY balances accurately using 1:4 rate and 500k quota per unit", async () => {
+
+  for (const component of ["AccountBalanceCard", "PersonalCenterPanel"]) {
+
+    const env = environment();
+
+    env.authContext.wallet = rawWallet({
+
+      quota: 163638029,
+
+      used_quota: 380572158,
+
+      quota_usd: 163638029 / 500000,
+
+      quota_cny: (163638029 / 500000) / 4,
+
+      used_quota_usd: 380572158 / 500000,
+
+      used_quota_cny: (380572158 / 500000) / 4,
+
+      request_count: 22649,
+
+    });
+
+    const h = await ready(component, env);
+
+    const text = textOf(h.tree);
+
+    assert.ok(text.includes("327.2761"), `${component} did not display correct USD balance`);
+
+    assert.ok(text.includes("81.82") || text.includes("81.8190"), `${component} did not display correct CNY balance`);
+
+    assert.ok(text.includes("1¥=4$") || text.includes("1¥ = $4.00"), `${component} did not display exchange rate`);
+
+  }
+
+});
+
+
+
+test("wallet balance copy copies USD amount to clipboard", async () => {
+
+  for (const value of [null, undefined, NaN]) {
+
+    const env = environment(); env.authContext.wallet = rawWallet({ quota_usd: value });
+
+    const h = await ready("AccountBalanceCard", env);
+
+    const copy = findByTitle(h.tree, "复制美元余额");
+
+    assert.equal(copy.props.disabled, true);
+
+    await copy.props.onClick();
+
+    assert.equal(env.clipboard.length, 0);
+
+  }
+
+  const env = environment();
+
+  env.authContext.wallet = rawWallet({ quota_usd: 327.2761 });
+
+  const h = await ready("AccountBalanceCard", env);
+
+  await findByTitle(h.tree, "复制美元余额").props.onClick();
+
+  assert.deepEqual(env.clipboard, ["327.2761"]);
+
+  env.authContext.wallet = rawWallet({ quota_usd: 0 }); h.render();
+
+  await findByTitle(h.tree, "复制美元余额").props.onClick();
+
+  assert.deepEqual(env.clipboard, ["327.2761", "0.0000"]);
+
+});
+
+
+
 test("failed wallet refresh clears unknown balance and cannot announce successful synchronization", async () => {
   const env = environment(); env.authContext.refreshWallet = async () => false;
   const h = await ready("AccountBalanceCard", env);
@@ -379,17 +442,28 @@ test("failed wallet refresh clears unknown balance and cannot announce successfu
   assert.ok(provider.capture.walletError.includes("unavailable"));
 });
 
-test("usage logs show cost in USD and CNY at 1:4 rate and 500k points per USD", async () => {
-  const env = environment();
-  const log = { id: 1, created_at: 1, model_name: "test-model", token_name: "fake-token",
-    quota: 1250, prompt_tokens: 1, completion_tokens: 2, use_time: 1 };
-  env.impl.getUserUsageLogs = () => ({ items: [log], total: 1, page: 1, page_size: 20 });
-  const h = await ready("UsageLogsPanel", env);
-  const text = textOf(h.tree);
-  assert.ok(text.includes("0.0025"), "Did not show USD cost for 1250 points");
-  assert.ok(text.includes("0.0006"), "Did not show CNY cost");
-});
-
+test("usage logs show cost in USD and CNY at 1:4 rate and 500k points per USD", async () => {
+
+  const env = environment();
+
+  const log = { id: 1, created_at: 1, model_name: "test-model", token_name: "fake-token",
+
+    quota: 1250, prompt_tokens: 1, completion_tokens: 2, use_time: 1 };
+
+  env.impl.getUserUsageLogs = () => ({ items: [log], total: 1, page: 1, page_size: 20 });
+
+  const h = await ready("UsageLogsPanel", env);
+
+  const text = textOf(h.tree);
+
+  assert.ok(text.includes("0.0025"), "Did not show USD cost for 1250 points");
+
+  assert.ok(text.includes("0.0006"), "Did not show CNY cost");
+
+});
+
+
+
 test("shared pricing rejects missing/invalid/expired/future rates and requires high-rate acknowledgement", async () => {
   const h = await ready("TokenSelectModal");
   const { createGroupPricing, getValidGroupRatio, getGroupSwitchError, GROUP_PRICING_MAX_AGE_MS } = h.groupPricing;
@@ -889,7 +963,7 @@ test("real bound-token hook invalidates old requests and callbacks on auth event
   assert.equal(env.storage.has("bound_token_chatgpt"), false);
 });
 
-test("real bound-token hook stops plaintext lookup follow-up and writes when the session changes", async () => {
+test("real bound-token hook stops known-binding lookup when the session changes", async () => {
   const env = environment(), key = deferred();
   env.storage.set("bound_token_claude", JSON.stringify({ id: 11, name: "old-other-tool" }));
   env.impl.getUserTokens = () => [{ ...fakeToken, key: "" }];
@@ -898,10 +972,76 @@ test("real bound-token hook stops plaintext lookup follow-up and writes when the
   assert.equal(env.count("getTokenKey"), 1);
   env.changeAuth(2); env.impl.getUserTokens = () => [];
   h.render();
-  key.resolve("sk-fake-input-only"); await settle(h);
+  key.resolve("sk-fake-input-only");
+  await settle(h);
   assert.equal(h.capture.group, null);
   assert.equal(env.storage.has("bound_token_chatgpt"), false);
   assert.equal(env.count("getTokenKey"), 1);
+});
+
+test("real bound-token hook does not fetch every unbound token Key", async () => {
+  const env = environment();
+  env.impl.getUserTokens = () => [
+    { ...fakeToken, key: "" },
+    { ...fakeToken, id: 12, key: "" },
+    { ...fakeToken, id: 13, key: "" },
+  ];
+  const h = await ready("BoundTokenGroupHost", env);
+  assert.equal(h.capture.group, null);
+  assert.equal(env.count("getTokenKey"), 0);
+});
+
+test("real bound-token hook can resolve a key through the cursor binding", async () => {
+  const env = environment();
+  env.storage.set("bound_token_cursor", JSON.stringify({ id: 11, name: "cursor-token" }));
+  env.impl.getUserTokens = () => [{ ...fakeToken, key: "" }];
+  env.impl.getTokenKey = () => "sk-fake-input-only";
+  const h = await ready("BoundTokenGroupHost", env);
+  assert.equal(h.capture.group, "default");
+  assert.equal(env.count("getTokenKey"), 1);
+});
+
+test("real bound-token hook clears preserved group after an empty token list", async () => {
+  const env = environment();
+  env.storage.set("bound_token_chatgpt", JSON.stringify({ id: 11, name: "old", group: "stale-group" }));
+  env.impl.getUserTokens = () => [];
+  const h = await ready("BoundTokenGroupHost", env, { preserveWhileResolving: true });
+  assert.equal(h.capture.group, null);
+});
+
+test("real bound-token hook clears preserved group after a failed token-list read", async () => {
+  const env = environment();
+  env.storage.set("bound_token_chatgpt", JSON.stringify({ id: 11, name: "old", group: "stale-group" }));
+  // Not a rate limit or network failure: the cached group cannot be trusted.
+  env.impl.getUserTokens = () => { throw new Error("登录状态已失效，请重新登录"); };
+  const h = await ready("BoundTokenGroupHost", env, { preserveWhileResolving: true });
+  assert.equal(h.capture.group, null);
+});
+
+for (const [label, message] of [
+  ["HTTP 429", "Bob API 请求受限 (HTTP 429)，请在 5 秒后重试"],
+  ["server 429 text", "请求过于频繁（HTTP 429）"],
+  ["network failure", "获取 API Key 列表失败: error sending request for url (https://example.test/api/token/search)"],
+]) {
+  for (const preserveWhileResolving of [true, false]) {
+    test(`real bound-token hook keeps the shown group after a ${label} (preserve=${preserveWhileResolving})`, async () => {
+      const env = environment();
+      env.storage.set("bound_token_chatgpt", JSON.stringify({ id: 11, name: "old", group: "kept-group" }));
+      env.impl.getUserTokens = () => { throw new Error(message); };
+      const h = await ready("BoundTokenGroupHost", env, { preserveWhileResolving });
+      assert.equal(h.capture.group, "kept-group");
+      assert.equal(JSON.parse(env.storage.get("bound_token_chatgpt")).group, "kept-group");
+    });
+  }
+}
+
+test("real bound-token hook keeps the shown group when the bound key read is rate limited", async () => {
+  const env = environment();
+  env.storage.set("bound_token_chatgpt", JSON.stringify({ id: fakeToken.id, name: "old", group: "kept-group" }));
+  env.impl.getUserTokens = () => [{ ...fakeToken, key: "" }];
+  env.impl.getTokenKey = () => { throw new Error("读取明文 API Key 失败: Bob API 请求受限 (HTTP 429)，请在 3 秒后重试"); };
+  const h = await ready("BoundTokenGroupHost", env, { preserveWhileResolving: true });
+  assert.equal(h.capture.group, "kept-group");
 });
 
 test("real bound-token hook ignores a key result after unmount", async () => {

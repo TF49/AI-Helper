@@ -15,15 +15,27 @@ import {
   ExternalLink,
   Check,
   ChevronDown,
+  AlertTriangle,
+  Trash2,
+  Loader2,
 } from "lucide-react";
 import { toast } from "sonner";
 import { useSettings } from "../../lib/useSettings";
 import { useTheme } from "../theme-provider";
 import { BrandLogo } from "../BrandIcons";
-import { openUrl } from "../../lib/api";
+import { isTauri, openUrl, previewClientReset, resetAllClientConfigs } from "../../lib/api";
 import { cn } from "../../lib/utils";
 import type { MainNav } from "../../types";
+import type { ResetPreview, ResetResult } from "../../types";
 import { ButtonToLoaderToSuccess } from "../ui/ButtonToLoaderToSuccess";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "../ui/dialog";
 
 type SettingsTab = "general" | "appearance" | "about";
 
@@ -33,7 +45,6 @@ interface SettingsViewProps {
   onCheckUpdates: () => void | Promise<unknown>;
   isCheckingUpdates: boolean;
 }
-
 const LANGUAGES = [
   { id: "zh-CN", label: "简体中文" },
   { id: "en-US", label: "英语" },
@@ -393,6 +404,8 @@ export function SettingsView({
           </div>
         )}
 
+        {activeTab === "general" && <ClientResetSection />}
+
         {/* 2. 外观偏好 */}
         {activeTab === "appearance" && (
           <div className="space-y-6 animate-in fade-in-50 duration-200">
@@ -541,5 +554,232 @@ export function SettingsView({
         </div>
       </div>
     </div>
+  );
+}
+
+const CLIENT_RESET_ACTION_LABELS: Record<string, string> = {
+  restore_snapshot: "恢复首次接管前的快照",
+  clean_managed_fields: "只清理受管字段",
+  remove_owned: "删除 AI Helper 专用配置",
+  restore_cursor_patch: "还原 Cursor 补丁并删除专用配置",
+  skip: "不处理",
+};
+
+const FILE_RESET_ACTION_LABELS: Record<string, string> = {
+  restore_snapshot: "整文件恢复快照",
+  clean_managed_fields: "只清理受管字段",
+  delete: "删除",
+  skip: "不处理",
+};
+
+function ClientResetSection() {
+  const [open, setOpen] = useState(false);
+  const [running, setRunning] = useState(false);
+  const [result, setResult] = useState<ResetResult | null>(null);
+  const [previewing, setPreviewing] = useState(false);
+  const [preview, setPreview] = useState<ResetPreview | null>(null);
+  const [previewError, setPreviewError] = useState<string | null>(null);
+
+  // 先读取只读预览再打开确认框；预览失败仍可确认，实际执行会重新判断，结果以返回值为准
+  const openConfirm = async () => {
+    setPreviewing(true);
+    setPreview(null);
+    setPreviewError(null);
+    try {
+      setPreview(await previewClientReset());
+    } catch (error) {
+      setPreviewError(String(error));
+    } finally {
+      setPreviewing(false);
+      setOpen(true);
+    }
+  };
+
+  const runReset = async () => {
+    setRunning(true);
+    try {
+      const next = await resetAllClientConfigs();
+      setResult(next);
+      const storageKeys: Record<string, string> = {
+        "Codex / ChatGPT": "chatgpt",
+        "Claude Code": "claude",
+        WorkBuddy: "workbuddy",
+        "Accio Work": "acciowork",
+        Cursor: "cursor",
+      };
+      if (isTauri) {
+        for (const item of next.clients) {
+          if (item.status !== "failed") {
+            const key = storageKeys[item.client];
+            if (key) localStorage.removeItem(`bound_token_${key}`);
+          }
+        }
+      }
+      setOpen(false);
+      if (!isTauri) {
+        toast.info("当前是浏览器预览，本机配置未被修改");
+      } else if (next.clients.some((item) => item.status === "failed")) {
+        toast.warning("部分客户端未能清除，请根据结果重试");
+      } else {
+        toast.success("客户端配置已恢复为原生状态");
+      }
+    } catch (error) {
+      toast.error(`清除配置失败：${String(error)}`);
+    } finally {
+      setRunning(false);
+    }
+  };
+
+  return (
+    <>
+      <div className="space-y-3 animate-in fade-in-50 duration-200">
+        <h2 className="text-xs font-bold uppercase tracking-wider text-slate-400 dark:text-gray-500 px-1">
+          客户端配置
+        </h2>
+        <div className="rounded-2xl border border-red-200/80 dark:border-red-500/20 bg-red-50/50 dark:bg-red-500/[0.06] p-4 flex items-center justify-between gap-4">
+          <div className="flex items-start gap-3.5 min-w-0">
+            <div className="w-8 h-8 rounded-xl bg-red-100 dark:bg-red-500/15 text-red-600 dark:text-red-400 flex items-center justify-center flex-shrink-0 mt-0.5">
+              <Trash2 size={16} />
+            </div>
+            <div>
+              <div className="text-xs font-semibold text-slate-900 dark:text-white">
+                恢复所有客户端原生配置
+              </div>
+              <p className="text-[11px] text-slate-600 dark:text-gray-400 mt-0.5">
+                清除 AI Helper 写入的地址、密钥、模型和本地 Bridge 设置。首次接管前的配置会优先恢复。
+              </p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => void openConfirm()}
+            disabled={running || previewing}
+            className="flex-shrink-0 px-3 py-2 rounded-xl border border-red-300 dark:border-red-500/40 text-red-700 dark:text-red-300 hover:bg-red-100 dark:hover:bg-red-500/15 text-xs font-semibold transition-colors disabled:opacity-50 cursor-pointer inline-flex items-center gap-1.5"
+          >
+            {previewing && <Loader2 size={13} className="animate-spin" />}
+            清除配置
+          </button>
+        </div>
+        {result && (
+          <div className="rounded-xl border border-slate-200/80 dark:border-white/10 bg-white/60 dark:bg-white/[0.03] p-3 space-y-1.5">
+            {result.clients.map((item) => (
+              <div
+                key={item.client}
+                className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 text-[11px]"
+              >
+                <span className="text-slate-700 dark:text-gray-300">
+                  {item.client}
+                </span>
+                <span
+                  className={
+                    item.status === "failed"
+                      ? "text-red-600 dark:text-red-400"
+                      : item.status === "skipped"
+                        ? "text-slate-500 dark:text-gray-400"
+                        : "text-emerald-600 dark:text-emerald-400"
+                  }
+                >
+                  {item.message}
+                </span>
+              </div>
+            ))}
+            {result.warnings.map((warning) => (
+              <p
+                key={warning}
+                className="text-[11px] text-amber-600 dark:text-amber-400 pt-1"
+              >
+                {warning}
+              </p>
+            ))}
+            {result.requires_restart && (
+              <p className="text-[11px] text-amber-600 dark:text-amber-400 pt-1">
+                请重新启动相关客户端，使原生配置完全生效。
+              </p>
+            )}
+          </div>
+        )}
+      </div>
+      <Dialog open={open} onOpenChange={(next) => !running && setOpen(next)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <AlertTriangle className="text-red-500" size={18} />
+              确认清除所有客户端配置？
+            </DialogTitle>
+            <DialogDescription>
+              此操作会停止本地 Bridge、还原 Cursor 补丁，并移除 AI Helper 管理的客户端凭据。还原补丁时将强制关闭正在运行的 Cursor，请先保存各客户端中的未完成工作。
+            </DialogDescription>
+          </DialogHeader>
+          <div className="max-h-64 overflow-y-auto space-y-2 pr-1">
+            {previewError && (
+              <div className="rounded-xl border border-amber-200 dark:border-amber-500/20 bg-amber-50 dark:bg-amber-500/10 p-3 text-xs text-amber-700 dark:text-amber-300">
+                无法读取清除预览：{previewError}。仍可继续，实际处理结果以执行后的返回为准。
+              </div>
+            )}
+            {preview?.clients.map((plan) => (
+              <div
+                key={plan.client}
+                className="rounded-xl border border-slate-200/80 dark:border-white/10 bg-white/60 dark:bg-white/[0.03] p-3 space-y-1.5"
+              >
+                <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 text-xs">
+                  <span className="font-semibold text-slate-900 dark:text-white">
+                    {plan.client}
+                  </span>
+                  <span
+                    className={
+                      plan.action === "skip"
+                        ? "text-slate-500 dark:text-gray-400"
+                        : plan.action === "clean_managed_fields"
+                          ? "text-amber-600 dark:text-amber-400"
+                          : "text-red-600 dark:text-red-400"
+                    }
+                  >
+                    {CLIENT_RESET_ACTION_LABELS[plan.action] ?? plan.action}
+                  </span>
+                </div>
+                {plan.reason && (
+                  <p className="text-[11px] text-slate-500 dark:text-gray-400">{plan.reason}</p>
+                )}
+                {plan.files.map((file) => (
+                  <div
+                    key={file.path}
+                    className="flex items-start justify-between gap-3 text-[11px]"
+                  >
+                    <span className="font-mono break-all text-slate-600 dark:text-gray-300">
+                      {file.path}
+                    </span>
+                    <span className="flex-shrink-0 text-slate-500 dark:text-gray-400">
+                      {FILE_RESET_ACTION_LABELS[file.action] ?? file.action}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            ))}
+          </div>
+          <div className="rounded-xl bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-500/20 p-3 text-xs text-red-700 dark:text-red-300">
+            接管后被外部修改过的文件只清理 AI Helper 管理的字段，其他修改保留；没有首次接管快照的旧版本配置只能清理明确识别的 AI Helper 项，无法还原被覆盖的原值。确认后会按执行时的文件状态重新判断。
+          </div>
+          <DialogFooter>
+            <button
+              type="button"
+              onClick={() => setOpen(false)}
+              disabled={running}
+              className="px-4 py-2 rounded-xl text-xs font-medium text-slate-600 dark:text-gray-300 hover:bg-slate-100 dark:hover:bg-white/10 cursor-pointer"
+            >
+              取消
+            </button>
+            <button
+              type="button"
+              onClick={() => void runReset()}
+              disabled={running}
+              className="px-4 py-2 rounded-xl bg-red-600 hover:bg-red-700 text-white text-xs font-semibold inline-flex items-center gap-1.5 cursor-pointer disabled:opacity-60"
+            >
+              {running && <Loader2 size={13} className="animate-spin" />}
+              确认清除
+            </button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }

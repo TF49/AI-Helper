@@ -67,6 +67,8 @@ export interface BatchTerminalModalProps {
     target: BatchApplyTarget,
   ) => Promise<{ key: string; token: TokenItem | null } | null>;
   onSuccess?: () => void;
+  /** Stops an in-flight deployment from writing after an auth/session change. */
+  isSessionCurrent?: () => boolean;
 }
 
 const TARGET_DISPLAY_NAMES: Record<BatchApplyTarget, string> = {
@@ -99,6 +101,7 @@ export function BatchTerminalModal({
   targets,
   onResolveKey,
   onSuccess,
+  isSessionCurrent = () => true,
 }: BatchTerminalModalProps) {
   const [status, setStatus] = useState<"running" | "success" | "error">(
     "running",
@@ -252,7 +255,7 @@ export function BatchTerminalModal({
     let failCount = 0;
 
     for (let i = 0; i < targets.length; i++) {
-      if (!openRef.current) return;
+      if (!openRef.current || !isSessionCurrent()) return;
       const target = targets[i];
       const targetName = TARGET_DISPLAY_NAMES[target];
       const model = TARGET_MODELS[target];
@@ -282,7 +285,7 @@ export function BatchTerminalModal({
         continue;
       }
 
-      if (!openRef.current) return;
+      if (!openRef.current || !isSessionCurrent()) return;
 
       if (!resolved || !resolved.key) {
         addLog(`❌ 未能获取或创建 ${targetName} 对应「${group}」分组可用令牌`, "error");
@@ -354,9 +357,10 @@ export function BatchTerminalModal({
 
       setStreamingText("");
 
-      if (!openRef.current) return;
+      if (!openRef.current || !isSessionCurrent()) return;
 
       if (testSuccess) {
+        if (!isSessionCurrent()) return;
         addLog(`✓ ${targetName} 连通性测试通过！正在写入配置文件...`, "success");
 
         try {
@@ -397,6 +401,8 @@ export function BatchTerminalModal({
               prevent_official_leak: accCfg?.prevent_official_leak ?? true,
             };
             await setAccioConfig(payload);
+            // 写入期间账号或会话可能已切换；过期会话不再启动 Bridge
+            if (!isSessionCurrent()) return;
             try {
               const port = await startAccioBridge(payload.bridge_port);
               addLog(`✓ Accio Work 本地中继已启动 (端口: ${port})`, "success");
@@ -414,6 +420,8 @@ export function BatchTerminalModal({
               cursor_path: curCfg?.cursor_path || null,
             };
             await setCursorConfig(payload);
+            // 写入期间账号或会话可能已切换；过期会话不再启动 Bridge
+            if (!isSessionCurrent()) return;
             try {
               const port = await startCursorBridge(payload.bridge_port);
               addLog(`✓ Cursor Connect-RPC Bridge 已启动 (端口: ${port})`, "success");
@@ -423,6 +431,8 @@ export function BatchTerminalModal({
               addLog(`⚠️ Cursor Bridge/Patch 告警: ${bErr}`, "warn");
             }
           }
+
+          if (!isSessionCurrent()) return;
 
           // 记录本地绑定
           if (resolved.token) {
@@ -501,7 +511,7 @@ export function BatchTerminalModal({
         detail: { toolIds: targets },
       }),
     );
-    onSuccess?.();
+    if (isSessionCurrent()) onSuccess?.();
   };
 
   useEffect(() => {

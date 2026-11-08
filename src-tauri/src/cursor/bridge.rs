@@ -58,6 +58,52 @@ static RUNNING_CURSOR_BRIDGE: TokioMutex<Option<CursorBridgeHandle>> = TokioMute
 // Serialize start/port-recovery sequences so two callers cannot both bind a
 // preferred port before either one publishes its bridge handle.
 static START_CURSOR_BRIDGE: TokioMutex<()> = TokioMutex::const_new(());
+// In-flight Agent streams. Graceful shutdown would otherwise wait on (or be
+// aborted around) streaming responses whose detached tasks keep running tools
+// and calling the upstream after the bridge is gone.
+static AGENT_TASKS: Lazy<AgentTaskSet> =
+    Lazy::new(|| std::sync::Mutex::new(tokio::task::JoinSet::new()));
+
+type AgentTaskSet = std::sync::Mutex<tokio::task::JoinSet<()>>;
+
+fn spawn_agent_task(task: impl std::future::Future<Output = ()> + Send + 'static) {
+    spawn_tracked(&AGENT_TASKS, task);
+}
+
+/// Abort every in-flight Agent stream; returns how many were still running.
+fn abort_agent_tasks() -> usize {
+    abort_tracked(&AGENT_TASKS)
+}
+
+fn spawn_tracked(set: &AgentTaskSet, task: impl std::future::Future<Output = ()> + Send + 'static) {
+    let mut tasks = set
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    // Reap finished tasks so the set only holds live streams.
+    while tasks.try_join_next().is_some() {}
+    tasks.spawn(task);
+}
+
+fn abort_tracked(set: &AgentTaskSet) -> usize {
+    let mut tasks = set
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    while tasks.try_join_next().is_some() {}
+    let running = tasks.len();
+    tasks.abort_all();
+    running
+}
+
+/// Aborts the wrapped task when dropped. A plain `JoinHandle` detaches on
+/// drop, so aborting the stream task would otherwise leave the inner agent
+/// (and its blocking tools) running.
+struct AbortOnDrop(tokio::task::AbortHandle);
+
+impl Drop for AbortOnDrop {
+    fn drop(&mut self) {
+        self.0.abort();
+    }
+}
 
 const MODEL_LIST_TTL: Duration = Duration::from_secs(300);
 
@@ -115,6 +161,7 @@ fn cached_model_list(fingerprint: &str, allow_stale: bool) -> Option<Vec<String>
 }
 
 async fn fetch_and_cache_model_ids(config: &crate::cursor::config::CursorConfig) -> Vec<String> {
+    let reset_generation = crate::reset::current_generation();
     let fingerprint =
         crate::cursor::config::model_source_fingerprint(&config.base_url, &config.api_key);
     if config.api_key.trim().is_empty() || config.base_url.trim().is_empty() {
@@ -129,19 +176,38 @@ async fn fetch_and_cache_model_ids(config: &crate::cursor::config::CursorConfig)
                 .map(|m| m.id.trim().to_string())
                 .filter(|id| !id.is_empty() && seen.insert(id.clone()))
                 .collect();
-            remember_model_list(fingerprint.clone(), ids.clone());
-
-            let mut latest = load_cursor_config();
-            let latest_fp =
-                crate::cursor::config::model_source_fingerprint(&latest.base_url, &latest.api_key);
-            if latest_fp == fingerprint
-                && (latest.cached_models != ids || latest.cached_models_fingerprint != fingerprint)
-            {
-                latest.cached_models = ids.clone();
-                latest.cached_models_fingerprint = fingerprint;
-                if let Err(e) = crate::cursor::config::save_cursor_config(&latest) {
-                    log::warn!("回写 Cursor 模型缓存失败: {e}");
-                }
+            // The config lock and file I/O block; keep them off the async workers.
+            let cache_ids = ids.clone();
+            let written = tokio::task::spawn_blocking(move || {
+                crate::reset::with_config_write_at_generation(reset_generation, || {
+                    remember_model_list(fingerprint.clone(), cache_ids.clone());
+                    let mut latest = load_cursor_config();
+                    let latest_fp = crate::cursor::config::model_source_fingerprint(
+                        &latest.base_url,
+                        &latest.api_key,
+                    );
+                    if latest_fp == fingerprint
+                        && (latest.cached_models != cache_ids
+                            || latest.cached_models_fingerprint != fingerprint)
+                    {
+                        latest.cached_models = cache_ids;
+                        latest.cached_models_fingerprint = fingerprint;
+                        if let Ok(path) = crate::cursor::get_cursor_config_path() {
+                            if let Err(e) =
+                                crate::cursor::config::save_cursor_config_unlocked(&latest, &path)
+                            {
+                                log::warn!("回写 Cursor 模型缓存失败: {e}");
+                            }
+                        }
+                    }
+                    Ok(())
+                })
+            })
+            .await;
+            match written {
+                Ok(Ok(())) => {}
+                Ok(Err(e)) => log::warn!("回写 Cursor 模型缓存前配置锁失败: {e}"),
+                Err(e) => log::warn!("回写 Cursor 模型缓存任务异常: {e}"),
             }
             ids
         }
@@ -381,8 +447,11 @@ pub fn filter_hop_by_hop_headers(headers: &mut HeaderMap) {
 /// Bidi 内存会话缓存（协调 BidiAppend 与 RunSSE 的时序并发）
 #[derive(Clone, Debug)]
 struct BidiSession {
-    #[allow(dead_code)]
     request_id: String,
+    /// Cursor 会话标识，跨轮稳定；用于在请求缺少内联历史时从本地缓存补全。
+    conversation_id: Option<String>,
+    /// 当前用户消息标识；与已缓存轮次重复时表示重新生成/编辑旧消息。
+    message_id: Option<String>,
     user_prompt: String,
     model: String,
     history: Vec<(String, String)>,
@@ -391,6 +460,10 @@ struct BidiSession {
     context_rules: Vec<(String, String)>,
     extra_context: Vec<String>,
     images: Vec<crate::cursor::protocol::CursorImageData>,
+    workspace_paths: Vec<String>,
+    shell: Option<String>,
+    project_folder: Option<String>,
+    process_working_directory: Option<String>,
     last_seqno: i64,
     created_at: std::time::Instant,
 }
@@ -453,6 +526,11 @@ impl BidiSession {
     /// 计算当前会话的总字节数（包括 prompt、history、context 等）
     fn total_bytes(&self) -> usize {
         let mut total = self.user_prompt.len() + self.request_id.len() + self.model.len();
+        total += [&self.conversation_id, &self.message_id]
+            .iter()
+            .filter_map(|v| v.as_ref())
+            .map(String::len)
+            .sum::<usize>();
         total += self
             .history
             .iter()
@@ -474,6 +552,16 @@ impl BidiSession {
             .map(|(n, c)| n.len() + c.len())
             .sum::<usize>();
         total += self.extra_context.iter().map(|s| s.len()).sum::<usize>();
+        total += self.workspace_paths.iter().map(String::len).sum::<usize>();
+        total += [
+            &self.shell,
+            &self.project_folder,
+            &self.process_working_directory,
+        ]
+        .iter()
+        .filter_map(|v| v.as_ref())
+        .map(String::len)
+        .sum::<usize>();
         total += self
             .images
             .iter()
@@ -535,6 +623,383 @@ fn commit_session(
     }
     map.insert(id, candidate);
     Ok(())
+}
+
+/// 新建一个空的 BidiSession（尚未收到任何轮次内容）
+fn empty_session(request_id: &str, default_model: &str) -> BidiSession {
+    BidiSession {
+        request_id: request_id.to_string(),
+        conversation_id: None,
+        message_id: None,
+        user_prompt: String::new(),
+        model: default_model.to_string(),
+        history: Vec::new(),
+        context_files: Vec::new(),
+        context_codes: Vec::new(),
+        context_rules: Vec::new(),
+        extra_context: Vec::new(),
+        images: Vec::new(),
+        workspace_paths: Vec::new(),
+        shell: None,
+        project_folder: None,
+        process_working_directory: None,
+        last_seqno: -1,
+        created_at: std::time::Instant::now(),
+    }
+}
+
+/// 把一条携带轮次内容的 BidiAppend 合并进会话。
+///
+/// 序号不小于已处理序号时覆盖对应字段；乱序到达的较旧内容包只补齐仍为空的字段，
+/// 不会被整体丢弃（否则先到的空控制包会让真正的用户请求失效）。
+fn merge_turn_into_session(
+    candidate: &mut BidiSession,
+    decoded: crate::cursor::protocol::DecodedBidiMessage,
+) {
+    let newer = decoded.seqno >= candidate.last_seqno;
+    let awaiting_turn = candidate.user_prompt.trim().is_empty() && candidate.history.is_empty();
+    if newer {
+        candidate.last_seqno = decoded.seqno;
+    }
+    let take = |slot_empty: bool| newer || slot_empty;
+
+    if !decoded.user_text.trim().is_empty() && take(candidate.user_prompt.trim().is_empty()) {
+        candidate.user_prompt = decoded.user_text;
+    }
+    if let Some(m) = decoded.model {
+        if !m.trim().is_empty() && m.len() < 256 && (newer || awaiting_turn) {
+            candidate.model = m;
+        }
+    }
+    // 限制 history 条数和总大小
+    if !decoded.history.is_empty() && take(candidate.history.is_empty()) {
+        let mut new_history = decoded.history;
+        if new_history.len() > MAX_HISTORY_ITEMS {
+            new_history.drain(..new_history.len() - MAX_HISTORY_ITEMS);
+        }
+        candidate.history = new_history;
+    }
+    if !decoded.context_files.is_empty() && take(candidate.context_files.is_empty()) {
+        candidate.context_files = decoded.context_files;
+    }
+    if !decoded.context_codes.is_empty() && take(candidate.context_codes.is_empty()) {
+        candidate.context_codes = decoded.context_codes;
+    }
+    if !decoded.context_rules.is_empty() && take(candidate.context_rules.is_empty()) {
+        candidate.context_rules = decoded.context_rules;
+    }
+    if !decoded.extra_context.is_empty() && take(candidate.extra_context.is_empty()) {
+        candidate.extra_context = decoded.extra_context;
+    }
+    if !decoded.images.is_empty() && take(candidate.images.is_empty()) {
+        candidate.images = decoded.images;
+    }
+    if !decoded.workspace_paths.is_empty() {
+        // A session that already has a valid workspace root keeps it:
+        // a later append must not redirect the agent's file tools.
+        let has_root = candidate
+            .workspace_paths
+            .iter()
+            .any(|path| crate::cursor::workspace_auth::canonical_root(path).is_some());
+        if has_root {
+            if decoded.workspace_paths != candidate.workspace_paths {
+                log::warn!("Cursor BidiAppend 试图替换已有工作区根目录，已忽略");
+            }
+        } else {
+            candidate.workspace_paths = decoded.workspace_paths;
+        }
+    }
+    if decoded.shell.is_some() && take(candidate.shell.is_none()) {
+        candidate.shell = decoded.shell;
+    }
+    if decoded.project_folder.is_some() && take(candidate.project_folder.is_none()) {
+        candidate.project_folder = decoded.project_folder;
+    }
+    if decoded.process_working_directory.is_some()
+        && take(candidate.process_working_directory.is_none())
+    {
+        candidate.process_working_directory = decoded.process_working_directory;
+    }
+    if decoded.conversation_id.is_some() && take(candidate.conversation_id.is_none()) {
+        candidate.conversation_id = decoded.conversation_id;
+    }
+    if decoded.message_id.is_some() && take(candidate.message_id.is_none()) {
+        candidate.message_id = decoded.message_id;
+    }
+}
+
+/// 日志用的短摘要：标识符的 SHA-256 前 8 位十六进制，可跨日志关联但不暴露原值。
+fn short_hash(value: Option<&str>) -> String {
+    use sha2::{Digest, Sha256};
+    match value {
+        Some(value) if !value.is_empty() => hex::encode(&Sha256::digest(value.as_bytes())[..4]),
+        _ => "-".to_string(),
+    }
+}
+
+/// 结构摘要去掉长度后的形状，用于控制包日志去重。
+fn shape_key(shape: &str) -> String {
+    let mut key = String::with_capacity(shape.len());
+    let mut skipping_len = false;
+    for ch in shape.chars() {
+        if skipping_len && ch.is_ascii_digit() {
+            continue;
+        }
+        skipping_len = ch == 'L';
+        key.push(ch);
+    }
+    key
+}
+
+/// 控制包按形状只在首次出现时以 info 级别记录，避免心跳刷屏。
+static SEEN_CONTROL_SHAPES: Lazy<std::sync::Mutex<HashSet<String>>> =
+    Lazy::new(|| std::sync::Mutex::new(HashSet::new()));
+const MAX_SEEN_CONTROL_SHAPES: usize = 256;
+
+fn first_sighting_of_control_shape(shape: &str) -> bool {
+    let mut seen = SEEN_CONTROL_SHAPES
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    seen.len() < MAX_SEEN_CONTROL_SHAPES && seen.insert(shape_key(shape))
+}
+
+// ===== 跨轮会话历史缓存 =====
+//
+// 部分 Cursor 版本在后续轮次不内联完整历史，而依赖服务端保存会话状态；本地桥接
+// 此前不保存任何跨轮状态，导致第二轮只把当前问题发给模型。这里按 conversation_id
+// 保存已成功完成的轮次，仅在请求缺少内联历史时用于补全。只驻留内存，桥接停止或
+// 重置时清空。
+const CONVERSATION_TTL: Duration = Duration::from_secs(2 * 60 * 60);
+const MAX_CONVERSATIONS: usize = 200;
+const MAX_CONVERSATION_BYTES: usize = 2 * 1024 * 1024;
+const MAX_CONVERSATION_STORE_BYTES: usize = 32 * 1024 * 1024;
+/// 单轮回答最多缓存的字节数
+const MAX_ASSISTANT_CAPTURE_BYTES: usize = 512 * 1024;
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct StoredMessage {
+    role: String,
+    text: String,
+    message_id: Option<String>,
+}
+
+impl StoredMessage {
+    fn bytes(&self) -> usize {
+        self.role.len() + self.text.len() + self.message_id.as_ref().map_or(0, String::len)
+    }
+}
+
+#[derive(Debug)]
+struct StoredConversation {
+    messages: Vec<StoredMessage>,
+    last_used: std::time::Instant,
+}
+
+impl StoredConversation {
+    fn bytes(&self) -> usize {
+        self.messages.iter().map(StoredMessage::bytes).sum()
+    }
+
+    /// 截止到 `message_id` 对应轮次之前的消息；message_id 未出现过时返回全部。
+    fn prefix_before(&self, message_id: Option<&str>) -> &[StoredMessage] {
+        let end = message_id
+            .and_then(|id| {
+                self.messages
+                    .iter()
+                    .position(|m| m.role == "user" && m.message_id.as_deref() == Some(id))
+            })
+            .unwrap_or(self.messages.len());
+        &self.messages[..end]
+    }
+}
+
+#[derive(Default)]
+struct ConversationStore {
+    conversations: HashMap<String, StoredConversation>,
+}
+
+/// 本轮发往模型的历史来自哪里
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum HistorySource {
+    /// Cursor 在本轮请求中内联发送
+    Inline,
+    /// 从本地会话缓存补全
+    Store,
+    /// 没有历史（新会话，或缺少 conversation_id 无法补全）
+    Empty,
+}
+
+impl HistorySource {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::Inline => "inline",
+            Self::Store => "store",
+            Self::Empty => "none",
+        }
+    }
+}
+
+impl ConversationStore {
+    fn prune(&mut self, now: std::time::Instant) {
+        self.conversations
+            .retain(|_, c| now.saturating_duration_since(c.last_used) < CONVERSATION_TTL);
+    }
+
+    /// 取该会话在当前消息之前的历史。若当前 message_id 已缓存过（重新生成或编辑旧
+    /// 消息），只返回该轮之前的部分，避免把作废的回答当作上下文。
+    fn history_before(
+        &mut self,
+        conversation_id: &str,
+        message_id: Option<&str>,
+        now: std::time::Instant,
+    ) -> Vec<(String, String)> {
+        self.prune(now);
+        let Some(conversation) = self.conversations.get_mut(conversation_id) else {
+            return Vec::new();
+        };
+        conversation.last_used = now;
+        conversation
+            .prefix_before(message_id)
+            .iter()
+            .map(|m| (m.role.clone(), m.text.clone()))
+            .collect()
+    }
+
+    /// 记录一轮成功完成的对话：`base` 为本轮实际发送给模型的历史。
+    #[allow(clippy::too_many_arguments)]
+    fn remember_turn(
+        &mut self,
+        conversation_id: &str,
+        source: HistorySource,
+        base: &[(String, String)],
+        user: &str,
+        message_id: Option<&str>,
+        assistant: &str,
+        now: std::time::Instant,
+    ) {
+        self.prune(now);
+        // 历史来自缓存时沿用缓存条目（保留 message_id，便于后续识别重新生成）。
+        let mut messages: Vec<StoredMessage> =
+            match (source, self.conversations.get(conversation_id)) {
+                (HistorySource::Store, Some(existing)) => {
+                    existing.prefix_before(message_id).to_vec()
+                }
+                _ => base
+                    .iter()
+                    .map(|(role, text)| StoredMessage {
+                        role: role.clone(),
+                        text: text.clone(),
+                        message_id: None,
+                    })
+                    .collect(),
+            };
+        if !user.trim().is_empty() {
+            messages.push(StoredMessage {
+                role: "user".into(),
+                text: user.to_string(),
+                message_id: message_id.map(str::to_string),
+            });
+        }
+        if !assistant.trim().is_empty() {
+            messages.push(StoredMessage {
+                role: "assistant".into(),
+                text: assistant.to_string(),
+                message_id: None,
+            });
+        }
+        // 单会话预算：从最旧的消息开始丢弃，并保证历史以 user 消息开头。
+        let mut bytes: usize = messages.iter().map(StoredMessage::bytes).sum();
+        let mut skip = 0;
+        while skip < messages.len()
+            && (messages.len() - skip > MAX_HISTORY_ITEMS
+                || bytes > MAX_CONVERSATION_BYTES
+                || (skip > 0 && messages[skip].role != "user"))
+        {
+            bytes -= messages[skip].bytes();
+            skip += 1;
+        }
+        messages.drain(..skip);
+        if messages.is_empty() {
+            // 本轮放不进预算：丢弃旧缓存，避免之后补全出与实际对话不一致的历史。
+            self.conversations.remove(conversation_id);
+            return;
+        }
+        self.conversations.insert(
+            conversation_id.to_string(),
+            StoredConversation {
+                messages,
+                last_used: now,
+            },
+        );
+        // 全局预算：按最近使用时间淘汰其他会话。
+        loop {
+            let total: usize = self
+                .conversations
+                .values()
+                .map(StoredConversation::bytes)
+                .sum();
+            if self.conversations.len() <= MAX_CONVERSATIONS
+                && total <= MAX_CONVERSATION_STORE_BYTES
+            {
+                break;
+            }
+            let Some(oldest) = self
+                .conversations
+                .iter()
+                .filter(|(key, _)| key.as_str() != conversation_id)
+                .min_by_key(|(_, c)| c.last_used)
+                .map(|(key, _)| key.clone())
+            else {
+                break;
+            };
+            self.conversations.remove(&oldest);
+        }
+    }
+
+    fn clear(&mut self) {
+        self.conversations.clear();
+    }
+}
+
+static CONVERSATION_STORE: Lazy<std::sync::Mutex<ConversationStore>> =
+    Lazy::new(|| std::sync::Mutex::new(ConversationStore::default()));
+
+fn conversation_store() -> std::sync::MutexGuard<'static, ConversationStore> {
+    CONVERSATION_STORE
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+}
+
+/// 请求缺少内联历史时，按 conversation_id 从本地缓存补全。
+fn resolve_history(session: &mut BidiSession, store: &mut ConversationStore) -> HistorySource {
+    if !session.history.is_empty() {
+        return HistorySource::Inline;
+    }
+    let Some(conversation_id) = session.conversation_id.as_deref() else {
+        return HistorySource::Empty;
+    };
+    let history = store.history_before(
+        conversation_id,
+        session.message_id.as_deref(),
+        std::time::Instant::now(),
+    );
+    if history.is_empty() {
+        return HistorySource::Empty;
+    }
+    session.history = history;
+    HistorySource::Store
+}
+
+/// Connect 一元调用错误响应（HTTP 状态码 + JSON 错误体）
+fn connect_unary_error(status: StatusCode, code: &str, message: &str) -> Response {
+    Response::builder()
+        .status(status)
+        .header(header::CONTENT_TYPE, "application/json")
+        .header("connect-protocol-version", "1")
+        .body(Body::from(
+            json!({"code": code, "message": message}).to_string(),
+        ))
+        .unwrap_or_else(|_| (status, message.to_string()).into_response())
 }
 
 static SESSION_MAP: Lazy<Arc<TokioMutex<HashMap<String, BidiSession>>>> =
@@ -611,8 +1076,17 @@ pub async fn bind_listener(start_port: u16) -> Result<(TcpListener, u16), String
     ))
 }
 
-pub async fn start_bridge(port: Option<u16>) -> Result<u16, String> {
+/// `generation` is supplied by callers that belong to a configuration task.
+/// It is checked while holding the start lock so a task that resumes after a
+/// reset began (or finished) can no longer start the bridge.
+pub async fn start_bridge(port: Option<u16>, generation: Option<u64>) -> Result<u16, String> {
     let _start_guard = START_CURSOR_BRIDGE.lock().await;
+    if crate::reset::is_resetting() {
+        return Err("客户端配置正在清除，暂不能启动 Cursor Bridge".into());
+    }
+    if let Some(generation) = generation {
+        crate::reset::ensure_generation(generation).map_err(|error| error.to_string())?;
+    }
 
     {
         let guard = RUNNING_CURSOR_BRIDGE.lock().await;
@@ -653,8 +1127,13 @@ pub async fn start_bridge(port: Option<u16>) -> Result<u16, String> {
     if actual_port != config.bridge_port {
         let mut updated = config.clone();
         updated.bridge_port = actual_port;
-        crate::cursor::config::save_cursor_config(&updated)
-            .map_err(|e| format!("Bridge 已切换端口，但写回 Cursor 配置失败: {e}"))?;
+        match generation {
+            Some(generation) => {
+                crate::cursor::config::save_cursor_config_at_generation(&updated, generation)
+            }
+            None => crate::cursor::config::save_cursor_config(&updated),
+        }
+        .map_err(|e| format!("Bridge 已切换端口，但写回 Cursor 配置失败: {e}"))?;
         log::warn!(
             "Cursor Bridge 端口已自适应切换: {} -> {}；下次挂接将使用新端口",
             config.bridge_port,
@@ -823,10 +1302,22 @@ pub async fn start_bridge(port: Option<u16>) -> Result<u16, String> {
                 }
                 next.run(req).await
             },
-        ));
+        ))
+        // Outermost layer: every route (including CORS preflight) first proves
+        // that the connecting process belongs to the same OS user.
+        .layer(axum::middleware::from_fn({
+            let lookup = crate::cursor::process_auth::system_lookup();
+            move |req: Request, next: axum::middleware::Next| {
+                crate::cursor::process_auth::peer_auth_middleware(lookup.clone(), req, next)
+            }
+        }));
 
     let join_handle = tokio::spawn(async move {
-        let server = axum::serve(listener, app);
+        let server = axum::serve(
+            listener,
+            app.into_make_service_with_connect_info::<crate::cursor::process_auth::PeerConnection>(
+            ),
+        );
         let _ = server
             .with_graceful_shutdown(async move {
                 let _ = shutdown_rx.await;
@@ -851,6 +1342,15 @@ pub async fn start_bridge(port: Option<u16>) -> Result<u16, String> {
 }
 
 pub async fn stop_bridge() -> Result<(), String> {
+    stop_bridge_inner().await
+}
+
+pub async fn stop_bridge_for_reset() -> Result<(), String> {
+    let _start_guard = START_CURSOR_BRIDGE.lock().await;
+    stop_bridge_inner().await
+}
+
+async fn stop_bridge_inner() -> Result<(), String> {
     let handle_opt = {
         let mut guard = RUNNING_CURSOR_BRIDGE.lock().await;
         guard.take()
@@ -863,6 +1363,11 @@ pub async fn stop_bridge() -> Result<(), String> {
             mut join_handle,
         } = handle;
         let _ = shutdown_tx.send(());
+        // Ending the Agent streams lets graceful shutdown finish promptly.
+        let aborted = abort_agent_tasks();
+        if aborted > 0 {
+            log::info!("Cursor Bridge 停止，已取消 {} 个在途 Agent 任务", aborted);
+        }
         if tokio::time::timeout(Duration::from_millis(1500), &mut join_handle)
             .await
             .is_err()
@@ -871,9 +1376,15 @@ pub async fn stop_bridge() -> Result<(), String> {
             join_handle.abort();
             let _ = join_handle.await;
         }
+        // A request accepted just before shutdown may have spawned its agent
+        // after the first pass; the server task has ended, so this is final.
+        abort_agent_tasks();
         tokio::time::sleep(Duration::from_millis(150)).await;
         log::info!("AI-Helper Cursor Bridge 已停止 (释放端口 {})", port);
     }
+    // 会话内容只驻留内存，桥接停止或重置时一并清空。
+    conversation_store().clear();
+    SESSION_MAP.lock().await.clear();
     Ok(())
 }
 
@@ -1109,9 +1620,32 @@ fn clean_base_url(url: &str) -> &str {
 type StreamFailure = (&'static str, &'static str);
 type StreamSender = tokio::sync::mpsc::Sender<Result<Bytes, std::io::Error>>;
 
+async fn send_stream_frame(tx: &StreamSender, frame: Vec<u8>) -> Result<(), ()> {
+    tx.send(Ok(Bytes::from(frame))).await.map_err(|_| ())
+}
+
+fn encode_agent_event(event: crate::cursor::agent::AgentEvent, is_proto: bool) -> Vec<u8> {
+    match event {
+        crate::cursor::agent::AgentEvent::Text(text) => {
+            if is_proto {
+                create_agent_text_chunk(&text)
+            } else {
+                create_agent_json_text_chunk(&text)
+            }
+        }
+        crate::cursor::agent::AgentEvent::Thinking(text)
+        | crate::cursor::agent::AgentEvent::Tool(text) => {
+            if is_proto {
+                create_agent_thinking_chunk(&text)
+            } else {
+                create_agent_json_thinking_chunk(&text)
+            }
+        }
+    }
+}
+
 #[derive(Clone, Copy)]
 enum StreamKind {
-    Agent,
     Legacy,
     FastEdit,
 }
@@ -1143,30 +1677,14 @@ impl StreamOutput {
             return Ok(Vec::new());
         };
         let delta = parsed.pointer("/choices/0/delta");
-        let reasoning = if matches!(self.kind, StreamKind::Agent) {
-            delta
-                .and_then(|v| v.get("reasoning_content"))
-                .and_then(Value::as_str)
-        } else {
-            None
-        };
         let content = delta.and_then(|v| v.get("content")).and_then(Value::as_str);
         let mut frames = Vec::new();
-        for (text, thinking) in [(reasoning, true), (content, false)] {
-            let Some(text) = text.filter(|s| !s.is_empty()) else {
-                continue;
-            };
+        if let Some(text) = content.filter(|s| !s.is_empty()) {
             if text.len() > MAX_GENERATION_BYTES.saturating_sub(self.generated_bytes) {
                 return Err(("resource_exhausted", "Generation limit exceeded"));
             }
             self.generated_bytes += text.len();
             let frame = match self.kind {
-                StreamKind::Agent => match (self.is_proto, thinking) {
-                    (true, true) => create_agent_thinking_chunk(text),
-                    (false, true) => create_agent_json_thinking_chunk(text),
-                    (true, false) => create_agent_text_chunk(text),
-                    (false, false) => create_agent_json_text_chunk(text),
-                },
                 StreamKind::Legacy => {
                     if self.is_proto {
                         create_legacy_chat_response_chunk(text)
@@ -1279,14 +1797,7 @@ async fn forward_connect_stream<S, E>(
         return;
     }
     let terminal = match result {
-        Ok(()) => {
-            if matches!(kind, StreamKind::Agent) && is_proto {
-                let _ = tx
-                    .send(Ok(Bytes::from(create_agent_turn_ended_chunk())))
-                    .await;
-            }
-            create_connect_end_frame()
-        }
+        Ok(()) => create_connect_end_frame(),
         Err((code, message)) => create_connect_error_frame(code, message),
     };
     debug_assert!(terminal.len() <= 512);
@@ -1308,6 +1819,188 @@ async fn bounded_upstream_error(response: reqwest::Response) -> String {
     String::from_utf8_lossy(&body).into_owned()
 }
 
+fn agent_messages(session: &BidiSession) -> Result<Vec<Value>, String> {
+    let (system_context, user_context) = session
+        .formatted_context()
+        .map_err(|message| message.to_string())?;
+    let mut messages = Vec::new();
+    if !system_context.is_empty() {
+        messages.push(json!({"role":"system","content":system_context}));
+    }
+    for (role, content) in &session.history {
+        messages.push(json!({"role":role,"content":content}));
+    }
+    let full_user_content = if user_context.is_empty() {
+        session.user_prompt.clone()
+    } else {
+        format!("{}\n\n{}", user_context, session.user_prompt)
+    };
+    messages.push(json!({
+        "role":"user",
+        "content": crate::cursor::protocol::build_openai_multimodal_content(&full_user_content, &session.images)
+    }));
+    Ok(messages)
+}
+
+/// Execute the local workspace tool loop and translate its events into Cursor frames.
+/// This is shared by RunSSE and Run so both transports have identical capabilities.
+async fn run_cursor_agent_stream(
+    mut session: BidiSession,
+    is_proto: bool,
+    content_type: &'static str,
+    transport: &'static str,
+) -> Response {
+    let config = load_cursor_config();
+    let history_source = resolve_history(&mut session, &mut conversation_store());
+    log::info!(
+        "Cursor Agent 派发 [{}] request: {}, conversation: {}, message_id: {}, history: {} 条 (来源: {}), prompt 长度: {}, files: {}, images: {}, workspace roots: {}, model: {}",
+        transport,
+        short_hash(Some(&session.request_id)),
+        short_hash(session.conversation_id.as_deref()),
+        if session.message_id.is_some() { "有" } else { "无" },
+        session.history.len(),
+        history_source.as_str(),
+        session.user_prompt.len(),
+        session.context_files.len(),
+        session.images.len(),
+        session.workspace_paths.len(),
+        session.model
+    );
+    if history_source == HistorySource::Empty && session.conversation_id.is_none() {
+        log::warn!(
+            "Cursor Agent 请求既无内联历史也无 conversation_id，无法补全跨轮上下文，本轮按单轮发送"
+        );
+    }
+    let (tx, rx) = tokio::sync::mpsc::channel::<Result<Bytes, std::io::Error>>(128);
+    spawn_agent_task(async move {
+        let send = send_stream_frame;
+        let heartbeat = if is_proto {
+            create_agent_heartbeat_chunk()
+        } else {
+            create_agent_json_heartbeat_chunk()
+        };
+        if send(&tx, heartbeat).await.is_err() {
+            return;
+        }
+        // 累积模型可见回答，成功结束后写入跨轮会话缓存。
+        let mut assistant_text = String::new();
+        let mut capture = |event: &crate::cursor::agent::AgentEvent| {
+            if let crate::cursor::agent::AgentEvent::Text(text) = event {
+                if assistant_text.len() + text.len() <= MAX_ASSISTANT_CAPTURE_BYTES {
+                    assistant_text.push_str(text);
+                }
+            }
+        };
+        let messages = match agent_messages(&session) {
+            Ok(messages) => messages,
+            Err(error) => {
+                let _ = send(
+                    &tx,
+                    create_connect_error_frame("resource_exhausted", &error),
+                )
+                .await;
+                return;
+            }
+        };
+        let input = crate::cursor::agent::AgentInput {
+            model: session.model.clone(),
+            base_url: config.base_url.clone(),
+            api_key: config.api_key.clone(),
+            messages,
+            workspace_paths: session.workspace_paths.clone(),
+            project_folder: session.project_folder.clone(),
+            process_working_directory: session.process_working_directory.clone(),
+        };
+        let (event_tx, mut event_rx) = tokio::sync::mpsc::channel(32);
+        let agent_task = tokio::spawn(crate::cursor::agent::run_agent(input, event_tx));
+        // Aborting this stream task (bridge stop) must also stop the agent.
+        let _abort_agent = AbortOnDrop(agent_task.abort_handle());
+        let mut agent = Box::pin(agent_task);
+        let completion = loop {
+            tokio::select! {
+                event = event_rx.recv() => {
+                    let Some(event) = event else { break (&mut agent).await; };
+                    capture(&event);
+                    if send(&tx, encode_agent_event(event, is_proto)).await.is_err() {
+                        agent.as_mut().abort();
+                        let _ = (&mut agent).await;
+                        return;
+                    }
+                }
+                result = &mut agent => break result,
+                _ = tx.closed() => {
+                    agent.as_mut().abort();
+                    let _ = (&mut agent).await;
+                    return;
+                }
+                _ = tokio::time::sleep(Duration::from_secs(15)) => {
+                    if send(&tx, if is_proto { create_agent_heartbeat_chunk() } else { create_agent_json_heartbeat_chunk() }).await.is_err() {
+                        agent.as_mut().abort();
+                        let _ = (&mut agent).await;
+                        return;
+                    }
+                }
+            }
+        };
+        // A task can finish while the channel still contains final text events.
+        // Drain them before closing the Cursor turn rather than dropping the answer.
+        while let Ok(event) = event_rx.try_recv() {
+            capture(&event);
+            if send(&tx, encode_agent_event(event, is_proto))
+                .await
+                .is_err()
+            {
+                return;
+            }
+        }
+        match completion {
+            Ok(Ok(_)) => {
+                if let Some(conversation_id) = session.conversation_id.as_deref() {
+                    conversation_store().remember_turn(
+                        conversation_id,
+                        history_source,
+                        &session.history,
+                        &session.user_prompt,
+                        session.message_id.as_deref(),
+                        &assistant_text,
+                        std::time::Instant::now(),
+                    );
+                }
+            }
+            Ok(Err(error)) => {
+                let _ = send(
+                    &tx,
+                    create_connect_error_frame(
+                        "internal",
+                        &format!("【AI-Helper Agent】{}", error),
+                    ),
+                )
+                .await;
+                return;
+            }
+            Err(error) => {
+                let _ = send(
+                    &tx,
+                    create_connect_error_frame("internal", &format!("Agent 任务异常: {}", error)),
+                )
+                .await;
+                return;
+            }
+        }
+        if is_proto {
+            let _ = send(&tx, create_agent_turn_ended_chunk()).await;
+        }
+        let _ = send(&tx, create_connect_end_frame()).await;
+    });
+    Response::builder()
+        .status(StatusCode::OK)
+        .header(header::CONTENT_TYPE, content_type)
+        .header("connect-protocol-version", "1")
+        .header(header::CACHE_CONTROL, "no-cache")
+        .body(Body::from_stream(ReceiverStream(rx)))
+        .unwrap_or_else(|_| (StatusCode::INTERNAL_SERVER_ERROR, "无法创建响应流").into_response())
+}
+
 /// 处理现代 Cursor 上行 BidiAppend 请求
 async fn handle_bidi_append(req: Request) -> Response {
     // 服务端准入校验
@@ -1325,22 +2018,67 @@ async fn handle_bidi_append(req: Request) -> Response {
         }
     };
 
-    if let Some(decoded) = decode_bidi_append(&bytes) {
+    let Some(decoded) = decode_bidi_append(&bytes) else {
+        log::warn!(
+            "Cursor BidiAppend 收到无法解析的消息体 (长度: {} 字节)，已返回错误",
+            bytes.len()
+        );
+        return connect_unary_error(
+            StatusCode::BAD_REQUEST,
+            "invalid_argument",
+            "AI-Helper 无法解析 Cursor BidiAppend 消息",
+        );
+    };
+
+    // 限制 request_id 长度防止内存攻击；空 request_id 无法与 RunSSE 关联，直接拒绝，
+    // 避免不同会话的数据混入同一个空键。
+    if decoded.request_id.is_empty() || decoded.request_id.len() > MAX_REQUEST_ID_LENGTH {
+        log::warn!(
+            "拒绝 request_id 无效的 Cursor BidiAppend (长度: {} 字节, kind: {}, 结构: {})",
+            decoded.request_id.len(),
+            decoded.kind.as_str(),
+            decoded.wire_shape
+        );
+        return connect_unary_error(
+            StatusCode::BAD_REQUEST,
+            "invalid_argument",
+            "Cursor BidiAppend 缺少有效 request_id",
+        );
+    }
+
+    if !decoded.kind.carries_turn() {
+        // 控制包（心跳、KV、exec 等）不含用户轮次，不创建或修改会话。
+        // 每种结构只在首次出现时以 info 记录，便于确认其中没有被漏解析的用户消息。
+        if first_sighting_of_control_shape(&decoded.wire_shape) {
+            log::info!(
+                "Cursor BidiAppend 控制包 [{}] seqno: {}, 结构: {}",
+                short_hash(Some(&decoded.request_id)),
+                decoded.seqno,
+                decoded.wire_shape
+            );
+        } else {
+            log::debug!(
+                "Cursor BidiAppend 控制包 [{}] seqno: {}, 结构: {}",
+                short_hash(Some(&decoded.request_id)),
+                decoded.seqno,
+                decoded.wire_shape
+            );
+        }
+    } else {
         log::info!(
-            "Cursor BidiAppend 接收请求 [{}], seqno: {}, model: {:?}, history: {} 轮, files: {}, prompt 长度: {}",
-            decoded.request_id,
+            "Cursor BidiAppend 用户轮次 [{}] seqno: {}, kind: {}, conversation: {}, message_id: {}, model: {:?}, history: {} 条, files: {}, images: {}, prompt 长度: {}, 结构: {}",
+            short_hash(Some(&decoded.request_id)),
             decoded.seqno,
+            decoded.kind.as_str(),
+            short_hash(decoded.conversation_id.as_deref()),
+            if decoded.message_id.is_some() { "有" } else { "无" },
             decoded.model,
             decoded.history.len(),
             decoded.context_files.len(),
-            decoded.user_text.len()
+            decoded.images.len(),
+            decoded.user_text.len(),
+            decoded.wire_shape
         );
-
-        // 限制 request_id 长度防止内存攻击
-        if decoded.request_id.len() > MAX_REQUEST_ID_LENGTH {
-            log::warn!("拒绝过长的 request_id: {} 字节", decoded.request_id.len());
-            return (StatusCode::BAD_REQUEST, "Request ID too long").into_response();
-        }
 
         let default_model = load_cursor_config().model;
         let mut map = SESSION_MAP.lock().await;
@@ -1349,77 +2087,18 @@ async fn handle_bidi_append(req: Request) -> Response {
         map.retain(|_, s| s.created_at.elapsed() < Duration::from_secs(300));
 
         // 构建候选会话状态（先不修改缓存）
+        let request_id = decoded.request_id.clone();
         let mut candidate = map
-            .get(&decoded.request_id)
+            .get(&request_id)
             .cloned()
-            .unwrap_or_else(|| BidiSession {
-                request_id: decoded.request_id.clone(),
-                user_prompt: String::new(),
-                model: default_model.clone(),
-                history: Vec::new(),
-                context_files: Vec::new(),
-                context_codes: Vec::new(),
-                context_rules: Vec::new(),
-                extra_context: Vec::new(),
-                images: Vec::new(),
-                last_seqno: -1,
-                created_at: std::time::Instant::now(),
-            });
+            .unwrap_or_else(|| empty_session(&request_id, &default_model));
+        merge_turn_into_session(&mut candidate, decoded);
 
-        if decoded.seqno >= candidate.last_seqno {
-            candidate.last_seqno = decoded.seqno;
-
-            // 限制单个字段长度，防止单次写入过大
-            if !decoded.user_text.trim().is_empty() {
-                candidate.user_prompt = decoded.user_text;
-            }
-
-            if let Some(m) = decoded.model {
-                if !m.trim().is_empty() && m.len() < 256 {
-                    candidate.model = m;
-                }
-            }
-            // 限制 history 条数和总大小
-            if !decoded.history.is_empty() {
-                let mut new_history = decoded.history;
-                if new_history.len() > MAX_HISTORY_ITEMS {
-                    new_history = new_history
-                        .into_iter()
-                        .rev()
-                        .take(MAX_HISTORY_ITEMS)
-                        .rev()
-                        .collect();
-                }
-                candidate.history = new_history;
-            }
-
-            if !decoded.context_files.is_empty() {
-                candidate.context_files = decoded.context_files;
-            }
-            if !decoded.context_codes.is_empty() {
-                candidate.context_codes = decoded.context_codes;
-            }
-            if !decoded.context_rules.is_empty() {
-                candidate.context_rules = decoded.context_rules;
-            }
-            if !decoded.extra_context.is_empty() {
-                candidate.extra_context = decoded.extra_context;
-            }
-            if !decoded.images.is_empty() {
-                candidate.images = decoded.images;
-            }
-        }
-
-        if let Err(message) = commit_session(&mut map, decoded.request_id, candidate) {
+        if let Err(message) = commit_session(&mut map, request_id, candidate) {
             return (StatusCode::PAYLOAD_TOO_LARGE, message).into_response();
         }
 
         SESSION_NOTIFY.notify_waiters();
-    } else {
-        log::warn!(
-            "Cursor BidiAppend 收到无法解析的消息体 (长度: {} 字节)",
-            bytes.len()
-        );
     }
 
     if is_proto {
@@ -1465,7 +2144,10 @@ async fn handle_run_sse(req: Request) -> Response {
     };
 
     let req_id_opt = decode_bidi_request_id(&bytes);
-    log::info!("Cursor RunSSE 发起订阅, 解包 request_id: {:?}", req_id_opt);
+    log::info!(
+        "Cursor RunSSE 发起订阅, request: {}",
+        short_hash(req_id_opt.as_deref())
+    );
 
     let config = load_cursor_config();
     if config.api_key.trim().is_empty() {
@@ -1484,7 +2166,7 @@ async fn handle_run_sse(req: Request) -> Response {
     let cleanup_req_id = req_id_opt.clone();
 
     tokio::spawn(async move {
-        // 先发送一次心跳帧完成与 Cursor 客户端的即时握手 (消除 Reconnecting 状态)
+        // Complete the Cursor stream handshake before waiting for BidiAppend.
         let heartbeat = if is_proto {
             create_agent_heartbeat_chunk()
         } else {
@@ -1493,7 +2175,6 @@ async fn handle_run_sse(req: Request) -> Response {
         if tx.send(Ok(Bytes::from(heartbeat))).await.is_err() {
             return;
         }
-
         // 等待对应 request_id 的 BidiAppend 数据就绪 (消除丢通知竞态)
         let session = if let Some(ref req_id) = cleanup_req_id {
             let deadline = tokio::time::Instant::now() + Duration::from_secs(5);
@@ -1526,127 +2207,63 @@ async fn handle_run_sse(req: Request) -> Response {
             None
         };
 
-        let session_data = match session {
+        let mut session_data = match session {
             Some(s) => s,
             None => {
-                log::warn!("Cursor RunSSE 未找到对应 Prompt 数据，返回优雅结束帧");
-                let _ = tx.send(Ok(Bytes::from(create_connect_end_frame()))).await;
+                // 不再以“正常结束”掩盖失败：明确告知用户本轮请求未送达模型。
+                let (code, message) = if cleanup_req_id.is_some() {
+                    (
+                        "deadline_exceeded",
+                        "【AI-Helper】未在 5 秒内收到本轮 Cursor 请求内容，消息未发送给模型，请重试。",
+                    )
+                } else {
+                    (
+                        "invalid_argument",
+                        "【AI-Helper】RunSSE 请求缺少 request_id，无法关联本轮消息，请重试。",
+                    )
+                };
+                log::warn!(
+                    "Cursor RunSSE 未找到对应轮次数据 [{}] ({})，返回错误帧",
+                    short_hash(cleanup_req_id.as_deref()),
+                    code
+                );
+                let mut frames = encode_agent_event(
+                    crate::cursor::agent::AgentEvent::Text(message.to_string()),
+                    is_proto,
+                );
+                frames.extend_from_slice(&create_connect_error_frame(code, message));
+                let _ = tx.send(Ok(Bytes::from(frames))).await;
                 return;
             }
         };
 
         let model_to_use = match session_data.model.trim() {
-            "" | "default" | "auto" | "cursor-small" | "composer" => config.model.as_str(),
-            other => other,
-        };
-
-        log::info!(
-            "Cursor RunSSE 开始向下游派发模型生成流, 模型: {}, 历史轮数: {}, 上下文文件数: {}, 图片数: {}, prompt 长度: {}",
-            model_to_use,
-            session_data.history.len(),
-            session_data.context_files.len(),
-            session_data.images.len(),
-            session_data.user_prompt.len()
-        );
-
-        let mut messages: Vec<Value> = Vec::new();
-
-        let (system_context, user_context) = match session_data.formatted_context() {
-            Ok(context) => context,
-            Err(message) => {
-                let err_frame = create_connect_error_frame("resource_exhausted", message);
-                let _ = tx.send(Ok(Bytes::from(err_frame))).await;
-                return;
+            "" | "default" | "auto" | "cursor-small" | "composer" => {
+                if config.model.trim().is_empty() {
+                    "gpt-5.6-sol".to_string()
+                } else {
+                    config.model.clone()
+                }
             }
-        };
-        if !system_context.is_empty() {
-            messages.push(json!({"role": "system", "content": system_context}));
-        }
-        for (role, content) in &session_data.history {
-            messages.push(json!({"role": role, "content": content}));
-        }
-        let full_user_content = if user_context.is_empty() {
-            session_data.user_prompt
-        } else {
-            format!("{}\n\n{}", user_context, session_data.user_prompt)
+            other => other.to_string(),
         };
 
-        // P1 重构：使用提取的多模态内容构建函数
-        messages.push(json!({
-            "role": "user",
-            "content": crate::cursor::protocol::build_openai_multimodal_content(
-                &full_user_content,
-                &session_data.images
-            )
-        }));
-
-        let openai_req = json!({
-            "model": model_to_use,
-            "messages": messages,
-            "stream": true,
-            "temperature": 0.7
-        });
-
-        let upstream_url = format!("{}/v1/chat/completions", clean_base_url(&config.base_url));
-        let client = Client::builder()
-            .timeout(Duration::from_secs(180))
-            .build()
-            .unwrap_or_default();
-
-        let upstream_res = match client
-            .post(&upstream_url)
-            .header(
-                header::AUTHORIZATION,
-                format!("Bearer {}", config.api_key.trim()),
-            )
-            .header(header::CONTENT_TYPE, "application/json")
-            .json(&openai_req)
-            .send()
-            .await
-        {
-            Ok(r) => r,
-            Err(e) => {
-                log::error!("RunSSE 请求第三方模型 API 失败: {}", e);
-                let err_frame = create_connect_error_frame(
-                    "internal",
-                    &format!("【AI-Helper 错误】请求第三方模型 API 失败: {}", e),
-                );
-                let _ = tx.send(Ok(Bytes::from(err_frame))).await;
-                return;
+        session_data.model = model_to_use;
+        let agent_response =
+            run_cursor_agent_stream(session_data, is_proto, content_type, "RunSSE").await;
+        use futures_util::StreamExt;
+        let mut agent_body = agent_response.into_body().into_data_stream();
+        while let Some(frame) = agent_body.next().await {
+            match frame {
+                Ok(frame) => {
+                    if tx.send(Ok(frame)).await.is_err() {
+                        break;
+                    }
+                }
+                _ => break,
             }
-        };
-
-        if !upstream_res.status().is_success() {
-            let err_status = upstream_res.status();
-            let err_text = bounded_upstream_error(upstream_res).await;
-            log::error!("RunSSE 上游报错 HTTP {}: {}", err_status, err_text);
-            let display_err = if !session_data.images.is_empty()
-                && (err_status == StatusCode::BAD_REQUEST
-                    || err_text.contains("multimodal")
-                    || err_text.contains("image")
-                    || err_text.contains("vision")
-                    || err_text.contains("content"))
-            {
-                format!(
-                    "【AI-Helper 上游报错】{}\n\n💡 提示：当前请求包含图片，但上游模型（{}）可能不支持多模态视觉识别，请在 AI-Helper 中切换为支持图片识别的模型（如 Claude 3.5/3.7 Sonnet, GPT-4o 等）。",
-                    err_text, model_to_use
-                )
-            } else {
-                format!("【AI-Helper 上游报错】{}", err_text)
-            };
-            let err_frame = create_connect_error_frame("internal", &display_err);
-            let _ = tx.send(Ok(Bytes::from(err_frame))).await;
-            return;
         }
-
-        forward_connect_stream(
-            upstream_res.bytes_stream(),
-            &tx,
-            StreamKind::Agent,
-            is_proto,
-        )
-        .await;
-
+        // 无论正常结束还是客户端断开，都释放本轮会话。
         if let Some(id) = cleanup_req_id {
             SESSION_MAP.lock().await.remove(&id);
         }
@@ -1717,14 +2334,32 @@ async fn handle_agent_run(req: Request) -> Response {
         decode_agent_client_message(&initial_buf).or_else(|| decode_bidi_append(&initial_buf));
 
     let decoded = match decoded_opt {
-        Some(d) => d,
-        None => {
-            log::warn!("未能从 Agent Run 输入流解析出有效 AgentClientMessage，返回优雅结束帧");
+        Some(d)
+            if d.kind.carries_turn()
+                && (!d.user_text.trim().is_empty()
+                    || !d.history.is_empty()
+                    || !d.images.is_empty()) =>
+        {
+            d
+        }
+        other => {
+            // 不再以“正常结束”掩盖解析失败。
+            log::warn!(
+                "未能从 Agent Run 输入流解析出用户轮次 (首包 {} 字节, 结构: {})，返回错误帧",
+                initial_buf.len(),
+                other.map(|d| d.wire_shape).unwrap_or_else(|| "?".into())
+            );
+            let message = "【AI-Helper】无法解析 Cursor Agent Run 请求，消息未发送给模型，请重试。";
+            let mut frames = encode_agent_event(
+                crate::cursor::agent::AgentEvent::Text(message.to_string()),
+                is_proto,
+            );
+            frames.extend_from_slice(&create_connect_error_frame("invalid_argument", message));
             return Response::builder()
                 .status(StatusCode::OK)
                 .header(header::CONTENT_TYPE, content_type)
                 .header("connect-protocol-version", "1")
-                .body(Body::from(create_connect_end_frame()))
+                .body(Body::from(frames))
                 .unwrap_or_else(|_| (StatusCode::OK, "").into_response());
         }
     };
@@ -1753,17 +2388,10 @@ async fn handle_agent_run(req: Request) -> Response {
         other => other,
     };
 
-    log::info!(
-        "Cursor Agent Run 开始派发模型生成流, 模型: {}, 历史轮数: {}, 上下文文件数: {}, 图片数: {}, prompt 长度: {}",
-        model_to_use,
-        decoded.history.len(),
-        decoded.context_files.len(),
-        decoded.images.len(),
-        decoded.user_text.len()
-    );
-
     let session = BidiSession {
         request_id: decoded.request_id.clone(),
+        conversation_id: decoded.conversation_id.clone(),
+        message_id: decoded.message_id.clone(),
         user_prompt: decoded.user_text.clone(),
         model: model_to_use.to_string(),
         history: decoded.history.clone(),
@@ -1772,129 +2400,15 @@ async fn handle_agent_run(req: Request) -> Response {
         context_rules: decoded.context_rules.clone(),
         extra_context: decoded.extra_context.clone(),
         images: decoded.images.clone(),
+        workspace_paths: decoded.workspace_paths.clone(),
+        shell: decoded.shell.clone(),
+        project_folder: decoded.project_folder.clone(),
+        process_working_directory: decoded.process_working_directory.clone(),
         last_seqno: 0,
         created_at: std::time::Instant::now(),
     };
 
-    let mut messages: Vec<Value> = Vec::new();
-    let (system_context, user_context) = match session.formatted_context() {
-        Ok(context) => context,
-        Err(message) => return (StatusCode::PAYLOAD_TOO_LARGE, message).into_response(),
-    };
-    if !system_context.is_empty() {
-        messages.push(json!({"role": "system", "content": system_context}));
-    }
-    for (role, content) in &decoded.history {
-        messages.push(json!({"role": role, "content": content}));
-    }
-    let full_user_content = if user_context.is_empty() {
-        decoded.user_text
-    } else {
-        format!("{}\n\n{}", user_context, decoded.user_text)
-    };
-
-    // P1 重构：使用提取的多模态内容构建函数
-    messages.push(json!({
-        "role": "user",
-        "content": crate::cursor::protocol::build_openai_multimodal_content(
-            &full_user_content,
-            &decoded.images
-        )
-    }));
-
-    let openai_req = json!({
-        "model": model_to_use,
-        "messages": messages,
-        "stream": true,
-        "temperature": 0.7
-    });
-
-    let upstream_url = format!("{}/v1/chat/completions", clean_base_url(&config.base_url));
-    let client = Client::builder()
-        .timeout(Duration::from_secs(180))
-        .build()
-        .unwrap_or_default();
-
-    let upstream_res = match client
-        .post(&upstream_url)
-        .header(
-            header::AUTHORIZATION,
-            format!("Bearer {}", config.api_key.trim()),
-        )
-        .header(header::CONTENT_TYPE, "application/json")
-        .json(&openai_req)
-        .send()
-        .await
-    {
-        Ok(r) => r,
-        Err(e) => {
-            log::error!("Agent Run 请求第三方模型 API 失败: {}", e);
-            return Response::builder()
-                .status(StatusCode::OK)
-                .header(header::CONTENT_TYPE, content_type)
-                .header("connect-protocol-version", "1")
-                .body(Body::from(create_connect_error_stream(
-                    &format!("【AI-Helper 错误】请求第三方模型 API 失败: {}", e),
-                    is_proto,
-                )))
-                .unwrap_or_else(|_| (StatusCode::INTERNAL_SERVER_ERROR, "error").into_response());
-        }
-    };
-
-    if !upstream_res.status().is_success() {
-        let err_status = upstream_res.status();
-        let err_text = bounded_upstream_error(upstream_res).await;
-        log::error!("Agent Run 上游报错 HTTP {}: {}", err_status, err_text);
-        let display_err = if !decoded.images.is_empty()
-            && (err_status == StatusCode::BAD_REQUEST
-                || err_text.contains("multimodal")
-                || err_text.contains("image")
-                || err_text.contains("vision")
-                || err_text.contains("content"))
-        {
-            format!(
-                "【AI-Helper 上游报错】{}\n\n💡 提示：当前请求包含图片，但上游模型（{}）可能不支持多模态视觉识别，请在 AI-Helper 中切换为支持图片识别的模型（如 Claude 3.5/3.7 Sonnet, GPT-4o 等）。",
-                err_text, model_to_use
-            )
-        } else {
-            format!("【AI-Helper 上游报错】{}", err_text)
-        };
-        return Response::builder()
-            .status(StatusCode::OK)
-            .header(header::CONTENT_TYPE, content_type)
-            .header("connect-protocol-version", "1")
-            .body(Body::from(create_connect_error_stream(
-                &display_err,
-                is_proto,
-            )))
-            .unwrap_or_else(|_| (StatusCode::INTERNAL_SERVER_ERROR, "error").into_response());
-    }
-
-    let (tx, rx) = tokio::sync::mpsc::channel::<Result<Bytes, std::io::Error>>(128);
-
-    tokio::spawn(async move {
-        // 先发送一次心跳帧完成与 Cursor 客户端的握手 (消除 Reconnecting 状态)
-        if is_proto {
-            let _ = tx
-                .send(Ok(Bytes::from(create_agent_heartbeat_chunk())))
-                .await;
-        }
-        forward_connect_stream(
-            upstream_res.bytes_stream(),
-            &tx,
-            StreamKind::Agent,
-            is_proto,
-        )
-        .await;
-    });
-
-    Response::builder()
-        .status(StatusCode::OK)
-        .header(header::CONTENT_TYPE, content_type)
-        .header("connect-protocol-version", "1")
-        .header(header::CACHE_CONTROL, "no-cache")
-        .body(Body::from_stream(ReceiverStream(rx)))
-        .unwrap_or_else(|_| (StatusCode::INTERNAL_SERVER_ERROR, "无法创建响应流").into_response())
+    run_cursor_agent_stream(session, is_proto, content_type, "AgentRun").await
 }
 
 /// 处理旧版 Connect-RPC 格式的流式请求 (StreamChat / StreamComposer / StreamEdit / StreamGenerate)
@@ -2414,6 +2928,8 @@ mod tests {
     fn test_session(id: &str) -> BidiSession {
         BidiSession {
             request_id: id.into(),
+            conversation_id: None,
+            message_id: None,
             user_prompt: "test".into(),
             model: "test".into(),
             history: Vec::new(),
@@ -2422,6 +2938,10 @@ mod tests {
             context_rules: Vec::new(),
             extra_context: Vec::new(),
             images: Vec::new(),
+            workspace_paths: Vec::new(),
+            shell: None,
+            project_folder: None,
+            process_working_directory: None,
             last_seqno: 0,
             created_at: std::time::Instant::now(),
         }
@@ -2609,7 +3129,7 @@ mod tests {
 
     #[tokio::test]
     async fn all_cursor_streams_enforce_line_limit_and_error_trailer() {
-        for kind in [StreamKind::Agent, StreamKind::Legacy, StreamKind::FastEdit] {
+        for kind in [StreamKind::Legacy, StreamKind::FastEdit] {
             for proto in [false, true] {
                 let bytes = collect_test_stream(
                     kind,
@@ -2627,7 +3147,7 @@ mod tests {
 
     #[tokio::test]
     async fn all_cursor_streams_budget_eof_tail_and_fast_edit_snapshots() {
-        for kind in [StreamKind::Agent, StreamKind::Legacy, StreamKind::FastEdit] {
+        for kind in [StreamKind::Legacy, StreamKind::FastEdit] {
             for proto in [false, true] {
                 let mut chunks = Vec::new();
                 for _ in 0..14 {
@@ -2690,7 +3210,7 @@ mod tests {
         forward_connect_stream(
             futures_util::StreamExt::chain(first, unexpected),
             &tx,
-            StreamKind::Agent,
+            StreamKind::Legacy,
             false,
         )
         .await;
@@ -2701,7 +3221,7 @@ mod tests {
             forward_connect_stream(
                 futures_util::stream::pending::<Result<Bytes, std::io::Error>>(),
                 &tx,
-                StreamKind::Agent,
+                StreamKind::Legacy,
                 false,
             ),
         )
@@ -2710,13 +3230,13 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn agent_reasoning_is_not_duplicated_and_utf8_survives_chunk_split() {
+    async fn legacy_stream_ignores_reasoning_and_utf8_survives_chunk_split() {
         let line = format!(
             "data: {}\n",
             json!({"choices":[{"delta":{"reasoning_content":"reason"}}]})
         );
-        let bytes = collect_test_stream(StreamKind::Agent, false, vec![line.into_bytes()]).await;
-        assert_eq!(decode_test_frames(&bytes).len(), 2);
+        let bytes = collect_test_stream(StreamKind::Legacy, false, vec![line.into_bytes()]).await;
+        assert_eq!(decode_test_frames(&bytes).len(), 1);
         let line = sse_delta("中🦀", false);
         let split = line.iter().position(|b| *b == 0xe4).unwrap() + 1;
         let bytes = collect_test_stream(
@@ -2819,6 +3339,8 @@ mod tests {
                     req_id_clone.clone(),
                     BidiSession {
                         request_id: req_id_clone,
+                        conversation_id: None,
+                        message_id: None,
                         user_prompt: "Race test prompt".to_string(),
                         model: "test-model".to_string(),
                         history: vec![],
@@ -2827,6 +3349,10 @@ mod tests {
                         context_rules: vec![],
                         extra_context: vec![],
                         images: vec![],
+                        workspace_paths: vec![],
+                        shell: None,
+                        project_folder: None,
+                        process_working_directory: None,
                         last_seqno: 1,
                         created_at: std::time::Instant::now(),
                     },
@@ -2922,5 +3448,476 @@ mod tests {
         let (listener, actual) = bind_listener(0).await.unwrap();
         assert_ne!(actual, 0);
         assert_eq!(listener.local_addr().unwrap().port(), actual);
+    }
+
+    #[tokio::test]
+    async fn stale_generation_cannot_start_bridge_after_reset() {
+        // A task that read the generation before (or during) a reset must not
+        // start the Cursor bridge once that reset has finished.
+        let stale = crate::reset::current_generation();
+        drop(crate::reset::begin_reset().unwrap());
+        let error = start_bridge(Some(0), Some(stale)).await.unwrap_err();
+        assert!(error.contains("已取消过期的配置任务"), "{error}");
+    }
+
+    #[tokio::test]
+    async fn aborting_tracked_agent_streams_also_stops_the_inner_agent_task() {
+        use std::sync::atomic::{AtomicBool, Ordering};
+
+        struct SetOnDrop(Arc<AtomicBool>);
+        impl Drop for SetOnDrop {
+            fn drop(&mut self) {
+                self.0.store(true, Ordering::Release);
+            }
+        }
+
+        let set: AgentTaskSet = std::sync::Mutex::new(tokio::task::JoinSet::new());
+        let inner_dropped = Arc::new(AtomicBool::new(false));
+        let (started_tx, started_rx) = oneshot::channel();
+        let flag = inner_dropped.clone();
+        // Mirrors run_cursor_agent_stream: an outer stream task owning an
+        // inner agent task through AbortOnDrop.
+        spawn_tracked(&set, async move {
+            let inner = tokio::spawn(async move {
+                let _guard = SetOnDrop(flag);
+                let _ = started_tx.send(());
+                std::future::pending::<()>().await;
+            });
+            let _abort_inner = AbortOnDrop(inner.abort_handle());
+            let _ = inner.await;
+        });
+        started_rx.await.unwrap();
+
+        assert_eq!(abort_tracked(&set), 1);
+        tokio::time::timeout(Duration::from_secs(2), async {
+            while !inner_dropped.load(Ordering::Acquire) {
+                tokio::time::sleep(Duration::from_millis(5)).await;
+            }
+        })
+        .await
+        .expect("inner agent task must be aborted with its stream");
+        // Aborted tasks are reaped, leaving nothing to cancel on the next stop.
+        tokio::time::sleep(Duration::from_millis(10)).await;
+        assert_eq!(abort_tracked(&set), 0);
+    }
+
+    // ===== 多轮上下文回归测试 =====
+
+    use crate::cursor::protocol::{proto, BidiMessageKind, DecodedBidiMessage};
+    use prost::Message as _;
+
+    const FIRST_TURN: &str = "请记住数字 4817 和代号青柠，只回复已记住，不要读取或修改文件。";
+    const SECOND_TURN: &str = "刚才请你记住的数字和代号分别是什么？";
+
+    fn bidi_append_body(request_id: &str, seqno: i64, client_bytes: &[u8]) -> Vec<u8> {
+        let request = proto::BidiAppendRequest {
+            data: hex::encode(client_bytes),
+            request_id: (!request_id.is_empty()).then(|| proto::BidiRequestId {
+                request_id: request_id.into(),
+            }),
+            append_seqno: seqno,
+            data_binary: Vec::new(),
+        };
+        encode_connect_frame_raw(0, &request.encode_to_vec())
+    }
+
+    fn run_request(
+        conversation_id: Option<&str>,
+        message_id: &str,
+        text: &str,
+        history: &[(&str, &str)],
+    ) -> proto::AgentRunRequest {
+        let conversation_history = (!history.is_empty()).then(|| proto::ConversationHistory {
+            messages: history
+                .iter()
+                .map(|(role, text)| {
+                    let content = Some(proto::ConversationHistoryTextContent {
+                        text: (*text).into(),
+                    });
+                    if *role == "user" {
+                        proto::ConversationHistoryMessage {
+                            user: Some(proto::ConversationHistoryUserMessage {
+                                content: vec![proto::ConversationHistoryUserContent {
+                                    text: content,
+                                    image: None,
+                                }],
+                            }),
+                            assistant: None,
+                        }
+                    } else {
+                        proto::ConversationHistoryMessage {
+                            user: None,
+                            assistant: Some(proto::ConversationHistoryAssistantMessage {
+                                content: vec![proto::ConversationHistoryAssistantContent {
+                                    text: content,
+                                    reasoning: None,
+                                }],
+                            }),
+                        }
+                    }
+                })
+                .collect(),
+        });
+        proto::AgentRunRequest {
+            action: Some(proto::ConversationAction {
+                user_message_action: Some(proto::UserMessageAction {
+                    user_message: Some(proto::UserMessage {
+                        text: text.into(),
+                        message_id: message_id.into(),
+                        selected_context: None,
+                    }),
+                    request_context: None,
+                    conversation_history,
+                }),
+            }),
+            conversation_id: conversation_id.map(str::to_string),
+            requested_model: Some(proto::RequestedModel {
+                model_id: "test-model".into(),
+            }),
+            ..Default::default()
+        }
+    }
+
+    fn client_turn(run: proto::AgentRunRequest) -> Vec<u8> {
+        proto::AgentClientMessage {
+            run_request: Some(run),
+            conversation_action: None,
+        }
+        .encode_to_vec()
+    }
+
+    /// 走真实解码路径：BidiAppend 字节 → 解码 → 合并进以 request_id 为键的会话。
+    fn session_from_append(request_id: &str, client_bytes: &[u8]) -> BidiSession {
+        let decoded = decode_bidi_append(&bidi_append_body(request_id, 0, client_bytes))
+            .expect("BidiAppend 必须可解码");
+        assert_eq!(
+            decoded.request_id, request_id,
+            "会话必须以 BidiRequestId 关联"
+        );
+        let mut session = empty_session(request_id, "default");
+        merge_turn_into_session(&mut session, decoded);
+        session
+    }
+
+    fn roles_and_texts(messages: &[Value]) -> Vec<(String, String)> {
+        messages
+            .iter()
+            .map(|m| {
+                (
+                    m["role"].as_str().unwrap().to_string(),
+                    m["content"].as_str().unwrap().to_string(),
+                )
+            })
+            .collect()
+    }
+
+    fn expected_conversation() -> Vec<(String, String)> {
+        vec![
+            ("user".into(), FIRST_TURN.into()),
+            ("assistant".into(), "已记住".into()),
+            ("user".into(), SECOND_TURN.into()),
+        ]
+    }
+
+    #[test]
+    fn second_turn_without_inline_history_recovers_context_from_store() {
+        let mut store = ConversationStore::default();
+        let now = std::time::Instant::now();
+
+        // 第一轮：新会话，没有历史。
+        let mut first = session_from_append(
+            "req-1",
+            &client_turn(run_request(Some("conv-1"), "m1", FIRST_TURN, &[])),
+        );
+        assert_eq!(first.conversation_id.as_deref(), Some("conv-1"));
+        assert_eq!(first.message_id.as_deref(), Some("m1"));
+        let source = resolve_history(&mut first, &mut store);
+        assert_eq!(source, HistorySource::Empty);
+        store.remember_turn(
+            "conv-1",
+            source,
+            &first.history,
+            &first.user_prompt,
+            first.message_id.as_deref(),
+            "已记住",
+            now,
+        );
+
+        // 第二轮：新的 request_id，只带当前问题与 conversation_id（复现场景）。
+        let mut second = session_from_append(
+            "req-2",
+            &client_turn(run_request(Some("conv-1"), "m2", SECOND_TURN, &[])),
+        );
+        assert!(second.history.is_empty());
+        assert_eq!(
+            resolve_history(&mut second, &mut store),
+            HistorySource::Store
+        );
+        let messages = agent_messages(&second).unwrap();
+        assert_eq!(roles_and_texts(&messages), expected_conversation());
+    }
+
+    #[test]
+    fn inline_history_is_parsed_and_takes_precedence_over_store() {
+        let mut store = ConversationStore::default();
+        store.remember_turn(
+            "conv-2",
+            HistorySource::Empty,
+            &[],
+            "stale question",
+            Some("m0"),
+            "stale answer",
+            std::time::Instant::now(),
+        );
+        let mut session = session_from_append(
+            "req-inline",
+            &client_turn(run_request(
+                Some("conv-2"),
+                "m2",
+                SECOND_TURN,
+                &[("user", FIRST_TURN), ("assistant", "已记住")],
+            )),
+        );
+        assert_eq!(
+            resolve_history(&mut session, &mut store),
+            HistorySource::Inline
+        );
+        let messages = agent_messages(&session).unwrap();
+        assert_eq!(roles_and_texts(&messages), expected_conversation());
+    }
+
+    #[test]
+    fn regenerating_a_cached_message_drops_the_superseded_turn() {
+        let mut store = ConversationStore::default();
+        let now = std::time::Instant::now();
+        store.remember_turn(
+            "conv-3",
+            HistorySource::Empty,
+            &[],
+            "q1",
+            Some("m1"),
+            "a1",
+            now,
+        );
+        store.remember_turn(
+            "conv-3",
+            HistorySource::Store,
+            &[],
+            "q2",
+            Some("m2"),
+            "a2",
+            now,
+        );
+
+        // 重新生成 m2：历史只保留 m2 之前的轮次。
+        let history = store.history_before("conv-3", Some("m2"), now);
+        assert_eq!(
+            history,
+            vec![
+                ("user".into(), "q1".into()),
+                ("assistant".into(), "a1".into())
+            ]
+        );
+        store.remember_turn(
+            "conv-3",
+            HistorySource::Store,
+            &history,
+            "q2",
+            Some("m2"),
+            "a2-new",
+            now,
+        );
+        let after = store.history_before("conv-3", Some("m3"), now);
+        assert_eq!(after.len(), 4);
+        assert_eq!(after[3], ("assistant".into(), "a2-new".into()));
+    }
+
+    #[test]
+    fn missing_conversation_id_stays_single_turn() {
+        let mut store = ConversationStore::default();
+        let mut session = session_from_append(
+            "req-no-conv",
+            &client_turn(run_request(None, "m1", SECOND_TURN, &[])),
+        );
+        assert_eq!(
+            resolve_history(&mut session, &mut store),
+            HistorySource::Empty
+        );
+        assert_eq!(agent_messages(&session).unwrap().len(), 1);
+    }
+
+    #[test]
+    fn conversation_store_enforces_budgets_and_starts_history_with_user() {
+        let mut store = ConversationStore::default();
+        let start = std::time::Instant::now();
+        for turn in 0..MAX_HISTORY_ITEMS {
+            store.remember_turn(
+                "conv-long",
+                HistorySource::Store,
+                &[],
+                &format!("q{turn}"),
+                Some(&format!("m{turn}")),
+                &format!("a{turn}"),
+                start,
+            );
+        }
+        let history = store.history_before("conv-long", None, start);
+        assert!(history.len() <= MAX_HISTORY_ITEMS);
+        assert_eq!(history[0].0, "user");
+        assert_eq!(
+            history.last().unwrap().1,
+            format!("a{}", MAX_HISTORY_ITEMS - 1)
+        );
+
+        // 单轮超出单会话预算时丢弃缓存，避免补全出不一致的历史。
+        let huge = "x".repeat(MAX_CONVERSATION_BYTES + 1);
+        store.remember_turn(
+            "conv-long",
+            HistorySource::Store,
+            &[],
+            &huge,
+            None,
+            "",
+            start,
+        );
+        assert!(store.history_before("conv-long", None, start).is_empty());
+
+        // 会话数超限时按最近使用时间淘汰。
+        for index in 0..=MAX_CONVERSATIONS {
+            store.remember_turn(
+                &format!("conv-{index}"),
+                HistorySource::Empty,
+                &[],
+                "q",
+                None,
+                "a",
+                start + Duration::from_millis(index as u64),
+            );
+        }
+        assert_eq!(store.conversations.len(), MAX_CONVERSATIONS);
+        assert!(!store.conversations.contains_key("conv-0"));
+        assert!(store
+            .conversations
+            .contains_key(&format!("conv-{MAX_CONVERSATIONS}")));
+    }
+
+    #[test]
+    fn stale_history_expires_after_ttl() {
+        let mut store = ConversationStore::default();
+        let start = std::time::Instant::now();
+        store.remember_turn("conv-ttl", HistorySource::Empty, &[], "q", None, "a", start);
+        assert!(store
+            .history_before("conv-ttl", None, start + CONVERSATION_TTL)
+            .is_empty());
+    }
+
+    fn turn_message(seqno: i64) -> DecodedBidiMessage {
+        DecodedBidiMessage {
+            request_id: "req-order".into(),
+            seqno,
+            kind: BidiMessageKind::RunRequest,
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn out_of_order_append_fills_missing_turn_without_overwriting_newer_data() {
+        let mut session = empty_session("req-order", "default");
+        let mut newer = turn_message(3);
+        newer.model = Some("model-new".into());
+        merge_turn_into_session(&mut session, newer);
+
+        // 较旧序号的内容包晚到：仍应补齐 prompt 与历史，而不是被整体丢弃。
+        let mut older = turn_message(2);
+        older.user_text = SECOND_TURN.into();
+        older.history = vec![("user".into(), FIRST_TURN.into())];
+        older.conversation_id = Some("conv-order".into());
+        merge_turn_into_session(&mut session, older);
+        assert_eq!(session.user_prompt, SECOND_TURN);
+        assert_eq!(session.history.len(), 1);
+        assert_eq!(session.conversation_id.as_deref(), Some("conv-order"));
+        assert_eq!(session.model, "model-new");
+        assert_eq!(session.last_seqno, 3);
+
+        // 已填充的字段不被更旧的包覆盖。
+        let mut stale = turn_message(1);
+        stale.user_text = "stale".into();
+        merge_turn_into_session(&mut session, stale);
+        assert_eq!(session.user_prompt, SECOND_TURN);
+
+        // 更新的包照常覆盖。
+        let mut latest = turn_message(4);
+        latest.user_text = "latest".into();
+        merge_turn_into_session(&mut session, latest);
+        assert_eq!(session.user_prompt, "latest");
+    }
+
+    #[test]
+    fn control_packets_are_classified_with_content_free_shape() {
+        // AgentClientMessage 只含未建模的 tag 7（例如心跳）。
+        let decoded =
+            decode_bidi_append(&bidi_append_body("req-control", 5, &[0x3a, 0x00])).unwrap();
+        assert_eq!(decoded.kind, BidiMessageKind::Control);
+        assert!(decoded.user_text.is_empty());
+        assert_eq!(decoded.wire_shape, "client[7:L0]");
+
+        // run_request 带有未建模的 tag 1（例如会话状态）时，摘要能暴露该字段但不含正文。
+        let run = run_request(Some("c"), "m", "hi", &[]).encode_to_vec();
+        let mut run_bytes = vec![0x0a, 0x02, 0xaa, 0xbb];
+        run_bytes.extend_from_slice(&run);
+        assert!(run_bytes.len() < 128);
+        let mut client = vec![0x0a, run_bytes.len() as u8];
+        client.extend_from_slice(&run_bytes);
+        let decoded = decode_bidi_append(&bidi_append_body("req-shape", 0, &client)).unwrap();
+        assert_eq!(decoded.kind, BidiMessageKind::RunRequest);
+        assert_eq!(decoded.user_text, "hi");
+        assert!(
+            decoded.wire_shape.contains("run[1:L2,"),
+            "{}",
+            decoded.wire_shape
+        );
+        assert!(!decoded.wire_shape.contains("hi"));
+    }
+
+    #[test]
+    fn log_helpers_do_not_expose_identifiers() {
+        let hashed = short_hash(Some("conversation-secret"));
+        assert_eq!(hashed.len(), 8);
+        assert!(!hashed.contains("secret"));
+        assert_eq!(short_hash(None), "-");
+        assert_eq!(
+            shape_key("client[7:L12] run[1:L3,5:V]"),
+            "client[7:L] run[1:L,5:V]"
+        );
+    }
+
+    fn append_request(body: Vec<u8>) -> Request {
+        Request::builder()
+            .method("POST")
+            .header(header::CONTENT_TYPE, "application/proto")
+            .body(Body::from(body))
+            .unwrap()
+    }
+
+    #[tokio::test]
+    async fn bidi_append_rejects_undecodable_and_unkeyed_turns_and_ignores_control() {
+        let response = handle_bidi_append(append_request(vec![0xff, 0xff, 0xff])).await;
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+
+        // 没有 BidiRequestId 的轮次无法与 RunSSE 关联，必须报错而不是写入空键。
+        let unkeyed = bidi_append_body(
+            "",
+            0,
+            &client_turn(run_request(Some("conv-x"), "m", SECOND_TURN, &[])),
+        );
+        let response = handle_bidi_append(append_request(unkeyed)).await;
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+        assert!(!SESSION_MAP.lock().await.contains_key(""));
+
+        // 控制包返回成功，但不创建会话。
+        let control = bidi_append_body("req-control-handler", 9, &[0x3a, 0x00]);
+        let response = handle_bidi_append(append_request(control)).await;
+        assert_eq!(response.status(), StatusCode::OK);
+        assert!(!SESSION_MAP.lock().await.contains_key("req-control-handler"));
     }
 }

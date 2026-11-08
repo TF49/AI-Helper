@@ -477,7 +477,7 @@ end tell"#,
                     let bridge_port = match crate::accio::bridge::get_bridge_port() {
                         Some(port) => port,
                         None => tauri::async_runtime::block_on(async {
-                            crate::accio::bridge::start_bridge(None).await
+                            crate::accio::bridge::start_bridge(None, None).await
                         })
                         .map_err(|e| {
                             format!("Accio 本地网关未能完成监听，已拒绝启动客户端: {e}")
@@ -541,7 +541,7 @@ end tell"#,
                 let bridge_port = match crate::accio::bridge::get_bridge_port() {
                     Some(port) => port,
                     None => tauri::async_runtime::block_on(async {
-                        crate::accio::bridge::start_bridge(None).await
+                        crate::accio::bridge::start_bridge(None, None).await
                     })
                     .map_err(|e| format!("Accio 本地网关未能完成监听，已拒绝启动客户端: {e}"))?,
                 };

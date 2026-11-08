@@ -1,6 +1,8 @@
 import { invoke as tauriInvoke, Channel } from "@tauri-apps/api/core";
 import { toast } from "sonner";
 import type {
+  AgentWorkspaceGrant,
+  AgentWorkspaceRequest,
   AgentConfig,
   ApiTestResult,
   AppPathsConfig,
@@ -34,6 +36,8 @@ import type {
   UsageLogQueryParams,
   UsageStatData,
   PricingResponse,
+  ResetResult,
+  ResetPreview,
 } from "../types";
 
 export const isTauri =
@@ -110,6 +114,82 @@ function getMockResponse<T>(cmd: string, _args?: Record<string, unknown>): T {
         bridge_port: 8788,
         bridge_running: false,
       } as unknown as T;
+    case "ensure_user_token":
+      return {
+        id: 1,
+        name: String(_args?.name ?? "预览令牌"),
+        key: "preview-token",
+        status: 1,
+        expired_time: -1,
+        unlimited_quota: true,
+        remain_quota: null,
+        group: String(_args?.group ?? "default"),
+      } as unknown as T;
+    case "reset_all_client_configs":
+      return {
+        clients: [
+          "Codex / ChatGPT",
+          "Claude Code",
+          "WorkBuddy",
+          "Accio Work",
+          "Cursor",
+        ].map((client) => ({
+          client,
+          status: "skipped",
+          message: "预览模式：未修改本机配置",
+        })),
+        warnings: ["当前是浏览器预览，未修改本机客户端文件。"],
+        requires_restart: true,
+      } as unknown as T;
+    case "preview_client_reset":
+      return {
+        clients: [
+          {
+            client: "Codex / ChatGPT",
+            action: "restore_snapshot",
+            reason: "预览模式示例：恢复首次接管前的配置",
+            files: [
+              { path: "~/.codex/config.toml.bak", action: "delete" },
+              { path: "~/.codex/config.toml", action: "restore_snapshot" },
+            ],
+          },
+          {
+            client: "Claude Code",
+            action: "clean_managed_fields",
+            reason: "预览模式示例：部分文件在接管后被修改，只清理受管字段，其他内容保留",
+            files: [
+              { path: "~/.claude/settings.json.bak", action: "skip" },
+              { path: "~/.claude/settings.json", action: "clean_managed_fields" },
+            ],
+          },
+          { client: "WorkBuddy", action: "skip", reason: "预览模式：未读取本机配置" },
+          {
+            client: "Accio Work",
+            action: "remove_owned",
+            reason: "删除 AI Helper 专用配置与凭据",
+            files: [{ path: "~/.ai-helper/accio_config.json", action: "delete" }],
+          },
+          {
+            client: "Cursor",
+            action: "restore_cursor_patch",
+            reason: "还原 Cursor 接入补丁与状态库路由，并删除 AI Helper 专用配置、凭据和 Agent 工作区授权",
+            files: [
+              { path: "~/.ai-helper/cursor_config.json", action: "delete" },
+              { path: "~/.ai-helper/agent_workspaces.json", action: "delete" },
+            ],
+          },
+        ].map((plan) => ({ files: [], ...plan })),
+      } as unknown as T;
+    case "list_agent_workspace_requests":
+      return [
+        { path: "D:\\Projects\\demo-app", requested_at: Math.floor(Date.now() / 1000) },
+      ] as unknown as T;
+    case "list_agent_workspace_grants":
+      return [] as unknown as T;
+    case "grant_agent_workspace":
+    case "deny_agent_workspace_request":
+    case "revoke_agent_workspace":
+      return undefined as unknown as T;
     case "get_accio_bridge_status":
       return { is_running: false, port: 8787 } as unknown as T;
     case "start_accio_bridge":
@@ -509,6 +589,14 @@ export async function saveAppPaths(config: AppPathsConfig): Promise<void> {
   return invoke("save_app_paths", { config });
 }
 
+export async function resetAllClientConfigs(): Promise<ResetResult> {
+  return invoke<ResetResult>("reset_all_client_configs");
+}
+
+export async function previewClientReset(): Promise<ResetPreview> {
+  return invoke<ResetPreview>("preview_client_reset");
+}
+
 export async function detectAppPath(
   appType: "claude" | "codex" | "chatgpt" | "workbuddy" | "acciowork" | "cursor",
 ): Promise<DetectedPathInfo> {
@@ -761,6 +849,30 @@ export async function restoreCursorClient(customPath?: string): Promise<string> 
   return invoke<string>("restore_cursor_client", { customPath });
 }
 
+// ==================== Agent Workspace Authorization API ====================
+
+export async function listAgentWorkspaceRequests(): Promise<AgentWorkspaceRequest[]> {
+  return invoke<AgentWorkspaceRequest[]>("list_agent_workspace_requests");
+}
+
+export async function listAgentWorkspaceGrants(): Promise<AgentWorkspaceGrant[]> {
+  return invoke<AgentWorkspaceGrant[]>("list_agent_workspace_grants");
+}
+
+export async function grantAgentWorkspace(path: string): Promise<void> {
+  return invoke<void>("grant_agent_workspace", { path });
+}
+
+export async function denyAgentWorkspaceRequest(path: string): Promise<void> {
+  return invoke<void>("deny_agent_workspace_request", { path });
+}
+
+export async function revokeAgentWorkspace(path: string): Promise<void> {
+  return invoke<void>("revoke_agent_workspace", { path });
+}
+
+// ==================== End Agent Workspace Authorization API ====================
+
 export async function fetchCodexModels(
   url: string,
   apiKey: string,
@@ -995,6 +1107,18 @@ export async function createUserToken(
   return invoke<TokenItem>("create_user_token", {
     name,
     group,
+  });
+}
+
+export async function ensureUserToken(
+  name: string,
+  group: string,
+  preferredTokenId?: number | null,
+): Promise<TokenItem> {
+  return invoke<TokenItem>("ensure_user_token", {
+    name,
+    group,
+    preferredTokenId,
   });
 }
 

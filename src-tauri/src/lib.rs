@@ -18,6 +18,7 @@ mod model_fetch;
 mod network;
 mod paid_request;
 mod process_manager;
+mod reset;
 mod safe_fs;
 mod secret_storage;
 mod update_trust;
@@ -128,6 +129,37 @@ async fn execute_in_terminal(operation_id: String) -> Result<String, String> {
         .map_err(|e| format!("终端启动异常: {}", e))?
 }
 
+// ==================== Agent Workspace Authorization Commands ====================
+
+#[tauri::command]
+fn list_agent_workspace_requests() -> Result<Vec<cursor::workspace_auth::WorkspaceRequest>, String>
+{
+    cursor::workspace_auth::list_requests()
+}
+
+#[tauri::command]
+async fn list_agent_workspace_grants() -> Result<Vec<cursor::workspace_auth::WorkspaceGrant>, String>
+{
+    run_blocking(cursor::workspace_auth::list_grants).await?
+}
+
+#[tauri::command]
+async fn grant_agent_workspace(path: String) -> Result<(), String> {
+    run_blocking(move || cursor::workspace_auth::grant(&path)).await?
+}
+
+#[tauri::command]
+fn deny_agent_workspace_request(path: String) -> Result<(), String> {
+    cursor::workspace_auth::deny(&path)
+}
+
+#[tauri::command]
+async fn revoke_agent_workspace(path: String) -> Result<(), String> {
+    run_blocking(move || cursor::workspace_auth::revoke(&path)).await?
+}
+
+// ==================== End Agent Workspace Authorization Commands ====================
+
 #[tauri::command]
 async fn fetch_latest_installer_info(
     app_type: String,
@@ -178,6 +210,43 @@ fn set_codex_config(
     model: Option<String>,
 ) -> Result<(), error::AppError> {
     codex::set_codex_config(url, api_key, model)
+}
+
+#[tauri::command]
+async fn reset_all_client_configs() -> Result<reset::ResetResult, String> {
+    let reset_guard = reset::begin_reset().map_err(|error| error.to_string())?;
+    // Stop local gateways before restoring files so no in-process cache can
+    // immediately rewrite the just-restored configuration.
+    let mut warnings = Vec::new();
+    let accio_bridge_error = accio::stop_bridge_for_reset().await.err();
+    let cursor_bridge_error = cursor::stop_bridge_for_reset().await.err();
+    if let Some(error) = &accio_bridge_error {
+        warnings.push(format!("Accio Bridge 停止失败: {error}"));
+    }
+    if let Some(error) = &cursor_bridge_error {
+        warnings.push(format!("Cursor Bridge 停止失败: {error}"));
+    }
+
+    let restore_result = tokio::task::spawn_blocking(move || {
+        let _reset_guard = reset_guard;
+        let mut result =
+            reset::with_reset(|| reset::restore_all(cursor_bridge_error, accio_bridge_error))?;
+        result.warnings.extend(warnings);
+        Ok::<_, error::AppError>(result)
+    })
+    .await
+    .map_err(|error| format!("恢复任务执行异常: {error}"))?
+    .map_err(|error| error.to_string())?;
+
+    Ok(restore_result)
+}
+
+#[tauri::command]
+async fn preview_client_reset() -> Result<reset::ResetPreview, String> {
+    tokio::task::spawn_blocking(reset::preview_reset)
+        .await
+        .map_err(|error| format!("预览任务执行异常: {error}"))?
+        .map_err(|error| error.to_string())
 }
 
 #[tauri::command]
@@ -326,7 +395,7 @@ fn set_accio_config(config: serde_json::Value) -> Result<(), error::AppError> {
 
 #[tauri::command]
 async fn start_accio_bridge(port: Option<u16>) -> Result<u16, String> {
-    accio::start_bridge(port).await
+    accio::start_bridge(port, None).await
 }
 
 #[tauri::command]
@@ -404,7 +473,7 @@ fn set_cursor_config(config: serde_json::Value) -> Result<(), error::AppError> {
 
 #[tauri::command]
 async fn start_cursor_bridge(port: Option<u16>) -> Result<u16, String> {
-    cursor::start_bridge(port).await
+    cursor::start_bridge(port, None).await
 }
 
 #[tauri::command]
@@ -433,17 +502,26 @@ async fn patch_cursor_client(
     bridge_port: Option<u16>,
 ) -> Result<String, String> {
     run_blocking(move || {
-        let port = bridge_port
-            .or_else(cursor::get_bridge_port)
-            .unwrap_or_else(|| cursor::load_cursor_config().bridge_port);
-        cursor::apply_patch(custom_path.as_deref(), port)
+        reset::with_config_write(|| {
+            let port = bridge_port
+                .or_else(cursor::get_bridge_port)
+                .unwrap_or_else(|| cursor::load_cursor_config().bridge_port);
+            cursor::apply_patch(custom_path.as_deref(), port).map_err(error::AppError::Other)
+        })
+        .map_err(|error| error.to_string())
     })
     .await?
 }
 
 #[tauri::command]
 async fn restore_cursor_client(custom_path: Option<String>) -> Result<String, String> {
-    run_blocking(move || cursor::restore_patch(custom_path.as_deref())).await?
+    run_blocking(move || {
+        reset::with_config_write(|| {
+            cursor::restore_patch(custom_path.as_deref()).map_err(error::AppError::Other)
+        })
+        .map_err(|error| error.to_string())
+    })
+    .await?
 }
 
 #[tauri::command]
@@ -622,6 +700,15 @@ async fn create_user_token(name: String, group: String) -> Result<auth::TokenIte
 }
 
 #[tauri::command]
+async fn ensure_user_token(
+    name: String,
+    group: String,
+    preferred_token_id: Option<i64>,
+) -> Result<auth::TokenItem, String> {
+    auth::ensure_user_token(name, group, preferred_token_id).await
+}
+
+#[tauri::command]
 async fn set_selected_token(
     token_id: Option<i64>,
     token_name: Option<String>,
@@ -773,12 +860,24 @@ pub fn run() {
                 window.open_devtools();
             }
 
-            // 启动时自动恢复 Bridge (若开启了 auto_start_bridge 且配置了 API Key)
+            // 清除旧版本写入 reset_state.json 的 Accio / Cursor 配置快照（含明文凭据）
+            tauri::async_runtime::spawn_blocking(|| match reset::scrub_owned_snapshots() {
+                Ok(true) => log::info!("已从恢复基线中移除 AI Helper 自有配置的旧快照"),
+                Ok(false) => {}
+                Err(e) => log::warn!("清理恢复基线中的旧快照失败: {}", e),
+            });
+
+            // 启动时自动恢复 Bridge (若开启了 auto_start_bridge 且配置了 API Key)。
+            // 读取配置时记录 generation，避免在此期间完成的一键重置被过期任务覆盖。
+            let startup_generation = reset::current_generation();
             let accio_cfg = accio::config::load_accio_config();
             if accio_cfg.auto_start_bridge && !accio_cfg.api_key.trim().is_empty() {
                 log::info!("正在自动拉起 Accio Work Bridge 网关...");
                 tauri::async_runtime::spawn(async move {
-                    if let Err(e) = accio::start_bridge(Some(accio_cfg.bridge_port)).await {
+                    if let Err(e) =
+                        accio::start_bridge(Some(accio_cfg.bridge_port), Some(startup_generation))
+                            .await
+                    {
                         log::error!("自启动 Accio Bridge 异常: {}", e);
                     }
                 });
@@ -788,7 +887,10 @@ pub fn run() {
             if cursor_cfg.auto_start_bridge && !cursor_cfg.api_key.trim().is_empty() {
                 log::info!("正在自动拉起 Cursor Bridge 网关...");
                 tauri::async_runtime::spawn(async move {
-                    if let Err(e) = cursor::start_bridge(Some(cursor_cfg.bridge_port)).await {
+                    if let Err(e) =
+                        cursor::start_bridge(Some(cursor_cfg.bridge_port), Some(startup_generation))
+                            .await
+                    {
                         log::error!("自启动 Cursor Bridge 异常: {}", e);
                     }
                 });
@@ -807,6 +909,8 @@ pub fn run() {
             confirm_credential_destination,
             get_codex_config,
             set_codex_config,
+            reset_all_client_configs,
+            preview_client_reset,
             get_claude_config,
             set_claude_config,
             get_workbuddy_config,
@@ -865,6 +969,7 @@ pub fn run() {
             get_token_key,
             update_user_token_group,
             create_user_token,
+            ensure_user_token,
             delete_user_token,
             update_user_token_status,
             get_token_auto_groups,
@@ -881,6 +986,12 @@ pub fn run() {
             exit_app,
             feedback::get_system_diagnostic_info,
             feedback::submit_feishu_feedback,
+            // Workspace Authorization
+            list_agent_workspace_requests,
+            list_agent_workspace_grants,
+            grant_agent_workspace,
+            deny_agent_workspace_request,
+            revoke_agent_workspace,
         ])
         .build(tauri::generate_context!())
         .expect("error while building ai-helper")

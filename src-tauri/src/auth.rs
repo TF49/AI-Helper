@@ -10,7 +10,7 @@ use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use tokio::sync::Mutex;
 
 pub const BASE_URL: &str = "https://bob-api.com";
@@ -756,6 +756,7 @@ pub struct AuthManager {
     refresh_cookie: Option<String>,
     session_generation: Option<String>,
     session_restore_error: Option<String>,
+    refresh_backoff: Option<(Instant, String)>,
     #[cfg(test)]
     _test_directory: Option<tempfile::TempDir>,
 }
@@ -818,6 +819,7 @@ impl AuthManager {
             refresh_cookie: None,
             session_generation: None,
             session_restore_error: None,
+            refresh_backoff: None,
             #[cfg(test)]
             _test_directory: None,
         };
@@ -839,6 +841,7 @@ impl AuthManager {
     }
 
     fn reset_memory(&mut self) {
+        self.refresh_backoff = None;
         self.access_token = None;
         self.access_expires_at = 0;
         self.current_user = None;
@@ -956,6 +959,7 @@ impl AuthManager {
         self.session_generation = storage.session_generation;
         self.auto_refresh_blocked = false;
         self.session_restore_error = None;
+        self.refresh_backoff = None;
         Ok(())
     }
 
@@ -1114,19 +1118,393 @@ static AUTH_MGR: once_cell::sync::Lazy<Mutex<AuthManager>> =
 // Serialize refresh rotation without preventing logout or an explicit login.
 static REFRESH_GATE: Mutex<()> = Mutex::const_new(());
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Hash)]
+struct TokenListCacheKey {
+    user_id: i64,
+    session_epoch: u64,
+    all: bool,
+}
+
+struct RequestCache<K, V> {
+    revision: u64,
+    entries: HashMap<K, (Instant, Result<V, String>)>,
+}
+
+impl<K: Eq + std::hash::Hash, V: Clone> RequestCache<K, V> {
+    fn new() -> Self {
+        Self {
+            revision: 0,
+            entries: HashMap::new(),
+        }
+    }
+
+    fn get(&self, key: &K) -> Option<Result<V, String>> {
+        self.entries
+            .get(key)
+            .filter(|(until, _)| *until > Instant::now())
+            .map(|(_, result)| result.clone())
+    }
+
+    fn invalidate(&mut self) {
+        self.revision = self.revision.wrapping_add(1);
+        self.entries.clear();
+    }
+
+    fn insert(&mut self, key: K, value: V, ttl: Duration) {
+        self.revision = self.revision.wrapping_add(1);
+        self.entries.retain(|_, (until, _)| *until > Instant::now());
+        if self.entries.len() >= 256 {
+            self.entries.clear();
+        }
+        self.entries.insert(key, (Instant::now() + ttl, Ok(value)));
+    }
+}
+
+// A second cache check under the gate merges concurrent callers, including failures.
+// A mutation during a read prevents that old response from repopulating the cache.
+async fn cached_read<K, V, F, Fut>(
+    cache: &Mutex<RequestCache<K, V>>,
+    gate: &Mutex<()>,
+    key: K,
+    ttl: Duration,
+    fetch: F,
+) -> Result<V, String>
+where
+    K: Eq + std::hash::Hash + Clone,
+    V: Clone,
+    F: FnOnce() -> Fut,
+    Fut: std::future::Future<Output = Result<V, BobRequestError>>,
+{
+    if let Some(result) = cache.lock().await.get(&key) {
+        return result;
+    }
+    let _request = gate.lock().await;
+    let revision = {
+        let cache = cache.lock().await;
+        if let Some(result) = cache.get(&key) {
+            return result;
+        }
+        cache.revision
+    };
+    let result = fetch().await;
+    let rate_limited = matches!(&result, Err(error) if error.rate_limited);
+    let result = result.map_err(|error| error.message);
+    let mut cache = cache.lock().await;
+    if cache.revision == revision {
+        cache
+            .entries
+            .retain(|_, (until, _)| *until > Instant::now());
+        if cache.entries.len() >= 256 {
+            cache.entries.clear();
+        }
+        let ttl = match &result {
+            Ok(_) => ttl,
+            // Do not let a cached 429 outlive a short Retry-After cooldown.
+            Err(_) if rate_limited => Duration::ZERO,
+            Err(_) => Duration::from_secs(5),
+        };
+        cache
+            .entries
+            .insert(key, (Instant::now() + ttl, result.clone()));
+    }
+    result
+}
+
+type TokenKeyCache = RequestCache<(i64, u64, i64), String>;
+type AutoTokenKey = (i64, u64, String);
+type AutoTokenAttemptsMap = HashMap<AutoTokenKey, Instant>;
+type AutoTokenReadyMap = HashMap<AutoTokenKey, (Instant, TokenItem)>;
+
+static TOKEN_LIST_CACHE: once_cell::sync::Lazy<
+    Mutex<RequestCache<TokenListCacheKey, Vec<TokenItem>>>,
+> = once_cell::sync::Lazy::new(|| Mutex::new(RequestCache::new()));
+static TOKEN_LIST_GATE: Mutex<()> = Mutex::const_new(());
+static TOKEN_KEY_CACHE: once_cell::sync::Lazy<Mutex<TokenKeyCache>> =
+    once_cell::sync::Lazy::new(|| Mutex::new(RequestCache::new()));
+static TOKEN_KEY_GATE: Mutex<()> = Mutex::const_new(());
+static AUTO_TOKEN_ENSURE_GATE: Mutex<()> = Mutex::const_new(());
+// Ambiguous automatic POSTs must be reconciled before another creation.
+static AUTO_TOKEN_ATTEMPTS: once_cell::sync::Lazy<Mutex<AutoTokenAttemptsMap>> =
+    once_cell::sync::Lazy::new(|| Mutex::new(HashMap::new()));
+static AUTO_TOKEN_READY: once_cell::sync::Lazy<Mutex<AutoTokenReadyMap>> =
+    once_cell::sync::Lazy::new(|| Mutex::new(HashMap::new()));
+static BOB_RATE_LIMIT: Mutex<Option<Instant>> = Mutex::const_new(None);
+static BOB_REQUEST_GATE: Mutex<()> = Mutex::const_new(());
+// Auth recovery and public login must not be held behind a cooldown caused by
+// unrelated account/token APIs.
+static BOB_AUTH_RATE_LIMIT: Mutex<Option<Instant>> = Mutex::const_new(None);
+static BOB_AUTH_REQUEST_GATE: Mutex<()> = Mutex::const_new(());
+static BOB_CAPTCHA_RATE_LIMIT: Mutex<Option<Instant>> = Mutex::const_new(None);
+static BOB_CAPTCHA_REQUEST_GATE: Mutex<()> = Mutex::const_new(());
+static BOB_LOGIN_RATE_LIMIT: Mutex<Option<Instant>> = Mutex::const_new(None);
+static BOB_LOGIN_REQUEST_GATE: Mutex<()> = Mutex::const_new(());
+static BOB_REFRESH_RATE_LIMIT: Mutex<Option<Instant>> = Mutex::const_new(None);
+static BOB_REFRESH_REQUEST_GATE: Mutex<()> = Mutex::const_new(());
+static BOB_LOGOUT_REQUEST_GATE: Mutex<()> = Mutex::const_new(());
+
+async fn invalidate_token_caches() {
+    TOKEN_LIST_CACHE.lock().await.invalidate();
+    TOKEN_KEY_CACHE.lock().await.invalidate();
+    AUTO_TOKEN_READY.lock().await.clear();
+}
+
+async fn cache_auto_token_ready(user_id: i64, epoch: u64, group: &str, token: &TokenItem) {
+    let mut ready = AUTO_TOKEN_READY.lock().await;
+    ready.retain(|_, (until, _)| *until > Instant::now());
+    if ready.len() >= 128 {
+        ready.clear();
+    }
+    ready.insert(
+        (user_id, epoch, group.to_ascii_lowercase()),
+        (Instant::now() + Duration::from_secs(5), token.clone()),
+    );
+}
+
+async fn clear_auto_token_attempt(user_id: i64, epoch: u64, group: &str) {
+    AUTO_TOKEN_ATTEMPTS
+        .lock()
+        .await
+        .remove(&(user_id, epoch, group.to_ascii_lowercase()));
+}
+
+async fn remember_ensured_token(
+    user_id: i64,
+    epoch: u64,
+    existing: &[TokenItem],
+    token: &TokenItem,
+) {
+    let mut tokens = existing.to_vec();
+    if !tokens.iter().any(|item| item.id == token.id) {
+        let mut summary = token.clone();
+        // Keep the bulk list cache free of newly revealed plaintext.
+        summary.key.clear();
+        tokens.push(summary);
+    }
+    let mut lists = TOKEN_LIST_CACHE.lock().await;
+    // `existing` came from all=true. Do not seed the default list from it:
+    // that endpoint may intentionally omit disabled/expired tokens.
+    lists.insert(
+        TokenListCacheKey {
+            user_id,
+            session_epoch: epoch,
+            all: true,
+        },
+        tokens,
+        Duration::from_secs(20),
+    );
+    TOKEN_KEY_CACHE.lock().await.insert(
+        (user_id, epoch, token.id),
+        token.key.clone(),
+        Duration::from_secs(60),
+    );
+}
+
+async fn check_rate_limit(cooldown: &Mutex<Option<Instant>>) -> Result<(), String> {
+    if let Some(until) = *cooldown.lock().await {
+        if until > Instant::now() {
+            return Err(format!(
+                "Bob API 请求受限 (HTTP 429)，请在 {} 秒后重试",
+                until.saturating_duration_since(Instant::now()).as_secs() + 1
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn retry_after_duration(headers: &reqwest::header::HeaderMap) -> Duration {
+    let seconds = headers
+        .get(reqwest::header::RETRY_AFTER)
+        .and_then(|value| value.to_str().ok())
+        .and_then(|value| {
+            value.parse::<u64>().ok().or_else(|| {
+                chrono::DateTime::parse_from_rfc2822(value)
+                    .ok()
+                    .map(|date| (date.timestamp() - chrono::Utc::now().timestamp()).max(1) as u64)
+            })
+        })
+        .unwrap_or(30);
+    Duration::from_secs(seconds.clamp(1, 3600))
+}
+
+async fn observe_rate_limit(response: &reqwest::Response, cooldown: &Mutex<Option<Instant>>) {
+    if response.status() == reqwest::StatusCode::TOO_MANY_REQUESTS {
+        let until = Instant::now() + retry_after_duration(response.headers());
+        let mut cooldown = cooldown.lock().await;
+        *cooldown = Some(cooldown.map_or(until, |previous| previous.max(until)));
+    }
+}
+
+/// A Bob API failure classified for callers that must not infer the cause
+/// from message text.
+#[derive(Debug, Clone)]
+struct BobRequestError {
+    message: String,
+    /// HTTP 429, or the local cooldown that an earlier 429 started.
+    rate_limited: bool,
+    /// The request never left this process (local cooldown, request build or
+    /// connection failure), so a non-idempotent POST cannot have taken effect.
+    not_sent: bool,
+}
+
+impl BobRequestError {
+    fn not_sent(message: impl Into<String>) -> Self {
+        Self {
+            message: message.into(),
+            rate_limited: false,
+            not_sent: true,
+        }
+    }
+
+    fn local_cooldown(message: String) -> Self {
+        Self {
+            message,
+            rate_limited: true,
+            not_sent: true,
+        }
+    }
+
+    fn from_status(status: reqwest::StatusCode, mut message: String) -> Self {
+        let rate_limited = status == reqwest::StatusCode::TOO_MANY_REQUESTS;
+        // The server's own 429 text varies; keep a stable marker for the UI,
+        // which only sees the message string.
+        if rate_limited && !message.contains("429") {
+            message.push_str("（HTTP 429）");
+        }
+        Self {
+            message,
+            rate_limited,
+            not_sent: false,
+        }
+    }
+
+    fn with_context(mut self, context: &str) -> Self {
+        self.message = format!("{context}: {}", self.message);
+        self
+    }
+}
+
+impl From<String> for BobRequestError {
+    fn from(message: String) -> Self {
+        Self {
+            message,
+            rate_limited: false,
+            not_sent: false,
+        }
+    }
+}
+
+// Account/token data requests share one cooldown and in-flight gate. Never
+// retry non-idempotent requests automatically after a timeout or rate limit.
+async fn send_bob_request(request: reqwest::RequestBuilder) -> Result<reqwest::Response, String> {
+    send_bob_request_classified(request)
+        .await
+        .map_err(|error| error.message)
+}
+
+async fn send_bob_request_classified(
+    request: reqwest::RequestBuilder,
+) -> Result<reqwest::Response, BobRequestError> {
+    let _request = BOB_REQUEST_GATE.lock().await;
+    check_rate_limit(&BOB_RATE_LIMIT)
+        .await
+        .map_err(BobRequestError::local_cooldown)?;
+    let response = request.send().await.map_err(|error| BobRequestError {
+        // A build or connect failure happens before any request byte reaches
+        // the server; everything else (timeouts, resets) is ambiguous.
+        not_sent: error.is_builder() || error.is_connect(),
+        rate_limited: false,
+        message: error.to_string(),
+    })?;
+    observe_rate_limit(&response, &BOB_RATE_LIMIT).await;
+    Ok(response)
+}
+
+async fn send_bob_auth_request(
+    request: reqwest::RequestBuilder,
+) -> Result<reqwest::Response, String> {
+    let _request = BOB_AUTH_REQUEST_GATE.lock().await;
+    check_rate_limit(&BOB_AUTH_RATE_LIMIT).await?;
+    let response = request.send().await.map_err(|error| error.to_string())?;
+    observe_rate_limit(&response, &BOB_AUTH_RATE_LIMIT).await;
+    Ok(response)
+}
+
+async fn send_bob_captcha_request(
+    request: reqwest::RequestBuilder,
+) -> Result<reqwest::Response, String> {
+    let _request = BOB_CAPTCHA_REQUEST_GATE.lock().await;
+    check_rate_limit(&BOB_CAPTCHA_RATE_LIMIT).await?;
+    let response = request.send().await.map_err(|error| error.to_string())?;
+    observe_rate_limit(&response, &BOB_CAPTCHA_RATE_LIMIT).await;
+    Ok(response)
+}
+
+async fn send_bob_login_request(
+    request: reqwest::RequestBuilder,
+) -> Result<reqwest::Response, String> {
+    let _request = BOB_LOGIN_REQUEST_GATE.lock().await;
+    check_rate_limit(&BOB_LOGIN_RATE_LIMIT).await?;
+    let response = request.send().await.map_err(|error| error.to_string())?;
+    observe_rate_limit(&response, &BOB_LOGIN_RATE_LIMIT).await;
+    Ok(response)
+}
+
+async fn send_bob_refresh_request(
+    request: reqwest::RequestBuilder,
+) -> Result<reqwest::Response, String> {
+    let _request = BOB_REFRESH_REQUEST_GATE.lock().await;
+    check_rate_limit(&BOB_REFRESH_RATE_LIMIT).await?;
+    let response = request.send().await.map_err(|error| error.to_string())?;
+    observe_rate_limit(&response, &BOB_REFRESH_RATE_LIMIT).await;
+    Ok(response)
+}
+
+// Local logout is already committed before this request. Always attempt remote
+// revocation even if another auth endpoint has recently received HTTP 429.
+async fn send_bob_logout_request(
+    request: reqwest::RequestBuilder,
+) -> Result<reqwest::Response, String> {
+    let _request = BOB_LOGOUT_REQUEST_GATE.lock().await;
+    request.send().await.map_err(|error| error.to_string())
+}
+
+async fn token_request_context() -> Result<(String, Client, i64, u64), String> {
+    ensure_access_token().await?;
+    let manager = AUTH_MGR.lock().await;
+    manager.validate_current_session()?;
+    Ok((
+        manager.access_token.clone().ok_or("未登录")?,
+        manager.client.clone(),
+        manager.current_user.as_ref().ok_or("未登录")?.id,
+        manager.session_epoch,
+    ))
+}
+
+async fn validate_token_context(user_id: i64, epoch: u64) -> Result<(), String> {
+    let manager = AUTH_MGR.lock().await;
+    manager.validate_current_session()?;
+    if manager.session_epoch != epoch
+        || manager.current_user.as_ref().map(|u| u.id) != Some(user_id)
+    {
+        return Err("账号已切换，已丢弃旧令牌请求".into());
+    }
+    Ok(())
+}
+
 // ── 接口实现 ──
 
 /// 获取站点基本状态（密码登录开关、验证码配置等）
 pub async fn get_site_status() -> Result<SiteStatus, String> {
     let client = AUTH_MGR.lock().await.client.clone();
     let url = format!("{}/api/status", BASE_URL);
-    let resp = client
-        .get(&url)
-        .header(reqwest::header::ACCEPT, "application/json")
-        .header(ORIGIN, AUTH_ORIGIN)
-        .send()
-        .await
-        .map_err(|e| format!("请求站点状态失败: {e}"))?;
+    let resp = send_bob_auth_request(
+        client
+            .get(&url)
+            .header(reqwest::header::ACCEPT, "application/json")
+            .header(ORIGIN, AUTH_ORIGIN),
+    )
+    .await
+    .map_err(|e| format!("请求站点状态失败: {e}"))?;
 
     let status = resp.status();
     let text = resp
@@ -1169,13 +1547,14 @@ pub async fn get_site_status() -> Result<SiteStatus, String> {
 pub async fn get_encryption_key() -> Result<EncryptionKeyData, String> {
     let client = AUTH_MGR.lock().await.client.clone();
     let url = format!("{}/api/user/login/encryption-key", BASE_URL);
-    let resp = client
-        .get(&url)
-        .header(reqwest::header::ACCEPT, "application/json")
-        .header(ORIGIN, AUTH_ORIGIN)
-        .send()
-        .await
-        .map_err(|e| format!("获取加密公钥失败: {e}"))?;
+    let resp = send_bob_auth_request(
+        client
+            .get(&url)
+            .header(reqwest::header::ACCEPT, "application/json")
+            .header(ORIGIN, AUTH_ORIGIN),
+    )
+    .await
+    .map_err(|e| format!("获取加密公钥失败: {e}"))?;
 
     let status = resp.status();
     let text = resp
@@ -1197,13 +1576,14 @@ pub async fn get_encryption_key() -> Result<EncryptionKeyData, String> {
 pub async fn generate_captcha() -> Result<CaptchaGenerateData, String> {
     let client = AUTH_MGR.lock().await.client.clone();
     let url = format!("{}/api/captcha/generate", BASE_URL);
-    let resp = client
-        .get(&url)
-        .header(reqwest::header::ACCEPT, "application/json")
-        .header(ORIGIN, AUTH_ORIGIN)
-        .send()
-        .await
-        .map_err(|e| format!("获取滑块验证码失败: {e}"))?;
+    let resp = send_bob_captcha_request(
+        client
+            .get(&url)
+            .header(reqwest::header::ACCEPT, "application/json")
+            .header(ORIGIN, AUTH_ORIGIN),
+    )
+    .await
+    .map_err(|e| format!("获取滑块验证码失败: {e}"))?;
 
     let status = resp.status();
     let text = resp
@@ -1232,14 +1612,15 @@ pub async fn verify_captcha(captcha_id: String, x: i32, y: i32) -> Result<(), St
         "y": y,
     });
 
-    let resp = client
-        .post(&url)
-        .header(reqwest::header::ACCEPT, "application/json")
-        .header(ORIGIN, AUTH_ORIGIN)
-        .json(&body)
-        .send()
-        .await
-        .map_err(|e| format!("滑块校验网络请求失败: {e}"))?;
+    let resp = send_bob_captcha_request(
+        client
+            .post(&url)
+            .header(reqwest::header::ACCEPT, "application/json")
+            .header(ORIGIN, AUTH_ORIGIN)
+            .json(&body),
+    )
+    .await
+    .map_err(|e| format!("滑块校验网络请求失败: {e}"))?;
 
     let status = resp.status();
     let text = resp
@@ -1291,14 +1672,15 @@ pub async fn login(payload: LoginPayload) -> Result<LoginResult, String> {
         return Err("必须提供密码或加密密码".to_string());
     }
 
-    let resp = client
-        .post(&url)
-        .header(reqwest::header::ACCEPT, "application/json")
-        .header(ORIGIN, AUTH_ORIGIN)
-        .json(&body)
-        .send()
-        .await
-        .map_err(|e| format!("登录请求异常: {e}"))?;
+    let resp = send_bob_login_request(
+        client
+            .post(&url)
+            .header(reqwest::header::ACCEPT, "application/json")
+            .header(ORIGIN, AUTH_ORIGIN)
+            .json(&body),
+    )
+    .await
+    .map_err(|e| format!("登录请求异常: {e}"))?;
 
     let status = resp.status();
 
@@ -1384,14 +1766,15 @@ pub async fn login_2fa(flow_token: String, code: String) -> Result<LoginSuccessD
         "code": code.trim(),
     });
 
-    let resp = client
-        .post(&url)
-        .header(reqwest::header::ACCEPT, "application/json")
-        .header(ORIGIN, AUTH_ORIGIN)
-        .json(&body)
-        .send()
-        .await
-        .map_err(|e| format!("2FA 验证请求异常: {e}"))?;
+    let resp = send_bob_login_request(
+        client
+            .post(&url)
+            .header(reqwest::header::ACCEPT, "application/json")
+            .header(ORIGIN, AUTH_ORIGIN)
+            .json(&body),
+    )
+    .await
+    .map_err(|e| format!("2FA 验证请求异常: {e}"))?;
 
     let mut extracted_refresh_cookie: Option<String> = None;
     for cookie in resp.cookies() {
@@ -1500,17 +1883,29 @@ fn parse_login_success_data(data: &serde_json::Value) -> Result<LoginSuccessData
 #[derive(Debug)]
 enum RefreshFailure {
     Retryable(String),
+    RateLimited(String, Duration),
     Expired(String),
 }
 
 async fn fetch_refreshed_session(
     request: reqwest::RequestBuilder,
 ) -> Result<(LoginSuccessData, Option<String>), RefreshFailure> {
-    let response = request
-        .send()
+    let response = send_bob_refresh_request(request)
         .await
         .map_err(|error| RefreshFailure::Retryable(format!("刷新会话网络请求异常: {error}")))?;
     let status = response.status();
+    if status == reqwest::StatusCode::TOO_MANY_REQUESTS {
+        return Err(RefreshFailure::RateLimited(
+            "会话刷新受限 (HTTP 429)，请稍后重试".into(),
+            retry_after_duration(response.headers()),
+        ));
+    }
+    if status.is_server_error() {
+        return Err(RefreshFailure::Retryable(format!(
+            "会话刷新服务暂时不可用 (HTTP {})",
+            status.as_u16()
+        )));
+    }
     if status == reqwest::StatusCode::UNAUTHORIZED || status == reqwest::StatusCode::FORBIDDEN {
         return Err(RefreshFailure::Expired("登录状态已过期，请重新登录".into()));
     }
@@ -1526,31 +1921,88 @@ async fn fetch_refreshed_session(
     let text = response
         .text()
         .await
-        .map_err(|error| RefreshFailure::Expired(format!("读取会话刷新响应失败: {error}")))?;
+        .map_err(|error| RefreshFailure::Retryable(format!("读取会话刷新响应失败: {error}")))?;
+    let data = parse_refreshed_session_body(status, &text)?;
+    Ok((data, refresh_cookie))
+}
+
+fn parse_refreshed_session_body(
+    status: reqwest::StatusCode,
+    text: &str,
+) -> Result<LoginSuccessData, RefreshFailure> {
     let parsed: ApiResponse<serde_json::Value> =
-        parse_api_response_body(status, &text, "刷新会话").map_err(RefreshFailure::Expired)?;
-    if !status.is_success() || !parsed.success {
-        return Err(RefreshFailure::Expired("登录状态已失效，请重新登录".into()));
+        parse_api_response_body(status, text, "刷新会话").map_err(RefreshFailure::Retryable)?;
+    if !status.is_success() {
+        return Err(RefreshFailure::Retryable(format!(
+            "会话刷新返回意外状态 (HTTP {})",
+            status.as_u16()
+        )));
+    }
+    if !parsed.success {
+        // A 2xx application error is not enough evidence that the refresh
+        // credential is revoked; the service may be temporarily unhealthy.
+        let message = if parsed.message.is_empty() {
+            "会话刷新暂未成功".to_string()
+        } else {
+            format!("会话刷新暂未成功: {}", parsed.message)
+        };
+        return Err(RefreshFailure::Retryable(message));
     }
     let data = parsed
         .data
-        .ok_or_else(|| RefreshFailure::Expired("刷新会话返回数据为空".into()))?;
-    let data = parse_login_success_data(&data).map_err(RefreshFailure::Expired)?;
-    Ok((data, refresh_cookie))
+        .ok_or_else(|| RefreshFailure::Retryable("刷新会话响应缺少数据".into()))?;
+    parse_login_success_data(&data)
+        .map_err(|error| RefreshFailure::Retryable(format!("刷新会话响应格式无效: {error}")))
 }
 
 /// 刷新当前登录凭据
 pub async fn refresh_session() -> Result<LoginSuccessData, String> {
+    refresh_session_after_rejection(None).await
+}
+
+async fn refresh_session_after_rejection(
+    rejected_token: Option<&str>,
+) -> Result<LoginSuccessData, String> {
+    let expected_epoch = AUTH_MGR.lock().await.session_epoch;
     let _refresh = REFRESH_GATE.lock().await;
     let (request, epoch, user_id) = {
         let mut manager = AUTH_MGR.lock().await;
+        manager.validate_current_session()?;
+        if manager.session_epoch != expected_epoch {
+            return Err("会话已切换，已取消旧刷新请求".into());
+        }
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs() as i64;
+        // Waiting callers reuse the newly issued token, including concurrent 401s.
+        if let (Some(user), Some(access_token)) =
+            (manager.current_user.clone(), manager.access_token.clone())
+        {
+            if manager.access_expires_at > now + 30 && rejected_token != Some(access_token.as_str())
+            {
+                return Ok(LoginSuccessData {
+                    user,
+                    access_token,
+                    access_expires_at: manager.access_expires_at,
+                    session_sid: manager.session_sid.clone(),
+                });
+            }
+        }
+        if let Some((until, error)) = &manager.refresh_backoff {
+            if *until > Instant::now() {
+                return Err(error.clone());
+            }
+        }
+        check_rate_limit(&BOB_REFRESH_RATE_LIMIT).await?;
         let url = format!("{BASE_URL}/api/user/auth/refresh");
         let request = match manager.refresh_request(&url) {
             Ok(request) => request,
             Err(error) => {
-                manager.reset_memory();
-                manager.session_restore_error = Some(error.clone());
-                return Err(error);
+                let message = format!("准备刷新会话失败: {error}");
+                manager.refresh_backoff =
+                    Some((Instant::now() + Duration::from_secs(5), message.clone()));
+                return Err(message);
             }
         };
         (
@@ -1570,13 +2022,25 @@ pub async fn refresh_session() -> Result<LoginSuccessData, String> {
     match response {
         Ok((data, refresh_cookie)) => {
             manager.complete_refresh(&data, refresh_cookie.as_deref(), epoch, user_id)?;
+            manager.refresh_backoff = None;
             Ok(data)
         }
         Err(RefreshFailure::Expired(error)) => {
             manager.clear_persisted_session();
             Err(error)
         }
-        Err(RefreshFailure::Retryable(error)) => Err(error),
+        Err(RefreshFailure::Retryable(error)) => {
+            manager.refresh_backoff =
+                Some((Instant::now() + Duration::from_secs(5), error.clone()));
+            Err(error)
+        }
+        Err(RefreshFailure::RateLimited(error, delay)) => {
+            manager.refresh_backoff = Some((Instant::now() + delay, error.clone()));
+            let until = Instant::now() + delay;
+            let mut cooldown = BOB_REFRESH_RATE_LIMIT.lock().await;
+            *cooldown = Some(cooldown.map_or(until, |previous| previous.max(until)));
+            Err(error)
+        }
     }
 }
 
@@ -1599,9 +2063,7 @@ async fn ensure_access_token() -> Result<String, String> {
     }
 
     // 需要刷新
-    let refreshed = refresh_session()
-        .await
-        .map_err(|_| "登录状态已失效，请重新登录".to_string())?;
+    let refreshed = refresh_session().await?;
     Ok(refreshed.access_token)
 }
 
@@ -1626,7 +2088,8 @@ pub async fn logout() -> Result<(), String> {
         mgr.session_restore_error = Some(format!("本地退出未完成: {error}"));
     }
     drop(mgr);
-    let remote_result = request.send().await;
+    invalidate_token_caches().await;
+    let remote_result = send_bob_logout_request(request).await;
     local_result.map_err(|error| format!("本地退出未完成: {error}"))?;
     match remote_result {
         Ok(response) if response.status().is_success() => Ok(()),
@@ -1678,59 +2141,84 @@ pub async fn set_selected_token(
 
 /// 获取用户在 https://bob-api.com 创建的 API Key 列表
 pub async fn get_user_tokens(all: Option<bool>) -> Result<Vec<TokenItem>, String> {
-    let token = ensure_access_token().await?;
-    let client = AUTH_MGR.lock().await.client.clone();
-
     let is_all = all.unwrap_or(false);
-    // 优先调用 search 接口获取完整列表，若为全部则追加 all=true
-    let url = if is_all {
-        format!(
-            "{}/api/token/search?keyword=&p=1&size=100&all=true",
-            BASE_URL
-        )
-    } else {
-        format!("{}/api/token/search?keyword=&p=1&size=100", BASE_URL)
-    };
-    let resp = client
-        .get(&url)
-        .header(AUTHORIZATION, format!("Bearer {}", token))
-        .send()
-        .await
-        .map_err(|e| format!("获取 API Key 列表失败: {e}"))?;
-
-    let status = resp.status();
-    let text = resp
-        .text()
-        .await
-        .map_err(|e| format!("读取 API Key 列表响应失败: {e}"))?;
-
-    let parsed: ApiResponse<serde_json::Value> =
-        parse_api_response_body(status, &text, "获取 API Key 列表")?;
-
-    if !parsed.success {
-        let msg = if parsed.message.is_empty() {
-            "获取令牌列表失败".to_string()
-        } else {
-            parsed.message
-        };
-        return Err(msg);
-    }
-
-    let data = parsed
-        .data
-        .ok_or_else(|| "响应数据中无 data 字段".to_string())?;
-
-    // 兼容 data 为数组或 data.items 为数组
-    let items_val = if let Some(items) = data.get("items") {
-        items
-    } else if data.is_array() {
-        &data
-    } else {
-        return Ok(vec![]);
-    };
-
-    let items: Vec<TokenItem> = serde_json::from_value(items_val.clone())
-        .map_err(|e| format!("反序列化令牌列表失败: {e}"))?;
+    let (token, client, user_id, epoch) = token_request_context().await?;
+    let items = cached_read(
+        &TOKEN_LIST_CACHE,
+        &TOKEN_LIST_GATE,
+        TokenListCacheKey {
+            user_id,
+            session_epoch: epoch,
+            all: is_all,
+        },
+        Duration::from_secs(20),
+        || async move {
+            validate_token_context(user_id, epoch).await?;
+            let mut page = 1u32;
+            let mut collected = Vec::new();
+            loop {
+                let url = if is_all {
+                    format!(
+                        "{}/api/token/search?keyword=&p={page}&size=100&all=true",
+                        BASE_URL
+                    )
+                } else {
+                    format!("{}/api/token/search?keyword=&p=1&size=100", BASE_URL)
+                };
+                let resp = send_bob_request_classified(
+                    client
+                        .get(&url)
+                        .header(AUTHORIZATION, format!("Bearer {}", token)),
+                )
+                .await
+                .map_err(|e| e.with_context("获取 API Key 列表失败"))?;
+                let status = resp.status();
+                let text = resp
+                    .text()
+                    .await
+                    .map_err(|e| format!("读取 API Key 列表响应失败: {e}"))?;
+                let parsed: ApiResponse<serde_json::Value> =
+                    parse_api_response_body(status, &text, "获取 API Key 列表")
+                        .map_err(|message| BobRequestError::from_status(status, message))?;
+                if !parsed.success {
+                    return Err(if parsed.message.is_empty() {
+                        "获取令牌列表失败".to_string()
+                    } else {
+                        parsed.message
+                    }
+                    .into());
+                }
+                let data = parsed
+                    .data
+                    .ok_or_else(|| "响应数据中无 data 字段".to_string())?;
+                let items_val = if let Some(items) = data.get("items") {
+                    items
+                } else if data.is_array() {
+                    &data
+                } else {
+                    return Ok(vec![]);
+                };
+                let page_items: Vec<TokenItem> = serde_json::from_value(items_val.clone())
+                    .map_err(|e| format!("反序列化令牌列表失败: {e}"))?;
+                let page_len = page_items.len();
+                collected.extend(page_items);
+                if !is_all
+                    || page_len < 100
+                    || data
+                        .get("total")
+                        .and_then(serde_json::Value::as_u64)
+                        .is_some_and(|total| collected.len() as u64 >= total)
+                    || page >= 100
+                {
+                    break;
+                }
+                page += 1;
+            }
+            Ok(collected)
+        },
+    )
+    .await?;
+    validate_token_context(user_id, epoch).await?;
 
     for token in &items {
         if !token.key.is_empty() {
@@ -1743,40 +2231,48 @@ pub async fn get_user_tokens(all: Option<bool>) -> Result<Vec<TokenItem>, String
 
 /// 获取某个 Token 的真实明文 API Key (调用 POST /api/token/:id/key)
 pub async fn get_token_key(token_id: i64) -> Result<String, String> {
-    let token = ensure_access_token().await?;
-    let client = AUTH_MGR.lock().await.client.clone();
-
-    let url = format!("{}/api/token/{}/key", BASE_URL, token_id);
-    let resp = client
-        .post(&url)
-        .header(AUTHORIZATION, format!("Bearer {}", token))
-        .send()
-        .await
-        .map_err(|e| format!("读取明文 API Key 失败: {e}"))?;
-
-    let status = resp.status();
-    let text = resp
-        .text()
-        .await
-        .map_err(|e| format!("读取明文 API Key 响应失败: {e}"))?;
-
-    let parsed: ApiResponse<ApiRawTokenKeyData> =
-        parse_api_response_body(status, &text, "读取明文 API Key")?;
-
-    if !parsed.success {
-        return Err(if parsed.message.is_empty() {
-            "无法读取该 API Key 的明文，可能已被禁用或删除".to_string()
-        } else {
-            parsed.message
-        });
-    }
-
-    let key_data = parsed.data.ok_or_else(|| "返回数据为空".to_string())?;
-
-    let mut key = key_data.key.trim().to_string();
-    if !key.starts_with("sk-") {
-        key = format!("sk-{}", key);
-    }
+    let (token, client, user_id, epoch) = token_request_context().await?;
+    let key = cached_read(
+        &TOKEN_KEY_CACHE,
+        &TOKEN_KEY_GATE,
+        (user_id, epoch, token_id),
+        Duration::from_secs(60),
+        || async move {
+            validate_token_context(user_id, epoch).await?;
+            let url = format!("{}/api/token/{}/key", BASE_URL, token_id);
+            let resp = send_bob_request_classified(
+                client
+                    .post(&url)
+                    .header(AUTHORIZATION, format!("Bearer {}", token)),
+            )
+            .await
+            .map_err(|e| e.with_context("读取明文 API Key 失败"))?;
+            let status = resp.status();
+            let text = resp
+                .text()
+                .await
+                .map_err(|e| format!("读取明文 API Key 响应失败: {e}"))?;
+            let parsed: ApiResponse<ApiRawTokenKeyData> =
+                parse_api_response_body(status, &text, "读取明文 API Key")
+                    .map_err(|message| BobRequestError::from_status(status, message))?;
+            if !parsed.success {
+                return Err(if parsed.message.is_empty() {
+                    "无法读取该 API Key 的明文，可能已被禁用或删除".to_string()
+                } else {
+                    parsed.message
+                }
+                .into());
+            }
+            let key_data = parsed.data.ok_or_else(|| "返回数据为空".to_string())?;
+            let mut key = key_data.key.trim().to_string();
+            if !key.starts_with("sk-") {
+                key = format!("sk-{}", key);
+            }
+            Ok(key)
+        },
+    )
+    .await?;
+    validate_token_context(user_id, epoch).await?;
 
     // 登记为 Bob API 受管密钥，确保后续单工具关联、保存与模型探测均受来源限制
     crate::credential_policy::register_managed_key(&key);
@@ -1789,33 +2285,47 @@ pub async fn update_user_token_group(
     token_id: i64,
     new_group: String,
 ) -> Result<TokenItem, String> {
+    let _ensure_gate = AUTO_TOKEN_ENSURE_GATE.lock().await;
     let clean_group = new_group.trim().to_string();
     if clean_group.is_empty() {
         return Err("分组名称不能为空".to_string());
     }
 
-    let token = ensure_access_token().await?;
-    let client = {
-        let mgr = AUTH_MGR.lock().await;
-        mgr.client.clone()
-    };
+    let (token, client, user_id, epoch) = token_request_context().await?;
 
     // Only a group-only endpoint is safe here. A full GET -> PUT would replay
     // stale quota/IP/model fields and overwrite concurrent server-side changes.
     let group_url = format!("{}/api/token/{}/group", BASE_URL, token_id);
-    let resp = client
-        .patch(&group_url)
-        .header(AUTHORIZATION, format!("Bearer {}", token))
-        .json(&serde_json::json!({ "group": clean_group }))
-        .send()
-        .await
-        .map_err(|e| format!("更新令牌分组网络异常（服务端 group-only 契约不可用）: {e}"))?;
+    // A mutation may commit even if its response is lost. Clear old list/key
+    // data before sending so ambiguous outcomes cannot be served from cache.
+    invalidate_token_caches().await;
+    validate_token_context(user_id, epoch).await?;
+    let resp = match send_bob_request(
+        client
+            .patch(&group_url)
+            .header(AUTHORIZATION, format!("Bearer {}", token))
+            .json(&serde_json::json!({ "group": clean_group })),
+    )
+    .await
+    {
+        Ok(response) => response,
+        Err(error) => {
+            invalidate_token_caches().await;
+            validate_token_context(user_id, epoch).await?;
+            return Err(format!(
+                "更新令牌分组网络异常（服务端 group-only 契约不可用）: {error}"
+            ));
+        }
+    };
+    invalidate_token_caches().await;
+    validate_token_context(user_id, epoch).await?;
 
     let status = resp.status();
     let text = resp
         .text()
         .await
         .map_err(|e| format!("读取 group-only 更新响应失败: {e}"))?;
+    validate_token_context(user_id, epoch).await?;
 
     let parsed: ApiResponse<serde_json::Value> =
         parse_api_response_body(status, &text, "更新令牌分组（group-only）")?;
@@ -1832,6 +2342,7 @@ pub async fn update_user_token_group(
         Ok(tokens) => tokens,
         Err(_) => return Err("修改已提交，状态待确认".to_string()),
     };
+    validate_token_context(user_id, epoch).await?;
     let updated = tokens
         .into_iter()
         .find(|t| t.id == token_id)
@@ -1840,20 +2351,165 @@ pub async fn update_user_token_group(
     Ok(updated)
 }
 
-/// 创建新的 API Key 令牌 (调用 POST /api/token/)
-pub async fn create_user_token(name: String, group: String) -> Result<TokenItem, String> {
+/// 为自动接入取得指定分组的可用 API Key：优先复用该分组下已启用的令牌
+/// （`preferred_token_id` 匹配时优先），没有时才调用 POST /api/token/ 创建一个。
+/// 分组下只有停用或不可用的令牌时直接报错，不会重复创建。创建请求发出后结果不明时，
+/// 先按令牌列表核对是否已经创建成功，核对不到则在 30 秒内暂停同一分组的再次创建；
+/// 请求没有真正发出（本地限流、请求构建或连接失败）时不登记，可以立即重试。
+pub async fn ensure_user_token(
+    name: String,
+    group: String,
+    preferred_token_id: Option<i64>,
+) -> Result<TokenItem, String> {
     let clean_name = name.trim().to_string();
     if clean_name.is_empty() {
         return Err("令牌名称不能为空".to_string());
     }
     let clean_group = group.trim().to_string();
+    if clean_group.is_empty() {
+        return Err("令牌分组不能为空".into());
+    }
 
-    let token = ensure_access_token().await?;
-    let client = {
-        let mgr = AUTH_MGR.lock().await;
-        mgr.client.clone()
+    let _ensure_gate = AUTO_TOKEN_ENSURE_GATE.lock().await;
+    let (_, _, user_id, epoch) = token_request_context().await?;
+    let ready_key = (user_id, epoch, clean_group.to_ascii_lowercase());
+    let ready_token = {
+        let mut ready = AUTO_TOKEN_READY.lock().await;
+        ready.retain(|_, (until, _)| *until > Instant::now());
+        ready.get(&ready_key).map(|(_, token)| token.clone())
     };
+    if let Some(token) = ready_token {
+        validate_token_context(user_id, epoch).await?;
+        clear_auto_token_attempt(user_id, epoch, &clean_group).await;
+        return Ok(token);
+    }
+    // Ensure the first decision after an idle period sees tokens created on
+    // the website, while concurrent/batch targets share the fresh result.
+    invalidate_token_caches().await;
+    let existing = get_user_tokens(Some(true)).await?;
+    validate_token_context(user_id, epoch).await?;
+    let is_group_name = |item: &TokenItem| {
+        item.group
+            .as_deref()
+            .unwrap_or("")
+            .trim()
+            .eq_ignore_ascii_case(&clean_group)
+    };
+    let is_group_match = |item: &TokenItem| item.status == 1 && is_group_name(item);
+    if existing.iter().any(is_group_name) && !existing.iter().any(is_group_match) {
+        return Err(format!(
+            "「{clean_group}」分组已有停用或不可用的令牌；为避免重复创建，请先在 Key 管理页面检查并启用或删除旧令牌"
+        ));
+    }
+    if let Some(mut item) = existing
+        .iter()
+        .find(|item| preferred_token_id == Some(item.id) && is_group_match(item))
+        .or_else(|| existing.iter().find(|item| is_group_match(item)))
+        .cloned()
+    {
+        let key = get_token_key(item.id).await.map_err(|error| {
+            format!("已有「{clean_group}」令牌，但读取明文失败，已停止创建: {error}")
+        })?;
+        validate_token_context(user_id, epoch).await?;
+        item.key = key;
+        remember_ensured_token(user_id, epoch, &existing, &item).await;
+        cache_auto_token_ready(user_id, epoch, &clean_group, &item).await;
+        clear_auto_token_attempt(user_id, epoch, &clean_group).await;
+        return Ok(item);
+    }
 
+    let attempt_key = (user_id, epoch, clean_group.to_ascii_lowercase());
+    check_rate_limit(&BOB_RATE_LIMIT).await?;
+    {
+        let mut attempts = AUTO_TOKEN_ATTEMPTS.lock().await;
+        attempts.retain(|_, until| *until > Instant::now());
+        if let Some(until) = attempts.get(&attempt_key) {
+            return Err(format!(
+                "「{clean_group}」令牌创建结果待确认，请在 {} 秒后重试，避免重复创建",
+                until.saturating_duration_since(Instant::now()).as_secs() + 1
+            ));
+        }
+        attempts.insert(
+            attempt_key.clone(),
+            Instant::now() + Duration::from_secs(30),
+        );
+    }
+
+    // AUTO_TOKEN_ENSURE_GATE is held across the record and the request, so
+    // no other caller can observe the record before a not-sent failure
+    // removes it again.
+    match create_user_token_request(clean_name, clean_group.clone(), user_id, epoch).await {
+        Err(create_error) if create_error.not_sent => {
+            clear_auto_token_attempt(user_id, epoch, &clean_group).await;
+            Err(format!(
+                "自动创建「{clean_group}」令牌失败: {}",
+                create_error.message
+            ))
+        }
+        Ok(item) => {
+            validate_token_context(user_id, epoch).await?;
+            remember_ensured_token(user_id, epoch, &existing, &item).await;
+            cache_auto_token_ready(user_id, epoch, &clean_group, &item).await;
+            clear_auto_token_attempt(user_id, epoch, &clean_group).await;
+            Ok(item)
+        }
+        Err(create_error) => {
+            invalidate_token_caches().await;
+            validate_token_context(user_id, epoch).await?;
+            if let Ok(tokens) = get_user_tokens(Some(true)).await {
+                validate_token_context(user_id, epoch).await?;
+                if let Some(mut item) = tokens.iter().find(|item| is_group_match(item)).cloned() {
+                    item.key = get_token_key(item.id).await.map_err(|key_error| {
+                        format!("令牌可能已创建，但读取明文失败，已禁止重复创建: {key_error}")
+                    })?;
+                    validate_token_context(user_id, epoch).await?;
+                    remember_ensured_token(user_id, epoch, &tokens, &item).await;
+                    cache_auto_token_ready(user_id, epoch, &clean_group, &item).await;
+                    clear_auto_token_attempt(user_id, epoch, &clean_group).await;
+                    return Ok(item);
+                }
+            }
+            Err(format!(
+                "自动创建「{clean_group}」令牌失败或结果待确认，已暂停重复创建: {}",
+                create_error.message
+            ))
+        }
+    }
+}
+
+/// 创建新的 API Key 令牌 (调用 POST /api/token/)
+/// Explicit Key creation preserves the user's request to create a new token;
+/// automatic callers should use `ensure_user_token` for reuse-before-create.
+pub async fn create_user_token(name: String, group: String) -> Result<TokenItem, String> {
+    let _ensure_gate = AUTO_TOKEN_ENSURE_GATE.lock().await;
+    let (_, _, user_id, epoch) = token_request_context().await?;
+    create_user_token_request(name, group, user_id, epoch)
+        .await
+        .map_err(|error| error.message)
+}
+
+/// Errors flagged `not_sent` happened before the POST left this process.
+async fn create_user_token_request(
+    name: String,
+    group: String,
+    expected_user_id: i64,
+    expected_epoch: u64,
+) -> Result<TokenItem, BobRequestError> {
+    let clean_name = name.trim().to_string();
+    if clean_name.is_empty() {
+        return Err(BobRequestError::not_sent("令牌名称不能为空"));
+    }
+    let clean_group = group.trim().to_string();
+
+    let (token, client, user_id, epoch) = token_request_context()
+        .await
+        .map_err(BobRequestError::not_sent)?;
+    if user_id != expected_user_id || epoch != expected_epoch {
+        return Err(BobRequestError::not_sent("账号已切换，已取消旧令牌创建"));
+    }
+    check_rate_limit(&BOB_RATE_LIMIT)
+        .await
+        .map_err(BobRequestError::local_cooldown)?;
     let url = format!("{}/api/token/", BASE_URL);
     let payload = serde_json::json!({
         "name": clean_name,
@@ -1863,14 +2519,36 @@ pub async fn create_user_token(name: String, group: String) -> Result<TokenItem,
         "group": clean_group,
     });
 
-    let resp = client
-        .post(&url)
-        .header(AUTHORIZATION, format!("Bearer {}", token))
-        .json(&payload)
-        .send()
-        .await
-        .map_err(|e| format!("创建令牌网络请求失败: {e}"))?;
+    invalidate_token_caches().await;
+    let resp = send_bob_request_classified(
+        client
+            .post(&url)
+            .header(AUTHORIZATION, format!("Bearer {}", token))
+            .json(&payload),
+    )
+    .await
+    .map_err(|e| e.with_context("创建令牌网络请求失败"))?;
 
+    finish_created_token(
+        resp,
+        clean_name,
+        clean_group,
+        expected_user_id,
+        expected_epoch,
+    )
+    .await
+    .map_err(BobRequestError::from)
+}
+
+/// Everything after the creation POST was sent: failures here are ambiguous
+/// (the token may exist), so they are never classified as `not_sent`.
+async fn finish_created_token(
+    resp: reqwest::Response,
+    clean_name: String,
+    clean_group: String,
+    expected_user_id: i64,
+    expected_epoch: u64,
+) -> Result<TokenItem, String> {
     let status = resp.status();
     let text = resp
         .text()
@@ -1879,6 +2557,7 @@ pub async fn create_user_token(name: String, group: String) -> Result<TokenItem,
 
     let parsed: ApiResponse<serde_json::Value> =
         parse_api_response_body(status, &text, "创建新令牌")?;
+    validate_token_context(expected_user_id, expected_epoch).await?;
 
     if !parsed.success {
         return Err(if parsed.message.is_empty() {
@@ -1894,7 +2573,9 @@ pub async fn create_user_token(name: String, group: String) -> Result<TokenItem,
         Some(it) if it.id > 0 => it,
         _ => {
             // 服务端成功创建但 data 未返回完整对象时，重新拉取用户令牌列表并定位最新令牌
-            let tokens = get_user_tokens(None).await?;
+            invalidate_token_caches().await;
+            let tokens = get_user_tokens(Some(true)).await?;
+            validate_token_context(expected_user_id, expected_epoch).await?;
             tokens
                 .into_iter()
                 .filter(|t| {
@@ -1906,17 +2587,11 @@ pub async fn create_user_token(name: String, group: String) -> Result<TokenItem,
     };
 
     // 无论服务端是否在创建接口中回显 Key，统一调用专用明文接口获取未截断明文并登记受管权限
-    match get_token_key(item.id).await {
-        Ok(plain_key) => {
-            item.key = plain_key;
-        }
-        Err(e) => {
-            if item.key.is_empty() {
-                return Err(format!("获取新令牌明文失败: {e}"));
-            }
-            crate::credential_policy::register_managed_key(&item.key);
-        }
-    }
+    item.key = get_token_key(item.id)
+        .await
+        .map_err(|error| format!("令牌已创建，但获取明文失败，请稍后在 Key 页面查看: {error}"))?;
+
+    validate_token_context(expected_user_id, expected_epoch).await?;
 
     Ok(item)
 }
@@ -1954,29 +2629,54 @@ fn default_model_for_target(target: &str) -> Option<&'static str> {
     }
 }
 
+/// 在阻塞线程池中执行同步配置读写，避免文件 I/O、注册表和进程探测阻塞 Tokio 工作线程。
+async fn run_config_blocking<T, F>(operation: F) -> Result<T, String>
+where
+    F: FnOnce() -> T + Send + 'static,
+    T: Send + 'static,
+{
+    tokio::task::spawn_blocking(operation)
+        .await
+        .map_err(|e| format!("后台配置任务执行异常: {e}"))
+}
+
 /// 一键将 API Key 批量写入指定的 Agent 配置文件中
 pub async fn apply_api_key_to_agents(
     api_key: String,
     targets: Vec<String>,
 ) -> Result<HashMap<String, bool>, String> {
     let mut results = HashMap::new();
+    let reset_generation = crate::reset::current_generation();
+    crate::reset::ensure_generation(reset_generation).map_err(|error| error.to_string())?;
 
     for target in targets {
+        crate::reset::ensure_generation(reset_generation).map_err(|error| error.to_string())?;
         match target.as_str() {
             "codex" | "chatgpt" => {
-                // 读取当前已有配置
-                let cur = crate::codex::get_codex_config().ok();
-                let url = cur
-                    .as_ref()
-                    .map(|c| c.base_url.clone())
-                    .unwrap_or_else(|| "https://bob-api.com/".to_string());
                 let model = default_model_for_target(&target)
                     .expect("已知 Codex 目标必须有默认模型")
                     .to_string();
-                match managed_destination(&url, "https://bob-api.com/").and_then(|url| {
-                    crate::codex::set_codex_config(url, api_key.clone(), Some(model))
+                let key = api_key.clone();
+                let outcome = run_config_blocking(move || {
+                    // 读取当前已有配置
+                    let cur = crate::codex::get_codex_config().ok();
+                    let url = cur
+                        .as_ref()
+                        .map(|c| c.base_url.clone())
+                        .unwrap_or_else(|| "https://bob-api.com/".to_string());
+                    managed_destination(&url, "https://bob-api.com/").and_then(|url| {
+                        crate::codex::set_codex_config_at_generation(
+                            url,
+                            key,
+                            Some(model),
+                            reset_generation,
+                        )
                         .map_err(|e| e.to_string())
-                }) {
+                    })
+                })
+                .await
+                .and_then(|result| result);
+                match outcome {
                     Ok(_) => {
                         results.insert("chatgpt".to_string(), true);
                     }
@@ -1987,18 +2687,29 @@ pub async fn apply_api_key_to_agents(
                 }
             }
             "claude" => {
-                let cur = crate::claude::get_claude_config().ok();
-                let url = cur
-                    .as_ref()
-                    .map(|c| c.base_url.clone())
-                    .unwrap_or_else(|| "https://bob-api.com/".to_string());
                 let model = default_model_for_target(&target)
                     .expect("已知 Claude 目标必须有默认模型")
                     .to_string();
-                match managed_destination(&url, "https://bob-api.com/").and_then(|url| {
-                    crate::claude::set_claude_config(url, api_key.clone(), Some(model))
+                let key = api_key.clone();
+                let outcome = run_config_blocking(move || {
+                    let cur = crate::claude::get_claude_config().ok();
+                    let url = cur
+                        .as_ref()
+                        .map(|c| c.base_url.clone())
+                        .unwrap_or_else(|| "https://bob-api.com/".to_string());
+                    managed_destination(&url, "https://bob-api.com/").and_then(|url| {
+                        crate::claude::set_claude_config_at_generation(
+                            url,
+                            key,
+                            Some(model),
+                            reset_generation,
+                        )
                         .map_err(|e| e.to_string())
-                }) {
+                    })
+                })
+                .await
+                .and_then(|result| result);
+                match outcome {
                     Ok(_) => {
                         results.insert("claude".to_string(), true);
                     }
@@ -2009,38 +2720,41 @@ pub async fn apply_api_key_to_agents(
                 }
             }
             "workbuddy" => {
-                let cur = crate::workbuddy::get_workbuddy_config().ok();
-                let url = cur
-                    .as_ref()
-                    .map(|c| c.base_url.clone())
-                    .unwrap_or_else(|| "https://bob-api.com/v1".to_string());
                 let model = default_model_for_target(&target)
                     .expect("已知 WorkBuddy 目标必须有默认模型")
                     .to_string();
-                let url = match managed_destination(&url, "https://bob-api.com/v1") {
-                    Ok(url) => url,
-                    Err(e) => {
-                        error!("应用 Key 到 WorkBuddy 失败: {e}");
-                        results.insert("workbuddy".to_string(), false);
-                        continue;
-                    }
-                };
-                let payload = crate::workbuddy::WorkbuddySavePayload {
-                    url,
-                    api_key: api_key.clone(),
-                    model,
-                    supports_tool_call: true,
-                    supports_images: true,
-                    supports_reasoning: true,
-                    only_reasoning: false,
-                    can_disable_thinking: false,
-                    use_custom_protocol: false,
-                    default_effort: None,
-                    supported_efforts: vec![],
-                    max_input_tokens: None,
-                    max_output_tokens: None,
-                };
-                match crate::workbuddy::set_workbuddy_default_config(payload) {
+                let key = api_key.clone();
+                let outcome = run_config_blocking(move || {
+                    let cur = crate::workbuddy::get_workbuddy_config().ok();
+                    let url = cur
+                        .as_ref()
+                        .map(|c| c.base_url.clone())
+                        .unwrap_or_else(|| "https://bob-api.com/v1".to_string());
+                    let url = managed_destination(&url, "https://bob-api.com/v1")?;
+                    let payload = crate::workbuddy::WorkbuddySavePayload {
+                        url,
+                        api_key: key,
+                        model,
+                        supports_tool_call: true,
+                        supports_images: true,
+                        supports_reasoning: true,
+                        only_reasoning: false,
+                        can_disable_thinking: false,
+                        use_custom_protocol: false,
+                        default_effort: None,
+                        supported_efforts: vec![],
+                        max_input_tokens: None,
+                        max_output_tokens: None,
+                    };
+                    crate::workbuddy::set_workbuddy_default_config_at_generation(
+                        payload,
+                        reset_generation,
+                    )
+                    .map_err(|e| e.to_string())
+                })
+                .await
+                .and_then(|result| result);
+                match outcome {
                     Ok(_) => {
                         results.insert("workbuddy".to_string(), true);
                     }
@@ -2051,7 +2765,7 @@ pub async fn apply_api_key_to_agents(
                 }
             }
             "accio" | "acciowork" => {
-                let cur = crate::accio::config::load_accio_config();
+                let cur = run_config_blocking(crate::accio::config::load_accio_config).await?;
                 let base_url = if cur.base_url.is_empty() {
                     "https://bob-api.com/".to_string()
                 } else {
@@ -2080,20 +2794,37 @@ pub async fn apply_api_key_to_agents(
                     image_model: cur.image_model,
                 };
                 crate::accio::invalidate_model_list_cache();
-                match crate::accio::config::save_accio_config(&config) {
+                let saved_config = config.clone();
+                let saved = run_config_blocking(move || {
+                    crate::accio::config::save_accio_config_at_generation(
+                        &saved_config,
+                        reset_generation,
+                    )
+                    .map_err(|e| e.to_string())
+                })
+                .await
+                .and_then(|result| result);
+                match saved {
                     Ok(_) => {
                         // 一键配置必须和手动配置保持一致：保存凭据后立即启动
                         // Bridge，再按新 Key 刷新模型目录。
                         if config.auto_start_bridge && !config.api_key.trim().is_empty() {
-                            if let Err(e) =
-                                crate::accio::start_bridge(Some(config.bridge_port)).await
+                            if let Err(e) = crate::accio::start_bridge(
+                                Some(config.bridge_port),
+                                Some(reset_generation),
+                            )
+                            .await
                             {
                                 error!("一键配置后启动 Accio Work Bridge 失败: {e}");
                                 results.insert("acciowork".to_string(), false);
                                 continue;
                             }
+                            crate::reset::ensure_generation(reset_generation)
+                                .map_err(|error| error.to_string())?;
                         }
                         crate::accio::refresh_model_list_cache().await;
+                        crate::reset::ensure_generation(reset_generation)
+                            .map_err(|error| error.to_string())?;
                         results.insert("acciowork".to_string(), true);
                     }
                     Err(e) => {
@@ -2103,7 +2834,7 @@ pub async fn apply_api_key_to_agents(
                 }
             }
             "cursor" => {
-                let cur = crate::cursor::config::load_cursor_config();
+                let cur = run_config_blocking(crate::cursor::config::load_cursor_config).await?;
                 let old_fp = crate::cursor::model_source_fingerprint(&cur.base_url, &cur.api_key);
                 let base_url = if cur.base_url.is_empty() {
                     "https://bob-api.com/".to_string()
@@ -2138,7 +2869,17 @@ pub async fn apply_api_key_to_agents(
                     cached_models_fingerprint,
                     cursor_path: cur.cursor_path,
                 };
-                match crate::cursor::config::save_cursor_config(&config) {
+                let saved_config = config.clone();
+                let saved = run_config_blocking(move || {
+                    crate::cursor::config::save_cursor_config_at_generation(
+                        &saved_config,
+                        reset_generation,
+                    )
+                    .map_err(|e| e.to_string())
+                })
+                .await
+                .and_then(|result| result);
+                match saved {
                     Ok(_) => {
                         if source_changed {
                             crate::cursor::invalidate_model_list_cache();
@@ -2148,7 +2889,12 @@ pub async fn apply_api_key_to_agents(
                         // 同步生效，不能等用户再次打开配置面板才后台刷新。
                         let actual_port =
                             if config.auto_start_bridge && !config.api_key.trim().is_empty() {
-                                match crate::cursor::start_bridge(Some(config.bridge_port)).await {
+                                match crate::cursor::start_bridge(
+                                    Some(config.bridge_port),
+                                    Some(reset_generation),
+                                )
+                                .await
+                                {
                                     Ok(port) => port,
                                     Err(e) => {
                                         error!("一键配置后启动 Cursor Bridge 失败: {e}");
@@ -2159,12 +2905,29 @@ pub async fn apply_api_key_to_agents(
                             } else {
                                 config.bridge_port
                             };
+                        crate::reset::ensure_generation(reset_generation)
+                            .map_err(|error| error.to_string())?;
                         crate::cursor::refresh_model_list_cache().await;
-                        let mut latest = crate::cursor::config::load_cursor_config();
+                        crate::reset::ensure_generation(reset_generation)
+                            .map_err(|error| error.to_string())?;
+                        let mut latest =
+                            run_config_blocking(crate::cursor::config::load_cursor_config).await?;
                         let models = crate::cursor::load_key_model_ids(&latest).await;
+                        crate::reset::ensure_generation(reset_generation)
+                            .map_err(|error| error.to_string())?;
                         if !models.is_empty() && latest.custom_models != models {
                             latest.custom_models = models;
-                            if let Err(e) = crate::cursor::config::save_cursor_config(&latest) {
+                            let models_config = latest.clone();
+                            let saved_models = run_config_blocking(move || {
+                                crate::cursor::config::save_cursor_config_at_generation(
+                                    &models_config,
+                                    reset_generation,
+                                )
+                                .map_err(|e| e.to_string())
+                            })
+                            .await
+                            .and_then(|result| result);
+                            if let Err(e) = saved_models {
                                 error!("一键配置后保存 Cursor 模型列表失败: {e}");
                             }
                         }
@@ -2173,44 +2936,57 @@ pub async fn apply_api_key_to_agents(
                         // 进入详细页手动点击“接入 AI Helper”。仅在原本运行时
                         // 恢复启动，避免擅自打开用户原先关闭的客户端。
                         let cursor_path = latest.cursor_path.clone();
-                        let patch = crate::cursor::get_patch_status(cursor_path.as_deref());
+                        let status_path = cursor_path.clone();
+                        let patch = run_config_blocking(move || {
+                            crate::cursor::get_patch_status(status_path.as_deref())
+                        })
+                        .await?;
                         let expected_target = format!("http://127.0.0.1:{actual_port}");
                         if !patch.is_patched
                             || patch.current_bridge_target.as_deref()
                                 != Some(expected_target.as_str())
                         {
-                            let was_running = crate::app_paths::is_target_running("cursor");
                             let patch_path = cursor_path.clone();
-                            let patch_result = tokio::task::spawn_blocking(move || {
-                                crate::cursor::apply_patch(patch_path.as_deref(), actual_port)
-                            })
-                            .await
-                            .map_err(|e| format!("Cursor 接入任务执行异常: {e}"))
-                            .and_then(|result| result);
+                            let patch_result =
+                                tokio::task::spawn_blocking(move || {
+                                    // 进程探测同样是阻塞操作，必须在打补丁（会结束
+                                    // Cursor 进程）之前、在阻塞线程中完成。
+                                    let was_running = crate::app_paths::is_target_running("cursor");
+                                    crate::reset::with_config_write_at_generation(
+                                        reset_generation,
+                                        || {
+                                            crate::cursor::apply_patch(
+                                                patch_path.as_deref(),
+                                                actual_port,
+                                            )
+                                            .map_err(crate::error::AppError::Other)?;
+                                            if was_running {
+                                                crate::process_manager::restart_target_app(
+                                                    "cursor",
+                                                    patch_path.as_deref(),
+                                                )
+                                                .map_err(|error| {
+                                                    crate::error::AppError::Other(format!(
+                                                        "Cursor 已接入但恢复启动失败: {error}"
+                                                    ))
+                                                })?;
+                                            }
+                                            Ok(())
+                                        },
+                                    )
+                                    .map_err(|error| error.to_string())
+                                })
+                                .await
+                                .map_err(|e| format!("Cursor 接入任务执行异常: {e}"))
+                                .and_then(|result| result);
 
                             if let Err(e) = patch_result {
                                 error!("一键配置后接入 Cursor 到 AI Helper 失败: {e}");
                                 results.insert("cursor".to_string(), false);
                                 continue;
                             }
-
-                            if was_running {
-                                let launch_path = cursor_path.clone();
-                                let restart_result = tokio::task::spawn_blocking(move || {
-                                    crate::process_manager::restart_target_app(
-                                        "cursor",
-                                        launch_path.as_deref(),
-                                    )
-                                })
-                                .await
-                                .map_err(|e| format!("Cursor 恢复启动任务异常: {e}"))
-                                .and_then(|result| result);
-                                if let Err(e) = restart_result {
-                                    error!("Cursor 已接入但恢复启动失败: {e}");
-                                    results.insert("cursor".to_string(), false);
-                                    continue;
-                                }
-                            }
+                            crate::reset::ensure_generation(reset_generation)
+                                .map_err(|error| error.to_string())?;
                         }
                         results.insert("cursor".to_string(), true);
                     }
@@ -2239,12 +3015,13 @@ pub async fn get_channel_group_overview(
         "{}/api/channel/monitor/group-overview?hours={}",
         BASE_URL, h
     );
-    let resp = client
-        .get(&url)
-        .header(AUTHORIZATION, format!("Bearer {}", token))
-        .send()
-        .await
-        .map_err(|e| format!("请求分组监控数据网络异常: {e}"))?;
+    let resp = send_bob_request(
+        client
+            .get(&url)
+            .header(AUTHORIZATION, format!("Bearer {}", token)),
+    )
+    .await
+    .map_err(|e| format!("请求分组监控数据网络异常: {e}"))?;
 
     let status = resp.status();
     let text = resp
@@ -2317,6 +3094,7 @@ fn parse_wallet_info(data: &serde_json::Value) -> Result<UserWalletInfo, String>
 
 /// 获取用户在 bob-api 的钱包与额度余额信息 (调用 GET /api/user/self)
 pub async fn get_user_wallet() -> Result<UserWalletInfo, String> {
+    let access_token = ensure_access_token().await?;
     let (mut token, expected_user_id, expected_epoch, client) = {
         let mgr = AUTH_MGR.lock().await;
         mgr.validate_current_session()?;
@@ -2324,6 +3102,9 @@ pub async fn get_user_wallet() -> Result<UserWalletInfo, String> {
             .access_token
             .clone()
             .ok_or_else(|| "未登录".to_string())?;
+        if token != access_token {
+            return Err("会话已切换，已取消旧钱包请求".into());
+        }
         let user_id = mgr
             .current_user
             .as_ref()
@@ -2334,42 +3115,37 @@ pub async fn get_user_wallet() -> Result<UserWalletInfo, String> {
     };
     let url = format!("{}/api/user/self", BASE_URL);
 
-    let mut resp = client
-        .get(&url)
-        .header(AUTHORIZATION, format!("Bearer {}", token))
-        .send()
-        .await
-        .map_err(|e| format!("获取账号额度网络异常: {e}"))?;
+    let mut resp = send_bob_request(
+        client
+            .get(&url)
+            .header(AUTHORIZATION, format!("Bearer {}", token)),
+    )
+    .await
+    .map_err(|e| format!("获取账号额度网络异常: {e}"))?;
 
     // 若 access_token 在服务端已失效 (401)，自动刷新一次会话凭据重试
     if resp.status() == reqwest::StatusCode::UNAUTHORIZED {
-        if let Ok(refreshed) = refresh_session().await {
-            token = refreshed.access_token;
-            let client = {
-                let mgr = AUTH_MGR.lock().await;
-                if mgr.session_epoch != expected_epoch
-                    || mgr.current_user.as_ref().map(|user| user.id) != Some(expected_user_id)
-                {
-                    return Err("账号已切换，已丢弃旧钱包请求".into());
-                }
-                mgr.client.clone()
-            };
-            if let Ok(retry_resp) = client
+        let refreshed = refresh_session_after_rejection(Some(&token))
+            .await
+            .map_err(|error| format!("刷新登录会话失败，当前登录状态已保留: {error}"))?;
+        token = refreshed.access_token;
+        let client = {
+            let mgr = AUTH_MGR.lock().await;
+            if mgr.session_epoch != expected_epoch
+                || mgr.current_user.as_ref().map(|user| user.id) != Some(expected_user_id)
+            {
+                return Err("账号已切换，已丢弃旧钱包请求".into());
+            }
+            mgr.client.clone()
+        };
+        if let Ok(retry_resp) = send_bob_request(
+            client
                 .get(&url)
-                .header(AUTHORIZATION, format!("Bearer {}", token))
-                .send()
-                .await
-            {
-                resp = retry_resp;
-            }
-        } else {
-            let mut mgr = AUTH_MGR.lock().await;
-            if mgr.session_epoch == expected_epoch
-                && mgr.current_user.as_ref().map(|user| user.id) == Some(expected_user_id)
-            {
-                mgr.clear_persisted_session();
-            }
-            return Err("登录状态已过期，请重新登录".to_string());
+                .header(AUTHORIZATION, format!("Bearer {}", token)),
+        )
+        .await
+        {
+            resp = retry_resp;
         }
     }
 
@@ -2449,22 +3225,35 @@ pub async fn get_user_wallet() -> Result<UserWalletInfo, String> {
 /// 删除指定 API Key (调用 DELETE /api/token/:id)
 #[allow(dead_code)]
 pub async fn delete_user_token(token_id: i64) -> Result<(), String> {
-    let token = ensure_access_token().await?;
-    let client = AUTH_MGR.lock().await.client.clone();
+    let _ensure_gate = AUTO_TOKEN_ENSURE_GATE.lock().await;
+    let (token, client, user_id, epoch) = token_request_context().await?;
 
     let url = format!("{}/api/token/{}", BASE_URL, token_id);
-    let resp = client
-        .delete(&url)
-        .header(AUTHORIZATION, format!("Bearer {}", token))
-        .send()
-        .await
-        .map_err(|e| format!("删除令牌网络异常: {e}"))?;
+    invalidate_token_caches().await;
+    validate_token_context(user_id, epoch).await?;
+    let resp = match send_bob_request(
+        client
+            .delete(&url)
+            .header(AUTHORIZATION, format!("Bearer {}", token)),
+    )
+    .await
+    {
+        Ok(response) => response,
+        Err(error) => {
+            invalidate_token_caches().await;
+            validate_token_context(user_id, epoch).await?;
+            return Err(format!("删除令牌网络异常: {error}"));
+        }
+    };
+    invalidate_token_caches().await;
+    validate_token_context(user_id, epoch).await?;
 
     let status = resp.status();
     let text = resp
         .text()
         .await
         .map_err(|e| format!("读取删除令牌响应失败: {e}"))?;
+    validate_token_context(user_id, epoch).await?;
 
     let parsed: ApiResponse<serde_json::Value> =
         parse_api_response_body(status, &text, "删除令牌")?;
@@ -2483,8 +3272,8 @@ pub async fn delete_user_token(token_id: i64) -> Result<(), String> {
 /// 快速更新指定 API Key 状态 (1: 启用, 2: 禁用 - 调用 PUT /api/token/?status_only=true)
 #[allow(dead_code)]
 pub async fn update_user_token_status(token_id: i64, status: i32) -> Result<(), String> {
-    let token = ensure_access_token().await?;
-    let client = AUTH_MGR.lock().await.client.clone();
+    let _ensure_gate = AUTO_TOKEN_ENSURE_GATE.lock().await;
+    let (token, client, user_id, epoch) = token_request_context().await?;
 
     let url = format!("{}/api/token/?status_only=true", BASE_URL);
     let body = serde_json::json!({
@@ -2492,19 +3281,32 @@ pub async fn update_user_token_status(token_id: i64, status: i32) -> Result<(), 
         "status": status,
     });
 
-    let resp = client
-        .put(&url)
-        .header(AUTHORIZATION, format!("Bearer {}", token))
-        .json(&body)
-        .send()
-        .await
-        .map_err(|e| format!("更新令牌状态网络异常: {e}"))?;
+    invalidate_token_caches().await;
+    validate_token_context(user_id, epoch).await?;
+    let resp = match send_bob_request(
+        client
+            .put(&url)
+            .header(AUTHORIZATION, format!("Bearer {}", token))
+            .json(&body),
+    )
+    .await
+    {
+        Ok(response) => response,
+        Err(error) => {
+            invalidate_token_caches().await;
+            validate_token_context(user_id, epoch).await?;
+            return Err(format!("更新令牌状态网络异常: {error}"));
+        }
+    };
+    invalidate_token_caches().await;
+    validate_token_context(user_id, epoch).await?;
 
     let status_code = resp.status();
     let text = resp
         .text()
         .await
         .map_err(|e| format!("读取更新状态响应失败: {e}"))?;
+    validate_token_context(user_id, epoch).await?;
 
     let parsed: ApiResponse<serde_json::Value> =
         parse_api_response_body(status_code, &text, "更新令牌状态")?;
@@ -2527,12 +3329,13 @@ pub async fn get_token_auto_groups() -> Result<Vec<String>, String> {
     let client = AUTH_MGR.lock().await.client.clone();
 
     let url = format!("{}/api/token/auto-groups", BASE_URL);
-    let resp = client
-        .get(&url)
-        .header(AUTHORIZATION, format!("Bearer {}", token))
-        .send()
-        .await
-        .map_err(|e| format!("获取分组信息失败: {e}"))?;
+    let resp = send_bob_request(
+        client
+            .get(&url)
+            .header(AUTHORIZATION, format!("Bearer {}", token)),
+    )
+    .await
+    .map_err(|e| format!("获取分组信息失败: {e}"))?;
 
     let status = resp.status();
     let text = resp
@@ -2569,11 +3372,12 @@ pub async fn get_user_available_groups() -> Result<Vec<String>, String> {
     let client = AUTH_MGR.lock().await.client.clone();
 
     let url = format!("{}/api/user/self/groups", BASE_URL);
-    let resp = match client
-        .get(&url)
-        .header(AUTHORIZATION, format!("Bearer {}", token))
-        .send()
-        .await
+    let resp = match send_bob_request(
+        client
+            .get(&url)
+            .header(AUTHORIZATION, format!("Bearer {}", token)),
+    )
+    .await
     {
         Ok(r) => r,
         Err(_) => return Ok(vec![]),
@@ -2659,13 +3463,14 @@ pub async fn get_user_usage_logs(params: UsageLogQueryParams) -> Result<UsageLog
     } else {
         format!("{}/api/log/self", BASE_URL)
     };
-    let resp = client
-        .get(&url)
-        .header(AUTHORIZATION, format!("Bearer {}", token))
-        .query(&query_params)
-        .send()
-        .await
-        .map_err(|e| format!("请求使用日志网络失败: {e}"))?;
+    let resp = send_bob_request(
+        client
+            .get(&url)
+            .header(AUTHORIZATION, format!("Bearer {}", token))
+            .query(&query_params),
+    )
+    .await
+    .map_err(|e| format!("请求使用日志网络失败: {e}"))?;
 
     let status = resp.status();
     let text = resp
@@ -2762,13 +3567,14 @@ pub async fn get_user_usage_stat(params: UsageLogQueryParams) -> Result<UsageSta
     } else {
         format!("{}/api/log/self/stat", BASE_URL)
     };
-    let resp = client
-        .get(&url)
-        .header(AUTHORIZATION, format!("Bearer {}", token))
-        .query(&query_params)
-        .send()
-        .await
-        .map_err(|e| format!("请求日志统计数据网络失败: {e}"))?;
+    let resp = send_bob_request(
+        client
+            .get(&url)
+            .header(AUTHORIZATION, format!("Bearer {}", token))
+            .query(&query_params),
+    )
+    .await
+    .map_err(|e| format!("请求日志统计数据网络失败: {e}"))?;
 
     let status = resp.status();
     let text = resp
@@ -2828,8 +3634,7 @@ pub async fn get_pricing_data() -> Result<PricingResponse, String> {
         req = req.header(AUTHORIZATION, format!("Bearer {}", token));
     }
 
-    let resp = req
-        .send()
+    let resp = send_bob_request(req)
         .await
         .map_err(|e| format!("请求模型与价格数据失败: {e}"))?;
 
@@ -2862,6 +3667,129 @@ mod tests {
     use std::io::{Read, Write};
     use std::net::TcpListener;
     use std::sync::Barrier;
+
+    #[tokio::test]
+    async fn concurrent_cached_reads_share_one_request() {
+        let cache: Mutex<RequestCache<&'static str, Vec<u8>>> = Mutex::new(RequestCache::new());
+        let gate = Mutex::const_new(());
+        let fetches = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let read = || {
+            let fetches = fetches.clone();
+            async {
+                cached_read(
+                    &cache,
+                    &gate,
+                    "tokens",
+                    Duration::from_secs(20),
+                    || async move {
+                        fetches.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                        tokio::time::sleep(Duration::from_millis(20)).await;
+                        Ok(vec![1, 2, 3])
+                    },
+                )
+                .await
+            }
+        };
+
+        let (first, second, third) = tokio::join!(read(), read(), read());
+        assert_eq!(first.unwrap(), vec![1, 2, 3]);
+        assert_eq!(second.unwrap(), vec![1, 2, 3]);
+        assert_eq!(third.unwrap(), vec![1, 2, 3]);
+        assert_eq!(fetches.load(std::sync::atomic::Ordering::SeqCst), 1);
+    }
+
+    #[tokio::test]
+    async fn cached_rate_limit_error_does_not_outlive_retry_after() {
+        let cache: Mutex<RequestCache<&'static str, u8>> = Mutex::new(RequestCache::new());
+        let gate = Mutex::const_new(());
+        let first = cached_read(&cache, &gate, "key", Duration::from_secs(60), || async {
+            Err(BobRequestError::from_status(
+                reqwest::StatusCode::TOO_MANY_REQUESTS,
+                "Too many requests".to_string(),
+            ))
+        })
+        .await;
+        assert_eq!(first.unwrap_err(), "Too many requests（HTTP 429）");
+
+        let second = cached_read(&cache, &gate, "key", Duration::from_secs(60), || async {
+            Ok(7)
+        })
+        .await;
+        assert_eq!(second.unwrap(), 7);
+    }
+
+    #[tokio::test]
+    async fn requests_that_never_leave_the_process_are_classified_as_not_sent() {
+        let client = Client::builder().no_proxy().build().unwrap();
+
+        // Request construction fails before anything is sent.
+        let error = send_bob_request_classified(client.get("not a url"))
+            .await
+            .unwrap_err();
+        assert!(error.not_sent, "{error:?}");
+
+        // Nothing listens on a port that was just released.
+        let port = TcpListener::bind("127.0.0.1:0")
+            .unwrap()
+            .local_addr()
+            .unwrap()
+            .port();
+        let error =
+            send_bob_request_classified(client.post(format!("http://127.0.0.1:{port}/api/token/")))
+                .await
+                .unwrap_err();
+        assert!(error.not_sent, "{error:?}");
+
+        // Any failure surfaced after the request was sent stays ambiguous.
+        let generic = BobRequestError::from("读取创建令牌响应失败".to_string());
+        assert!(!generic.not_sent);
+        let limited = BobRequestError::from_status(
+            reqwest::StatusCode::TOO_MANY_REQUESTS,
+            "slow down".into(),
+        );
+        assert!(limited.rate_limited && !limited.not_sent);
+        let local = BobRequestError::local_cooldown("cooldown".into());
+        assert!(local.rate_limited && local.not_sent);
+    }
+
+    #[tokio::test]
+    async fn account_api_cooldown_does_not_block_auth_recovery() {
+        let api_cooldown = Mutex::new(Some(Instant::now() + Duration::from_secs(30)));
+        let auth_cooldown = Mutex::new(None);
+        assert!(check_rate_limit(&auth_cooldown).await.is_ok());
+        assert!(check_rate_limit(&api_cooldown).await.is_err());
+    }
+
+    #[test]
+    fn retry_after_supports_delta_seconds_and_http_dates() {
+        let mut headers = reqwest::header::HeaderMap::new();
+        headers.insert(reqwest::header::RETRY_AFTER, "17".parse().unwrap());
+        assert_eq!(retry_after_duration(&headers), Duration::from_secs(17));
+
+        headers.insert(
+            reqwest::header::RETRY_AFTER,
+            "Wed, 21 Oct 2015 07:28:00 GMT".parse().unwrap(),
+        );
+        assert_eq!(retry_after_duration(&headers), Duration::from_secs(1));
+        headers.remove(reqwest::header::RETRY_AFTER);
+        assert_eq!(retry_after_duration(&headers), Duration::from_secs(30));
+    }
+
+    #[test]
+    fn malformed_or_application_failed_refresh_response_is_retryable() {
+        let status = reqwest::StatusCode::OK;
+        let missing_data = r#"{"success":true}"#;
+        assert!(matches!(
+            parse_refreshed_session_body(status, missing_data),
+            Err(RefreshFailure::Retryable(message)) if message.contains("缺少数据")
+        ));
+
+        let application_failure = r#"{"success":false,"message":"暂时不可用"}"#;
+        assert!(matches!(
+            parse_refreshed_session_body(status, application_failure),
+            Err(RefreshFailure::Retryable(message)) if message.contains("暂时不可用")
+        ));
+    }
 
     #[cfg(any(target_os = "macos", target_os = "linux"))]
     struct NativeSessionCleanup<'scope> {
