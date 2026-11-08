@@ -667,6 +667,11 @@ fn with_workbuddy_transaction_inner<T>(
             if let Some(pending) = pending {
                 recover_transaction(&paths.journal, &pending)?;
             }
+            // Remove dangling links before snapshot capture: snapshots represent
+            // the absent config, and safe_fs intentionally rejects every link.
+            for path in &active {
+                remove_broken_symlink_locked(path)?;
+            }
             let mut capture = if capture_before_recovery {
                 Some(capture_reset_baseline(&active)?)
             } else {
@@ -678,7 +683,6 @@ fn with_workbuddy_transaction_inner<T>(
             // Recovery must precede the read/merge snapshot, not the final write.
             let recovery_result = (|| {
                 for path in &active {
-                    remove_broken_symlink_locked(path)?;
                     if recover_missing_backups {
                         let recovering = crate::safe_fs::read_optional_no_recovery_locked(path)?
                             .is_none()

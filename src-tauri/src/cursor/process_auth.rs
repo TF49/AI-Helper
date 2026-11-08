@@ -240,7 +240,8 @@ mod platform {
     use libproc::libproc::bsd_info::BSDInfo;
     use libproc::libproc::file_info::{pidfdinfo, ListFDs, ProcFDType};
     use libproc::libproc::net_info::{SocketFDInfo, SocketInfoKind};
-    use libproc::libproc::proc_pid::{listpidinfo, listpids, pidinfo, ProcType};
+    use libproc::libproc::proc_pid::{listpidinfo, pidinfo};
+    use libproc::processes::{pids_by_type, ProcFilter};
     use std::net::SocketAddr;
 
     /// `insi_lport` / `insi_fport` 以网络字节序保存在 int 的低 16 位。
@@ -252,7 +253,7 @@ mod platform {
         let current_uid = pidinfo::<BSDInfo>(std::process::id() as i32, 0)
             .map_err(|e| format!("读取当前用户失败: {e}"))?
             .pbi_uid;
-        let pids = listpids(ProcType::ProcAllPIDS).map_err(|e| format!("列出进程失败: {e}"))?;
+        let pids = pids_by_type(ProcFilter::All).map_err(|e| format!("列出进程失败: {e}"))?;
         for pid in pids {
             let pid = pid as i32;
             if pid <= 0 {

@@ -439,16 +439,10 @@ fn matches_file(query: &str, path: &Path) -> bool {
 
 /// 检查路径是否在 .git 目录内
 fn is_git_path(path: &Path) -> bool {
-    path.components().any(|c| match c {
-        std::path::Component::Normal(name) => {
-            if cfg!(windows) {
-                name.to_string_lossy().eq_ignore_ascii_case(".git")
-            } else {
-                name == ".git"
-            }
-        }
-        _ => false,
-    })
+    path.as_os_str()
+        .to_string_lossy()
+        .split(['/', '\\'])
+        .any(|component| component.eq_ignore_ascii_case(".git"))
 }
 
 /// Agent-specific atomic file write that preserves permissions without creating
