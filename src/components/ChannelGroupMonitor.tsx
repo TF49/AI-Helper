@@ -531,6 +531,8 @@ export function ChannelGroupMonitor({
     if (!authState.is_logged_in) return;
     void loadData();
     const interval = setInterval(() => {
+      // 窗口最小化/隐藏时没人看，跳过轮询，避免后台持续请求 Bob API
+      if (typeof document !== "undefined" && document.visibilityState === "hidden") return;
       void loadData(true);
     }, 90000);
     return () => clearInterval(interval);

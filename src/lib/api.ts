@@ -1,5 +1,6 @@
 import { invoke as tauriInvoke, Channel } from "@tauri-apps/api/core";
 import { toast } from "sonner";
+import { rememberTokenKeyFingerprint } from "./tokenKeyFingerprint";
 import type {
   AgentWorkspaceGrant,
   AgentWorkspaceRequest,
@@ -1082,12 +1083,16 @@ export async function logoutAccount(): Promise<void> {
   return invoke<void>("logout_account");
 }
 
-export async function getUserTokens(all?: boolean): Promise<TokenItem[]> {
-  return invoke<TokenItem[]>("get_user_tokens", { all });
+/** 默认读取本地缓存（登录期间持久保存，每天回源一次）；force 为 true 时直接回源 */
+export async function getUserTokens(all?: boolean, force?: boolean): Promise<TokenItem[]> {
+  return invoke<TokenItem[]>("get_user_tokens", { all, force });
 }
 
 export async function getTokenKey(tokenId: number): Promise<string> {
-  return invoke<string>("get_token_key", { tokenId });
+  const key = await invoke<string>("get_token_key", { tokenId });
+  // 读到明文后记下指纹，之后分组识别可在本地比对，不必再次请求 POST /api/token/:id/key
+  void rememberTokenKeyFingerprint(tokenId, key);
+  return key;
 }
 
 export async function updateUserTokenGroup(

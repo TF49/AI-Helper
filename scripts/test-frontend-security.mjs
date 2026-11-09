@@ -1,6 +1,7 @@
 // Isolated behavior tests: transpile the real TS/TSX, mock hooks, IPC and browser APIs.
 // No network, real credentials, real localStorage, clipboard or HOME are accessed.
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import vm from "node:vm";
@@ -190,6 +191,7 @@ class Harness {
         if (name.endsWith("/groupPricing")) return load("src/lib/groupPricing.ts");
         if (name.endsWith("/quotaDisplay")) return load("src/lib/quotaDisplay.ts");
         if (name.endsWith("/useBoundTokenGroup")) return load("src/lib/useBoundTokenGroup.ts");
+        if (name.endsWith("/tokenKeyFingerprint")) return load("src/lib/tokenKeyFingerprint.ts");
         if (name.endsWith("/secureClipboard")) return { scheduleClipboardClear: (key) => env.clipboardCleanup.push(key) };
         if (name.endsWith("/utils")) return { cn: (...args) => args.filter((arg) => typeof arg === "string").join(" ") };
         if (name.endsWith("/types")) return { isUserAdmin: (user) => (user?.role || 0) >= 10 };
@@ -203,6 +205,12 @@ class Harness {
         navigator: { clipboard: { writeText: async (value) => { env.clipboard.push(value); } } },
         localStorage: { getItem: (key) => env.storage.get(key) ?? null, setItem: (key, value) => env.storage.set(key, value),
           removeItem: (key) => env.storage.delete(key) },
+        // Same SHA-256 as WebCrypto, but settled on the microtask queue like the other mocked IPC calls.
+        crypto: { subtle: { digest: async (_algorithm, data) => {
+          const bytes = createHash("sha256").update(data).digest();
+          return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
+        } } },
+        TextEncoder,
         setTimeout: env.window.setTimeout, clearTimeout: env.window.clearTimeout,
         setInterval: env.window.setInterval, clearInterval: env.window.clearInterval,
       };
@@ -219,6 +227,7 @@ class Harness {
         : component === "ApiKeyInput" ? "src/components/ApiKeyInput.tsx" : "src/components/ChannelGroupMonitor.tsx";
     this.fn = load(filename, component)[component];
     this.groupPricing = load("src/lib/groupPricing.ts");
+    this.boundTokenGroup = load("src/lib/useBoundTokenGroup.ts");
   }
   flush() {
     let count = 0;
@@ -257,7 +266,7 @@ class Harness {
 }
 
 async function settle(harness) {
-  for (let i = 0; i < 10; i++) { await Promise.resolve(); harness.flush(); }
+  for (let i = 0; i < 30; i++) { await Promise.resolve(); harness.flush(); }
   return harness.capture;
 }
 async function ready(component, env = environment(), props = {}) {
@@ -1063,6 +1072,91 @@ test("real bound-token hook commits a current match after effect cleanup/setup r
   await settle(h);
   assert.equal(h.capture.group, "current-group");
   assert.equal(JSON.parse(env.storage.get("bound_token_chatgpt")).group, "current-group");
+});
+
+test("bound-token hook matches a masked list Key locally without reading plaintext", async () => {
+  const env = environment();
+  env.impl.getUserTokens = () => [{ ...fakeToken, key: "fake**********only", group: "masked-group" }];
+  const h = await ready("BoundTokenGroupHost", env);
+  assert.equal(h.capture.group, "masked-group");
+  assert.equal(env.count("getTokenKey"), 0);
+});
+
+test("bound-token hook refuses an ambiguous masked Key match", async () => {
+  const env = environment();
+  env.impl.getUserTokens = () => [
+    { ...fakeToken, key: "fake**********only", group: "group-a" },
+    { ...fakeToken, id: 12, key: "fake**********only", group: "group-b" },
+  ];
+  const h = await ready("BoundTokenGroupHost", env);
+  assert.equal(h.capture.group, null);
+  assert.equal(env.count("getTokenKey"), 0);
+});
+
+test("masked Key comparison requires enough visible characters", async () => {
+  const { isKeyMatch } = new Harness("BoundTokenGroupHost", environment()).boundTokenGroup;
+  assert.equal(isKeyMatch("fa*****y", "sk-fake-input-only"), false);
+  assert.equal(isKeyMatch("fake****only", "sk-fake-input-only"), true);
+  assert.equal(isKeyMatch("fake****only", "fake****only"), false);
+  assert.equal(isKeyMatch("fake****nope", "sk-fake-input-only"), false);
+});
+
+test("bound-token hook reads a plaintext Key once and later resolves it from the local fingerprint", async () => {
+  const env = environment();
+  env.storage.set("bound_token_cursor", JSON.stringify({ id: 11, name: "cursor-token" }));
+  env.impl.getUserTokens = () => [{ ...fakeToken, key: "" }];
+  env.impl.getTokenKey = () => "sk-fake-input-only";
+  const first = await ready("BoundTokenGroupHost", env);
+  assert.equal(first.capture.group, "default");
+  assert.equal(env.count("getTokenKey"), 1);
+  first.unmount();
+  for (const toolId of ["chatgpt", "claude"]) {
+    const next = await ready("BoundTokenGroupHost", env, { toolId });
+    assert.equal(next.capture.group, "default");
+  }
+  assert.equal(env.count("getTokenKey"), 1);
+});
+
+test("bound-token hook skips the plaintext read when the stored fingerprint proves a different Key", async () => {
+  const env = environment();
+  env.storage.set("bound_token_chatgpt", JSON.stringify({ id: 11, name: "old", group: "stale-group" }));
+  env.impl.getUserTokens = () => [{ ...fakeToken, key: "" }];
+  env.impl.getTokenKey = () => "sk-fake-some-other-key";
+  const first = await ready("BoundTokenGroupHost", env);
+  assert.equal(first.capture.group, null);
+  assert.equal(env.count("getTokenKey"), 1);
+  first.unmount();
+  env.storage.set("bound_token_chatgpt", JSON.stringify({ id: 11, name: "old", group: "stale-group" }));
+  const second = await ready("BoundTokenGroupHost", env);
+  assert.equal(second.capture.group, null);
+  assert.equal(env.storage.has("bound_token_chatgpt"), false);
+  assert.equal(env.count("getTokenKey"), 1);
+});
+
+test("Key fingerprints persist while logged in and are cleared on logout or account switch", async () => {
+  const fpKey = "ai_helper_token_key_fp_v1";
+  const h = await ready("AuthProvider");
+  h.env.impl.getAuthState = () => auth(1);
+  h.capture.onLoginSuccess(auth(1).user); await settle(h);
+  h.env.storage.set(fpKey, JSON.stringify({ 11: "fp" }));
+  await h.capture.refreshState(); await settle(h);
+  assert.ok(h.env.storage.has(fpKey), "same logged-in account keeps local fingerprints");
+  h.env.impl.getAuthState = () => auth(2);
+  h.capture.onLoginSuccess(auth(2).user); await settle(h);
+  assert.equal(h.env.storage.has(fpKey), false, "account switch clears fingerprints");
+  h.env.storage.set(fpKey, JSON.stringify({ 12: "fp" }));
+  h.env.impl.getAuthState = () => auth(null);
+  await h.capture.refreshState(); await settle(h);
+  assert.equal(h.env.storage.has(fpKey), false, "logged-out state clears fingerprints");
+});
+
+test("token modal reads the local list on open and forces a server read only on manual refresh", async () => {
+  const h = await ready("TokenSelectModal");
+  const reads = h.env.calls.get("getUserTokens");
+  assert.ok(reads.length >= 1);
+  assert.ok(reads.every((args) => !args[1]), "opening the modal must not bypass the local cache");
+  await h.capture.loadTokens(true); await settle(h);
+  assert.equal(reads.at(-1)[1], true);
 });
 
 let failed = 0;

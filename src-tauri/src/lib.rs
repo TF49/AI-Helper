@@ -1,6 +1,7 @@
 use tauri::Manager;
 
 mod accio;
+mod account_cache;
 mod api_test;
 mod app_paths;
 mod auth;
@@ -677,8 +678,11 @@ async fn logout_account() -> Result<(), String> {
 }
 
 #[tauri::command]
-async fn get_user_tokens(all: Option<bool>) -> Result<Vec<auth::TokenItem>, String> {
-    auth::get_user_tokens(all).await
+async fn get_user_tokens(
+    all: Option<bool>,
+    force: Option<bool>,
+) -> Result<Vec<auth::TokenItem>, String> {
+    auth::get_user_tokens(all, force.unwrap_or(false)).await
 }
 
 #[tauri::command]

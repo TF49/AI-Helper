@@ -7,6 +7,7 @@ import React, {
   useRef,
 } from "react";
 import { toast } from "sonner";
+import { clearTokenKeyFingerprints } from "./tokenKeyFingerprint";
 import {
   getAuthState,
   logoutAccount,
@@ -101,6 +102,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const previousId = previous.is_logged_in ? previous.user?.id ?? null : null;
     const nextId = state.is_logged_in ? state.user?.id ?? null : null;
     authStateRef.current = state;
+    // 退出登录、会话失效或切换账号时，清除本地保存的 Key 指纹（后端同时删除本地账号缓存）
+    if (nextId === null || (previousId !== null && previousId !== nextId)) {
+      clearTokenKeyFingerprints();
+    }
     if (newSession || previousId !== nextId || previous.is_logged_in !== state.is_logged_in) {
       invalidateSession(nextId);
     }

@@ -757,6 +757,8 @@ pub struct AuthManager {
     session_generation: Option<String>,
     session_restore_error: Option<String>,
     refresh_backoff: Option<(Instant, String)>,
+    /// 登录期间的本地账号数据缓存；登录状态清除时整份删除。
+    account_cache: crate::account_cache::AccountCache,
     #[cfg(test)]
     _test_directory: Option<tempfile::TempDir>,
 }
@@ -815,6 +817,9 @@ impl AuthManager {
             selected_token_name: None,
             session_epoch: 0,
             auto_refresh_blocked: true,
+            account_cache: crate::account_cache::AccountCache::new(
+                path.with_file_name("account_cache.json"),
+            ),
             storage: SessionStore { path },
             refresh_cookie: None,
             session_generation: None,
@@ -874,8 +879,10 @@ impl AuthManager {
                 self.auto_refresh_blocked = false;
                 self.session_restore_error = None;
             }
-            Ok(None) => {}
+            // 没有可恢复的登录：上次会话留下的本地账号数据一律作废
+            Ok(None) => self.account_cache.clear(),
             Err(error) => {
+                self.account_cache.clear();
                 log::warn!("安全恢复会话失败，已禁止自动刷新: {error}");
                 self.session_restore_error =
                     Some(format!("无法安全恢复本地会话，请重新登录: {error}"));
@@ -948,6 +955,8 @@ impl AuthManager {
             return Err(message);
         }
         self.install_cookie_jar(refresh_cookie)?;
+        // 新登录（含同账号重新登录）不继承上一次会话的本地账号数据
+        self.account_cache.clear();
         self.session_epoch = self.session_epoch.wrapping_add(1);
         self.access_token = Some(data.access_token.clone());
         self.access_expires_at = data.access_expires_at;
@@ -1050,6 +1059,7 @@ impl AuthManager {
     fn clear_persisted_session(&mut self) {
         let generation = self.session_generation.clone();
         self.reset_memory();
+        self.account_cache.clear();
         if let Err(error) = self.storage.invalidate(generation.as_deref(), false) {
             self.session_restore_error = Some(format!("本地会话清理未完成，请重新登录: {error}"));
             log::error!("清理失效会话失败: {error}");
@@ -1222,6 +1232,22 @@ static TOKEN_LIST_GATE: Mutex<()> = Mutex::const_new(());
 static TOKEN_KEY_CACHE: once_cell::sync::Lazy<Mutex<TokenKeyCache>> =
     once_cell::sync::Lazy::new(|| Mutex::new(RequestCache::new()));
 static TOKEN_KEY_GATE: Mutex<()> = Mutex::const_new(());
+/// 明文 Key 以令牌 ID 为键且不会变化；会话内长期复用，减少进入审计与限流的明文读取。
+const TOKEN_KEY_CACHE_TTL: Duration = Duration::from_secs(30 * 60);
+/// 令牌列表在多个面板/卡片挂载时共享；变更操作会主动失效，无需频繁回源。
+const TOKEN_LIST_CACHE_TTL: Duration = Duration::from_secs(60);
+/// 分组监控数据随前端 90 秒轮询刷新；60 秒内的重复挂载/多面板共享同一份结果。
+const CHANNEL_OVERVIEW_CACHE_TTL: Duration = Duration::from_secs(60);
+/// 价格表与分组倍率变化很慢。
+const PRICING_CACHE_TTL: Duration = Duration::from_secs(5 * 60);
+type ChannelOverviewCache = RequestCache<(i64, u64, u32), Vec<ChannelGroupOverview>>;
+type PricingCache = RequestCache<(Option<i64>, u64), PricingResponse>;
+static CHANNEL_OVERVIEW_CACHE: once_cell::sync::Lazy<Mutex<ChannelOverviewCache>> =
+    once_cell::sync::Lazy::new(|| Mutex::new(RequestCache::new()));
+static CHANNEL_OVERVIEW_GATE: Mutex<()> = Mutex::const_new(());
+static PRICING_CACHE: once_cell::sync::Lazy<Mutex<PricingCache>> =
+    once_cell::sync::Lazy::new(|| Mutex::new(RequestCache::new()));
+static PRICING_GATE: Mutex<()> = Mutex::const_new(());
 static AUTO_TOKEN_ENSURE_GATE: Mutex<()> = Mutex::const_new(());
 // Ambiguous automatic POSTs must be reconciled before another creation.
 static AUTO_TOKEN_ATTEMPTS: once_cell::sync::Lazy<Mutex<AutoTokenAttemptsMap>> =
@@ -1242,10 +1268,39 @@ static BOB_REFRESH_RATE_LIMIT: Mutex<Option<Instant>> = Mutex::const_new(None);
 static BOB_REFRESH_REQUEST_GATE: Mutex<()> = Mutex::const_new(());
 static BOB_LOGOUT_REQUEST_GATE: Mutex<()> = Mutex::const_new(());
 
+/// 令牌被删除或会话结束时，清空列表与明文缓存。
 async fn invalidate_token_caches() {
-    TOKEN_LIST_CACHE.lock().await.invalidate();
+    invalidate_token_list_caches().await;
     TOKEN_KEY_CACHE.lock().await.invalidate();
+}
+
+/// 令牌列表元数据（分组、状态、新建令牌）变化时只清列表缓存。
+/// 同一令牌 ID 的明文 Key 不会因改分组/改状态而变化，保留明文缓存可避免
+/// 每次一键配置后又重新 POST /api/token/:id/key。
+async fn invalidate_token_list_caches() {
+    TOKEN_LIST_CACHE.lock().await.invalidate();
     AUTO_TOKEN_READY.lock().await.clear();
+    AUTH_MGR.lock().await.account_cache.invalidate_token_lists();
+}
+
+/// 登录有效时返回当前用户 ID，不发任何网络请求（不刷新 access token）。
+/// 用于命中本地缓存；会话是否仍被服务端接受由启动时的会话恢复与 401 处理负责。
+fn local_session_user(mgr: &AuthManager) -> Result<Option<i64>, String> {
+    mgr.validate_current_session()?;
+    Ok(mgr.current_user.as_ref().map(|user| user.id))
+}
+
+/// 仅当请求发起时的会话仍是当前会话时才允许写入本地缓存。
+/// 检查与写入必须在同一次 AUTH_MGR 加锁内完成，避免退出/换号后旧响应重新落盘。
+fn account_cache_for(
+    mgr: &mut AuthManager,
+    user_id: i64,
+    epoch: u64,
+) -> Option<&mut crate::account_cache::AccountCache> {
+    let current = !mgr.auto_refresh_blocked
+        && mgr.session_epoch == epoch
+        && mgr.current_user.as_ref().map(|user| user.id) == Some(user_id);
+    current.then_some(&mut mgr.account_cache)
 }
 
 async fn cache_auto_token_ready(user_id: i64, epoch: u64, group: &str, token: &TokenItem) {
@@ -1289,14 +1344,22 @@ async fn remember_ensured_token(
             session_epoch: epoch,
             all: true,
         },
-        tokens,
-        Duration::from_secs(20),
+        tokens.clone(),
+        TOKEN_LIST_CACHE_TTL,
     );
+    drop(lists);
     TOKEN_KEY_CACHE.lock().await.insert(
         (user_id, epoch, token.id),
         token.key.clone(),
-        Duration::from_secs(60),
+        TOKEN_KEY_CACHE_TTL,
     );
+    // 一键配置刚拿到的列表与明文同样写入本地，之后启动无需再次请求。
+    let mut mgr = AUTH_MGR.lock().await;
+    if let Some(cache) = account_cache_for(&mut mgr, user_id, epoch) {
+        let revision = cache.revision();
+        cache.store_token_list(user_id, true, &tokens, revision);
+        cache.store_token_key(user_id, token.id, &token.key);
+    }
 }
 
 async fn check_rate_limit(cooldown: &Mutex<Option<Instant>>) -> Result<(), String> {
@@ -2083,6 +2146,7 @@ pub async fn logout() -> Result<(), String> {
     // owns the old client/Jar, so its response cannot repopulate the new Jar.
     let generation = mgr.session_generation.clone();
     mgr.reset_memory();
+    mgr.account_cache.clear();
     let local_result = mgr.storage.invalidate(generation.as_deref(), true);
     if let Err(error) = &local_result {
         mgr.session_restore_error = Some(format!("本地退出未完成: {error}"));
@@ -2140,8 +2204,31 @@ pub async fn set_selected_token(
 // ── 令牌管理接口（关键：获取用户在 bob-api 创建的 API Key 列表） ──
 
 /// 获取用户在 https://bob-api.com 创建的 API Key 列表
-pub async fn get_user_tokens(all: Option<bool>) -> Result<Vec<TokenItem>, String> {
+///
+/// 默认优先使用本地缓存（登录期间持久保存，每天回源校验一次）；`force` 为 true 时
+/// （手动刷新、变更后确认）跳过本地与内存缓存直接回源。
+pub async fn get_user_tokens(all: Option<bool>, force: bool) -> Result<Vec<TokenItem>, String> {
     let is_all = all.unwrap_or(false);
+    let disk_revision = {
+        let mut mgr = AUTH_MGR.lock().await;
+        if !force {
+            if let Some(user_id) = local_session_user(&mgr)? {
+                if let Some(items) = mgr.account_cache.token_list(
+                    user_id,
+                    is_all,
+                    crate::account_cache::DAILY_REVALIDATE_SECS,
+                ) {
+                    drop(mgr);
+                    register_listed_keys(&items);
+                    return Ok(items);
+                }
+            }
+        }
+        mgr.account_cache.revision()
+    };
+    if force {
+        TOKEN_LIST_CACHE.lock().await.invalidate();
+    }
     let (token, client, user_id, epoch) = token_request_context().await?;
     let items = cached_read(
         &TOKEN_LIST_CACHE,
@@ -2151,7 +2238,7 @@ pub async fn get_user_tokens(all: Option<bool>) -> Result<Vec<TokenItem>, String
             session_epoch: epoch,
             all: is_all,
         },
-        Duration::from_secs(20),
+        TOKEN_LIST_CACHE_TTL,
         || async move {
             validate_token_context(user_id, epoch).await?;
             let mut page = 1u32;
@@ -2219,24 +2306,42 @@ pub async fn get_user_tokens(all: Option<bool>) -> Result<Vec<TokenItem>, String
     )
     .await?;
     validate_token_context(user_id, epoch).await?;
+    if let Some(cache) = account_cache_for(&mut *AUTH_MGR.lock().await, user_id, epoch) {
+        cache.store_token_list(user_id, is_all, &items, disk_revision);
+    }
 
-    for token in &items {
+    register_listed_keys(&items);
+    Ok(items)
+}
+
+fn register_listed_keys(items: &[TokenItem]) {
+    for token in items {
         if !token.key.is_empty() {
             crate::credential_policy::register_managed_key(&token.key);
         }
     }
-
-    Ok(items)
 }
 
 /// 获取某个 Token 的真实明文 API Key (调用 POST /api/token/:id/key)
+///
+/// 同一令牌的明文不会变化：读到后加密保存在本地，登录期间不再重复请求（该接口会进入审计）。
 pub async fn get_token_key(token_id: i64) -> Result<String, String> {
+    {
+        let mut mgr = AUTH_MGR.lock().await;
+        if let Some(user_id) = local_session_user(&mgr)? {
+            if let Some(key) = mgr.account_cache.token_key(user_id, token_id) {
+                drop(mgr);
+                crate::credential_policy::register_managed_key(&key);
+                return Ok(key);
+            }
+        }
+    }
     let (token, client, user_id, epoch) = token_request_context().await?;
     let key = cached_read(
         &TOKEN_KEY_CACHE,
         &TOKEN_KEY_GATE,
         (user_id, epoch, token_id),
-        Duration::from_secs(60),
+        TOKEN_KEY_CACHE_TTL,
         || async move {
             validate_token_context(user_id, epoch).await?;
             let url = format!("{}/api/token/{}/key", BASE_URL, token_id);
@@ -2271,8 +2376,21 @@ pub async fn get_token_key(token_id: i64) -> Result<String, String> {
             Ok(key)
         },
     )
-    .await?;
+    .await;
+    let key = match key {
+        Ok(key) => key,
+        Err(error) => {
+            // 令牌可能已在网页端删除或停用：让下一次列表读取回源纠正（限流除外）。
+            if !error.contains("429") && !error.contains("请求受限") {
+                invalidate_token_list_caches().await;
+            }
+            return Err(error);
+        }
+    };
     validate_token_context(user_id, epoch).await?;
+    if let Some(cache) = account_cache_for(&mut *AUTH_MGR.lock().await, user_id, epoch) {
+        cache.store_token_key(user_id, token_id, &key);
+    }
 
     // 登记为 Bob API 受管密钥，确保后续单工具关联、保存与模型探测均受来源限制
     crate::credential_policy::register_managed_key(&key);
@@ -2296,9 +2414,9 @@ pub async fn update_user_token_group(
     // Only a group-only endpoint is safe here. A full GET -> PUT would replay
     // stale quota/IP/model fields and overwrite concurrent server-side changes.
     let group_url = format!("{}/api/token/{}/group", BASE_URL, token_id);
-    // A mutation may commit even if its response is lost. Clear old list/key
+    // A mutation may commit even if its response is lost. Clear old list
     // data before sending so ambiguous outcomes cannot be served from cache.
-    invalidate_token_caches().await;
+    invalidate_token_list_caches().await;
     validate_token_context(user_id, epoch).await?;
     let resp = match send_bob_request(
         client
@@ -2310,14 +2428,14 @@ pub async fn update_user_token_group(
     {
         Ok(response) => response,
         Err(error) => {
-            invalidate_token_caches().await;
+            invalidate_token_list_caches().await;
             validate_token_context(user_id, epoch).await?;
             return Err(format!(
                 "更新令牌分组网络异常（服务端 group-only 契约不可用）: {error}"
             ));
         }
     };
-    invalidate_token_caches().await;
+    invalidate_token_list_caches().await;
     validate_token_context(user_id, epoch).await?;
 
     let status = resp.status();
@@ -2338,7 +2456,7 @@ pub async fn update_user_token_group(
         });
     }
 
-    let tokens = match get_user_tokens(None).await {
+    let tokens = match get_user_tokens(None, true).await {
         Ok(tokens) => tokens,
         Err(_) => return Err("修改已提交，状态待确认".to_string()),
     };
@@ -2385,8 +2503,8 @@ pub async fn ensure_user_token(
     }
     // Ensure the first decision after an idle period sees tokens created on
     // the website, while concurrent/batch targets share the fresh result.
-    invalidate_token_caches().await;
-    let existing = get_user_tokens(Some(true)).await?;
+    invalidate_token_list_caches().await;
+    let existing = get_user_tokens(Some(true), true).await?;
     validate_token_context(user_id, epoch).await?;
     let is_group_name = |item: &TokenItem| {
         item.group
@@ -2454,9 +2572,9 @@ pub async fn ensure_user_token(
             Ok(item)
         }
         Err(create_error) => {
-            invalidate_token_caches().await;
+            invalidate_token_list_caches().await;
             validate_token_context(user_id, epoch).await?;
-            if let Ok(tokens) = get_user_tokens(Some(true)).await {
+            if let Ok(tokens) = get_user_tokens(Some(true), true).await {
                 validate_token_context(user_id, epoch).await?;
                 if let Some(mut item) = tokens.iter().find(|item| is_group_match(item)).cloned() {
                     item.key = get_token_key(item.id).await.map_err(|key_error| {
@@ -2519,7 +2637,7 @@ async fn create_user_token_request(
         "group": clean_group,
     });
 
-    invalidate_token_caches().await;
+    invalidate_token_list_caches().await;
     let resp = send_bob_request_classified(
         client
             .post(&url)
@@ -2573,8 +2691,8 @@ async fn finish_created_token(
         Some(it) if it.id > 0 => it,
         _ => {
             // 服务端成功创建但 data 未返回完整对象时，重新拉取用户令牌列表并定位最新令牌
-            invalidate_token_caches().await;
-            let tokens = get_user_tokens(Some(true)).await?;
+            invalidate_token_list_caches().await;
+            let tokens = get_user_tokens(Some(true), true).await?;
             validate_token_context(expected_user_id, expected_epoch).await?;
             tokens
                 .into_iter()
@@ -3007,47 +3125,58 @@ pub async fn apply_api_key_to_agents(
 pub async fn get_channel_group_overview(
     hours: Option<u32>,
 ) -> Result<Vec<ChannelGroupOverview>, String> {
-    let token = ensure_access_token().await?;
-    let client = AUTH_MGR.lock().await.client.clone();
-
+    let (token, client, user_id, epoch) = token_request_context().await?;
     let h = hours.unwrap_or(1);
-    let url = format!(
-        "{}/api/channel/monitor/group-overview?hours={}",
-        BASE_URL, h
-    );
-    let resp = send_bob_request(
-        client
-            .get(&url)
-            .header(AUTHORIZATION, format!("Bearer {}", token)),
+    // 每个工具页都挂着一个分组监控面板，并按 90 秒轮询；共享短缓存后，
+    // 多个面板同时挂载或来回切页只会回源一次。
+    let items = cached_read(
+        &CHANNEL_OVERVIEW_CACHE,
+        &CHANNEL_OVERVIEW_GATE,
+        (user_id, epoch, h),
+        CHANNEL_OVERVIEW_CACHE_TTL,
+        || async move {
+            let url = format!(
+                "{}/api/channel/monitor/group-overview?hours={}",
+                BASE_URL, h
+            );
+            let resp = send_bob_request_classified(
+                client
+                    .get(&url)
+                    .header(AUTHORIZATION, format!("Bearer {}", token)),
+            )
+            .await
+            .map_err(|e| e.with_context("请求分组监控数据网络异常"))?;
+
+            let status = resp.status();
+            let text = resp
+                .text()
+                .await
+                .map_err(|e| format!("读取分组监控数据响应失败: {e}"))?;
+
+            let parsed: ApiResponse<serde_json::Value> =
+                parse_api_response_body(status, &text, "获取分组监控数据")
+                    .map_err(|message| BobRequestError::from_status(status, message))?;
+
+            if !parsed.success {
+                return Err(if parsed.message.is_empty() {
+                    "获取分组监控数据失败".to_string()
+                } else {
+                    parsed.message
+                }
+                .into());
+            }
+
+            let data_val = parsed
+                .data
+                .ok_or_else(|| "分组监控数据中无 data 字段".to_string())?;
+
+            let items: Vec<ChannelGroupOverview> = serde_json::from_value(data_val)
+                .map_err(|e| format!("反序列化分组监控列表失败: {e}"))?;
+            Ok(items)
+        },
     )
-    .await
-    .map_err(|e| format!("请求分组监控数据网络异常: {e}"))?;
-
-    let status = resp.status();
-    let text = resp
-        .text()
-        .await
-        .map_err(|e| format!("读取分组监控数据响应失败: {e}"))?;
-
-    let parsed: ApiResponse<serde_json::Value> =
-        parse_api_response_body(status, &text, "获取分组监控数据")?;
-
-    if !parsed.success {
-        let msg = if parsed.message.is_empty() {
-            "获取分组监控数据失败".to_string()
-        } else {
-            parsed.message
-        };
-        return Err(msg);
-    }
-
-    let data_val = parsed
-        .data
-        .ok_or_else(|| "分组监控数据中无 data 字段".to_string())?;
-
-    let items: Vec<ChannelGroupOverview> =
-        serde_json::from_value(data_val).map_err(|e| format!("反序列化分组监控列表失败: {e}"))?;
-
+    .await?;
+    validate_token_context(user_id, epoch).await?;
     Ok(items)
 }
 
@@ -3230,6 +3359,11 @@ pub async fn delete_user_token(token_id: i64) -> Result<(), String> {
 
     let url = format!("{}/api/token/{}", BASE_URL, token_id);
     invalidate_token_caches().await;
+    AUTH_MGR
+        .lock()
+        .await
+        .account_cache
+        .remove_token_key(token_id);
     validate_token_context(user_id, epoch).await?;
     let resp = match send_bob_request(
         client
@@ -3281,7 +3415,7 @@ pub async fn update_user_token_status(token_id: i64, status: i32) -> Result<(), 
         "status": status,
     });
 
-    invalidate_token_caches().await;
+    invalidate_token_list_caches().await;
     validate_token_context(user_id, epoch).await?;
     let resp = match send_bob_request(
         client
@@ -3293,12 +3427,12 @@ pub async fn update_user_token_status(token_id: i64, status: i32) -> Result<(), 
     {
         Ok(response) => response,
         Err(error) => {
-            invalidate_token_caches().await;
+            invalidate_token_list_caches().await;
             validate_token_context(user_id, epoch).await?;
             return Err(format!("更新令牌状态网络异常: {error}"));
         }
     };
-    invalidate_token_caches().await;
+    invalidate_token_list_caches().await;
     validate_token_context(user_id, epoch).await?;
 
     let status_code = resp.status();
@@ -3620,43 +3754,81 @@ pub async fn get_user_usage_stat(params: UsageLogQueryParams) -> Result<UsageSta
 /// 获取模型与价格数据（支持包含分组倍率、厂商列表等，已登录时附带当前用户的实际分组）
 #[allow(dead_code)]
 pub async fn get_pricing_data() -> Result<PricingResponse, String> {
+    // 已登录时优先使用本地缓存（每天回源一次），不必先刷新 access token。
+    let disk_revision = {
+        let mut mgr = AUTH_MGR.lock().await;
+        if let Ok(Some(user_id)) = local_session_user(&mgr) {
+            if let Some(pricing) = mgr
+                .account_cache
+                .pricing(user_id, crate::account_cache::DAILY_REVALIDATE_SECS)
+            {
+                return Ok(pricing);
+            }
+        }
+        mgr.account_cache.revision()
+    };
     let user_token = ensure_access_token().await.ok();
-    let client = {
+    let (client, user_id, epoch) = {
         let mgr = AUTH_MGR.lock().await;
-        mgr.client.clone()
+        (
+            mgr.client.clone(),
+            user_token
+                .as_ref()
+                .and_then(|_| mgr.current_user.as_ref().map(|user| user.id)),
+            mgr.session_epoch,
+        )
     };
 
-    let url = format!("{}/api/pricing", BASE_URL);
-    let mut req = client
-        .get(&url)
-        .header(reqwest::header::ACCEPT, "application/json");
-    if let Some(token) = &user_token {
-        req = req.header(AUTHORIZATION, format!("Bearer {}", token));
-    }
+    // 一次价格读取实际会发 3 个请求（价格表 + 钱包 + 可用分组），且每个分组监控面板
+    // 挂载与轮询都会调用；价格与分组倍率变化很慢，按账号与会话共享缓存。
+    let pricing = cached_read(
+        &PRICING_CACHE,
+        &PRICING_GATE,
+        (user_id, epoch),
+        PRICING_CACHE_TTL,
+        || async move {
+            let url = format!("{}/api/pricing", BASE_URL);
+            let mut req = client
+                .get(&url)
+                .header(reqwest::header::ACCEPT, "application/json");
+            if let Some(token) = &user_token {
+                req = req.header(AUTHORIZATION, format!("Bearer {}", token));
+            }
 
-    let resp = send_bob_request(req)
-        .await
-        .map_err(|e| format!("请求模型与价格数据失败: {e}"))?;
+            let resp = send_bob_request_classified(req)
+                .await
+                .map_err(|e| e.with_context("请求模型与价格数据失败"))?;
 
-    let text = resp
-        .text()
-        .await
-        .map_err(|e| format!("读取模型与价格响应失败: {e}"))?;
+            let status = resp.status();
+            let text = resp
+                .text()
+                .await
+                .map_err(|e| format!("读取模型与价格响应失败: {e}"))?;
 
-    let mut parsed: PricingResponse =
-        serde_json::from_str(&text).map_err(|e| format!("解析模型与价格响应数据失败: {e}"))?;
+            let mut parsed: PricingResponse = serde_json::from_str(&text).map_err(|e| {
+                BobRequestError::from_status(status, format!("解析模型与价格响应数据失败: {e}"))
+            })?;
 
-    // 如果用户已登录，获取当前用户主分组与可用分组
-    if user_token.is_some() {
-        if let Ok(wallet) = get_user_wallet().await {
-            parsed.user_group = wallet.group;
+            // 如果用户已登录，获取当前用户主分组与可用分组
+            if user_token.is_some() {
+                if let Ok(wallet) = get_user_wallet().await {
+                    parsed.user_group = wallet.group;
+                }
+                if let Ok(groups) = get_user_available_groups().await {
+                    parsed.user_available_groups = groups;
+                }
+            }
+
+            Ok(parsed)
+        },
+    )
+    .await?;
+    if let Some(user_id) = user_id {
+        if let Some(cache) = account_cache_for(&mut *AUTH_MGR.lock().await, user_id, epoch) {
+            cache.store_pricing(user_id, &pricing, disk_revision);
         }
-        if let Ok(groups) = get_user_available_groups().await {
-            parsed.user_available_groups = groups;
-        }
     }
-
-    Ok(parsed)
+    Ok(pricing)
 }
 
 #[cfg(test)]
@@ -4409,6 +4581,84 @@ mod tests {
             assert!(!store.path.exists());
             assert!(store.restore().unwrap().is_none());
         }
+    }
+
+    #[test]
+    fn late_responses_cannot_write_the_account_cache_after_logout_or_switch() {
+        let _scope = TestScope::new().enter();
+        let (_directory, store) = fixture();
+        let mut manager = AuthManager::with_storage_path(store.path.clone());
+        manager.complete_login(&login_data(42), None).unwrap();
+        let epoch = manager.session_epoch;
+        assert!(account_cache_for(&mut manager, 42, epoch).is_some());
+        assert!(account_cache_for(&mut manager, 84, epoch).is_none());
+
+        // 退出（reset_memory 会推进 epoch 并阻断自动刷新）后，旧请求不得写回
+        manager.reset_memory();
+        assert!(account_cache_for(&mut manager, 42, epoch).is_none());
+
+        // 换号重新登录后，旧会话的 epoch 同样失效
+        manager.complete_login(&login_data(84), None).unwrap();
+        assert!(account_cache_for(&mut manager, 42, epoch).is_none());
+        assert!(account_cache_for(&mut manager, 84, epoch).is_none());
+        let current = manager.session_epoch;
+        assert!(account_cache_for(&mut manager, 84, current).is_some());
+    }
+
+    #[test]
+    fn account_cache_survives_restart_but_not_login_state_changes() {
+        let _scope = TestScope::new().enter();
+        let (_directory, store) = fixture();
+        let cache_path = store.path.with_file_name("account_cache.json");
+        let seed = |manager: &mut AuthManager| {
+            let revision = manager.account_cache.revision();
+            let item: TokenItem = serde_json::from_value(
+                serde_json::json!({ "id": 1, "name": "t", "key": "abcd****wxyz" }),
+            )
+            .unwrap();
+            manager
+                .account_cache
+                .store_token_list(42, false, &[item], revision);
+            manager
+                .account_cache
+                .store_token_key(42, 1, "sk-fake-cached-key");
+            assert!(cache_path.exists());
+        };
+        let daily = crate::account_cache::DAILY_REVALIDATE_SECS;
+
+        let mut manager = AuthManager::with_storage_path(store.path.clone());
+        manager
+            .complete_login(&login_data(42), legacy(42).refresh_cookie.as_deref())
+            .unwrap();
+        seed(&mut manager);
+
+        // 重启应用（恢复同一会话）：本地数据仍可直接使用
+        let mut restarted = AuthManager::with_storage_path(store.path.clone());
+        assert_eq!(
+            restarted.current_user.as_ref().map(|user| user.id),
+            Some(42)
+        );
+        assert!(restarted
+            .account_cache
+            .token_list(42, false, daily)
+            .is_some());
+        assert_eq!(
+            restarted.account_cache.token_key(42, 1).as_deref(),
+            Some("sk-fake-cached-key")
+        );
+
+        // 会话失效（refresh 过期/账号不符）：清除
+        restarted.clear_persisted_session();
+        assert!(!cache_path.exists());
+
+        // 重新登录：不继承上一次会话留下的数据
+        let mut manager = AuthManager::with_storage_path(store.path.clone());
+        assert!(!cache_path.exists());
+        manager.complete_login(&login_data(42), None).unwrap();
+        seed(&mut manager);
+        manager.complete_login(&login_data(84), None).unwrap();
+        assert!(!cache_path.exists());
+        assert!(manager.account_cache.token_key(42, 1).is_none());
     }
 
     #[test]

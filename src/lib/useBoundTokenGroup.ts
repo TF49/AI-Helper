@@ -2,6 +2,13 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { getTokenKey, getUserTokens } from "./api";
 import { useAuth } from "./useAuth";
 import type { TokenItem } from "../types";
+import {
+  keyFingerprint,
+  knownFingerprint,
+  matchTokenByFingerprint,
+  normalizeApiKey,
+  rememberTokenKeyFingerprint,
+} from "./tokenKeyFingerprint";
 
 const KNOWN_TOOL_IDS = ["chatgpt", "claude", "workbuddy", "acciowork", "cursor", "default"];
 
@@ -11,10 +18,17 @@ export type BoundTokenInfo = {
   group?: string | null;
 };
 
-export function normalizeApiKey(k?: string | null): string {
-  if (!k) return "";
-  const trimmed = k.trim();
-  return trimmed.startsWith("sk-") ? trimmed.slice(3) : trimmed;
+export { normalizeApiKey, rememberTokenKeyFingerprint };
+
+/** 打码 Key 至少要露出这么多字符，才足以和本地明文做前后缀比对 */
+const MIN_MASKED_VISIBLE_CHARS = 6;
+
+/** 解析 Bob API 列表返回的打码 Key（如 `abcd**********wxyz`），返回可见的前后缀 */
+function maskedKeyParts(key: string): { prefix: string; suffix: string } | null {
+  const first = key.indexOf("*");
+  if (first < 0) return null;
+  const last = key.lastIndexOf("*");
+  return { prefix: key.slice(0, first), suffix: key.slice(last + 1) };
 }
 
 export function isKeyMatch(a?: string | null, b?: string | null): boolean {
@@ -22,6 +36,21 @@ export function isKeyMatch(a?: string | null, b?: string | null): boolean {
   const normA = normalizeApiKey(a);
   const normB = normalizeApiKey(b);
   if (!normA || !normB) return false;
+  const maskA = maskedKeyParts(normA);
+  const maskB = maskedKeyParts(normB);
+  if (maskA && maskB) return false;
+  if (maskA || maskB) {
+    // 列表接口只返回打码 Key：用可见前后缀在本地比对，无需请求明文接口
+    const mask = (maskA ?? maskB)!;
+    const plain = maskA ? normB : normA;
+    const visible = mask.prefix.length + mask.suffix.length;
+    return (
+      visible >= MIN_MASKED_VISIBLE_CHARS &&
+      plain.length > visible &&
+      plain.startsWith(mask.prefix) &&
+      plain.endsWith(mask.suffix)
+    );
+  }
   if (normA === normB) return true;
   if (normA.length >= 10 && normB.length >= 10) {
     const preA = normA.slice(0, 6);
@@ -73,16 +102,38 @@ export function toBoundInfo(token: Pick<TokenItem, "id" | "name" | "group">): Bo
 }
 
 function matchTokenByKey(tokens: TokenItem[], apiKey: string): TokenItem | null {
-  const val = apiKey.trim();
+  const val = normalizeApiKey(apiKey);
   if (!val) return null;
 
-  return tokens.find((t) => isKeyMatch(t.key, val)) ?? null;
+  const exact = tokens.find((t) => normalizeApiKey(t.key) === val);
+  if (exact) return exact;
+  // 打码前后缀比对只在唯一命中时采用，避免把 Key 误归到另一个令牌
+  const candidates = tokens.filter((t) => isKeyMatch(t.key, val));
+  return candidates.length === 1 ? candidates[0] : null;
+}
+
+/**
+ * 读取某个令牌的明文并与当前 Key 比对。
+ * 本地已有该令牌的指纹时直接给出结论（此时指纹必然不等于当前 Key，否则前面已命中），
+ * 只有从未读过的令牌才会请求一次明文。
+ */
+async function verifyTokenKey(
+  tokenId: number,
+  apiKey: string,
+  fingerprint: string | null,
+): Promise<boolean> {
+  const known = knownFingerprint(tokenId);
+  if (fingerprint && known) return known === fingerprint;
+  const plain = (await getTokenKey(tokenId)).trim();
+  void rememberTokenKeyFingerprint(tokenId, plain);
+  return Boolean(plain) && isKeyMatch(plain, apiKey);
 }
 
 /** Reuse only keys already bound by a tool; never fan out over the whole list. */
 async function matchViaKnownBindings(
   toolId: string,
   apiKey: string,
+  fingerprint: string | null,
   tokens: TokenItem[],
   isCurrent: () => boolean,
 ): Promise<BoundTokenInfo | null> {
@@ -96,9 +147,9 @@ async function matchViaKnownBindings(
     const cloudToken = tokens.find((token) => token.id === bound.id);
     if (!cloudToken) continue;
     try {
-      const plain = (await getTokenKey(bound.id)).trim();
+      const matched = await verifyTokenKey(bound.id, apiKey, fingerprint);
       if (!isCurrent()) return null;
-      if (plain && isKeyMatch(plain, apiKey)) return toBoundInfo(cloudToken);
+      if (matched) return toBoundInfo(cloudToken);
     } catch {
       // Keep resolving from the current tool's own binding below.
     }
@@ -243,32 +294,41 @@ export function useBoundTokenGroup(
           return;
         }
 
-        // 1) 列表明文 / 前后缀匹配
+        // 1) 列表明文 / 打码前后缀匹配（纯本地）
         let matched = matchTokenByKey(tokens, key);
+        const fingerprint = await keyFingerprint(key);
+        if (!isCurrent()) return;
         if (matched) {
-          const info = toBoundInfo(matched);
-          commit(info);
+          void rememberTokenKeyFingerprint(matched.id, key);
+          commit(toBoundInfo(matched));
           return;
         }
 
-        // 2) Check previously bound tool IDs, not every Key in the account.
-        const fromKnownBinding = await matchViaKnownBindings(toolId, key, tokens, isCurrent);
+        // 2) 本地明文指纹匹配（之前读过明文的令牌，纯本地）
+        matched = matchTokenByFingerprint(tokens, fingerprint, readBoundFromStorage(toolId)?.id);
+        if (matched) {
+          commit(toBoundInfo(matched));
+          return;
+        }
+
+        // 3) Check previously bound tool IDs, not every Key in the account.
+        const fromKnownBinding = await matchViaKnownBindings(toolId, key, fingerprint, tokens, isCurrent);
         if (!isCurrent()) return;
         if (fromKnownBinding) {
           commit(fromKnownBinding);
           return;
         }
 
-        // 3) Check the one selected token rather than retrieving every Key.
+        // 4) Check the one selected token rather than retrieving every Key.
         if (authState.selected_token_id) {
           const selected = tokens.find(
             (t) => t.id === authState.selected_token_id,
           );
           if (selected) {
             try {
-              const plain = (await getTokenKey(selected.id)).trim();
+              const selectedMatches = await verifyTokenKey(selected.id, key, fingerprint);
               if (!isCurrent()) return;
-              if (plain && isKeyMatch(plain, key)) {
+              if (selectedMatches) {
                 const info = toBoundInfo(selected);
                 commit(info);
                 return;
@@ -279,7 +339,7 @@ export function useBoundTokenGroup(
           }
         }
 
-        // 4) Fall back to this tool's stored binding only.
+        // 5) Fall back to this tool's stored binding only.
         if (!isCurrent()) return;
         const existing = readBoundFromStorage(toolId);
         if (!existing) return;
@@ -291,9 +351,9 @@ export function useBoundTokenGroup(
           return;
         }
         try {
-          const plain = (await getTokenKey(byId.id)).trim();
+          const boundMatches = await verifyTokenKey(byId.id, key, fingerprint);
           if (!isCurrent()) return;
-          if (plain && isKeyMatch(plain, key)) {
+          if (boundMatches) {
             commit(toBoundInfo(byId));
             return;
           }

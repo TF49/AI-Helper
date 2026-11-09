@@ -223,7 +223,8 @@ export function TokenSelectModal({
   }, [accentColor]);
 
   // 加载令牌列表
-  const loadTokens = useCallback(async () => {
+  // force=true 跳过本地缓存直接回源，仅用于用户手动刷新/重新加载
+  const loadTokens = useCallback(async (force = false) => {
     const request = captureWindow();
     const sequence = ++listRequest.current;
     const isCurrent = () => isWindowCurrent(request) && sequence === listRequest.current;
@@ -231,7 +232,7 @@ export function TokenSelectModal({
     setLoading(true);
     setErrorMsg(null);
     try {
-      const items = await getUserTokens();
+      const items = await getUserTokens(undefined, force);
       if (!isCurrent()) return;
       setTokens(items);
     } catch (err: unknown) {
@@ -391,7 +392,7 @@ export function TokenSelectModal({
         ease: "power2.inOut",
       });
     }
-    void loadTokens();
+    void loadTokens(true);
   };
 
   // 选择某个 Token
@@ -913,7 +914,7 @@ export function TokenSelectModal({
               <span className="text-xs text-rose-500 max-w-sm leading-relaxed">{errorMsg}</span>
               <button
                 type="button"
-                onClick={() => void loadTokens()}
+                onClick={() => void loadTokens(true)}
                 className="mt-1 px-4 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-semibold shadow-md shadow-blue-500/20 cursor-pointer active:scale-95 transition-all"
               >
                 重新加载
