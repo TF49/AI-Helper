@@ -1,15 +1,34 @@
 # 当前待办与验收跟踪
 
-更新日期：2026-10-22。最新自审基线：`63016846`，发现与修复见[严格自审记录](SECURITY_SELF_REVIEW_2026-10-22.md)。此前修复基线 `5522758f` 的记录保留在[上一轮修复记录](SECURITY_FIXES_2026-10-22.md)及[独立审查](SECURITY_REVIEW_2026-10-22.md)。旧日期快照和旧提交的 CI 不代表当前实现状态。
+本次更新依据：仓库现有文档中截至 2026-10-23 补录的验证证据，以及当前回归脚本和 CI 配置。当前 `package.json` 版本为 **1.0.79**；下述历史测试结果均绑定其对应提交，不能直接作为当前版本的验收结论。
+
+最新已记录的代码修复提交：`c81c1315`；修复前复核基线：`63016846`。发现、修复与验证详情见[严格自审记录](SECURITY_SELF_REVIEW_2026-10-22.md)。更早的 `5522758f` 历史保留在[上一轮修复记录](SECURITY_FIXES_2026-10-22.md)及[独立审查](SECURITY_REVIEW_2026-10-22.md)。本文件作为当前待办入口；旧日期快照和旧提交的 CI 不代表当前实现状态。
+
+## 已记录的验证证据
+
+以下结果摘自严格自审记录，本次仅核对本地文件，未重新运行测试或查询远端 CI。
+
+| 范围 | 已记录结果 / 适用边界 |
+| --- | --- |
+| 修复提交 `c81c1315` | [CI `39809963053`](https://github.com/TF49/AI-Helper/actions/runs/39809963053) 六个 job 全部成功；该结果只覆盖此修复提交 |
+| 三平台完整库 | 上述 CI：Windows 239 passed、5 ignored、0 filtered；macOS / Linux 各 245 passed、5 ignored、0 filtered；先前两个 Windows 超时用例均通过 |
+| 原生凭据与会话 | Windows DPAPI 2 项；macOS / Linux 实际 Keychain / Secret Service 与 SessionStore 测试通过，使用隔离服务与合成值 |
+| 前端与工作流 | 前端安全行为 60 项；工作流结构 164 项、危险变异 28 个、发布预检 40 个场景及 80 个隔离 HTTP 响应；类型、生产构建和发布资产回归通过 |
+| macOS 发布链 | 真实双架构 DMG、临时更新密钥签名及生产 Rust 验签通过；生产 Apple 签名、公证、安装与旧版升级仍待验收 |
+| 本机完整检查 | 自审记录报告 `./scripts/verify-improvements.ps1` 全部通过；WorkBuddy 定向回归 35 passed、1 ignored，独立 v1/v2 journal 场景 5/5 通过 |
+| 合入 main 后 | `bf7953f4` 的 [main CI `39812287999`](https://github.com/TF49/AI-Helper/actions/runs/39812287999) 已记录五个 job 成功，Ubuntu 卡在 Azure 镜像下载，取消时尚未编译或测试；文档提到重新运行，但未附最终结果，仍需补证据 |
+
+当前版本和后续改动的验收需补充对应提交、main CI 链接及各 job 实际结果；取消、跳过和旧分支通过均不能替代当前 main 完整验收。
 
 ## 当前必须推动的事项
 
-客户端侧整改已落地，但以下外部依赖尚未验收，不能据此宣称完整安全闭环：
+客户端侧整改及历史验证已有记录，但当前版本的 main CI 证据与以下外部依赖尚未完成验收，不能据此宣称完整安全闭环：
 
 | 优先级 | 事项 | 负责人 / 完成证据 |
 | --- | --- | --- |
 | P0 | Bob API 服务端：对象级授权、会话撤销、group-only 修改、报价契约、并发额度硬限和幂等记账 | 开发同事；提供服务端源码/隔离环境及权限、并发、重放和恢复测试证据 |
 | P1 | 已签名成品的系统凭据授权交互、受支持 Accio 版本兼容、macOS 两架构生产签名/公证/安装和旧版升级 | 对应平台实机验证记录；CI 已验证隔离的真实 Keychain/Secret Service 与临时签名 DMG，该证据不能代替成品验收 |
+| P1 | 当前版本对应 main 提交的完整 CI 验收 | 维护者；补充提交 SHA、运行链接、三平台完整库及原生服务/发布回归结果；既有记录未包含 main 重跑最终结论 |
 | P1 | 轮换并撤销已暴露的旧 Webhook/Key | 运维；提供轮换、撤销及验证记录 |
 
 其余客户端实现与本机/CI 检查范围见下方 SEC-01 至 SEC-17 跟踪表；完成状态以对应提交和实际检查结果为准。
@@ -32,7 +51,7 @@
 | SEC-14 安装与 IPC | 逐跳目标检查、Authenticode、下载记录、固定操作 ID；TODO：成品安装验证 |
 | SEC-15 发布与秘密 | Actions 固定 SHA，三平台完整回归，已有发布跳过，tag 与源码提交绑定，签名步骤注入密钥，双架构 DMG 汇总及最终哈希；TODO：生产签名/公证及运维撤销记录 |
 | SEC-16 敏感状态 | 关闭/换账号使秘密请求失效，复制不缓存明文，剪贴板条件清理；不保证擦除系统历史 |
-| SEC-17 验收 | 本机回归、Unix 隔离测试和远端 CI 分别记录实际结果；不以 mock 代替原生服务、安装或服务端验收 |
+| SEC-17 验收 | 本机回归、Unix 隔离测试和远端 CI 分别记录实际结果；当前版本对应 main CI 尚缺最终完整运行证据；不以 mock 代替原生服务、安装或服务端验收 |
 
 ## 服务端交接 TODO
 
@@ -48,38 +67,31 @@
 
 ### 本地完整检查
 
+Windows / PowerShell 使用仓库统一入口：
+
 ```powershell
-# 前端检查
-pnpm typecheck
-pnpm test:security
-pnpm test:workflows
-pnpm build:renderer
-
-# 后端检查（Windows）
-cargo fmt --manifest-path src-tauri/Cargo.toml -- --check
-cargo check --manifest-path src-tauri/Cargo.toml --locked --lib
-cargo clippy --manifest-path src-tauri/Cargo.toml --locked --all-targets -- -D warnings
-cargo test --manifest-path src-tauri/Cargo.toml --locked --lib -- --test-threads=1
-
-# 发布资产验证
-./scripts/test-release-artifacts.ps1
+./scripts/verify-improvements.ps1
 ```
+
+该脚本依次执行 Rust 格式、生产库检查、全目标 Clippy、串行完整库测试、Windows 原生 DPAPI、TypeScript、前端安全行为、工作流契约、renderer 构建及发布资产回归。macOS / Linux 的原生系统凭据服务与真实 macOS DMG 检查仍由隔离 CI job 执行。
 
 ### CI 检查范围
 
-- **前端**：类型、60 项行为回归、工作流结构及反例回归、生产构建。
-- **后端三平台**：生产编译、格式、全目标 Clippy、完整库测试，不以位置过滤替代完整测试。
-- **原生凭据**：Windows 显式 DPAPI；macOS 临时 Keychain、Linux 私有 D-Bus/Secret Service，使用专用随机条目。
-- **发布**：Windows 模拟资产回归、macOS 真实双架构 DMG 与临时更新签名，生产 Rust 验签。
+- **前端**：类型检查、60 项安全行为回归、工作流契约/反例测试（已记录 164 项结构检查、28 个危险变异、40 个发布预检场景及 80 个隔离 HTTP 响应）和 renderer 生产构建。
+- **后端三平台**：生产库检查、格式、全目标 Clippy、完整库测试；串行运行测试用例，不以位置过滤替代完整测试。
+- **原生凭据**：Windows 显式 DPAPI；macOS 临时 Keychain、Linux 私有 D-Bus/Secret Service。仅能说明对应隔离 CI job 的验证结果。
+- **发布**：Windows 模拟资产回归、macOS 真实双架构 DMG 与临时更新签名，生产 Rust 验签；不等同生产 Apple 签名、公证或成品安装验收。
 
 ### 原生凭据测试（需显式运行）
 
-```bash
-# Windows DPAPI（合成值，不读取个人凭据）
-cargo test native_dpapi -- --ignored --nocapture
+```powershell
+# Windows DPAPI（合成值；与统一检查脚本及 CI 使用相同筛选）
+cargo test --manifest-path src-tauri/Cargo.toml --locked --lib secret_storage::native_windows_tests -- --ignored
+```
 
-# macOS/Linux 原生服务仅在一次性 CI runner 中显式运行
-# 由 CI 设置 AI_HELPER_NATIVE_CREDENTIAL_TESTS=1 并调用：
+macOS / Linux 原生服务仅在一次性 CI runner 中显式运行，由 CI 设置 `AI_HELPER_NATIVE_CREDENTIAL_TESTS=1`：
+
+```bash
 bash scripts/test-native-credentials.sh
 ```
 
@@ -89,4 +101,4 @@ bash scripts/test-native-credentials.sh
 - 前端行为回归执行真实源码的转译与模拟 hooks/IPC
 - 发布回归使用模拟资产，不等同实机签名/公证
 - 原生 DPAPI 使用合成值验证，不连接个人会话或注册表
-- Keychain/Secret Service 不能凭内存后端测试认定实机通过，需显式运行标记为 `#[ignore]` 的原生测试
+- macOS / Linux 原生凭据服务由一次性 CI runner 提供隔离 Keychain 或私有 D-Bus / Secret Service；内存后端测试不能证明系统服务链路通过，且 CI 结果只适用于其对应提交和 job。
