@@ -41,19 +41,24 @@ function subscribe(callback: () => void) {
   };
 }
 
-function loadImage(file: File): Promise<HTMLImageElement> {
+function readAsDataUrl(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
-    const url = URL.createObjectURL(file);
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result as string);
+    reader.onerror = () => reject(new Error("读取图片文件失败"));
+    reader.readAsDataURL(file);
+  });
+}
+
+// 注意：Tauri CSP 的 img-src 未放行 blob:，不能用 URL.createObjectURL，
+// 这里改用 data: URL（CSP 已允许）加载图片
+async function loadImage(file: File): Promise<HTMLImageElement> {
+  const dataUrl = await readAsDataUrl(file);
+  return new Promise((resolve, reject) => {
     const img = new Image();
-    img.onload = () => {
-      URL.revokeObjectURL(url);
-      resolve(img);
-    };
-    img.onerror = () => {
-      URL.revokeObjectURL(url);
-      reject(new Error("图片解析失败，请换一张图片试试"));
-    };
-    img.src = url;
+    img.onload = () => resolve(img);
+    img.onerror = () => reject(new Error("图片解析失败，请换一张图片试试"));
+    img.src = dataUrl;
   });
 }
 
