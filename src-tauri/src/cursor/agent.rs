@@ -776,7 +776,7 @@ fn extract_response_text(response: &Value) -> Option<String> {
 async fn call_upstream(
     client: &Client,
     input: &AgentInput,
-    body: Value,
+    body: &Value,
     responses: bool,
     tx: &Sender<AgentEvent>,
 ) -> Result<(Value, bool), String> {
@@ -793,7 +793,7 @@ async fn call_upstream(
     let response = client
         .post(format!("{}{}", root, path))
         .bearer_auth(input.api_key.trim())
-        .json(&body)
+        .json(body)
         .send()
         .await
         .map_err(|e| format!("请求上游模型失败: {}", e))?;
@@ -835,7 +835,11 @@ async fn call_upstream(
     }
 
     let mut state = if responses {
-        UpstreamStreamState::Responses { response: None }
+        UpstreamStreamState::Responses {
+            response: None,
+            reasoning_open: false,
+            reasoning_seen: false,
+        }
     } else {
         UpstreamStreamState::Chat {
             content: String::new(),
@@ -900,6 +904,10 @@ enum UpstreamStreamState {
     },
     Responses {
         response: Option<Value>,
+        /// Reasoning text emitted since the last paragraph break.
+        reasoning_open: bool,
+        /// Any reasoning text streamed during this response.
+        reasoning_seen: bool,
     },
 }
 
@@ -947,8 +955,31 @@ async fn process_sse_line(
                     }
                 }
                 "response.reasoning_text.delta" | "response.reasoning_summary_text.delta" => {
-                    if let Some(delta) = value.get("delta").and_then(Value::as_str) {
+                    if let Some(delta) = value
+                        .get("delta")
+                        .and_then(Value::as_str)
+                        .filter(|delta| !delta.is_empty())
+                    {
+                        if let UpstreamStreamState::Responses {
+                            reasoning_open,
+                            reasoning_seen,
+                            ..
+                        } = state
+                        {
+                            *reasoning_open = true;
+                            *reasoning_seen = true;
+                        }
                         emit(tx, AgentEvent::Thinking(delta.to_string())).await?;
+                    }
+                }
+                // Summary parts arrive without separators; Cursor renders the
+                // thinking block as Markdown, so close each non-empty part as
+                // a paragraph.
+                "response.reasoning_summary_part.done" | "response.reasoning_text.done" => {
+                    if let UpstreamStreamState::Responses { reasoning_open, .. } = state {
+                        if std::mem::take(reasoning_open) {
+                            emit(tx, AgentEvent::Thinking("\n\n".into())).await?;
+                        }
                     }
                 }
                 "response.completed" | "response.incomplete" | "response.failed" => {
@@ -956,7 +987,20 @@ async fn process_sse_line(
                     if kind == "response.failed" {
                         return Err(format!("上游 Responses 流失败: {}", response["error"]));
                     }
-                    if let UpstreamStreamState::Responses { response: current } = state {
+                    if let UpstreamStreamState::Responses {
+                        response: current,
+                        reasoning_seen,
+                        ..
+                    } = state
+                    {
+                        // Some relays only return summaries in the final
+                        // object instead of streaming them.
+                        if !*reasoning_seen {
+                            let summary = reasoning_summary_text(&response);
+                            if !summary.is_empty() {
+                                emit(tx, AgentEvent::Thinking(summary)).await?;
+                            }
+                        }
                         *current = Some(response);
                     }
                 }
@@ -980,7 +1024,7 @@ async fn process_sse_line(
                         content.push_str(text);
                         emit(tx, AgentEvent::Text(text.to_string())).await?;
                     }
-                    if let Some(text) = delta.get("reasoning_content").and_then(Value::as_str) {
+                    if let Some(text) = chat_reasoning(delta) {
                         reasoning.push_str(text);
                         emit(tx, AgentEvent::Thinking(text.to_string())).await?;
                     }
@@ -1022,6 +1066,82 @@ async fn process_sse_line(
         data.push(value.trim_start().to_string());
     }
     Ok(())
+}
+
+/// Chat Completions relays disagree on the reasoning field: DeepSeek-style
+/// `reasoning_content`, or OpenRouter/vLLM-style `reasoning`.
+fn chat_reasoning(message: &Value) -> Option<&str> {
+    ["reasoning_content", "reasoning"]
+        .iter()
+        .filter_map(|key| message.get(*key).and_then(Value::as_str))
+        .find(|text| !text.is_empty())
+}
+
+/// Some relays reject `reasoning.summary` instead of ignoring it. Only a
+/// 400/422 that names the summary parameter counts: other reasoning errors
+/// (e.g. a dangling reasoning item) must surface instead of being retried.
+fn reasoning_summary_rejected(error: &str) -> bool {
+    let error = error.to_ascii_lowercase();
+    (error.starts_with("上游 http 400") || error.starts_with("上游 http 422"))
+        && error.contains("reasoning")
+        && error.contains("summary")
+}
+
+/// Upstreams (base URL + model) known to reject `reasoning.summary`, kept for
+/// the process lifetime so later Cursor turns skip the failing request.
+static SUMMARY_UNSUPPORTED: std::sync::Mutex<Vec<String>> = std::sync::Mutex::new(Vec::new());
+
+fn summary_cache_key(input: &AgentInput) -> String {
+    format!(
+        "{}|{}",
+        input.base_url.trim().trim_end_matches('/'),
+        input.model
+    )
+}
+
+fn summary_supported(input: &AgentInput) -> bool {
+    let key = summary_cache_key(input);
+    !SUMMARY_UNSUPPORTED
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .contains(&key)
+}
+
+fn mark_summary_unsupported(input: &AgentInput) {
+    let key = summary_cache_key(input);
+    let mut cache = SUMMARY_UNSUPPORTED
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    if !cache.contains(&key) {
+        cache.push(key);
+    }
+}
+
+/// Reasoning summary parts of a Responses object, one Markdown paragraph each.
+fn reasoning_summary_text(response: &Value) -> String {
+    response
+        .get("output")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter(|item| item.get("type").and_then(Value::as_str) == Some("reasoning"))
+        .filter_map(|item| item.get("summary").and_then(Value::as_array))
+        .flatten()
+        .filter_map(|part| part.get("text").and_then(Value::as_str))
+        .filter(|text| !text.trim().is_empty())
+        .map(|text| format!("{text}\n\n"))
+        .collect()
+}
+
+/// Leading break: Chat reasoning deltas carry no trailing newline, and the
+/// notice must not merge into the previous sentence.
+fn tool_notice(name: &str) -> String {
+    let name = name.replace('`', "");
+    if name.trim().is_empty() {
+        "\n\n正在执行未命名工具\n\n".into()
+    } else {
+        format!("\n\n正在执行 `{}`\n\n", name)
+    }
 }
 
 /// Tool-call `id` and `name` are whole values, not deltas: several upstreams
@@ -1070,7 +1190,7 @@ fn finish_upstream_stream(state: UpstreamStreamState) -> Result<Value, String> {
                 "tool_calls": calls
             }}]}))
         }
-        UpstreamStreamState::Responses { response } => {
+        UpstreamStreamState::Responses { response, .. } => {
             response.ok_or_else(|| "上游 Responses 流未返回结束事件".into())
         }
     }
@@ -1162,19 +1282,17 @@ async fn run_chat(
             body["tools"] = json!(tool_definitions(false));
             body["tool_choice"] = json!("auto");
         }
-        let (response, streamed) = call_upstream(&client, input, body, false, tx).await?;
+        let (response, streamed) = call_upstream(&client, input, &body, false, tx).await?;
         let message = response
             .pointer("/choices/0/message")
             .cloned()
             .ok_or("上游缺少 choices[0].message")?;
         if !streamed {
+            if let Some(text) = chat_reasoning(&message) {
+                emit(tx, AgentEvent::Thinking(text.to_string())).await?;
+            }
             if let Some(text) = extract_chat_text(&message) {
                 emit(tx, AgentEvent::Text(text)).await?;
-            }
-        }
-        if !streamed {
-            if let Some(text) = message.get("reasoning_content").and_then(Value::as_str) {
-                emit(tx, AgentEvent::Thinking(text.to_string())).await?;
             }
         }
         let calls = message
@@ -1207,7 +1325,7 @@ async fn run_chat(
             let function = call.get("function").ok_or("tool_call 缺少 function")?;
             let name = function.get("name").and_then(Value::as_str).unwrap_or("");
             let raw_args = tool_arguments(function.get("arguments"));
-            emit(tx, AgentEvent::Tool(format!("正在执行 {}\n", name))).await?;
+            emit(tx, AgentEvent::Tool(tool_notice(name))).await?;
             let output = invoke(workspace, name, &raw_args).await;
             log::info!(
                 "Cursor Agent 工具 {} 完成, success={}",
@@ -1283,13 +1401,33 @@ async fn run_responses(
     let client = client()?;
     let mut input_items = responses_messages(&input.messages);
     let mut budget = ConversationBudget::new(&input_items)?;
+    // Reasoning models only expose summaries, and only when asked for them;
+    // without this Cursor's thinking block shows nothing but tool notices.
+    let mut request_summary = summary_supported(input);
     for _ in 0..MAX_STEPS {
         let mut body = json!({"model":input.model,"input":input_items,"store":false,"stream":true,"include":["reasoning.encrypted_content"]});
         if workspace.is_some() {
             body["tools"] = json!(tool_definitions(true));
             body["tool_choice"] = json!("auto");
         }
-        let (response, streamed) = call_upstream(&client, input, body, true, tx).await?;
+        if request_summary {
+            body["reasoning"] = json!({"summary":"auto"});
+        }
+        let (response, streamed) = match call_upstream(&client, input, &body, true, tx).await {
+            Err(error) if request_summary && reasoning_summary_rejected(&error) => {
+                log::warn!(
+                    "中转站不接受 reasoning.summary，此后对该模型不再请求思考摘要: {}",
+                    truncate(error, 500)
+                );
+                mark_summary_unsupported(input);
+                request_summary = false;
+                if let Some(object) = body.as_object_mut() {
+                    object.remove("reasoning");
+                }
+                call_upstream(&client, input, &body, true, tx).await?
+            }
+            other => other?,
+        };
         if matches!(response["status"].as_str(), Some("failed" | "incomplete")) {
             return Err(format!("上游 Responses 未完成: {}", response["error"]));
         }
@@ -1299,6 +1437,18 @@ async fn run_responses(
             .cloned()
             .unwrap_or_default();
         if !streamed {
+            if output
+                .iter()
+                .any(|item| item.get("type").and_then(Value::as_str) == Some("reasoning"))
+            {
+                let summary = reasoning_summary_text(&response);
+                let thinking = if summary.is_empty() {
+                    "模型正在思考\n\n".to_string()
+                } else {
+                    summary
+                };
+                emit(tx, AgentEvent::Thinking(thinking)).await?;
+            }
             if let Some(text) = extract_response_text(&response) {
                 emit(tx, AgentEvent::Text(text)).await?;
             }
@@ -1307,9 +1457,6 @@ async fn run_responses(
         for item in &output {
             if item.get("type").and_then(Value::as_str) == Some("function_call") {
                 calls.push(item.clone());
-            }
-            if !streamed && item.get("type").and_then(Value::as_str) == Some("reasoning") {
-                emit(tx, AgentEvent::Thinking("模型正在分析工具结果\n".into())).await?;
             }
         }
         for item in &output {
@@ -1330,7 +1477,7 @@ async fn run_responses(
                 .ok_or("function_call 缺少 call_id")?;
             let name = call.get("name").and_then(Value::as_str).unwrap_or("");
             let raw_args = tool_arguments(call.get("arguments"));
-            emit(tx, AgentEvent::Tool(format!("正在执行 {}\n", name))).await?;
+            emit(tx, AgentEvent::Tool(tool_notice(name))).await?;
             let output = invoke(workspace, name, &raw_args).await;
             log::info!(
                 "Cursor Agent 工具 {} 完成, success={}",
@@ -1436,7 +1583,7 @@ pub async fn run_agent(
             emit(
                 &tx,
                 AgentEvent::Thinking(
-                    "中转站未提供 Responses 端点，使用 Chat Completions 工具协议\n".into(),
+                    "中转站未提供 Responses 端点，使用 Chat Completions 工具协议\n\n".into(),
                 ),
             )
             .await?;
@@ -1683,7 +1830,12 @@ mod tests {
         assert_eq!(body["stream"], true);
         if requests.len() == 1 {
             assert_eq!(body["include"][0], "reasoning.encrypted_content");
+            assert_eq!(body["reasoning"]["summary"], "auto");
             sse_response(&[
+                json!({"type":"response.reasoning_summary_text.delta","summary_index":0,"delta":"**Inspecting file**"}),
+                json!({"type":"response.reasoning_summary_part.done","summary_index":0}),
+                json!({"type":"response.reasoning_summary_text.delta","summary_index":1,"delta":"Need to read hello.txt"}),
+                json!({"type":"response.reasoning_summary_part.done","summary_index":1}),
                 json!({"type":"response.completed","response":{"status":"completed","output":[
                     {"id":"rs_reasoning","type":"reasoning","encrypted_content":"keep-this-item","summary":[]},
                     {"id":"fc_1","type":"function_call","call_id":"call_read","name":"read_file","arguments":"{\"path\":\"hello.txt\"}"}
@@ -1861,14 +2013,228 @@ mod tests {
         server.abort();
         result.unwrap();
         let mut text = String::new();
+        let mut thinking = String::new();
         while let Some(event) = rx.recv().await {
-            if let AgentEvent::Text(value) = event {
-                text.push_str(&value);
+            match event {
+                AgentEvent::Text(value) => text.push_str(&value),
+                AgentEvent::Thinking(value) | AgentEvent::Tool(value) => thinking.push_str(&value),
             }
         }
         assert!(text.contains("Read file contents successfully."));
+        // Summary parts and tool notices must stay separate Markdown paragraphs.
+        assert!(
+            thinking.starts_with("**Inspecting file**\n\nNeed to read hello.txt\n\n"),
+            "{thinking:?}"
+        );
+        assert!(
+            thinking.contains("\n\n正在执行 `read_file`\n\n"),
+            "{thinking:?}"
+        );
         assert_eq!(requests.lock().unwrap().len(), 2);
         assert_eq!(agent_result.tool_calls, 1);
+    }
+
+    /// Serves `app` on an ephemeral port; returns its base URL and the server task.
+    async fn spawn_relay(app: Router) -> (String, tokio::task::JoinHandle<()>) {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move {
+            axum::serve(listener, app).await.unwrap();
+        });
+        (format!("http://{address}"), server)
+    }
+
+    fn relay_input(model: &str, base_url: String) -> AgentInput {
+        AgentInput {
+            model: model.into(),
+            base_url,
+            api_key: "test-key".into(),
+            messages: vec![json!({"role":"user","content":"hi"})],
+            workspace_paths: Vec::new(),
+            project_folder: None,
+            process_working_directory: None,
+        }
+    }
+
+    /// Drains the channel into (answer text, thinking + tool notices).
+    async fn collect_events(mut rx: tokio::sync::mpsc::Receiver<AgentEvent>) -> (String, String) {
+        let mut text = String::new();
+        let mut thinking = String::new();
+        while let Some(event) = rx.recv().await {
+            match event {
+                AgentEvent::Text(value) => text.push_str(&value),
+                AgentEvent::Thinking(value) | AgentEvent::Tool(value) => thinking.push_str(&value),
+            }
+        }
+        (text, thinking)
+    }
+
+    #[tokio::test]
+    async fn responses_retries_without_reasoning_summary_when_relay_rejects_it() {
+        async fn strict_relay(
+            State(requests): State<Requests>,
+            Json(body): Json<Value>,
+        ) -> Response {
+            let rejects = body.get("reasoning").is_some();
+            requests.lock().unwrap().push(body);
+            if rejects {
+                return Response::builder()
+                    .status(400)
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        r#"{"error":{"message":"Unsupported parameter: 'reasoning.summary'","param":"reasoning.summary"}}"#,
+                    ))
+                    .unwrap();
+            }
+            sse_response(&[
+                json!({"type":"response.output_text.delta","delta":"ok"}),
+                json!({"type":"response.completed","response":{"status":"completed","output":[]}}),
+            ])
+        }
+
+        let requests: Requests = Arc::new(Mutex::new(Vec::new()));
+        let app = Router::new()
+            .route("/v1/responses", post(strict_relay))
+            .with_state(requests.clone());
+        let (base_url, server) = spawn_relay(app).await;
+        let input = relay_input("gpt-5-test", base_url);
+        for _ in 0..2 {
+            let (tx, rx) = tokio::sync::mpsc::channel(16);
+            run_responses(&input, None, &mut AgentResult::default(), &tx)
+                .await
+                .unwrap();
+            drop(tx);
+            assert_eq!(collect_events(rx).await.0, "ok");
+        }
+        server.abort();
+        let requests = requests.lock().unwrap();
+        // The rejection is remembered: the second turn skips the failing request.
+        assert_eq!(requests.len(), 3);
+        assert!(requests[0].get("reasoning").is_some());
+        assert!(requests[1].get("reasoning").is_none());
+        assert!(requests[2].get("reasoning").is_none());
+    }
+
+    #[tokio::test]
+    async fn responses_surfaces_other_reasoning_errors_without_retrying() {
+        async fn relay(State(requests): State<Requests>, Json(body): Json<Value>) -> Response {
+            requests.lock().unwrap().push(body);
+            Response::builder()
+                .status(400)
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    r#"{"error":{"message":"Item 'rs_1' of type 'reasoning' was provided without its required following item."}}"#,
+                ))
+                .unwrap()
+        }
+
+        let requests: Requests = Arc::new(Mutex::new(Vec::new()));
+        let app = Router::new()
+            .route("/v1/responses", post(relay))
+            .with_state(requests.clone());
+        let (base_url, server) = spawn_relay(app).await;
+        let input = relay_input("gpt-5-test", base_url);
+        let (tx, _rx) = tokio::sync::mpsc::channel(16);
+        let error = run_responses(&input, None, &mut AgentResult::default(), &tx)
+            .await
+            .unwrap_err();
+        server.abort();
+        assert!(error.contains("required following item"), "{error}");
+        assert_eq!(requests.lock().unwrap().len(), 1);
+        assert!(summary_supported(&input));
+    }
+
+    #[tokio::test]
+    async fn responses_thinking_skips_empty_parts_and_reads_final_only_summaries() {
+        async fn relay(Json(body): Json<Value>) -> Response {
+            let final_only = body["input"][0]["content"] == "final-only";
+            if final_only {
+                return sse_response(&[
+                    json!({"type":"response.output_text.delta","delta":"ok"}),
+                    json!({"type":"response.completed","response":{"status":"completed","output":[
+                        {"type":"reasoning","summary":[{"type":"summary_text","text":"Buffered plan"},{"type":"summary_text","text":" "}]}
+                    ]}}),
+                ]);
+            }
+            sse_response(&[
+                json!({"type":"response.reasoning_summary_part.done","summary_index":0}),
+                json!({"type":"response.reasoning_summary_text.delta","summary_index":1,"delta":""}),
+                json!({"type":"response.reasoning_summary_part.done","summary_index":1}),
+                json!({"type":"response.reasoning_summary_text.delta","summary_index":2,"delta":"Real step"}),
+                json!({"type":"response.reasoning_summary_part.done","summary_index":2}),
+                json!({"type":"response.output_text.delta","delta":"ok"}),
+                // Already streamed: the final summary must not be repeated.
+                json!({"type":"response.completed","response":{"status":"completed","output":[
+                    {"type":"reasoning","summary":[{"type":"summary_text","text":"Real step"}]}
+                ]}}),
+            ])
+        }
+
+        let (base_url, server) =
+            spawn_relay(Router::new().route("/v1/responses", post(relay))).await;
+        let mut input = relay_input("gpt-5-test", base_url);
+        let (tx, rx) = tokio::sync::mpsc::channel(16);
+        run_responses(&input, None, &mut AgentResult::default(), &tx)
+            .await
+            .unwrap();
+        drop(tx);
+        assert_eq!(collect_events(rx).await.1, "Real step\n\n");
+
+        input.messages = vec![json!({"role":"user","content":"final-only"})];
+        let (tx, rx) = tokio::sync::mpsc::channel(16);
+        run_responses(&input, None, &mut AgentResult::default(), &tx)
+            .await
+            .unwrap();
+        drop(tx);
+        server.abort();
+        assert_eq!(collect_events(rx).await.1, "Buffered plan\n\n");
+    }
+
+    #[test]
+    fn summary_rejection_requires_the_summary_parameter() {
+        assert!(reasoning_summary_rejected(
+            "上游 HTTP 400 Bad Request: Unsupported parameter: 'reasoning.summary'"
+        ));
+        assert!(reasoning_summary_rejected(
+            "上游 HTTP 422 Unprocessable Entity: unknown field `summary` in `reasoning`"
+        ));
+        assert!(!reasoning_summary_rejected(
+            "上游 HTTP 400 Bad Request: Item of type 'reasoning' was provided without its required following item"
+        ));
+        assert!(!reasoning_summary_rejected(
+            "上游 HTTP 500 Internal Server Error: reasoning summary failed"
+        ));
+    }
+
+    #[test]
+    fn tool_notice_is_a_standalone_paragraph_and_sanitizes_the_name() {
+        assert_eq!(tool_notice("read_file"), "\n\n正在执行 `read_file`\n\n");
+        assert_eq!(tool_notice("a`b"), "\n\n正在执行 `ab`\n\n");
+        assert_eq!(tool_notice(""), "\n\n正在执行未命名工具\n\n");
+        assert_eq!(tool_notice("``"), "\n\n正在执行未命名工具\n\n");
+    }
+
+    #[tokio::test]
+    async fn chat_stream_accepts_openrouter_style_reasoning_field() {
+        async fn relay(Json(_body): Json<Value>) -> Response {
+            sse_response(&[
+                json!({"choices":[{"delta":{"reasoning":"weighing options"},"finish_reason":null}]}),
+                json!({"choices":[{"delta":{"content":"done"},"finish_reason":null}]}),
+                json!({"choices":[{"delta":{},"finish_reason":"stop"}]}),
+            ])
+        }
+
+        let (base_url, server) =
+            spawn_relay(Router::new().route("/v1/chat/completions", post(relay))).await;
+        let input = relay_input("glm-test", base_url);
+        let (tx, rx) = tokio::sync::mpsc::channel(16);
+        let result = run_chat(&input, None, &mut AgentResult::default(), &tx).await;
+        drop(tx);
+        server.abort();
+        result.unwrap();
+        let (text, thinking) = collect_events(rx).await;
+        assert_eq!(text, "done");
+        assert_eq!(thinking, "weighing options");
     }
 
     #[tokio::test]

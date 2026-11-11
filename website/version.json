@@ -1,7 +1,7 @@
 {
   "version": "1.0.79",
   "tag": "v1.0.79",
-  "releaseDate": "2026-11-10",
+  "releaseDate": "2026-11-11",
   "setupFileName": "AI-Helper-v1.0.79-Windows-x64-Setup.exe",
   "zipFileName": "AI-Helper-v1.0.79-Windows-x64-Standalone.zip",
   "macArm64FileName": "AI-Helper-v1.0.79-macOS-aarch64.dmg",
