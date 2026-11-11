@@ -188,6 +188,8 @@ class Harness {
           [kind, (...args) => env.notices.push([kind, ...args])])) };
         if (name.endsWith("/api") || name === "./api") return env.api;
         if (name.endsWith("/useAuth")) return { useAuth: () => env.authContext };
+        if (name.endsWith("/useAvatar")) return { AVATAR_ACCEPT: "image/*",
+          useAvatar: () => ({ avatar: null, uploadAvatar: async () => {}, removeAvatar() {} }) };
         if (name.endsWith("/groupPricing")) return load("src/lib/groupPricing.ts");
         if (name.endsWith("/quotaDisplay")) return load("src/lib/quotaDisplay.ts");
         if (name.endsWith("/useBoundTokenGroup")) return load("src/lib/useBoundTokenGroup.ts");
