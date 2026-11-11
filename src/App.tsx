@@ -41,6 +41,7 @@ import { InitializationModal } from "./components/InitializationModal";
 import { LoginModal } from "./components/auth/LoginModal";
 import { TokenSelectModal } from "./components/auth/TokenSelectModal";
 import { AccountBalanceCard } from "./components/AccountBalanceCard";
+import { UserAvatar } from "./components/account/UserAvatar";
 import { AuthProvider, useAuth } from "./lib/useAuth";
 import { TooltipProvider } from "./components/ui/tooltip";
 import { useTheme } from "./components/theme-provider";
@@ -148,6 +149,18 @@ function AppContent() {
         localStorage.getItem("bobapi_init_completed"),
     );
   });
+
+  // 当前已登录用户（is_logged_in 与 user 统一判断，避免头像与"未登录"文案不一致）
+  const currentUser = authState.is_logged_in ? authState.user : null;
+
+  // 侧边栏头像下方的短名称：纯数字账号（如手机号）只显示尾号，避免被截断成 "1..."
+  const sidebarUserLabel = (() => {
+    const user = currentUser;
+    if (!user) return "未登录";
+    const name = (user.display_name || user.username || "").trim();
+    if (/^\d{7,}$/.test(name)) return `尾号${name.slice(-4)}`;
+    return name || "我的";
+  })();
 
   const handleSelectNav = (nav: MainNav) => {
     setMainNav(nav);
@@ -633,29 +646,35 @@ function AppContent() {
             </button>
           </div>
 
-          {/* 下半部分：用户头像 GX + 名字 (完全复刻图一，点击展开个人资产与功能抽屉) */}
+          {/* 下半部分：用户头像 + 名字 (纵向排列，与上方导航键同尺寸对齐，点击展开个人资产与功能抽屉) */}
           <div className="w-full flex justify-center pb-2">
             <Popover.Root open={userMenuOpen} onOpenChange={setUserMenuOpen}>
               <Popover.Trigger asChild>
                 <button
                   type="button"
-                  className="flex items-center justify-center gap-1.5 p-1.5 rounded-xl hover:bg-black/5 dark:hover:bg-white/10 transition-colors cursor-pointer select-none w-full"
+                  className={cn(
+                    "w-[58px] py-2 rounded-2xl flex flex-col items-center justify-center gap-1.5 transition-all cursor-pointer select-none outline-none focus-visible:ring-2 focus-visible:ring-sky-500/50",
+                    userMenuOpen || mainNav === "account"
+                      ? "bg-white shadow-[0_2px_12px_rgba(0,0,0,0.04)] dark:bg-white/15"
+                      : "hover:bg-white/40 dark:hover:bg-white/10"
+                  )}
                   title={`${authState.user?.display_name || authState.user?.username || "用户中心与资产"} - 点击查看`}
                 >
-                  <div className="w-6 h-6 rounded-full bg-black text-white dark:bg-white dark:text-black flex items-center justify-center font-bold text-[9px] flex-shrink-0 shadow-xs">
-                    {authState.user?.username && !/^\d/.test(authState.user.username) ? (
-                      authState.user.username.slice(0, 2).toUpperCase()
-                    ) : (
-                      <User size={12} className="text-current" />
-                    )}
-                  </div>
-                  <span className="text-[11px] font-bold text-slate-800 dark:text-slate-200 truncate max-w-[46px]">
-                    {authState.user?.display_name ||
-                      (authState.user?.username
-                        ? /^\d{11}$/.test(authState.user.username)
-                          ? authState.user.username.slice(0, 3) + "..."
-                          : authState.user.username
-                        : "未登录")}
+                  <span className="relative">
+                    <UserAvatar
+                      user={currentUser}
+                      size={30}
+                      className="ring-2 ring-white/80 dark:ring-white/10 shadow-xs"
+                    />
+                    <span
+                      className={cn(
+                        "absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full border-2 border-white dark:border-neutral-800",
+                        currentUser ? "bg-emerald-500" : "bg-slate-300 dark:bg-slate-600"
+                      )}
+                    />
+                  </span>
+                  <span className="w-full px-1 text-center text-[10px] font-semibold leading-none text-slate-700 dark:text-slate-200 truncate">
+                    {sidebarUserLabel}
                   </span>
                 </button>
               </Popover.Trigger>
@@ -668,20 +687,25 @@ function AppContent() {
                 >
                   {/* 用户信息卡片 */}
                   <div className="flex items-center gap-3 pb-2.5 mb-2.5 border-b border-slate-100 dark:border-white/5">
-                    <div className="w-10 h-10 rounded-full bg-black text-white dark:bg-white dark:text-black flex items-center justify-center font-bold text-sm shadow-xs flex-shrink-0">
-                      {authState.user?.username && !/^\d/.test(authState.user.username) ? (
-                        authState.user.username.slice(0, 2).toUpperCase()
-                      ) : (
-                        <User size={18} className="text-current" />
-                      )}
-                    </div>
+                    {/* 头像按账号存储，仅登录后可上传，避免未登录时上传的头像在登录后"消失" */}
+                    <UserAvatar
+                      user={currentUser}
+                      size={40}
+                      editable={Boolean(currentUser)}
+                      className="shadow-xs"
+                    />
                     <div className="min-w-0 flex-1">
                       <div className="text-xs font-bold text-slate-900 dark:text-white truncate">
-                        {authState.user?.display_name || authState.user?.username || "高相健"}
+                        {currentUser?.display_name || currentUser?.username || "未登录"}
                       </div>
                       <div className="text-[10px] text-slate-400 dark:text-gray-500 truncate mt-0.5">
-                        {authState.is_logged_in ? "bob-api.com 授权账号" : "未登录 (本地模式)"}
+                        {currentUser ? "bob-api.com 授权账号" : "未登录 (本地模式)"}
                       </div>
+                      {currentUser && (
+                        <div className="text-[10px] text-slate-400/80 dark:text-gray-500/80 truncate mt-0.5">
+                          点击头像可更换
+                        </div>
+                      )}
                     </div>
                   </div>
 

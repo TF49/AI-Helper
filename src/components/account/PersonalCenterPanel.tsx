@@ -28,6 +28,8 @@ import { openUrl, checkBobApiNetwork, isTauri } from "../../lib/api";
 import { cn } from "../../lib/utils";
 import type { MainNav, NetworkStatus } from "../../types";
 import { ButtonToLoaderToSuccess } from "../ui/ButtonToLoaderToSuccess";
+import { useAvatar } from "../../lib/useAvatar";
+import { UserAvatar } from "./UserAvatar";
 
 export interface PersonalCenterPanelProps {
   className?: string;
@@ -40,6 +42,7 @@ export const PersonalCenterPanel: React.FC<PersonalCenterPanelProps> = ({
 }) => {
   const { authState, wallet, setLoginModalOpen, logout, refreshWallet, refreshState } =
     useAuth();
+  const { avatar: customAvatar, removeAvatar } = useAvatar(authState.user?.id);
 
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
@@ -221,18 +224,32 @@ export const PersonalCenterPanel: React.FC<PersonalCenterPanelProps> = ({
 
         {/* 左侧个人信息 */}
         <div className="flex items-center gap-4 relative z-10 min-w-0 flex-1">
-          {/* 头像 */}
+          {/* 头像 (点击上传 / 更换自定义头像) */}
           <div className="relative flex-shrink-0">
-            <div className="w-16 h-16 rounded-2xl bg-gradient-to-tr from-blue-600 via-indigo-600 to-violet-500 text-white flex items-center justify-center font-extrabold text-2xl shadow-md ring-4 ring-white/60 dark:ring-white/5">
-              {user?.display_name
-                ? user.display_name.slice(0, 1).toUpperCase()
-                : user?.username.slice(0, 1).toUpperCase() || "U"}
-            </div>
-            {/* 在线指示小标 */}
-            <span
-              className="absolute -bottom-1 -right-1 w-4 h-4 rounded-full bg-emerald-500 border-2 border-white dark:border-[#121524] shadow-xs"
-              title="当前账号已成功联机鉴权"
+            <UserAvatar
+              user={user}
+              size={64}
+              editable
+              className="shadow-md ring-4 ring-white/60 dark:ring-white/5"
             />
+            {/* 在线指示小标 (不拦截点击，点击仍落到头像上传按钮) */}
+            <span
+              aria-hidden
+              className="absolute bottom-0 right-0 w-4 h-4 rounded-full bg-emerald-500 border-2 border-white dark:border-[#121524] shadow-xs pointer-events-none"
+            />
+            {/* 绝对定位，出现/消失时不影响横幅内其它元素的对齐 */}
+            {customAvatar && (
+              <button
+                type="button"
+                onClick={() => {
+                  removeAvatar();
+                  toast.success("已恢复默认头像");
+                }}
+                className="absolute left-1/2 -translate-x-1/2 top-full mt-1.5 whitespace-nowrap text-[10px] leading-none text-slate-400 hover:text-red-500 transition-colors cursor-pointer"
+              >
+                移除头像
+              </button>
+            )}
           </div>
 
           <div className="space-y-1.5 min-w-0 flex-1">
