@@ -6,12 +6,10 @@ import {
   Key,
   Copy,
   ExternalLink,
-  Palette,
 } from "lucide-react";
 import { toast } from "sonner";
 import { openUrl } from "../lib/api";
 import { OpenAIIcon, ClaudeIcon, WorkbuddyIcon, AccioWorkIcon } from "./BrandIcons";
-import { ThemeToggle } from "./ThemeToggle";
 import { ButtonToLoaderToSuccess } from "./ui/ButtonToLoaderToSuccess";
 
 interface QuickToolsModalProps {
@@ -81,22 +79,8 @@ export function QuickToolsModal({
 
         {/* Content */}
         <div className="p-5 space-y-4 max-h-[75vh] overflow-y-auto">
-          {/* Section 0: Theme Switcher */}
-          <div className="space-y-2">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-semibold text-slate-700 dark:text-gray-300 flex items-center gap-1.5">
-                <Palette size={14} className="text-blue-500" />
-                外观主题切换 (Theme)
-              </span>
-            </div>
-            <p className="text-[11px] text-slate-500 dark:text-gray-400">
-              选择应用外观主题，支持浅色明亮模式、深色极客模式与跟随操作系统。
-            </p>
-            <ThemeToggle variant="pills" className="w-full justify-between" />
-          </div>
-
           {/* Section 1: cURL Test snippet */}
-          <div className="space-y-2 pt-2 border-t border-slate-100 dark:border-white/5">
+          <div className="space-y-2">
             <div className="flex items-center justify-between">
               <span className="text-xs font-semibold text-slate-700 dark:text-gray-300 flex items-center gap-1.5">
                 <Terminal

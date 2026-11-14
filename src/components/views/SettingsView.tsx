@@ -6,9 +6,6 @@ import {
   Bell,
   Globe,
   HelpCircle,
-  Sun,
-  Moon,
-  Laptop,
   Sparkles,
   RefreshCw,
   MessageSquare,
@@ -18,6 +15,7 @@ import {
   AlertTriangle,
   Trash2,
   Loader2,
+  Monitor,
 } from "lucide-react";
 import { toast } from "sonner";
 import { useSettings } from "../../lib/useSettings";
@@ -70,7 +68,7 @@ export function SettingsView({
 }: SettingsViewProps) {
   const [activeTab, setActiveTab] = useState<SettingsTab>("general");
   const { settings, loadingAutoStart, updateSetting } = useSettings();
-  const { theme, setTheme } = useTheme();
+  const { theme, resolvedTheme, setTheme } = useTheme();
 
   const [langMenuOpen, setLangMenuOpen] = useState(false);
   const [startupMenuOpen, setStartupMenuOpen] = useState(false);
@@ -413,48 +411,32 @@ export function SettingsView({
               <h2 className="text-xs font-bold uppercase tracking-wider text-slate-400 dark:text-gray-500 mb-3 px-1">
                 主题模式
               </h2>
-              <div className="grid grid-cols-3 gap-3">
-                <button
-                  type="button"
-                  onClick={() => setTheme("light")}
-                  className={cn(
-                    "p-4 rounded-2xl border text-center flex flex-col items-center gap-2 transition-all cursor-pointer",
-                    theme === "light"
-                      ? "border-blue-500 bg-blue-50/60 dark:bg-blue-500/10 text-blue-600 dark:text-blue-400 ring-2 ring-blue-500/20"
-                      : "border-slate-200/80 dark:border-white/10 bg-white/70 dark:bg-white/5 text-slate-700 dark:text-gray-300 hover:border-slate-300",
-                  )}
-                >
-                  <Sun size={20} />
-                  <span className="text-xs font-semibold">浅色模式</span>
-                </button>
+              <div className="rounded-2xl border border-slate-200/80 dark:border-white/10 bg-white/70 dark:bg-[#121626]/70 backdrop-blur-md p-4 flex items-center justify-between">
+                <div className="flex items-start gap-3.5 min-w-0 pr-4">
+                  <div className="w-8 h-8 rounded-xl bg-blue-50 dark:bg-blue-500/10 text-blue-600 dark:text-blue-400 flex items-center justify-center flex-shrink-0 mt-0.5">
+                    <Monitor size={16} />
+                  </div>
+                  <div className="min-w-0">
+                    <div className="text-xs font-semibold text-slate-900 dark:text-white">
+                      跟随系统外观
+                    </div>
+                    <p className="text-[11px] text-slate-500 dark:text-gray-400 mt-0.5">
+                      开启后自动匹配操作系统的浅色 / 深色模式；手动切换可使用右上角的主题开关。
+                    </p>
+                  </div>
+                </div>
 
-                <button
-                  type="button"
-                  onClick={() => setTheme("dark")}
-                  className={cn(
-                    "p-4 rounded-2xl border text-center flex flex-col items-center gap-2 transition-all cursor-pointer",
-                    theme === "dark"
-                      ? "border-blue-500 bg-blue-50/60 dark:bg-blue-500/10 text-blue-600 dark:text-blue-400 ring-2 ring-blue-500/20"
-                      : "border-slate-200/80 dark:border-white/10 bg-white/70 dark:bg-white/5 text-slate-700 dark:text-gray-300 hover:border-slate-300",
-                  )}
-                >
-                  <Moon size={20} />
-                  <span className="text-xs font-semibold">深色模式</span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => setTheme("system")}
-                  className={cn(
-                    "p-4 rounded-2xl border text-center flex flex-col items-center gap-2 transition-all cursor-pointer",
-                    theme === "system"
-                      ? "border-blue-500 bg-blue-50/60 dark:bg-blue-500/10 text-blue-600 dark:text-blue-400 ring-2 ring-blue-500/20"
-                      : "border-slate-200/80 dark:border-white/10 bg-white/70 dark:bg-white/5 text-slate-700 dark:text-gray-300 hover:border-slate-300",
-                  )}
-                >
-                  <Laptop size={20} />
-                  <span className="text-xs font-semibold">跟随系统</span>
-                </button>
+                <label className="relative inline-flex items-center cursor-pointer flex-shrink-0">
+                  <input
+                    type="checkbox"
+                    checked={theme === "system"}
+                    onChange={(e) =>
+                      setTheme(e.target.checked ? "system" : resolvedTheme)
+                    }
+                    className="sr-only peer"
+                  />
+                  <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer dark:bg-white/10 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-blue-600"></div>
+                </label>
               </div>
             </div>
 

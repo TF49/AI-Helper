@@ -17,8 +17,6 @@ import {
   Users,
   Cast,
   HelpCircle,
-  Sun,
-  Moon,
 } from "lucide-react";
 import * as Popover from "@radix-ui/react-popover";
 import { motion, AnimatePresence } from "motion/react";
@@ -44,6 +42,7 @@ import { AccountBalanceCard } from "./components/AccountBalanceCard";
 import { UserAvatar } from "./components/account/UserAvatar";
 import { AuthProvider, useAuth } from "./lib/useAuth";
 import { TooltipProvider } from "./components/ui/tooltip";
+import { ThemeToggle } from "./components/ThemeToggle";
 import { useTheme } from "./components/theme-provider";
 import { AuroraBackground } from "./components/react-bits/AuroraBackground";
 import { cn } from "./lib/utils";
@@ -125,7 +124,8 @@ function AppContent() {
     localStorage.setItem(QQ_GROUP_DISMISSED_KEY, "true");
   };
   const [appVersion, setAppVersion] = useState("...");
-  const { resolvedTheme, toggleTheme } = useTheme();
+  const { resolvedTheme } = useTheme();
+  const isDark = resolvedTheme === "dark";
   const [helpMenuOpen, setHelpMenuOpen] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const win = appWindow;
@@ -331,8 +331,6 @@ function AppContent() {
     isInitialized,
   ]);
 
-  const isDark = resolvedTheme === "dark";
-
   const [isWindowMaximized, setIsWindowMaximized] = useState(false);
 
   // 监听并同步窗口最大化/还原状态
@@ -508,30 +506,7 @@ function AppContent() {
             </Popover.Portal>
           </Popover.Root>
 
-          {/* 日夜主题切换微控件 (复刻图一：黑圆日标 + 弯月) */}
-          <button
-            type="button"
-            onClick={toggleTheme}
-            className="flex items-center gap-1.5 p-1 rounded-full hover:bg-black/5 dark:hover:bg-white/10 transition-colors cursor-pointer"
-            title={`切换为${isDark ? "浅色" : "深色"}主题`}
-          >
-            <div
-              className={cn(
-                "w-5 h-5 rounded-full flex items-center justify-center transition-all shadow-2xs",
-                !isDark ? "bg-black text-white" : "bg-transparent text-slate-400"
-              )}
-            >
-              <Sun size={11} className="text-current" />
-            </div>
-            <div
-              className={cn(
-                "w-4 h-4 flex items-center justify-center transition-all",
-                isDark ? "text-white" : "text-slate-800"
-              )}
-            >
-              <Moon size={12} className="text-current" />
-            </div>
-          </button>
+          <ThemeToggle />
 
           {/* Windows / Linux 专属窗口控制三联键 (最小化、最大化/向下还原、关闭) */}
           {!isMac() && (

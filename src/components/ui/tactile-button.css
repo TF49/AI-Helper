@@ -1,0 +1,302 @@
+/*! Tactile Push Button · Community submission by 少荃 (Douyin: 宝龙体育优品小铺). */
+/*
+ * 本文件与参考实现的组件样式（从 .tactile-button 开始）逐条对应；
+ * 参考中的 body 演示布局不属于组件，未引入。
+ * 唯一改动：参考中写死的底座色、暗部色、亮部色提取为「材质参数」变量，默认值等于参考原值。
+ * 文件末尾「扩展」区块为本项目新增：图标、禁用、流体玻璃、全透明玻璃主题。
+ */
+
+/*
+ * 按钮根元素：可配置变量、胶囊形底座与底座投影。
+ * 变量可通过按钮的 style 属性，或写在本文件之后的专属类覆盖。
+ * 内边距、阴影等使用 em 单位，随按钮字号按比例变化。
+ */
+.tactile-button {
+  /* 外观参数：字号和内边距使用有效 CSS 尺寸，颜色使用有效 CSS 颜色值。 */
+  --button-font-size: 48px; /* 按钮字号，也是 em 尺寸的缩放基准 */
+  --button-padding-x: 1.5em; /* 文字左右两侧的留白 */
+  --button-padding-y: 1em; /* 文字上下两侧的留白 */
+  --button-surface-start: #e6e6e6; /* 按钮表面渐变的起始色，位于左上方向 */
+  --button-surface-end: #b4b4b4; /* 按钮表面渐变的结束色，位于右下方向 */
+  --button-text-start: #191919; /* 文字渐变的起始色 */
+  --button-text-end: #4b4b4b; /* 文字渐变的结束色 */
+
+  /*
+   * 材质参数（本项目新增）：参考实现中这些颜色是写死的，这里提取为变量，
+   * 默认值严格等于参考原值 —— 不覆盖时渲染结果与参考实现完全一致。
+   * 阴影/高光的每一层仍保留参考中的原始透明度，再乘以对应的强度系数。
+   */
+  --button-base-color: rgba(0, 0, 0, 0.75); /* 胶囊底座颜色（悬停裁剪时从四周露出） */
+  --button-rim-opacity: 0.25; /* 底座外圈柔化暗边的不透明度 */
+  --button-shadow-rgb: 5, 5, 5; /* 所有投影与内阴影暗部的 RGB */
+  --button-shadow-strength: 1; /* 暗部透明度系数 */
+  --button-highlight-rgb: 255, 255, 255; /* 内缘亮边与高光的 RGB */
+  --button-highlight-strength: 1; /* 亮部透明度系数 */
+
+  /*
+   * 动画参数：两项缩放倍率均限制在 0.8～1.05，速度倍率限制在 0.25～3。
+   * 速度为 1 时，阴影过渡为 300ms，裁剪与缩放过渡为 250ms。
+   */
+  --button-press-scale: 0.93; /* 按下时整个表面层的缩放倍率，包含文字 */
+  --button-hover-text-scale: 0.975; /* 悬停时仅文字层的缩放倍率 */
+  --button-motion-speed: 1; /* 动画速度倍率；数值越大，过渡时间越短 */
+
+  /* 清除原生按钮外观，再设置本组件的字体、形状与指针样式。 */
+  all: unset;
+  font-size: var(--button-font-size);
+  font-family: "Inter", sans-serif;
+  cursor: pointer;
+  -webkit-tap-highlight-color: rgba(0, 0, 0, 0);
+  position: relative;
+  border-radius: 999vw;
+  background-color: var(--button-base-color);
+  box-shadow: -0.15em -0.15em 0.15em -0.075em rgba(var(--button-shadow-rgb), calc(0.25 * var(--button-shadow-strength))),
+    0.0375em 0.0375em 0.0675em 0 rgba(var(--button-shadow-rgb), calc(0.1 * var(--button-shadow-strength)));
+}
+
+/* 底座周围的柔化暗边：向四周扩展 0.15em，并用正片叠底融入页面背景。 */
+.tactile-button::after {
+  pointer-events: none;
+  content: "";
+  position: absolute;
+  z-index: 0;
+  width: calc(100% + 0.3em);
+  height: calc(100% + 0.3em);
+  top: -0.15em;
+  left: -0.15em;
+  border-radius: inherit;
+  background: linear-gradient(
+    -135deg,
+    rgba(var(--button-shadow-rgb), calc(0.5 * var(--button-shadow-strength))),
+    transparent 20%,
+    transparent 100%
+  );
+  filter: blur(0.0125em);
+  opacity: var(--button-rim-opacity);
+  mix-blend-mode: multiply;
+}
+
+/* 外层：用贴近底部的细阴影与右下方投影，表现按钮表面的抬起高度。 */
+.tactile-button .button-outer {
+  display: block;
+  position: relative;
+  z-index: 1;
+  border-radius: inherit;
+  transition: box-shadow calc(300ms / clamp(0.25, var(--button-motion-speed), 3)) ease;
+  will-change: box-shadow;
+  box-shadow: 0 0.05em 0.05em -0.01em rgba(var(--button-shadow-rgb), calc(1 * var(--button-shadow-strength))),
+    0 0.01em 0.01em -0.01em rgba(var(--button-shadow-rgb), calc(0.5 * var(--button-shadow-strength))),
+    0.15em 0.3em 0.1em -0.01em rgba(var(--button-shadow-rgb), calc(0.25 * var(--button-shadow-strength)));
+}
+
+/* 悬停时将外层投影收至零，配合内层暗部形成下沉效果。 */
+.tactile-button:hover .button-outer {
+  box-shadow: 0 0 0 0 rgba(var(--button-shadow-rgb), calc(1 * var(--button-shadow-strength))), 0 0 0 0 rgba(var(--button-shadow-rgb), calc(0.5 * var(--button-shadow-strength))),
+    0 0 0 0 rgba(var(--button-shadow-rgb), calc(0.25 * var(--button-shadow-strength)));
+}
+
+/* 内层：承载表面渐变、文字留白、内阴影，以及按下时的整体缩放。 */
+.tactile-button .button-inner {
+  display: block;
+  position: relative;
+  z-index: 1;
+  border-radius: inherit;
+  padding: var(--button-padding-y) var(--button-padding-x);
+  background-image: linear-gradient(
+    135deg,
+    var(--button-surface-start),
+    var(--button-surface-end)
+  );
+  transition: box-shadow calc(300ms / clamp(0.25, var(--button-motion-speed), 3)) ease, clip-path calc(250ms / clamp(0.25, var(--button-motion-speed), 3)) ease,
+    background-image calc(250ms / clamp(0.25, var(--button-motion-speed), 3)) ease, transform calc(250ms / clamp(0.25, var(--button-motion-speed), 3)) ease;
+  will-change: box-shadow, clip-path, background-image, transform;
+  overflow: clip;
+  /* 初始裁剪沿胶囊外缘展开；悬停时从四边向内收缩。 */
+  clip-path: inset(0 0 0 0 round 999vw);
+  /* 七层内阴影：悬停前后保持相同的层数、顺序和 inset 类型，便于逐层过渡。 */
+  box-shadow:
+    0 0 0 0 inset rgba(var(--button-shadow-rgb), calc(0.1 * var(--button-shadow-strength))),
+    -0.05em -0.05em 0.05em 0 inset rgba(var(--button-shadow-rgb), calc(0.25 * var(--button-shadow-strength))),
+    0 0 0 0 inset rgba(var(--button-shadow-rgb), calc(0.1 * var(--button-shadow-strength))),
+    0 0 0.05em 0.2em inset rgba(var(--button-highlight-rgb), calc(0.25 * var(--button-highlight-strength))),
+    0.025em 0.05em 0.1em 0 inset rgba(var(--button-highlight-rgb), calc(1 * var(--button-highlight-strength))),
+    0.12em 0.12em 0.12em inset rgba(var(--button-highlight-rgb), calc(0.25 * var(--button-highlight-strength))),
+    -0.075em -0.25em 0.25em 0.1em inset rgba(var(--button-shadow-rgb), calc(0.25 * var(--button-shadow-strength)));
+}
+
+/* 悬停时四边各向内裁剪 1～2px，同时调整内阴影，露出深色底座。 */
+.tactile-button:hover .button-inner {
+  clip-path: inset(
+    clamp(1px, 0.0625em, 2px) clamp(1px, 0.0625em, 2px)
+    clamp(1px, 0.0625em, 2px) clamp(1px, 0.0625em, 2px) round 999vw
+  );
+
+  box-shadow:
+    0.1em 0.15em 0.05em 0 inset rgba(var(--button-shadow-rgb), calc(0.75 * var(--button-shadow-strength))),
+    -0.025em -0.03em 0.05em 0.025em inset rgba(var(--button-shadow-rgb), calc(0.5 * var(--button-shadow-strength))),
+    0.25em 0.25em 0.2em 0 inset rgba(var(--button-shadow-rgb), calc(0.5 * var(--button-shadow-strength))),
+    0 0 0.05em 0.5em inset rgba(var(--button-highlight-rgb), calc(0.15 * var(--button-highlight-strength))),
+    0 0 0 0 inset rgba(var(--button-highlight-rgb), calc(1 * var(--button-highlight-strength))),
+    0.12em 0.12em 0.12em inset rgba(var(--button-highlight-rgb), calc(0.25 * var(--button-highlight-strength))),
+    -0.075em -0.12em 0.2em 0.1em inset rgba(var(--button-shadow-rgb), calc(0.25 * var(--button-shadow-strength)));
+}
+
+/* 文字层：居中显示多行内容，并将渐变背景裁剪成文字形状。 */
+.tactile-button .button-inner span {
+  white-space: pre-wrap;
+  text-align: center;
+  position: relative;
+  z-index: 4;
+  font-family: "Inter", sans-serif;
+  letter-spacing: -0.05em;
+  font-weight: 500;
+  color: rgba(0, 0, 0, 0);
+  background-image: linear-gradient(
+    135deg,
+    var(--button-text-start),
+    var(--button-text-end)
+  );
+  -webkit-background-clip: text;
+  background-clip: text;
+  transition: transform calc(250ms / clamp(0.25, var(--button-motion-speed), 3)) ease;
+  display: block;
+  will-change: transform;
+  text-shadow: rgba(0, 0, 0, 0.1) 0 0 0.1em;
+  -webkit-user-select: none;
+  -moz-user-select: none;
+  -ms-user-select: none;
+  user-select: none;
+}
+
+/* 悬停时缩放文字，表面层继续由内阴影和裁剪表现下沉。 */
+.tactile-button:hover .button-inner span {
+  transform: scale(clamp(0.8, var(--button-hover-text-scale), 1.05));
+}
+
+/* 激活期间缩放整个表面层，默认倍率为 0.93。 */
+.tactile-button:active .button-inner {
+  transform: scale(clamp(0.8, var(--button-press-scale), 1.05));
+}
+
+/* 显示键盘操作所需的焦点轮廓，便于定位当前按钮。 */
+.tactile-button:focus-visible {
+  outline: 3px solid #23785c;
+  outline-offset: 0.2em;
+}
+
+/* 系统启用“减少动态效果”时，状态样式立即切换，关闭过渡动画。 */
+@media (prefers-reduced-motion: reduce) {
+  .tactile-button .button-outer,
+  .tactile-button .button-inner,
+  .tactile-button .button-inner span {
+    transition: none;
+  }
+}
+
+/* ───────────── 扩展（本项目新增，参考实现中没有） ───────────── */
+
+/*
+ * 图标：文字层的字色为透明（用于渐变裁剪），而 lucide 图标描边使用 currentColor，
+ * 会随之变得不可见，因此显式赋予文字渐变的结束色。
+ * 带图标时文字层改为横向排列，图标与文字仍处于同一文字层，悬停缩放只发生一次。
+ */
+.tactile-button .button-inner span.button-text--with-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4em;
+}
+
+.tactile-button .button-inner span svg {
+  flex-shrink: 0;
+  color: var(--button-text-end);
+}
+
+/* 禁用：参考实现无此状态。屏蔽指针以免出现悬停下沉/按下反馈，并降低不透明度。 */
+.tactile-button:disabled {
+  pointer-events: none;
+  opacity: 0.5;
+}
+
+/*
+ * 流体玻璃（liquidGlass 属性开启）
+ * - 透镜：由 TactileButton 在文字层（.button-inner 内的 span）上挂载 SVG 置换滤镜，
+ *   表面、内阴影与下沉/按下效果不受影响；悬停/按下时由 JS 加深曲率。
+ * - 高光：下方 ::before 层，位于表面渐变之上、文字层（z-index: 4）之下。
+ */
+.tactile-button .tactile-button__lens-defs {
+  position: absolute;
+  width: 0;
+  height: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.tactile-button--glass .button-inner::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  border-radius: inherit;
+  pointer-events: none;
+  background:
+    /* 顶部弧形反光 */ radial-gradient(
+      90% 65% at 50% 0%,
+      rgba(255, 255, 255, 0.75) 0%,
+      rgba(255, 255, 255, 0.2) 45%,
+      rgba(255, 255, 255, 0) 72%
+    ),
+    /* 底部焦散回光 */ radial-gradient(
+      70% 55% at 50% 118%,
+      rgba(255, 255, 255, 0.4) 0%,
+      rgba(255, 255, 255, 0) 70%
+    );
+  transition: opacity calc(250ms / clamp(0.25, var(--button-motion-speed), 3)) ease;
+}
+
+/* 表面下沉时反光减弱，配合内阴影加深 */
+.tactile-button--glass:hover .button-inner::before {
+  opacity: 0.55;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tactile-button--glass .button-inner::before {
+    transition: none;
+  }
+}
+
+/*
+ * 全透明玻璃主题（theme="clear"）：表面几乎无填充、无底座色，
+ * 仅靠内缘亮边、高光与柔和投影勾勒出玻璃轮廓，背后内容完整透出。
+ */
+.tactile-button--theme-clear {
+  --button-surface-start: rgba(255, 255, 255, 0.16);
+  --button-surface-end: rgba(255, 255, 255, 0.02);
+  --button-text-start: #334155;
+  --button-text-end: #64748b;
+  --button-base-color: rgba(255, 255, 255, 0);
+  --button-rim-opacity: 0.12;
+  --button-shadow-rgb: 71, 85, 105;
+  --button-shadow-strength: 0.3;
+  --button-highlight-rgb: 255, 255, 255;
+  --button-highlight-strength: 1;
+}
+
+html.dark .tactile-button--theme-clear {
+  --button-surface-start: rgba(255, 255, 255, 0.08);
+  --button-surface-end: rgba(255, 255, 255, 0);
+  --button-text-start: #f1f5f9;
+  --button-text-end: #cbd5e1;
+  --button-rim-opacity: 0.25;
+  --button-shadow-rgb: 0, 0, 0;
+  --button-shadow-strength: 0.6;
+  --button-highlight-strength: 0.4;
+}
+
+html.dark .tactile-button--theme-clear.tactile-button--glass .button-inner::before {
+  opacity: 0.35;
+}
+
+html.dark .tactile-button--theme-clear.tactile-button--glass:hover .button-inner::before {
+  opacity: 0.2;
+}

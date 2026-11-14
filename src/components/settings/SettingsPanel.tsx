@@ -1,12 +1,6 @@
 import React from "react";
-import {
-  RefreshCw,
-  Moon,
-  Sun,
-  Laptop,
-} from "lucide-react";
+import { RefreshCw } from "lucide-react";
 import { useSettings } from "../../lib/useSettings";
-import { useTheme } from "../theme-provider";
 import { isTauri } from "../../lib/api";
 import type { MainNav } from "../../types";
 import { cn } from "../../lib/utils";
@@ -40,7 +34,6 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
   className,
 }) => {
   const { settings, updateSetting, loadingAutoStart } = useSettings();
-  const { theme, setTheme } = useTheme();
 
   return (
     <div className={cn("space-y-6 select-none max-w-3xl", className)}>
@@ -126,61 +119,6 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
                 checked={settings.enableAurora}
                 onCheckedChange={(checked) => void updateSetting("enableAurora", checked)}
               />
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* 外观与主题 */}
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-xs uppercase tracking-wider text-slate-400">
-              界面外观主题
-            </CardTitle>
-          </CardHeader>
-
-          <CardContent className="pt-0">
-            <div className="grid grid-cols-3 gap-2.5">
-              <button
-                type="button"
-                onClick={() => setTheme("light")}
-                className={cn(
-                  "p-3 rounded-xl border text-center transition-all cursor-pointer flex flex-col items-center gap-1.5",
-                  theme === "light"
-                    ? "border-blue-500 bg-blue-50/70 text-blue-900 dark:bg-blue-500/15 dark:text-blue-200 font-semibold shadow-2xs"
-                    : "border-slate-200 dark:border-white/10 hover:bg-slate-50 dark:hover:bg-white/5 text-slate-700 dark:text-gray-300",
-                )}
-              >
-                <Sun size={18} className="text-amber-500" />
-                <span className="text-xs">明亮浅色</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setTheme("dark")}
-                className={cn(
-                  "p-3 rounded-xl border text-center transition-all cursor-pointer flex flex-col items-center gap-1.5",
-                  theme === "dark"
-                    ? "border-blue-500 bg-blue-50/70 text-blue-900 dark:bg-blue-500/15 dark:text-blue-200 font-semibold shadow-2xs"
-                    : "border-slate-200 dark:border-white/10 hover:bg-slate-50 dark:hover:bg-white/5 text-slate-700 dark:text-gray-300",
-                )}
-              >
-                <Moon size={18} className="text-blue-400" />
-                <span className="text-xs">沉浸深色</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setTheme("system")}
-                className={cn(
-                  "p-3 rounded-xl border text-center transition-all cursor-pointer flex flex-col items-center gap-1.5",
-                  theme === "system"
-                    ? "border-blue-500 bg-blue-50/70 text-blue-900 dark:bg-blue-500/15 dark:text-blue-200 font-semibold shadow-2xs"
-                    : "border-slate-200 dark:border-white/10 hover:bg-slate-50 dark:hover:bg-white/5 text-slate-700 dark:text-gray-300",
-                )}
-              >
-                <Laptop size={18} className="text-slate-400" />
-                <span className="text-xs">跟随系统</span>
-              </button>
             </div>
           </CardContent>
         </Card>

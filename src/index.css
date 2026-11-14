@@ -176,3 +176,25 @@ html.dark {
   animation: star-movement-bottom 4s linear infinite alternate;
 }
 
+/*
+ * 标题栏主题开关。PixelToggle 内部是 720×540 的场景，开关本体为
+ * 520×272 × 0.83 = 431.6×225.76，居中于 (144.2, 157.12)。
+ * 这里把容器裁成开关本体大小，只露出开关，场景其余部分（已透明）不再占位。
+ */
+.theme-toggle-canvas {
+  --theme-toggle-width: 44px;
+  position: relative;
+  display: block;
+  flex: 0 0 auto;
+  width: var(--theme-toggle-width);
+  aspect-ratio: 520 / 272;
+  overflow: hidden;
+  border-radius: calc(var(--theme-toggle-width) * 86 / 520);
+}
+
+.theme-toggle-canvas > [data-motion-surface] {
+  position: absolute !important;
+  left: calc(var(--theme-toggle-width) * -144.2 / 431.6);
+  top: calc(var(--theme-toggle-width) * -157.12 / 431.6);
+  width: calc(var(--theme-toggle-width) * 720 / 431.6) !important;
+}

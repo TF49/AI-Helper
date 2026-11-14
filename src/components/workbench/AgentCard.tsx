@@ -4,6 +4,7 @@ import { Loader2, RotateCw, Layers, Cpu } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/lib/useAuth";
 import { useBoundTokenGroup } from "@/lib/useBoundTokenGroup";
+import { TactileButton } from "@/components/ui/TactileButton";
 
 export type AgentStatusType = "installed" | "uninstalled" | "unconfigured";
 
@@ -40,6 +41,17 @@ export function maskApiKey(key?: string | null): string {
   const suffix = trimmed.slice(-4);
   return `${prefix}...${suffix}`;
 }
+
+/**
+ * 立体按压按钮尺寸：只通过参考实现定义的 CSS 变量调整。
+ * - 字号：默认紧凑排版 12px，tall 断点 13px（与原胶囊按钮一致）；阴影等 em 尺寸随之等比缩放
+ * - 使用 ! 前缀保证覆盖不受 CSS 注入顺序影响（参考默认字号为 48px）
+ * - 内边距：tall 断点使用参考默认值（1em / 1.5em）；默认紧凑排版下卡片高度有限，
+ *   纵向留白收窄为 0.5em、横向 1.25em，保证 1040×680 窗口下按钮完整可见
+ */
+const tactileSizeClass =
+  "![--button-font-size:12px] ![--button-padding-y:0.5em] ![--button-padding-x:1.25em] " +
+  "tall:![--button-font-size:13px] tall:![--button-padding-y:1em] tall:![--button-padding-x:1.5em]";
 
 interface AgentCardProps {
   agent: AgentCardItem;
@@ -243,9 +255,8 @@ export const AgentCard: React.FC<AgentCardProps> = ({
           </motion.button>
         ) : (
           <>
-            <motion.button
+            <TactileButton
               key="btn-configured"
-              type="button"
               initial={{ scale: 0.86, opacity: 0.7 }}
               animate={{ scale: 1, opacity: 1 }}
               transition={{
@@ -255,22 +266,21 @@ export const AgentCard: React.FC<AgentCardProps> = ({
                 mass: 0.6,
                 delay: index * 0.035,
               }}
-              whileHover={actionDisabled ? undefined : { scale: 1.04 }}
-              whileTap={actionDisabled ? undefined : { scale: 0.94 }}
               disabled={actionDisabled}
               onClick={(e) => {
                 e.stopPropagation();
                 onAction(agent);
               }}
-              className="px-3 py-1 tall:px-5 tall:py-2 rounded-full bg-[#18181b] hover:bg-black text-white text-xs tall:text-[13px] font-semibold shadow-sm transition-colors cursor-pointer dark:bg-white dark:hover:bg-slate-100 dark:text-black disabled:opacity-50 disabled:cursor-not-allowed"
+              className={tactileSizeClass}
+              theme="clear"
+              liquidGlass
             >
               {agent.actionLabel ?? "一键配置"}
-            </motion.button>
+            </TactileButton>
 
             {onRestart && (
-              <motion.button
+              <TactileButton
                 key="btn-restart"
-                type="button"
                 initial={{ scale: 0.86, opacity: 0.7 }}
                 animate={{ scale: 1, opacity: 1 }}
                 transition={{
@@ -280,23 +290,25 @@ export const AgentCard: React.FC<AgentCardProps> = ({
                   mass: 0.6,
                   delay: index * 0.035 + 0.03,
                 }}
-                whileHover={restartDisabled ? undefined : { scale: 1.04 }}
-                whileTap={restartDisabled ? undefined : { scale: 0.94 }}
                 disabled={restartDisabled}
                 onClick={(e) => {
                   e.stopPropagation();
                   onRestart(agent);
                 }}
                 title={`仅重启 ${agent.name}`}
-                className="inline-flex items-center gap-1.5 px-2.5 py-1 tall:px-4 tall:py-2 rounded-full bg-white hover:bg-slate-50 border border-slate-200/90 dark:bg-white/10 dark:hover:bg-white/15 dark:border-white/10 text-slate-700 dark:text-slate-200 text-xs tall:text-[13px] font-semibold shadow-2xs transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                icon={
+                  restarting ? (
+                    <Loader2 size="1em" className="animate-spin" />
+                  ) : (
+                    <RotateCw size="1em" />
+                  )
+                }
+                className={tactileSizeClass}
+                theme="clear"
+                liquidGlass
               >
-                {restarting ? (
-                  <Loader2 size={12} className="animate-spin" />
-                ) : (
-                  <RotateCw size={12} />
-                )}
-                <span>一键重启</span>
-              </motion.button>
+                一键重启
+              </TactileButton>
             )}
           </>
         )}

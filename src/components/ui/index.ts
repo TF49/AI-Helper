@@ -11,3 +11,4 @@ export * from "./tabs";
 export * from "./tooltip";
 export * from "./ButtonToLoaderToSuccess";
 export * from "./CircleToSearchBar";
+export * from "./TactileButton";
