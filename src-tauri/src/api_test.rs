@@ -627,15 +627,32 @@ fn api_root(url: &str) -> &str {
     trimmed.strip_suffix("/v1").unwrap_or(trimmed)
 }
 
-fn cursor_probe_endpoint(root: &str, responses: bool) -> String {
-    if responses {
-        format!("{root}/v1/responses")
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum CursorProbeProtocol {
+    Messages,
+    Responses,
+    ChatCompletions,
+}
+
+fn detect_cursor_probe_protocol(model: &str) -> CursorProbeProtocol {
+    if crate::cursor::agent::prefers_messages(model) {
+        CursorProbeProtocol::Messages
+    } else if crate::cursor::agent::prefers_responses(model) {
+        CursorProbeProtocol::Responses
     } else {
-        format!("{root}/v1/chat/completions")
+        CursorProbeProtocol::ChatCompletions
     }
 }
 
-fn cursor_probe_body(model: &str, responses: bool) -> serde_json::Value {
+fn cursor_probe_endpoint(root: &str, protocol: CursorProbeProtocol) -> String {
+    match protocol {
+        CursorProbeProtocol::Messages => format!("{root}/v1/messages"),
+        CursorProbeProtocol::Responses => format!("{root}/v1/responses"),
+        CursorProbeProtocol::ChatCompletions => format!("{root}/v1/chat/completions"),
+    }
+}
+
+fn cursor_probe_body(model: &str, protocol: CursorProbeProtocol) -> serde_json::Value {
     const NAME: &str = "ai_helper_tool_probe";
     const DESCRIPTION: &str =
         "Verify that the upstream supports function calling. Do not access external resources.";
@@ -643,39 +660,64 @@ fn cursor_probe_body(model: &str, responses: bool) -> serde_json::Value {
     // tokens made them stop early and look like they lack tool support.
     const MAX_OUTPUT: u32 = 256;
     let parameters = json!({"type":"object","properties":{"ok":{"type":"boolean"}},"required":["ok"],"additionalProperties":false});
-    if responses {
-        json!({
-            "model": model,
-            "input": [{"role":"user","content":[{"type":"input_text","text":"调用探测函数并返回结果，不要只回复文本。"}]}],
-            "stream": false,
-            "tools": [{
-                "type": "function",
-                "name": NAME,
-                "description": DESCRIPTION,
-                "parameters": parameters,
-                "strict": false
-            }],
-            "tool_choice": {"type": "function", "name": NAME},
-            "max_output_tokens": MAX_OUTPUT
-        })
-    } else {
-        json!({
-            "model": model,
-            "max_tokens": MAX_OUTPUT,
-            "stream": false,
-            "messages": [{ "role": "user", "content": "调用探测函数并返回结果，不要只回复文本。" }],
-            "tools": [{
-                "type": "function",
-                "function": {"name": NAME, "description": DESCRIPTION, "parameters": parameters}
-            }],
-            "tool_choice": {"type": "function", "function": {"name": NAME}}
-        })
+    match protocol {
+        CursorProbeProtocol::Messages => {
+            json!({
+                "model": model,
+                "max_tokens": MAX_OUTPUT,
+                "messages": [{ "role": "user", "content": "调用探测函数并返回结果，不要只回复文本。" }],
+                "tools": [{
+                    "name": NAME,
+                    "description": DESCRIPTION,
+                    "input_schema": parameters
+                }]
+            })
+        }
+        CursorProbeProtocol::Responses => {
+            json!({
+                "model": model,
+                "input": [{"role":"user","content":[{"type":"input_text","text":"调用探测函数并返回结果，不要只回复文本。"}]}],
+                "stream": false,
+                "tools": [{
+                    "type": "function",
+                    "name": NAME,
+                    "description": DESCRIPTION,
+                    "parameters": parameters,
+                    "strict": false
+                }],
+                "tool_choice": {"type": "function", "name": NAME},
+                "max_output_tokens": MAX_OUTPUT
+            })
+        }
+        CursorProbeProtocol::ChatCompletions => {
+            json!({
+                "model": model,
+                "max_tokens": MAX_OUTPUT,
+                "stream": false,
+                "messages": [{ "role": "user", "content": "调用探测函数并返回结果，不要只回复文本。" }],
+                "tools": [{
+                    "type": "function",
+                    "function": {"name": NAME, "description": DESCRIPTION, "parameters": parameters}
+                }],
+                "tool_choice": "auto"
+            })
+        }
     }
 }
 
-fn cursor_probe_has_tool_call(value: &serde_json::Value, responses: bool) -> bool {
-    if responses {
-        value
+fn cursor_probe_has_tool_call(value: &serde_json::Value, protocol: CursorProbeProtocol) -> bool {
+    match protocol {
+        CursorProbeProtocol::Messages => value
+            .get("content")
+            .and_then(serde_json::Value::as_array)
+            .into_iter()
+            .flatten()
+            .any(|item| {
+                item.get("type").and_then(serde_json::Value::as_str) == Some("tool_use")
+                    && item.get("name").and_then(serde_json::Value::as_str)
+                        == Some("ai_helper_tool_probe")
+            }),
+        CursorProbeProtocol::Responses => value
             .get("output")
             .and_then(serde_json::Value::as_array)
             .into_iter()
@@ -684,9 +726,8 @@ fn cursor_probe_has_tool_call(value: &serde_json::Value, responses: bool) -> boo
                 item.get("type").and_then(serde_json::Value::as_str) == Some("function_call")
                     && item.get("name").and_then(serde_json::Value::as_str)
                         == Some("ai_helper_tool_probe")
-            })
-    } else {
-        value
+            }),
+        CursorProbeProtocol::ChatCompletions => value
             .pointer("/choices/0/message/tool_calls")
             .and_then(serde_json::Value::as_array)
             .into_iter()
@@ -695,7 +736,7 @@ fn cursor_probe_has_tool_call(value: &serde_json::Value, responses: bool) -> boo
                 call.pointer("/function/name")
                     .and_then(serde_json::Value::as_str)
                     == Some("ai_helper_tool_probe")
-            })
+            }),
     }
 }
 
@@ -1001,12 +1042,18 @@ pub async fn test_cursor_stream(
         return rejected;
     }
     let root = api_root(&url);
-    let mut use_responses = crate::cursor::agent::prefers_responses(&model);
-    let mut endpoint = cursor_probe_endpoint(root, use_responses);
+    let mut protocol = detect_cursor_probe_protocol(&model);
+    let mut endpoint = cursor_probe_endpoint(root, protocol);
     let masked_key = mask_api_key(&api_key);
 
+    let protocol_label = match protocol {
+        CursorProbeProtocol::Messages => "Anthropic Messages 协议",
+        CursorProbeProtocol::Responses => "OpenAI Responses 协议",
+        CursorProbeProtocol::ChatCompletions => "Cursor Connect-RPC / OpenAI 桥接协议",
+    };
+
     let _ = on_event.send(TestStreamEvent::Log {
-        text: "正在初始化测试连接 (Cursor Connect-RPC / OpenAI 桥接协议)...".to_string(),
+        text: format!("正在初始化测试连接 ({})...", protocol_label),
         level: "info".to_string(),
     });
     let _ = on_event.send(TestStreamEvent::Log {
@@ -1024,36 +1071,44 @@ pub async fn test_cursor_stream(
 
     let client = test_http_client();
     let start = Instant::now();
-    let mut send_result = client
-        .post(&endpoint)
-        .bearer_auth(&api_key)
-        .json(&cursor_probe_body(&model, use_responses))
-        .timeout(REQUEST_TIMEOUT)
-        .send()
-        .await;
-    let fallback = use_responses
-        && send_result.as_ref().ok().is_some_and(|response| {
-            matches!(
-                response.status(),
-                StatusCode::NOT_FOUND
-                    | StatusCode::METHOD_NOT_ALLOWED
-                    | StatusCode::NOT_IMPLEMENTED
-            )
-        });
+
+    let send_probe = |ep: &str, proto: CursorProbeProtocol| {
+        let mut req = client.post(ep).bearer_auth(&api_key);
+        if proto == CursorProbeProtocol::Messages {
+            req = req
+                .header("x-api-key", &api_key)
+                .header("anthropic-version", "2023-06-01");
+        }
+        req.json(&cursor_probe_body(&model, proto))
+            .timeout(REQUEST_TIMEOUT)
+    };
+
+    let mut send_result = send_probe(&endpoint, protocol).send().await;
+    let fallback = matches!(
+        protocol,
+        CursorProbeProtocol::Messages | CursorProbeProtocol::Responses
+    ) && send_result.as_ref().ok().is_some_and(|response| {
+        matches!(
+            response.status(),
+            StatusCode::NOT_FOUND | StatusCode::METHOD_NOT_ALLOWED | StatusCode::NOT_IMPLEMENTED
+        )
+    });
     if fallback {
+        let warn_msg = match protocol {
+            CursorProbeProtocol::Messages => {
+                "上游未提供 Messages 端点，按 Cursor Agent 的兼容路径改测 Chat Completions 工具调用。"
+            }
+            _ => {
+                "上游未提供 Responses 端点，按 Cursor Agent 的兼容路径改测 Chat Completions 工具调用。"
+            }
+        };
         let _ = on_event.send(TestStreamEvent::Log {
-            text: "上游未提供 Responses 端点，按 Cursor Agent 的兼容路径改测 Chat Completions 工具调用。".into(),
+            text: warn_msg.into(),
             level: "warn".into(),
         });
-        use_responses = false;
-        endpoint = cursor_probe_endpoint(root, false);
-        send_result = client
-            .post(&endpoint)
-            .bearer_auth(&api_key)
-            .json(&cursor_probe_body(&model, use_responses))
-            .timeout(REQUEST_TIMEOUT)
-            .send()
-            .await;
+        protocol = CursorProbeProtocol::ChatCompletions;
+        endpoint = cursor_probe_endpoint(root, protocol);
+        send_result = send_probe(&endpoint, protocol).send().await;
     }
     let latency_ms = start.elapsed().as_millis() as u64;
 
@@ -1095,8 +1150,11 @@ pub async fn test_cursor_stream(
                 };
                 let parsed: serde_json::Value =
                     serde_json::from_str(&body_text).unwrap_or_default();
-                let tool_call = cursor_probe_has_tool_call(&parsed, use_responses);
-                let reply_preview = extract_response_text(&body_text);
+                let tool_call = cursor_probe_has_tool_call(&parsed, protocol);
+                let reply_preview = match protocol {
+                    CursorProbeProtocol::Messages => extract_claude_response_text(&body_text),
+                    _ => extract_response_text(&body_text),
+                };
 
                 if let Some(ref reply) = reply_preview {
                     let _ = on_event.send(TestStreamEvent::Log {
@@ -1113,7 +1171,7 @@ pub async fn test_cursor_stream(
                     "连接成功，且已验证工具调用能力".to_string()
                 } else {
                     let _ = on_event.send(TestStreamEvent::Log {
-                        text: "上游可连接，但没有返回被要求的工具调用；Cursor 将无法使用项目文件与 Agent 工具。请切换支持 OpenAI Function Calling 的模型或中转站。".to_string(),
+                        text: "上游可连接，但没有返回被要求的工具调用；Cursor 将无法使用项目文件与 Agent 工具。请切换支持 Function Calling / Tool Use 的模型或中转站。".to_string(),
                         level: "error".to_string(),
                     });
                     "连接成功，但未验证工具调用能力".to_string()
@@ -1156,7 +1214,11 @@ pub async fn test_cursor_stream(
                 let hint = match status {
                     StatusCode::UNAUTHORIZED => "建议: 身份认证失败，请检查 API Key 是否正确填写或是否已被吊销。",
                     StatusCode::FORBIDDEN => "建议: 访问被拒绝，可能当前账号没有权限访问该模型，或 IP 属地受限。",
-                    StatusCode::NOT_FOUND => "建议: 端点 404 未找到，请确认 Base URL 填写是否正确（Cursor Bridge 默认请求 /v1/chat/completions）。",
+                    StatusCode::NOT_FOUND => match protocol {
+                        CursorProbeProtocol::Messages => "建议: 端点 404 未找到，请确认 Base URL 填写是否正确（Claude 模型使用 /v1/messages 端点）。",
+                        CursorProbeProtocol::Responses => "建议: 端点 404 未找到，请确认 Base URL 填写是否正确（OpenAI 模型使用 /v1/responses 端点）。",
+                        CursorProbeProtocol::ChatCompletions => "建议: 端点 404 未找到，请确认 Base URL 填写是否正确（默认请求 /v1/chat/completions）。",
+                    },
                     StatusCode::TOO_MANY_REQUESTS => "建议: 上游返回 429 请求过多，可能是触发了频控限制或余额不足。",
                     _ if status.is_server_error() => "建议: 上游服务器内部错误 (5xx)，请稍后重试或切换备用节点。",
                     _ => "建议: 请检查 Base URL、API Key 与 Model 配置。",
@@ -1218,11 +1280,20 @@ mod tests {
 
     #[test]
     fn cursor_probe_uses_the_runtime_protocol_and_forces_the_probe_function() {
-        assert!(cursor_probe_endpoint("https://example.test", true).ends_with("/v1/responses"));
         assert!(
-            cursor_probe_endpoint("https://example.test", false).ends_with("/v1/chat/completions")
+            cursor_probe_endpoint("https://example.test", CursorProbeProtocol::Responses)
+                .ends_with("/v1/responses")
         );
-        let responses = cursor_probe_body("test-model", true);
+        assert!(cursor_probe_endpoint(
+            "https://example.test",
+            CursorProbeProtocol::ChatCompletions
+        )
+        .ends_with("/v1/chat/completions"));
+        assert!(
+            cursor_probe_endpoint("https://example.test", CursorProbeProtocol::Messages)
+                .ends_with("/v1/messages")
+        );
+        let responses = cursor_probe_body("test-model", CursorProbeProtocol::Responses);
         assert_eq!(
             responses["tool_choice"],
             json!({"type":"function","name":"ai_helper_tool_probe"})
@@ -1230,19 +1301,26 @@ mod tests {
         assert!(responses["max_output_tokens"].as_u64().unwrap() >= 256);
         assert_eq!(responses["tools"][0]["name"], "ai_helper_tool_probe");
 
-        let chat = cursor_probe_body("test-model", false);
-        assert_eq!(
-            chat["tool_choice"],
-            json!({"type":"function","function":{"name":"ai_helper_tool_probe"}})
-        );
+        let chat = cursor_probe_body("test-model", CursorProbeProtocol::ChatCompletions);
+        assert_eq!(chat["tool_choice"], json!("auto"));
         assert!(chat["max_tokens"].as_u64().unwrap() >= 256);
         let function = chat["tools"][0]["function"].as_object().unwrap();
         assert_eq!(function["name"], "ai_helper_tool_probe");
         // Chat function objects carry no Responses-only fields.
         assert!(!function.contains_key("type"));
         assert!(!function.contains_key("strict"));
+
+        let messages = cursor_probe_body("claude-sonnet-5-5", CursorProbeProtocol::Messages);
+        assert!(messages.get("tool_choice").is_none());
+        assert_eq!(messages["tools"][0]["name"], "ai_helper_tool_probe");
+        assert_eq!(messages["max_tokens"], 256);
+
         assert!(crate::cursor::agent::prefers_responses("gpt-5.6-sol"));
         assert!(!crate::cursor::agent::prefers_responses("glm-5.3"));
+        assert_eq!(
+            detect_cursor_probe_protocol("claude-sonnet-5-5"),
+            CursorProbeProtocol::Messages
+        );
     }
 
     #[test]
@@ -1253,9 +1331,32 @@ mod tests {
         let responses = json!({"output":[{
             "type":"function_call","name":"ai_helper_tool_probe"
         }]});
-        assert!(cursor_probe_has_tool_call(&chat, false));
-        assert!(cursor_probe_has_tool_call(&responses, true));
-        assert!(!cursor_probe_has_tool_call(&chat, true));
-        assert!(!cursor_probe_has_tool_call(&responses, false));
+        let messages = json!({"content":[{
+            "type":"tool_use","name":"ai_helper_tool_probe","input":{}
+        }]});
+        assert!(cursor_probe_has_tool_call(
+            &chat,
+            CursorProbeProtocol::ChatCompletions
+        ));
+        assert!(cursor_probe_has_tool_call(
+            &responses,
+            CursorProbeProtocol::Responses
+        ));
+        assert!(cursor_probe_has_tool_call(
+            &messages,
+            CursorProbeProtocol::Messages
+        ));
+        assert!(!cursor_probe_has_tool_call(
+            &chat,
+            CursorProbeProtocol::Responses
+        ));
+        assert!(!cursor_probe_has_tool_call(
+            &responses,
+            CursorProbeProtocol::ChatCompletions
+        ));
+        assert!(!cursor_probe_has_tool_call(
+            &messages,
+            CursorProbeProtocol::ChatCompletions
+        ));
     }
 }
