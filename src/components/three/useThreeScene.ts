@@ -44,8 +44,16 @@ export function useThreeScene(
       return undefined;
     }
 
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+    const dprOf = () => Math.min(window.devicePixelRatio || 1, 2);
+    renderer.setPixelRatio(dprOf());
     renderer.outputColorSpace = THREE.SRGBColorSpace;
+    // 显式锁定画布 CSS 尺寸 = 宿主尺寸：setSize(..., false) 只写入绘图缓冲 (width*DPR)，
+    // 若不设样式，画布会按缓冲像素作为 CSS 尺寸显示，在 Retina / Windows 缩放 125%+ 的屏幕上
+    // 被放大 DPR 倍并从左上角溢出宿主，导致 3D 模型错位压住右侧内容。
+    const canvasStyle = renderer.domElement.style;
+    canvasStyle.display = "block";
+    canvasStyle.width = "100%";
+    canvasStyle.height = "100%";
     host.appendChild(renderer.domElement);
 
     const scene = new THREE.Scene();
@@ -65,6 +73,9 @@ export function useThreeScene(
     const resize = () => {
       const { width, height } = host.getBoundingClientRect();
       if (!width || !height) return;
+      // 窗口在不同 DPR 显示器间拖动时同步像素比，保持清晰度
+      const dpr = dprOf();
+      if (renderer.getPixelRatio() !== dpr) renderer.setPixelRatio(dpr);
       renderer.setSize(width, height, false);
       camera.aspect = width / height;
       camera.updateProjectionMatrix();

@@ -41,7 +41,7 @@ dependencies = [
 
 [[package]]
 name = "ai-helper"
-version = "1.0.84"
+version = "1.0.85"
 dependencies = [
  "anyhow",
  "axum",
