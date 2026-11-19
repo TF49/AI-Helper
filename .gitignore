@@ -33,3 +33,4 @@ copilot-api
 updater.key*
 .pnpm-store/
 .tooling/
+server/docker-compose.override.yml
