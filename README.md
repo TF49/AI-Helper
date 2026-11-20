@@ -20,6 +20,8 @@
 
 <p align="center">
   <a href="https://helper.bob-api.com">🌐 官方网站</a> ·
+  <a href="https://helper.bob-api.com/guides/">📖 使用教程</a> ·
+  <a href="https://helper.bob-api.com/en/">🇬🇧 English</a> ·
   <a href="https://github.com/TF49/AI-Helper/releases/latest">📥 下载最新版</a> ·
   <a href="./docs/releases/v1.0.76.md">📋 v1.0.76 更新说明</a> ·
   <a href="https://github.com/TF49/AI-Helper/issues">🐞 问题反馈</a>

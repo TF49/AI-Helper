@@ -7,6 +7,8 @@
  * 1. website/index.html 中的所有版本文字、资源版本后缀(?v=...)、下载链接、校验文件名、防缓存meta
  * 2. website/assets/script.js 中的 CURRENT_VERSION 常量
  * 3. website/version.json 中的版本号、发布日期与各分流下载地址
+ * 4. GEO 页面（llms.txt、en/、guides/、404.html）中的版本号、下载链接与「最后更新」日期
+ * 5. website/sitemap.xml 中的 lastmod（日期按北京时间计算）
  * 
  * 用法：
  *   node scripts/sync-website.js [新版本号，如 1.0.52，不传则自动读取 package.json]
@@ -30,12 +32,46 @@ if (!targetVersion) {
 }
 
 const tag = `v${targetVersion}`;
-const today = new Date().toISOString().split('T')[0];
+// 以北京时间（发布者所在时区）计算日期，避免 UTC 跨日导致 lastmod / releaseDate 偏差一天
+const today = new Intl.DateTimeFormat('en-CA', {
+  timeZone: 'Asia/Shanghai',
+  year: 'numeric',
+  month: '2-digit',
+  day: '2-digit',
+}).format(new Date());
 const repoName = 'TF49/AI-Helper';
 const mirrorBase = 'https://helper.bob-api.com/downloads';
 const ghfastPrefix = 'https://ghfast.top/';
 
 console.log(`[sync-website] 正在全量同步官网版本信息 -> ${targetVersion} (${tag})`);
+
+/** 同步 JSON-LD dateModified 与 <time class="last-updated"> 的日期 */
+function syncGeoDates(text) {
+  return text
+    .replace(/"dateModified":\s*"[^"]*"/g, `"dateModified": "${today}"`)
+    .replace(
+      /(<time\s+class="last-updated"\s+datetime=")[^"]*(">)[^<]*(<\/time>)/g,
+      `$1${today}$2${today}$3`
+    );
+}
+
+/** 同步教程页 / 英文页 / 404 页 / llms.txt 中的版本号、下载链接、资源版本后缀与日期 */
+function syncSecondaryPage(text) {
+  return syncGeoDates(
+    text
+      .replace(
+        /(<[a-zA-Z0-9]+\b[^>]*class="[^"]*\bcurrent-version-tag\b[^"]*"[^>]*>)\s*v?[0-9.]+\s*(<\/[a-zA-Z0-9]+>)/g,
+        `$1${tag}$2`
+      )
+      .replace(/AI-Helper-v\d+\.\d+\.\d+/g, `AI-Helper-${tag}`)
+      .replace(/releases\/download\/v\d+\.\d+\.\d+/g, `releases/download/${tag}`)
+      .replace(/releases\/tag\/v\d+\.\d+\.\d+/g, `releases/tag/${tag}`)
+      .replace(/"softwareVersion":\s*"[^"]*"/g, `"softwareVersion": "${targetVersion}"`)
+      .replace(/assets\/docs\.css\?v=[^"'\s>]+/g, `assets/docs.css?v=${targetVersion}`)
+      // llms.txt 中的纯文本版本行
+      .replace(/^- Current version: v[0-9.]+ \(last updated: [0-9-]+\)$/m, `- Current version: ${tag} (last updated: ${today})`)
+  );
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 1. 同步 website/index.html
@@ -81,6 +117,9 @@ if (fs.existsSync(indexHtmlPath)) {
 
   // 1.8 结构化数据 Schema.org 软件版本号
   html = html.replace(/"softwareVersion":\s*"[^"]*"/g, `"softwareVersion": "${targetVersion}"`);
+
+  // 1.9 GEO：结构化数据 dateModified 与页面可见的「最后更新」日期
+  html = syncGeoDates(html);
 
   fs.writeFileSync(indexHtmlPath, html, 'utf8');
   console.log(`[sync-website] ✓ website/index.html 已同步 (版本: ${tag})`);
@@ -189,6 +228,29 @@ if (fs.existsSync(downloadConfigPath)) {
   } catch (err) {
     console.warn(`[sync-website] 同步 download-config.json 警告:`, err.message);
   }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 4.1 同步 GEO 相关页面：llms.txt、英文页、教程页、404 页
+// ─────────────────────────────────────────────────────────────────────────────
+const websiteDir = path.join(repoRoot, 'website');
+const geoFiles = [
+  path.join(websiteDir, 'llms.txt'),
+  path.join(websiteDir, '404.html'),
+  path.join(websiteDir, 'en', 'index.html'),
+];
+const guidesDir = path.join(websiteDir, 'guides');
+if (fs.existsSync(guidesDir)) {
+  for (const name of fs.readdirSync(guidesDir)) {
+    if (name.endsWith('.html')) geoFiles.push(path.join(guidesDir, name));
+  }
+}
+for (const file of geoFiles) {
+  if (!fs.existsSync(file)) continue;
+  const before = fs.readFileSync(file, 'utf8');
+  const after = syncSecondaryPage(before);
+  if (after !== before) fs.writeFileSync(file, after, 'utf8');
+  console.log(`[sync-website] ✓ ${path.relative(repoRoot, file).replace(/\\/g, '/')} 已同步`);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

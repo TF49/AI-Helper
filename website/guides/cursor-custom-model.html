@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>如何给 Cursor 配置 glm-5.3 等第三方模型（本地 Bridge 方案）| AI Helper 教程</title>
+  <meta name="description"
+    content="Cursor 只改 OpenAI Base URL 无法完整接入第三方模型。本文介绍用 AI Helper 的本地 Bridge（默认 127.0.0.1:8969）让 Cursor 使用 glm-5.3 或任意 OpenAI 兼容模型的步骤，以及如何还原。">
+  <link rel="canonical" href="https://helper.bob-api.com/guides/cursor-custom-model.html">
+  <meta name="robots" content="index, follow, max-snippet:-1">
+  <meta property="og:type" content="article">
+  <meta property="og:site_name" content="AI Helper">
+  <meta property="og:title" content="如何给 Cursor 配置 glm-5.3 等第三方模型">
+  <meta property="og:description" content="用 AI Helper 本地 Bridge 让 Cursor 使用任意 OpenAI 兼容模型。">
+  <meta property="og:url" content="https://helper.bob-api.com/guides/cursor-custom-model.html">
+  <meta property="og:image" content="https://helper.bob-api.com/assets/app-preview.png">
+  <link rel="icon" type="image/x-icon" href="/assets/favicon.ico">
+  <link rel="stylesheet" href="/assets/docs.css?v=1.0.86">
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@graph": [
+      {
+        "@type": "HowTo",
+        "name": "如何给 Cursor 配置 glm-5.3 等第三方模型",
+        "description": "使用 AI Helper 的本地 Bridge，让 Cursor 通过 OpenAI 兼容接口使用第三方模型。",
+        "inLanguage": "zh-CN",
+        "datePublished": "2026-11-20",
+        "dateModified": "2026-11-20",
+        "author": { "@id": "https://helper.bob-api.com/#organization" },
+        "tool": [{ "@type": "HowToTool", "name": "AI Helper" }, { "@type": "HowToTool", "name": "Cursor" }],
+        "step": [
+          { "@type": "HowToStep", "name": "安装 AI Helper", "text": "从 helper.bob-api.com 或 GitHub Releases 下载并安装 AI Helper。" },
+          { "@type": "HowToStep", "name": "填写 API 地址、Key 与模型", "text": "在 Cursor 面板中填写 OpenAI 兼容的 API 地址、API Key，并选择模型，例如 glm-5.3。" },
+          { "@type": "HowToStep", "name": "保存并应用", "text": "点击「保存并应用 Cursor 配置」，AI Helper 会启动本地 Bridge（默认 127.0.0.1:8969）并修补 Cursor 客户端。" },
+          { "@type": "HowToStep", "name": "重启 Cursor", "text": "点击「重启 Cursor」，在 Cursor 的模型列表中选择刚配置的模型。" }
+        ]
+      },
+      {
+        "@type": "BreadcrumbList",
+        "itemListElement": [
+          { "@type": "ListItem", "position": 1, "name": "AI Helper", "item": "https://helper.bob-api.com/" },
+          { "@type": "ListItem", "position": 2, "name": "教程", "item": "https://helper.bob-api.com/guides/" },
+          { "@type": "ListItem", "position": 3, "name": "Cursor 配置第三方模型", "item": "https://helper.bob-api.com/guides/cursor-custom-model.html" }
+        ]
+      }
+    ]
+  }
+  </script>
+</head>
+
+<body>
+  <header class="doc-nav">
+    <div class="doc-nav-inner">
+      <a class="doc-brand" href="/"><img src="/assets/logo.png" alt="AI Helper Logo" width="28" height="28">AI Helper</a>
+      <nav class="doc-nav-links" aria-label="主导航">
+        <a href="/guides/">教程</a><a href="/#downloads">下载</a><a class="hide-sm" href="https://github.com/TF49/AI-Helper">GitHub</a>
+      </nav>
+    </div>
+  </header>
+
+  <main class="doc-main">
+    <p class="breadcrumb"><a href="/">AI Helper</a> / <a href="/guides/">教程</a> / Cursor 配置第三方模型</p>
+    <article>
+      <h1>如何给 Cursor 配置 glm-5.3 等第三方模型</h1>
+      <p class="doc-meta">适用于 AI Helper <span class="current-version-tag">v1.0.86</span> · Windows 与 macOS · 最后更新 <time class="last-updated" datetime="2026-11-20">2026-11-20</time></p>
+
+      <div class="tldr">
+        <p><strong>简短回答：</strong>Cursor 的 Agent 和 Composer 使用 Connect-RPC / HTTP2 和内部消息格式通信，只在设置里改 OpenAI Base URL 无法完整接入第三方模型。AI Helper 会在本机运行一个 Bridge（默认监听 <code>127.0.0.1:8969</code>），把 Cursor 的请求转换成 OpenAI 兼容接口请求，再转发到你指定的 API 地址，因此可以让 Cursor 使用 glm-5.3 或任意 OpenAI 兼容模型。</p>
+      </div>
+
+      <h2>准备工作</h2>
+      <ul>
+        <li>已安装 Cursor，并至少启动过一次。</li>
+        <li>一个 OpenAI 兼容的 API 地址和 API Key（例如以 <code>/v1</code> 结尾的地址）。</li>
+        <li>已安装 AI Helper（<a href="/#downloads">下载地址</a>，Windows 10/11 或 macOS 11+）。</li>
+      </ul>
+
+      <h2>配置步骤</h2>
+      <ol>
+        <li><strong>打开 Cursor 面板。</strong>启动 AI Helper，首页会自动检测 Cursor 的安装路径；进入 Cursor 配置面板。</li>
+        <li><strong>填写 API 地址和 API Key。</strong>可以选择预置节点，也可以手动填写外部 API 地址。对于不在白名单内的地址，AI Helper 会显示目标 Origin 并要求确认，默认要求 HTTPS。</li>
+        <li><strong>选择模型。</strong>AI Helper 会从该地址读取模型列表，选择 <code>glm-5.3</code> 或其他模型；也可以手动输入模型名。</li>
+        <li><strong>保存并应用。</strong>点击「保存并应用 Cursor 配置」。AI Helper 会把配置写入 <code>~/.ai-helper/cursor_config.json</code>，启动本地 Bridge，并修补 Cursor 客户端，使其请求发往 Bridge。</li>
+        <li><strong>重启 Cursor。</strong>点击「重启 Cursor」，然后在 Cursor 的模型选择器中选择刚才配置的模型。</li>
+      </ol>
+
+      <div class="note">如果你使用 Bob API 账号登录 AI Helper 并执行「一键配置」，Cursor 会自动使用「国产Token计划」分组的 API Key，推荐模型为 <code>glm-5.3</code>；账号下没有该分组的 Key 时会自动创建。</div>
+
+      <h2>Bridge 支持哪些能力</h2>
+      <ul>
+        <li>Cursor 请求与 OpenAI 兼容请求之间的双向转换，支持流式响应。</li>
+        <li>文本、思考内容（reasoning）和图片输入。</li>
+        <li>向 Cursor 提供可用模型列表与默认模型。</li>
+        <li>让 Cursor Agent 在当前工作区读取、搜索文件；写入、删除等操作需要先在面板中授权该工作区（授权记录在 <code>~/.ai-helper/agent_workspaces.json</code>）。</li>
+      </ul>
+      <p>关闭 AI Helper 主窗口后，它会留在系统托盘中，Bridge 继续运行；从托盘彻底退出后 Bridge 才会停止，此时 Cursor 中的第三方模型将不可用。</p>
+
+      <h2>安全措施</h2>
+      <p>Bridge 只监听本机回环地址。每条连接的第一个请求会根据对端端口找到发起连接的进程，只接受与 AI Helper 属于同一系统用户的进程，无法确认时一律拒绝；同时校验 Host、Origin 和 Content-Type。</p>
+
+      <h2>如何还原为 Cursor 官方连接</h2>
+      <p>在 Cursor 面板中点击「恢复官方连接」，或在 AI Helper 设置页使用一键恢复：Bridge 会停止，Cursor 客户端补丁会被还原。</p>
+
+      <h2>常见问题</h2>
+      <h3>端口 8969 被占用怎么办？</h3>
+      <p>在 Cursor 面板的「Bridge 网关端口」中改成其他空闲端口，保存后重新应用即可。</p>
+      <h3>Cursor 升级后第三方模型失效了？</h3>
+      <p>Cursor 更新可能覆盖被修补的文件。重新打开 AI Helper 的 Cursor 面板，再执行一次「保存并应用 Cursor 配置」。</p>
+
+      <p><a class="cta" href="/#downloads">下载 AI Helper</a></p>
+      <p>相关教程：<a href="/guides/claude-code-custom-api.html">Claude Code 切换 API 地址</a> · <a href="/guides/codex-cli-custom-api.html">Codex CLI 配置自定义 API</a></p>
+    </article>
+  </main>
+
+  <footer class="doc-footer">
+    <div class="doc-footer-inner">
+      <span><a href="/">首页</a><a href="/guides/">教程</a><a href="/en/">English</a><a href="https://github.com/TF49/AI-Helper">GitHub</a></span>
+      <span>© 2026 AI Helper · MIT License</span>
+    </div>
+  </footer>
+</body>
+
+</html>

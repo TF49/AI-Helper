@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AI Helper: Configure API Endpoints and Models for Cursor, Claude Code and Codex | Open-Source Desktop App</title>
+  <meta name="description"
+    content="AI Helper is a free, MIT-licensed desktop app for Windows and macOS that configures the API endpoint, API key and model for Cursor, Claude Code, OpenAI Codex CLI, ChatGPT Desktop, WorkBuddy and Accio Work from one place.">
+  <link rel="canonical" href="https://helper.bob-api.com/en/">
+  <link rel="alternate" hreflang="zh-CN" href="https://helper.bob-api.com/">
+  <link rel="alternate" hreflang="en" href="https://helper.bob-api.com/en/">
+  <link rel="alternate" hreflang="x-default" href="https://helper.bob-api.com/">
+  <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1">
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="AI Helper">
+  <meta property="og:locale" content="en_US">
+  <meta property="og:locale:alternate" content="zh_CN">
+  <meta property="og:title" content="AI Helper: Configure Cursor, Claude Code and Codex in one place">
+  <meta property="og:description" content="Free, open-source (MIT) desktop app for Windows and macOS that sets the API endpoint, key and model for six AI coding clients.">
+  <meta property="og:url" content="https://helper.bob-api.com/en/">
+  <meta property="og:image" content="https://helper.bob-api.com/assets/app-preview.png">
+  <meta name="twitter:card" content="summary_large_image">
+  <link rel="icon" type="image/x-icon" href="/assets/favicon.ico">
+  <link rel="stylesheet" href="/assets/docs.css?v=1.0.86">
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@graph": [
+      {
+        "@type": "WebPage",
+        "@id": "https://helper.bob-api.com/en/#webpage",
+        "url": "https://helper.bob-api.com/en/",
+        "name": "AI Helper: Configure API Endpoints and Models for Cursor, Claude Code and Codex",
+        "inLanguage": "en",
+        "dateModified": "2026-11-20",
+        "isPartOf": { "@id": "https://helper.bob-api.com/#website" },
+        "about": { "@id": "https://helper.bob-api.com/#software" }
+      },
+      {
+        "@type": "SoftwareApplication",
+        "@id": "https://helper.bob-api.com/#software",
+        "name": "AI Helper",
+        "description": "Free, MIT-licensed desktop app for Windows and macOS that configures the API endpoint, API key and model for Cursor, Claude Code, OpenAI Codex CLI, ChatGPT Desktop, WorkBuddy and Accio Work, with streaming connection tests and a local protocol bridge for Cursor and Accio Work.",
+        "applicationCategory": "DeveloperApplication",
+        "operatingSystem": "Windows 10, Windows 11, macOS 11+",
+        "softwareVersion": "1.0.86",
+        "license": "https://opensource.org/licenses/MIT",
+        "isAccessibleForFree": true,
+        "downloadUrl": "https://github.com/TF49/AI-Helper/releases/latest",
+        "codeRepository": "https://github.com/TF49/AI-Helper",
+        "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" }
+      },
+      {
+        "@type": "FAQPage",
+        "mainEntity": [
+          {
+            "@type": "Question",
+            "name": "What is AI Helper?",
+            "acceptedAnswer": { "@type": "Answer", "text": "AI Helper is a free, MIT-licensed desktop app for Windows and macOS that configures the API endpoint, API key and model for AI coding clients: Cursor, Claude Code, OpenAI Codex CLI, ChatGPT Desktop, WorkBuddy and Accio Work. It detects installed clients, writes their local config files, runs a streaming connection test and restarts the client." }
+          },
+          {
+            "@type": "Question",
+            "name": "Can I use my own API endpoint and API key?",
+            "acceptedAnswer": { "@type": "Answer", "text": "Yes. Every client panel accepts a custom API base URL, API key and model, and can fetch the model list from that endpoint. Unknown origins must be confirmed and HTTPS is required by default." }
+          },
+          {
+            "@type": "Question",
+            "name": "Why does Cursor need a local bridge?",
+            "acceptedAnswer": { "@type": "Answer", "text": "Cursor uses Connect-RPC / HTTP2 and internal message formats, so changing the OpenAI base URL alone cannot connect every third-party model. AI Helper runs a local bridge (default 127.0.0.1:8969) that translates Cursor requests to an OpenAI-compatible API. The client patch can be reverted at any time." }
+          },
+          {
+            "@type": "Question",
+            "name": "Is my API key uploaded anywhere?",
+            "acceptedAnswer": { "@type": "Answer", "text": "No. Configuration is written locally. Session credentials are protected with DPAPI on Windows and Keychain on macOS. Your API key is only sent to the API endpoint you configure." }
+          },
+          {
+            "@type": "Question",
+            "name": "Is AI Helper free?",
+            "acceptedAnswer": { "@type": "Answer", "text": "Yes. AI Helper is open source under the MIT license and free to use. Model usage is billed by whichever API provider you configure." }
+          }
+        ]
+      }
+    ]
+  }
+  </script>
+</head>
+
+<body>
+  <header class="doc-nav">
+    <div class="doc-nav-inner">
+      <a class="doc-brand" href="/en/"><img src="/assets/logo.png" alt="AI Helper logo" width="28" height="28">AI Helper</a>
+      <nav class="doc-nav-links" aria-label="Main navigation">
+        <a href="#download">Download</a><a href="/">中文</a><a class="hide-sm" href="https://github.com/TF49/AI-Helper">GitHub</a>
+      </nav>
+    </div>
+  </header>
+
+  <main class="doc-main">
+    <h1>AI Helper: configure Cursor, Claude Code and Codex in one place</h1>
+    <p class="doc-meta">Version <span class="current-version-tag">v1.0.86</span> · Windows &amp; macOS · MIT license · Last updated <time class="last-updated" datetime="2026-11-20">2026-11-20</time></p>
+
+    <div class="tldr">
+      <p><strong>AI Helper</strong> is a free, open-source (MIT) desktop app for Windows and macOS that sets the API endpoint, API key and model for six AI coding clients — <strong>Cursor</strong>, <strong>Claude Code</strong>, <strong>OpenAI Codex CLI</strong>, <strong>ChatGPT Desktop</strong>, <strong>WorkBuddy</strong> and <strong>Accio Work</strong>. It finds the clients installed on your machine, writes their config files, runs a real streaming connection test, and restarts the client so the change takes effect.</p>
+    </div>
+
+    <p><a class="cta" href="#download">Download AI Helper</a></p>
+
+    <h2>What it does</h2>
+    <ul>
+      <li><strong>Detects clients automatically</strong> — scans PATH, the Windows registry, npm global installs, Microsoft Store apps, Homebrew and NVM on macOS.</li>
+      <li><strong>Writes config safely</strong> — only endpoint, key and model fields are changed; other settings are preserved. Files are written atomically with locking, and a snapshot is taken before the first change so you can restore it from Settings.</li>
+      <li><strong>Tests before saving</strong> — sends a real streaming request and reports the HTTP status, time to first byte and common error hints.</li>
+      <li><strong>Connects Cursor to third-party models</strong> — a local bridge (default <code>127.0.0.1:8969</code>) translates Cursor's Connect-RPC / HTTP2 traffic to an OpenAI-compatible API, with streaming, reasoning output and image input.</li>
+      <li><strong>Bridges Accio Work</strong> — a local bridge (default <code>127.0.0.1:8787</code>) adapts model lists, chat, image generation, the Responses API and MCP proxying.</li>
+      <li><strong>Signed updates</strong> — update manifests are signature-checked, SHA-256 verified and protected against rollback.</li>
+    </ul>
+
+    <h2>Supported clients</h2>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th>Client</th><th>What AI Helper manages</th><th>Config location</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>Claude Code</td><td><code>ANTHROPIC_BASE_URL</code>, <code>ANTHROPIC_AUTH_TOKEN</code>, <code>ANTHROPIC_MODEL</code>; launch / restart</td><td><code>~/.claude/settings.json</code></td></tr>
+          <tr><td>OpenAI Codex CLI</td><td>Custom <code>model_provider</code> base URL, API key, model; launch / restart</td><td><code>~/.codex/config.toml</code></td></tr>
+          <tr><td>Cursor</td><td>Custom models through the local bridge; reversible client patch</td><td><code>~/.ai-helper/cursor_config.json</code></td></tr>
+          <tr><td>WorkBuddy</td><td>Multiple models, recommended model first, user models kept</td><td><code>~/.workbuddy/models.json</code></td></tr>
+          <tr><td>Accio Work</td><td>Custom models through the local bridge</td><td><code>~/.ai-helper/accio_config.json</code></td></tr>
+          <tr><td>ChatGPT Desktop</td><td>Install detection, launch, device management</td><td>System install directory</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h2>Privacy and security</h2>
+    <p>All configuration is written on your machine. Session credentials are protected with DPAPI on Windows and Keychain on macOS. Your API key is only sent to the endpoint you configure, and endpoints outside the allow-list must be confirmed (HTTPS required by default). The Cursor bridge only accepts connections from processes owned by the same OS user.</p>
+
+    <h2 id="download">Download</h2>
+    <p>Current version: <strong class="current-version-tag">v1.0.86</strong>. Windows requires the Microsoft Edge WebView2 Runtime (preinstalled on Windows 11).</p>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th>Platform</th><th>Package</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>Windows 10 / 11 (x64)</td><td><a href="https://github.com/TF49/AI-Helper/releases/download/v1.0.86/AI-Helper-v1.0.86-Windows-x64-Setup.exe">Installer (.exe)</a> · <a href="https://github.com/TF49/AI-Helper/releases/download/v1.0.86/AI-Helper-v1.0.86-Windows-x64-Standalone.zip">Portable (.zip)</a></td></tr>
+          <tr><td>macOS 11+ Apple Silicon (M1–M5)</td><td><a href="https://github.com/TF49/AI-Helper/releases/download/v1.0.86/AI-Helper-v1.0.86-macOS-aarch64.dmg">aarch64 DMG</a></td></tr>
+          <tr><td>macOS 11+ Intel</td><td><a href="https://github.com/TF49/AI-Helper/releases/download/v1.0.86/AI-Helper-v1.0.86-macOS-x64.dmg">x64 DMG</a></td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>All releases and checksums: <a href="https://github.com/TF49/AI-Helper/releases">GitHub Releases</a>.</p>
+
+    <h2>FAQ</h2>
+    <h3>Can I use my own API endpoint and API key?</h3>
+    <p>Yes. Every client panel accepts a custom API base URL, API key and model, and can fetch the model list from that endpoint. Unknown origins must be confirmed and HTTPS is required by default.</p>
+    <h3>Why does Cursor need a local bridge?</h3>
+    <p>Cursor uses Connect-RPC / HTTP2 and internal message formats, so changing the OpenAI base URL alone cannot connect every third-party model. AI Helper runs a local bridge (default <code>127.0.0.1:8969</code>) that translates Cursor requests to an OpenAI-compatible API. The client patch can be reverted at any time.</p>
+    <h3>Is my API key uploaded anywhere?</h3>
+    <p>No. Configuration is written locally. Session credentials are protected with DPAPI on Windows and Keychain on macOS. Your API key is only sent to the API endpoint you configure.</p>
+    <h3>Is AI Helper free?</h3>
+    <p>Yes. AI Helper is open source under the MIT license and free to use. Model usage is billed by whichever API provider you configure.</p>
+    <h3>macOS says the app "is damaged and can't be opened". What do I do?</h3>
+    <p>The app is not damaged; it is not notarized by Apple, so Gatekeeper quarantines it. Run <code>xattr -cr /Applications/AI\ Helper.app</code> in Terminal, or right-click the app in Finder and choose Open.</p>
+
+    <p class="doc-meta">The app interface is currently in Chinese. Source code, issues and release notes: <a href="https://github.com/TF49/AI-Helper">github.com/TF49/AI-Helper</a>.</p>
+  </main>
+
+  <footer class="doc-footer">
+    <div class="doc-footer-inner">
+      <span><a href="/">中文首页</a><a href="/guides/">中文教程</a><a href="/llms.txt">llms.txt</a><a href="https://github.com/TF49/AI-Helper">GitHub</a></span>
+      <span>© 2026 AI Helper · MIT License</span>
+    </div>
+  </footer>
+</body>
+
+</html>
