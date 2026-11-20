@@ -56,8 +56,16 @@ if ($LASTEXITCODE -ne 0) { throw "cargo update failed" }
 $readmePath = Join-Path $repoRoot 'README.md'
 if (Test-Path -LiteralPath $readmePath) {
     $readmeContent = Get-Content -LiteralPath $readmePath -Encoding UTF8 -Raw
-    # Replace any explicit static version badge if present, and ensure roadmap has the entry
+    # Replace any explicit static version badge if present
     $readmeContent = $readmeContent -replace 'version-(\d+\.\d+\.\d+)-', "version-$NewVersion-"
+    # Current version / date markers: <!--ver-->v1.2.3<!--/ver-->, <!--date-->2026-01-01<!--/date-->
+    $releaseDate = (Get-Date).ToString('yyyy-MM-dd')
+    $readmeContent = $readmeContent -replace '<!--ver-->v?\d+\.\d+\.\d+<!--/ver-->', "<!--ver-->v$NewVersion<!--/ver-->"
+    $readmeContent = $readmeContent -replace '<!--date-->\d{4}-\d{2}-\d{2}<!--/date-->', "<!--date-->$releaseDate<!--/date-->"
+    # Download links: release asset file names and GitHub release download paths
+    $readmeContent = $readmeContent -replace 'AI-Helper-v\d+\.\d+\.\d+-', "AI-Helper-v$NewVersion-"
+    $readmeContent = $readmeContent -replace 'releases/download/v\d+\.\d+\.\d+/', "releases/download/v$NewVersion/"
+    Write-Host "Note: add a row for v$NewVersion to the README 'Recent updates' table manually."
     [System.IO.File]::WriteAllText($readmePath, $readmeContent, $utf8NoBom)
     Write-Host "Synced version $NewVersion into README.md"
 }
