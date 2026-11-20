@@ -19,7 +19,7 @@ set -euo pipefail
 
 # ── 配置区（按实际环境修改）─────────────────────────────────────────────────
 GITHUB_REPO="TF49/AI-Helper"
-DOWNLOAD_DIR="${DOWNLOAD_DIR:-/var/www/ai-helper/downloads}"
+DOWNLOAD_DIR="${DOWNLOAD_DIR:-/www/ai-helper/site/downloads}"
 # Tauri updater 公钥（与 tauri.conf.json pubkey 对应的私钥签出的 .sig 文件即为合法签名）
 # latest.json 中的 signature 字段直接取自 GitHub Release 附件里的 .sig 文件内容
 # ── 配置区结束 ───────────────────────────────────────────────────────────────
