@@ -22,7 +22,7 @@ const DEFAULT_SERVER_URL =
   (typeof window !== 'undefined' && localStorage.getItem(STORAGE_KEYS.SERVER_URL)) ||
   (import.meta.env?.VITE_TELEMETRY_SERVER_URL
     ? `${import.meta.env.VITE_TELEMETRY_SERVER_URL}/api/telemetry/report`
-    : 'http://64.118.130.216:3001/api/telemetry/report');
+    : 'https://monitor.bob-api.com/api/telemetry/report');
 
 function getOrCreateDeviceId(): string {
   try {
