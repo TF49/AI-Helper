@@ -30,8 +30,8 @@ const SIMULATOR_DATA = {
   },
   claude: {
     title: "Claude Code 配置托管",
-    desc: "集中维护 ~/.claude.json 与 settings.json，并快速切换常用模型。",
-    configPath: "~/.claude.json",
+    desc: "维护 ~/.claude/settings.json 中的 API 地址、Key 与模型，并快速切换常用模型。",
+    configPath: "~/.claude/settings.json",
     apiUrl: "https://api.anthropic.com/v1",
     model: "claude-sonnet-5-5",
     chips: ["claude-sonnet-5-5", "claude-3-7-sonnet", "claude-3-5-haiku"],
@@ -49,8 +49,8 @@ const SIMULATOR_DATA = {
   cursor: {
     title: "Cursor IDE 本地 Bridge 挂接",
     desc: "集成 Connect-RPC 规范协议转译与一键修补挂接，精准拦截官方域名并支持多模态防护。",
-    configPath: "~/.cursor/config.json",
-    apiUrl: "http://127.0.0.1:8787/cursor",
+    configPath: "~/.ai-helper/cursor_config.json",
+    apiUrl: "http://127.0.0.1:8969",
     model: "glm-5.3",
     chips: ["glm-5.3", "claude-sonnet-5-5", "gpt-5.6-sol", "deepseek-r1"],
     groupName: "国产Token计划",
@@ -58,14 +58,14 @@ const SIMULATOR_DATA = {
     groupLatency: "42ms",
     status: "Bridge 已挂接",
     sampleTokens: [
-      "> [CONNECT] Connect-RPC h2c handshake on :8787",
+      "> [CONNECT] Connect-RPC h2c handshake on :8969",
       "> [GROUP] Channel 国产Token计划: 99.9% · 42ms avg",
       "> [PATCH] Agent/Composer domain rewrite active",
       "✓ Cursor Bridge is online"
     ]
   },
   workbuddy: {
-    title: "Workbuddy AI 工作流中枢",
+    title: "WorkBuddy 多模型配置",
     desc: "写入 ~/.workbuddy/models.json，并自动双向兼容 ~/.workbuddy-ai。",
     configPath: "~/.workbuddy/models.json",
     apiUrl: "https://api.workbuddy.cn/v1",
@@ -224,7 +224,7 @@ const SCENES = [
     tab: "chatgpt",
     overline: "SCENE 01 · DISCOVERY",
     workspaceTitle: "正在发现本机 AI 开发环境",
-    workspaceDesc: "自动扫描 PATH、注册表、NPM 全局脚本、Store 隔离包与 Spotlight，定位全部 6 席可用客户端。",
+    workspaceDesc: "自动扫描 PATH、注册表、NPM 全局脚本、Store 隔离包与 Spotlight，定位全部 6 款可用客户端。",
     status: "扫描完成",
     copyTitle: "自动发现，不再手动翻路径。",
     copyBody: "启动即感知 Cursor、Claude Code、Codex、ChatGPT、Workbuddy 与 Accio Work 的安装位置和运行状态，并自动纠偏失效路径。",
@@ -255,7 +255,7 @@ const SCENES = [
     bullets: ["按 Agent 加载专属配置格式", "模型芯片快速切换", "配置文件原生直达"],
     terminal: [
       "> profile: claude-code",
-      "> config: ~/.claude.json",
+      "> config: ~/.claude/settings.json",
       "> model: claude-3-7-sonnet",
       "✓ Configuration loaded"
     ],
@@ -263,7 +263,7 @@ const SCENES = [
     action: "保存当前配置",
     writeMode: "idle",
     showDiscovery: false,
-    mobileRows: [["配置文件", "~/.claude.json"], ["API 网关", "api.anthropic.com"], ["默认模型", "claude-3-7-sonnet"]]
+    mobileRows: [["配置文件", "~/.claude/settings.json"], ["API 网关", "api.anthropic.com"], ["默认模型", "claude-sonnet-5-5"]]
   },
   {
     id: "stream",
@@ -596,7 +596,7 @@ function initHeroMotion() {
     .from(".hero-brand-mark", { opacity: 0, y: 18, scale: 0.82, rotate: -6, duration: 0.72, delay: 0.08 })
     .from(".hero-eyebrow", { opacity: 0, y: 16, duration: 0.58 }, "-=0.34")
     .from(".hero-line > span", { yPercent: 115, rotateX: -12, filter: "blur(10px)", duration: 1.05, stagger: 0.12 }, "-=0.32")
-    .from(".hero-lead", { opacity: 0, y: 22, filter: "blur(5px)", duration: 0.78 }, "-=0.5")
+    .from(".hero-lead, .hero-updated", { opacity: 0, y: 22, filter: "blur(5px)", duration: 0.78 }, "-=0.5")
     .from(".hero-actions", { opacity: 0, y: 18, duration: 0.62, clearProps: "transform" }, "-=0.42")
     .from(".hero-platform-pills", { opacity: 0, y: 14, duration: 0.52, clearProps: "transform" }, "-=0.38")
     .from(".hero-trust li", { opacity: 0, y: 12, duration: 0.45, stagger: 0.07, clearProps: "transform" }, "-=0.36")

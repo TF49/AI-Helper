@@ -9,5 +9,7 @@ Disallow: /downloads/
 # 内部开发者监控与诊断中心，不对外索引
 Disallow: /diagnostics.html
 
+# 面向大语言模型的站点摘要（Markdown）：https://helper.bob-api.com/llms.txt
+
 # 站点地图
 Sitemap: https://helper.bob-api.com/sitemap.xml
