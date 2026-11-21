@@ -100,6 +100,24 @@ const SIMULATOR_DATA = {
       "✓ Accio Work Bridge is online"
     ]
   },
+  dsh: {
+    title: "DeepSeek Harness 按协议分流",
+    desc: "按模型协议写入 aihelper-claude / aihelper-codex / aihelper-cn 三条路由，自建路由、注释与官方账号路由原样保留。",
+    configPath: "~/.dsh/profiles/desktop/cordis.patch.yml",
+    apiUrl: "https://bob-api.com/",
+    model: "deepseek-v4.1-flash",
+    chips: ["deepseek-v4.1-flash", "glm-5.3", "claude-sonnet-5-5", "gpt-5.6-sol"],
+    groupName: "国产Token计划",
+    groupRate: "99.9%",
+    groupLatency: "58ms",
+    status: "3 条路由已就绪",
+    sampleTokens: [
+      "> [MODELS] 拉取 Key 下全部可对话模型",
+      "> [ROUTE] aihelper-cn · aihelper-claude · aihelper-codex",
+      "> [MERGE] 自建路由 · 注释 · !!js 原样保留",
+      "✓ DeepSeek Harness routes ready"
+    ]
+  },
   paths: {
     title: "路径感知与进程安全热重启",
     desc: "扫描进程树、释放文件句柄，并以最新配置重新拉起目标客户端。",
@@ -168,7 +186,7 @@ const GROUP_MONITOR_DATA = {
     totalRequests: "32,450",
     failed: "0 熔断",
     statusText: "99.9% 极速流式",
-    guide: "专为 Cursor、WorkBuddy 与 Accio Work 打造的国内超低时延专属通道，默认全面预设高质高性价比 glm-5.3 基座，IDE 内代码补全秒级响应。",
+    guide: "专为 Cursor、WorkBuddy、Accio Work 与 DeepSeek Harness 打造的国内超低时延专属通道，默认全面预设高质高性价比 glm-5.3 基座，IDE 内代码补全秒级响应。",
     ribbonPoints: [
       { rate: 100, lat: 41 }, { rate: 100, lat: 42 }, { rate: 100, lat: 40 }, { rate: 100, lat: 44 },
       { rate: 100, lat: 42 }, { rate: 100, lat: 43 }, { rate: 100, lat: 41 }, { rate: 100, lat: 42 },
@@ -215,6 +233,25 @@ const GROUP_MONITOR_DATA = {
       { rate: 100, lat: 115 }, { rate: 100, lat: 113 }, { rate: 100, lat: 116 }, { rate: 100, lat: 114 },
       { rate: 100, lat: 115 }, { rate: 100, lat: 117 }, { rate: 100, lat: 113 }, { rate: 100, lat: 115 }
     ]
+  },
+  dsh: {
+    groupName: "国产Token计划",
+    tag: "DeepSeek Harness 协议分流",
+    successRate: 99.9,
+    latency: "58ms",
+    latencyVal: 58,
+    totalRequests: "15,360",
+    failed: "0 熔断",
+    statusText: "99.9% 三路由在线",
+    guide: "DeepSeek Harness 一键配置使用国产Token计划分组的 Key，写入该 Key 下全部可对话模型，默认 deepseek-v4.1-flash；Claude、GPT 与国产模型按协议自动分流到三条 aihelper-* 路由。",
+    ribbonPoints: [
+      { rate: 100, lat: 57 }, { rate: 100, lat: 58 }, { rate: 100, lat: 56 }, { rate: 100, lat: 60 },
+      { rate: 100, lat: 58 }, { rate: 100, lat: 59 }, { rate: 99.8, lat: 64 }, { rate: 100, lat: 58 },
+      { rate: 100, lat: 57 }, { rate: 100, lat: 59 }, { rate: 100, lat: 58 }, { rate: 100, lat: 56 },
+      { rate: 100, lat: 58 }, { rate: 100, lat: 60 }, { rate: 100, lat: 57 }, { rate: 100, lat: 58 },
+      { rate: 100, lat: 59 }, { rate: 100, lat: 57 }, { rate: 100, lat: 58 }, { rate: 100, lat: 61 },
+      { rate: 100, lat: 58 }, { rate: 100, lat: 57 }, { rate: 100, lat: 59 }, { rate: 100, lat: 58 }
+    ]
   }
 };
 
@@ -224,10 +261,10 @@ const SCENES = [
     tab: "chatgpt",
     overline: "SCENE 01 · DISCOVERY",
     workspaceTitle: "正在发现本机 AI 开发环境",
-    workspaceDesc: "自动扫描 PATH、注册表、NPM 全局脚本、Store 隔离包与 Spotlight，定位全部 6 款可用客户端。",
+    workspaceDesc: "自动扫描 PATH、注册表、NPM 全局脚本、Store 隔离包与 Spotlight，定位全部 7 款可用客户端。",
     status: "扫描完成",
     copyTitle: "自动发现，不再手动翻路径。",
-    copyBody: "启动即感知 Cursor、Claude Code、Codex、ChatGPT、Workbuddy 与 Accio Work 的安装位置和运行状态，并自动纠偏失效路径。",
+    copyBody: "启动即感知 Cursor、Claude Code、Codex、ChatGPT、Workbuddy、Accio Work 与 DeepSeek Harness 的安装位置和运行状态，并自动纠偏失效路径。",
     bullets: ["PATH 与 NPM 全局脚本扫描", "Win32 注册表与 macOS Spotlight 深度探测", "Cursor Connect-RPC 与 Accio Bridge 自动挂接"],
     terminal: [
       "> scanning PATH, Registry, NPM & Spotlight...",
@@ -235,13 +272,14 @@ const SCENES = [
       "✓ Claude Code · NPM global",
       "✓ Cursor IDE · Connect-RPC Bridge",
       "✓ Workbuddy · Native client",
-      "✓ Accio Work · RLab Bridge :8787"
+      "✓ Accio Work · RLab Bridge :8787",
+      "✓ DeepSeek Harness · Desktop profile"
     ],
-    latency: "6 AGENTS MATRIX",
+    latency: "7 AGENTS MATRIX",
     action: "环境扫描完成",
     writeMode: "complete",
     showDiscovery: true,
-    mobileRows: [["Codex / ChatGPT", "Win32 / Store"], ["Claude Code", "NPM · 已发现"], ["Cursor IDE", "Bridge · 已就绪"], ["Workbuddy", "Native · 已发现"], ["Accio Work", "Bridge · 已发现"]]
+    mobileRows: [["Codex / ChatGPT", "Win32 / Store"], ["Claude Code", "NPM · 已发现"], ["Cursor IDE", "Bridge · 已就绪"], ["Workbuddy", "Native · 已发现"], ["Accio Work", "Bridge · 已发现"], ["DeepSeek Harness", "Desktop · 已发现"]]
   },
   {
     id: "configure",
@@ -2131,6 +2169,13 @@ function initCrossPlatformFeatures() {
   updateHeroPlatformUI(userOS, true);
 
   // 4.2 演示模拟器视界模式切换 (macOS 红绿灯 / Windows 双模)
+  function setStripDescriptions(descs) {
+    descs.forEach(function (text, index) {
+      const el = document.getElementById("strip-item-" + (index + 1) + "-desc");
+      if (el) el.textContent = text;
+    });
+  }
+
   const simOsButtons = document.querySelectorAll(".win-os-btn");
   const productFrame = document.getElementById("product-frame");
   const windowControls = document.getElementById("window-controls");
@@ -2146,14 +2191,14 @@ function initCrossPlatformFeatures() {
         if (windowControls) windowControls.style.display = "none";
         if (windowTitle) windowTitle.textContent = "AI Helper · macOS Sonoma (Apple Silicon)";
 
-        const s1 = document.getElementById("strip-item-1-desc");
-        const s2 = document.getElementById("strip-item-2-desc");
-        const s3 = document.getElementById("strip-item-3-desc");
-        const s4 = document.getElementById("strip-item-4-desc");
-        if (s1) s1.textContent = "~/.codex/config.toml (Native)";
-        if (s2) s2.textContent = "/usr/local/bin/claude (Homebrew)";
-        if (s3) s3.textContent = "~/.workbuddy/models.json";
-        if (s4) s4.textContent = "Bridge :8787 (AppleScript Terminal)";
+        setStripDescriptions([
+          "~/.codex/config.toml (Native)",
+          "/usr/local/bin/claude (Homebrew)",
+          "Bridge :8969 (Spotlight)",
+          "~/.workbuddy/models.json",
+          "Bridge :8787 (AppleScript Terminal)",
+          "/Applications · ~/.dsh"
+        ]);
 
         showToast("已切换至 macOS 原生红绿灯 Overlay 视界");
       } else {
@@ -2161,14 +2206,14 @@ function initCrossPlatformFeatures() {
         if (windowControls) windowControls.style.display = "";
         if (windowTitle) windowTitle.textContent = "AI Helper Studio";
 
-        const s1 = document.getElementById("strip-item-1-desc");
-        const s2 = document.getElementById("strip-item-2-desc");
-        const s3 = document.getElementById("strip-item-3-desc");
-        const s4 = document.getElementById("strip-item-4-desc");
-        if (s1) s1.textContent = "Win32 · 已发现";
-        if (s2) s2.textContent = "NPM · 已发现";
-        if (s3) s3.textContent = "Native · 已发现";
-        if (s4) s4.textContent = "Bridge · 已发现";
+        setStripDescriptions([
+          "Win32 & Store · 已发现",
+          "NPM · 已发现",
+          "Connect-RPC · 已就绪",
+          "Native · 已发现",
+          "RLab Bridge · 已挂接",
+          "Desktop · 已发现"
+        ]);
 
         showToast("已切换至 Windows 视界");
       }

@@ -6,7 +6,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>AI Helper: Configure API Endpoints and Models for Cursor, Claude Code and Codex | Open-Source Desktop App</title>
   <meta name="description"
-    content="AI Helper is a free, MIT-licensed desktop app for Windows and macOS that configures the API endpoint, API key and model for Cursor, Claude Code, OpenAI Codex CLI, ChatGPT Desktop, WorkBuddy and Accio Work from one place.">
+    content="AI Helper is a free, MIT-licensed desktop app for Windows and macOS that configures the API endpoint, API key and model for Cursor, Claude Code, OpenAI Codex CLI, ChatGPT Desktop, WorkBuddy, Accio Work and DeepSeek Harness from one place.">
   <link rel="canonical" href="https://helper.bob-api.com/en/">
   <link rel="alternate" hreflang="zh-CN" href="https://helper.bob-api.com/">
   <link rel="alternate" hreflang="en" href="https://helper.bob-api.com/en/">
@@ -17,7 +17,7 @@
   <meta property="og:locale" content="en_US">
   <meta property="og:locale:alternate" content="zh_CN">
   <meta property="og:title" content="AI Helper: Configure Cursor, Claude Code and Codex in one place">
-  <meta property="og:description" content="Free, open-source (MIT) desktop app for Windows and macOS that sets the API endpoint, key and model for six AI coding clients.">
+  <meta property="og:description" content="Free, open-source (MIT) desktop app for Windows and macOS that sets the API endpoint, key and model for seven AI coding clients.">
   <meta property="og:url" content="https://helper.bob-api.com/en/">
   <meta property="og:image" content="https://helper.bob-api.com/assets/app-preview.png">
   <meta name="twitter:card" content="summary_large_image">
@@ -41,7 +41,7 @@
         "@type": "SoftwareApplication",
         "@id": "https://helper.bob-api.com/#software",
         "name": "AI Helper",
-        "description": "Free, MIT-licensed desktop app for Windows and macOS that configures the API endpoint, API key and model for Cursor, Claude Code, OpenAI Codex CLI, ChatGPT Desktop, WorkBuddy and Accio Work, with streaming connection tests and a local protocol bridge for Cursor and Accio Work.",
+        "description": "Free, MIT-licensed desktop app for Windows and macOS that configures the API endpoint, API key and model for Cursor, Claude Code, OpenAI Codex CLI, ChatGPT Desktop, WorkBuddy, Accio Work and DeepSeek Harness, with streaming connection tests, a local protocol bridge for Cursor and Accio Work, and protocol-based route splitting for DeepSeek Harness.",
         "applicationCategory": "DeveloperApplication",
         "operatingSystem": "Windows 10, Windows 11, macOS 11+",
         "softwareVersion": "1.0.87",
@@ -57,7 +57,7 @@
           {
             "@type": "Question",
             "name": "What is AI Helper?",
-            "acceptedAnswer": { "@type": "Answer", "text": "AI Helper is a free, MIT-licensed desktop app for Windows and macOS that configures the API endpoint, API key and model for AI coding clients: Cursor, Claude Code, OpenAI Codex CLI, ChatGPT Desktop, WorkBuddy and Accio Work. It detects installed clients, writes their local config files, runs a streaming connection test and restarts the client." }
+            "acceptedAnswer": { "@type": "Answer", "text": "AI Helper is a free, MIT-licensed desktop app for Windows and macOS that configures the API endpoint, API key and model for AI coding clients: Cursor, Claude Code, OpenAI Codex CLI, ChatGPT Desktop, WorkBuddy, Accio Work and DeepSeek Harness. It detects installed clients, writes their local config files, runs a streaming connection test and restarts the client." }
           },
           {
             "@type": "Question",
@@ -68,6 +68,11 @@
             "@type": "Question",
             "name": "Why does Cursor need a local bridge?",
             "acceptedAnswer": { "@type": "Answer", "text": "Cursor uses Connect-RPC / HTTP2 and internal message formats, so changing the OpenAI base URL alone cannot connect every third-party model. AI Helper runs a local bridge (default 127.0.0.1:8969) that translates Cursor requests to an OpenAI-compatible API. The client patch can be reverted at any time." }
+          },
+          {
+            "@type": "Question",
+            "name": "Does configuring DeepSeek Harness touch my official DeepSeek account?",
+            "acceptedAnswer": { "@type": "Answer", "text": "No. AI Helper only writes its own aihelper-* routes and AIHELPER_* key references in the DeepSeek Harness desktop profile. The official DeepSeek account sign-in, the official API-key route (api.deepseek.com) and your own routes are left as they are, and a default model that points at an official model is kept." }
           },
           {
             "@type": "Question",
@@ -101,7 +106,7 @@
     <p class="doc-meta">Version <span class="current-version-tag">v1.0.87</span> · Windows &amp; macOS · MIT license · Last updated <time class="last-updated" datetime="2026-11-21">2026-11-21</time></p>
 
     <div class="tldr">
-      <p><strong>AI Helper</strong> is a free, open-source (MIT) desktop app for Windows and macOS that sets the API endpoint, API key and model for six AI coding clients — <strong>Cursor</strong>, <strong>Claude Code</strong>, <strong>OpenAI Codex CLI</strong>, <strong>ChatGPT Desktop</strong>, <strong>WorkBuddy</strong> and <strong>Accio Work</strong>. It finds the clients installed on your machine, writes their config files, runs a real streaming connection test, and restarts the client so the change takes effect.</p>
+      <p><strong>AI Helper</strong> is a free, open-source (MIT) desktop app for Windows and macOS that sets the API endpoint, API key and model for seven AI coding clients — <strong>Cursor</strong>, <strong>Claude Code</strong>, <strong>OpenAI Codex CLI</strong>, <strong>ChatGPT Desktop</strong>, <strong>WorkBuddy</strong>, <strong>Accio Work</strong> and <strong>DeepSeek Harness</strong>. It finds the clients installed on your machine, writes their config files, runs a real streaming connection test, and restarts the client so the change takes effect.</p>
     </div>
 
     <p><a class="cta" href="#download">Download AI Helper</a></p>
@@ -113,6 +118,7 @@
       <li><strong>Tests before saving</strong> — sends a real streaming request and reports the HTTP status, time to first byte and common error hints.</li>
       <li><strong>Connects Cursor to third-party models</strong> — a local bridge (default <code>127.0.0.1:8969</code>) translates Cursor's Connect-RPC / HTTP2 traffic to an OpenAI-compatible API, with streaming, reasoning output and image input.</li>
       <li><strong>Bridges Accio Work</strong> — a local bridge (default <code>127.0.0.1:8787</code>) adapts model lists, chat, image generation, the Responses API and MCP proxying.</li>
+      <li><strong>Splits one key across DeepSeek Harness routes</strong> — fetches every chat model your API key can use and writes it to the matching route by protocol: <code>aihelper-claude</code> (Anthropic Messages), <code>aihelper-codex</code> (OpenAI Responses) or <code>aihelper-cn</code> (Chat Completions, for DeepSeek, Qwen, GLM and other Chinese models). Edits are line-level, so your own routes, comments, <code>!!js</code> tags and the official DeepSeek account are kept.</li>
       <li><strong>Signed updates</strong> — update manifests are signature-checked, SHA-256 verified and protected against rollback.</li>
     </ul>
 
@@ -128,6 +134,7 @@
           <tr><td>Cursor</td><td>Custom models through the local bridge; reversible client patch</td><td><code>~/.ai-helper/cursor_config.json</code></td></tr>
           <tr><td>WorkBuddy</td><td>Multiple models, recommended model first, user models kept</td><td><code>~/.workbuddy/models.json</code></td></tr>
           <tr><td>Accio Work</td><td>Custom models through the local bridge</td><td><code>~/.ai-helper/accio_config.json</code></td></tr>
+          <tr><td>DeepSeek Harness (desktop)</td><td>Claude / GPT / Chinese-model routes split by protocol; multiple keys side by side; launch / restart</td><td><code>~/.dsh/profiles/desktop/cordis.patch.yml</code> (or under <code>DSH_HOME</code>)</td></tr>
           <tr><td>ChatGPT Desktop</td><td>Install detection, launch, device management</td><td>System install directory</td></tr>
         </tbody>
       </table>
@@ -157,6 +164,8 @@
     <p>Yes. Every client panel accepts a custom API base URL, API key and model, and can fetch the model list from that endpoint. Unknown origins must be confirmed and HTTPS is required by default.</p>
     <h3>Why does Cursor need a local bridge?</h3>
     <p>Cursor uses Connect-RPC / HTTP2 and internal message formats, so changing the OpenAI base URL alone cannot connect every third-party model. AI Helper runs a local bridge (default <code>127.0.0.1:8969</code>) that translates Cursor requests to an OpenAI-compatible API. The client patch can be reverted at any time.</p>
+    <h3>Does configuring DeepSeek Harness touch my official DeepSeek account?</h3>
+    <p>No. AI Helper only writes its own <code>aihelper-*</code> routes and <code>AIHELPER_*</code> key references in the DeepSeek Harness desktop profile. The official DeepSeek account sign-in, the official API-key route (<code>api.deepseek.com</code>) and your own routes are left as they are, and a default model that points at an official model is kept. Restart DeepSeek Harness after saving to load the new routes.</p>
     <h3>Is my API key uploaded anywhere?</h3>
     <p>No. Configuration is written locally. Session credentials are protected with DPAPI on Windows and Keychain on macOS. Your API key is only sent to the API endpoint you configure.</p>
     <h3>Is AI Helper free?</h3>

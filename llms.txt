@@ -1,8 +1,8 @@
 # AI Helper
 
-> AI Helper is a free, MIT-licensed desktop app for Windows and macOS that configures the API endpoint, API key and model for AI coding clients — Cursor, Claude Code, OpenAI Codex CLI, ChatGPT Desktop, WorkBuddy and Accio Work — from one place. It detects installed clients, writes their local config files, runs a real streaming connection test, and restarts the client. Cursor and Accio Work are connected to third-party models through a built-in local bridge.
+> AI Helper is a free, MIT-licensed desktop app for Windows and macOS that configures the API endpoint, API key and model for AI coding clients — Cursor, Claude Code, OpenAI Codex CLI, ChatGPT Desktop, WorkBuddy, Accio Work and DeepSeek Harness — from one place. It detects installed clients, writes their local config files, runs a real streaming connection test, and restarts the client. Cursor and Accio Work are connected to third-party models through a built-in local bridge; DeepSeek Harness gets one API key split across Claude, GPT and Chinese-model routes by protocol.
 >
-> AI Helper 是一款 MIT 开源的桌面工具，用于在 Windows 和 macOS 上一键配置 Cursor、Claude Code、OpenAI Codex CLI、ChatGPT Desktop、WorkBuddy 与 Accio Work 的 API 地址、API Key 和模型。
+> AI Helper 是一款 MIT 开源的桌面工具，用于在 Windows 和 macOS 上一键配置 Cursor、Claude Code、OpenAI Codex CLI、ChatGPT Desktop、WorkBuddy、Accio Work 与 DeepSeek Harness 的 API 地址、API Key 和模型。
 
 - Current version: v1.0.87 (last updated: 2026-11-21)
 - Platforms: Windows 10/11 x64 (requires Microsoft Edge WebView2 Runtime); macOS 11+ on Apple Silicon (aarch64) and Intel (x64)
@@ -20,13 +20,14 @@
 | Cursor | Custom models via a local Connect-RPC / HTTP2 bridge (default `127.0.0.1:8969`), reversible client patch | `~/.ai-helper/cursor_config.json` |
 | WorkBuddy | Maintain multiple models, put the recommended model first, keep user-added models | `~/.workbuddy/models.json` |
 | Accio Work | Custom models via a local bridge (default `127.0.0.1:8787`), model list injection | `~/.ai-helper/accio_config.json` |
+| DeepSeek Harness (desktop) | Fetch every chat model of a key and write it by protocol to `aihelper-claude` (Anthropic Messages), `aihelper-codex` (OpenAI Responses) or `aihelper-cn` (Chat Completions); multiple keys side by side; launch/restart | `~/.dsh/profiles/desktop/cordis.patch.yml` and `.credentials.yaml` (`refs.AIHELPER_*`); `DSH_HOME` overrides `~/.dsh` |
 | ChatGPT Desktop | Install detection, launch, device management (no API configuration) | system install directory |
 
 ## Key facts
 
 - Manual configuration: every client panel accepts a custom API base URL, API key and model, and can fetch the model list from that endpoint. Unknown origins must be confirmed by the user and HTTPS is required by default.
-- One-click configuration (requires a Bob API account): Claude Code → `claude-sonnet-5-5`; Codex / ChatGPT → `gpt-5.6-sol`; Cursor / WorkBuddy / Accio Work → `glm-5.3`. A missing API key for a group is created automatically.
-- Existing settings: only endpoint, key and model fields are changed; other fields in Claude Code, Codex and WorkBuddy configs are preserved. A snapshot is taken before the first change and can be restored from Settings.
+- One-click configuration (requires a Bob API account): Claude Code → `claude-sonnet-5-5`; Codex / ChatGPT → `gpt-5.6-sol`; Cursor / WorkBuddy / Accio Work → `glm-5.3`; DeepSeek Harness → all chat models of the 国产Token计划 key, default `deepseek-v4.1-flash`. A missing API key for a group is created automatically.
+- Existing settings: only endpoint, key and model fields are changed; other fields in Claude Code, Codex and WorkBuddy configs are preserved. For DeepSeek Harness only `aihelper-*` routes and `AIHELPER_*` key refs are managed; user routes, `records`, comments, `!!js` tags and the official DeepSeek account / API-key routes are kept byte for byte, and only the `desktop` profile is touched. A snapshot is taken before the first change and can be restored from Settings.
 - Credentials: written locally only; session credentials are protected with DPAPI on Windows and Keychain on macOS. Keys are sent only to the API endpoint you configure.
 - Why Cursor needs a bridge: Cursor uses Connect-RPC / HTTP2 and internal message formats, so changing an OpenAI base URL alone cannot connect every third-party model.
 - macOS "app is damaged" warning: run `xattr -cr /Applications/AI\ Helper.app`, or right-click the app in Finder and choose Open.
@@ -46,6 +47,7 @@
 - [Configure Cursor to use a third-party model such as glm-5.3](https://helper.bob-api.com/guides/cursor-custom-model.html): 如何给 Cursor 配置 glm-5.3 等第三方模型
 - [Point Claude Code at a custom API endpoint](https://helper.bob-api.com/guides/claude-code-custom-api.html): Claude Code 如何切换 API 地址与模型
 - [Configure OpenAI Codex CLI with a custom provider](https://helper.bob-api.com/guides/codex-cli-custom-api.html): Codex CLI 如何配置自定义 API 地址
+- [Connect DeepSeek Harness to Claude, GPT and Chinese models](https://helper.bob-api.com/guides/deepseek-harness-custom-api.html): DeepSeek Harness 怎么接入 Claude、GPT 和国产模型
 - [Fix "app is damaged" on macOS](https://helper.bob-api.com/guides/macos-app-damaged.html): macOS 提示“已损坏”怎么办
 - [All guides](https://helper.bob-api.com/guides/)
 
