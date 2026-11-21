@@ -16,7 +16,7 @@
   <meta property="og:url" content="https://helper.bob-api.com/guides/claude-code-custom-api.html">
   <meta property="og:image" content="https://helper.bob-api.com/assets/app-preview.png">
   <link rel="icon" type="image/x-icon" href="/assets/favicon.ico">
-  <link rel="stylesheet" href="/assets/docs.css?v=1.0.86">
+  <link rel="stylesheet" href="/assets/docs.css?v=1.0.87">
   <script type="application/ld+json">
   {
     "@context": "https://schema.org",
@@ -27,7 +27,7 @@
         "description": "修改 ~/.claude/settings.json 中的 ANTHROPIC_BASE_URL、ANTHROPIC_AUTH_TOKEN 和 ANTHROPIC_MODEL，或使用 AI Helper 自动写入。",
         "inLanguage": "zh-CN",
         "datePublished": "2026-11-20",
-        "dateModified": "2026-11-20",
+        "dateModified": "2026-11-21",
         "author": { "@id": "https://helper.bob-api.com/#organization" },
         "tool": [{ "@type": "HowToTool", "name": "AI Helper" }, { "@type": "HowToTool", "name": "Claude Code" }],
         "step": [
@@ -64,7 +64,7 @@
     <p class="breadcrumb"><a href="/">AI Helper</a> / <a href="/guides/">教程</a> / Claude Code 切换 API 地址</p>
     <article>
       <h1>Claude Code 如何切换 API 地址与模型</h1>
-      <p class="doc-meta">适用于 AI Helper <span class="current-version-tag">v1.0.86</span> · Windows 与 macOS · 最后更新 <time class="last-updated" datetime="2026-11-20">2026-11-20</time></p>
+      <p class="doc-meta">适用于 AI Helper <span class="current-version-tag">v1.0.87</span> · Windows 与 macOS · 最后更新 <time class="last-updated" datetime="2026-11-21">2026-11-21</time></p>
 
       <div class="tldr">
         <p><strong>简短回答：</strong>Claude Code 从 <code>~/.claude/settings.json</code> 的 <code>env</code> 字段读取 API 配置。把 <code>ANTHROPIC_BASE_URL</code> 设为新的 API 地址、<code>ANTHROPIC_AUTH_TOKEN</code> 设为对应的 API Key、<code>ANTHROPIC_MODEL</code> 设为模型名，然后重新启动 <code>claude</code> 即可切换。AI Helper 可以自动完成这三项写入，并在保存前做一次流式连通性测试。</p>
