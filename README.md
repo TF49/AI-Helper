@@ -30,7 +30,7 @@
 
 **AI Helper 是一款 MIT 开源、免费使用的桌面工具，用于在 Windows 和 macOS 上统一配置 Cursor、Claude Code、OpenAI Codex CLI、ChatGPT Desktop、WorkBuddy 与 Accio Work 的 API 地址、API Key 和模型。** 它会自动探测已安装的客户端，写入各自的本地配置文件，发起真实的流式连通性测试，并在需要时重启客户端；对于不直接支持第三方 OpenAI 兼容接口的 Cursor 和 Accio Work，AI Helper 通过内置的本地 Bridge 接入自定义模型。
 
-- **当前版本**：<!--ver-->v1.0.86<!--/ver-->（<!--date-->2026-11-20<!--/date-->）
+- **当前版本**：<!--ver-->v1.0.87<!--/ver-->（<!--date-->2026-11-21<!--/date-->）
 - **支持平台**：Windows 10 / 11 x64（需要 Microsoft Edge WebView2 Runtime）；macOS 11+，Apple Silicon 与 Intel 分别构建
 - **许可与费用**：MIT 开源，客户端免费；模型调用费用由你配置的 API 服务商收取
 - **技术栈**：Tauri 2、Rust、React、TypeScript
@@ -81,14 +81,14 @@
 
 ## 下载与安装
 
-当前稳定版本：**<!--ver-->v1.0.86<!--/ver-->**
+当前稳定版本：**<!--ver-->v1.0.87<!--/ver-->**
 
 | 平台                       | 安装包                  | 官网直链                                                                                                 | GitHub                                                                                                                  |
 | -------------------------- | ----------------------- | -------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
-| 🪟 Windows 10 / 11 x64     | 安装版 `Setup.exe`      | [下载](https://helper.bob-api.com/downloads/AI-Helper-v1.0.86-Windows-x64-Setup.exe)                    | [下载](https://github.com/TF49/AI-Helper/releases/download/v1.0.86/AI-Helper-v1.0.86-Windows-x64-Setup.exe)             |
-| 🪟 Windows 10 / 11 x64     | 便携版 `Standalone.zip` | [下载](https://helper.bob-api.com/downloads/AI-Helper-v1.0.86-Windows-x64-Standalone.zip)               | [下载](https://github.com/TF49/AI-Helper/releases/download/v1.0.86/AI-Helper-v1.0.86-Windows-x64-Standalone.zip)        |
-| 🍎 macOS 11+ Apple Silicon | `aarch64.dmg`           | [下载](https://helper.bob-api.com/downloads/AI-Helper-v1.0.86-macOS-aarch64.dmg)                        | [下载](https://github.com/TF49/AI-Helper/releases/download/v1.0.86/AI-Helper-v1.0.86-macOS-aarch64.dmg)                 |
-| 🍎 macOS 11+ Intel         | `x64.dmg`               | [下载](https://helper.bob-api.com/downloads/AI-Helper-v1.0.86-macOS-x64.dmg)                            | [下载](https://github.com/TF49/AI-Helper/releases/download/v1.0.86/AI-Helper-v1.0.86-macOS-x64.dmg)                     |
+| 🪟 Windows 10 / 11 x64     | 安装版 `Setup.exe`      | [下载](https://helper.bob-api.com/downloads/AI-Helper-v1.0.87-Windows-x64-Setup.exe)                    | [下载](https://github.com/TF49/AI-Helper/releases/download/v1.0.87/AI-Helper-v1.0.87-Windows-x64-Setup.exe)             |
+| 🪟 Windows 10 / 11 x64     | 便携版 `Standalone.zip` | [下载](https://helper.bob-api.com/downloads/AI-Helper-v1.0.87-Windows-x64-Standalone.zip)               | [下载](https://github.com/TF49/AI-Helper/releases/download/v1.0.87/AI-Helper-v1.0.87-Windows-x64-Standalone.zip)        |
+| 🍎 macOS 11+ Apple Silicon | `aarch64.dmg`           | [下载](https://helper.bob-api.com/downloads/AI-Helper-v1.0.87-macOS-aarch64.dmg)                        | [下载](https://github.com/TF49/AI-Helper/releases/download/v1.0.87/AI-Helper-v1.0.87-macOS-aarch64.dmg)                 |
+| 🍎 macOS 11+ Intel         | `x64.dmg`               | [下载](https://helper.bob-api.com/downloads/AI-Helper-v1.0.87-macOS-x64.dmg)                            | [下载](https://github.com/TF49/AI-Helper/releases/download/v1.0.87/AI-Helper-v1.0.87-macOS-x64.dmg)                     |
 
 国内用户也可以在 [官网下载页](https://helper.bob-api.com/#downloads) 选择阿里云 OSS 等加速镜像。所有版本见 [GitHub Releases](https://github.com/TF49/AI-Helper/releases)。
 
@@ -327,7 +327,7 @@ AI-Helper/
 
 **AI Helper is a free, MIT-licensed desktop app for Windows and macOS that configures the API endpoint, API key and model for AI coding clients — Cursor, Claude Code, OpenAI Codex CLI, ChatGPT Desktop, WorkBuddy and Accio Work — from one place.** It detects installed clients, writes their local config files, runs a real streaming connection test, and restarts the client. Cursor and Accio Work are connected to third-party models through a built-in local bridge.
 
-- **Current version**: <!--ver-->v1.0.86<!--/ver--> · [Download](https://github.com/TF49/AI-Helper/releases/latest) · [English website](https://helper.bob-api.com/en/)
+- **Current version**: <!--ver-->v1.0.87<!--/ver--> · [Download](https://github.com/TF49/AI-Helper/releases/latest) · [English website](https://helper.bob-api.com/en/)
 - **Platforms**: Windows 10/11 x64 (requires WebView2); macOS 11+ on Apple Silicon and Intel
 - **License**: MIT. The client is free; model usage is billed by whichever API provider you configure.
 - **Built with**: Tauri 2, Rust, React, TypeScript

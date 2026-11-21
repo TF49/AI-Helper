@@ -10,6 +10,7 @@ mod claude;
 mod codex;
 mod credential_policy;
 mod cursor;
+mod deepseek_harness;
 mod error;
 mod feedback;
 mod image_fetch;
@@ -91,6 +92,7 @@ async fn detect_app_path(app_type: String) -> Result<app_paths::DetectedPathInfo
         "workbuddy" => Ok(app_paths::detect_workbuddy_client_path()),
         "acciowork" => Ok(app_paths::detect_accio_client_path()),
         "cursor" => Ok(app_paths::detect_cursor_client_path()),
+        "dsh" => Ok(app_paths::detect_dsh_client_path()),
         _ => Err(format!("未知应用类型: {}", app_type)),
     })
     .await?
@@ -276,6 +278,34 @@ async fn get_workbuddy_config() -> Result<workbuddy::WorkbuddyUIConfig, error::A
 #[tauri::command]
 fn set_workbuddy_config(payload: workbuddy::WorkbuddySavePayload) -> Result<(), error::AppError> {
     workbuddy::set_workbuddy_config(payload)
+}
+
+#[tauri::command]
+async fn get_dsh_config(
+    profile: Option<String>,
+) -> Result<deepseek_harness::DshUIConfig, error::AppError> {
+    run_blocking(move || deepseek_harness::get_dsh_config(profile))
+        .await
+        .map_err(error::AppError::Other)?
+}
+
+#[tauri::command]
+async fn set_dsh_config(
+    payload: deepseek_harness::DshSavePayload,
+) -> Result<deepseek_harness::DshSaveResult, error::AppError> {
+    run_blocking(move || deepseek_harness::set_dsh_config(payload))
+        .await
+        .map_err(error::AppError::Other)?
+}
+
+#[tauri::command]
+async fn fetch_dsh_models(url: Option<String>, api_key: String) -> Result<Vec<String>, String> {
+    deepseek_harness::fetch_dsh_models(url, api_key).await
+}
+
+#[tauri::command]
+fn classify_dsh_models(models: Vec<String>) -> Vec<deepseek_harness::DshModelRoute> {
+    deepseek_harness::classify_dsh_models(models)
 }
 
 #[tauri::command]
@@ -919,6 +949,10 @@ pub fn run() {
             set_claude_config,
             get_workbuddy_config,
             set_workbuddy_config,
+            get_dsh_config,
+            set_dsh_config,
+            fetch_dsh_models,
+            classify_dsh_models,
             delete_workbuddy_model,
             check_for_updates,
             download_and_install_update,

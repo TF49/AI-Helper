@@ -1,6 +1,6 @@
 use crate::app_paths::{
     detect_chatgpt_client_path, detect_claude_cli_path, detect_codex_cli_path, get_target_pids,
-    is_target_running, load_app_paths,
+    get_target_processes, is_target_running, load_app_paths,
 };
 use std::path::Path;
 use std::process::Command;
@@ -36,6 +36,7 @@ fn normalize_launch_path(app_type: &str, raw_path: &str) -> Option<String> {
                 "workbuddy" => &["WorkBuddyAI.exe", "WorkBuddy.exe"],
                 "acciowork" => &["Accio.exe", "AccioWork.exe"],
                 "cursor" => &["Cursor.exe"],
+                "dsh" => &["DeepSeek Harness.exe"],
                 _ => &[],
             };
             for executable_name in executable_names {
@@ -59,56 +60,125 @@ fn normalize_launch_path(app_type: &str, raw_path: &str) -> Option<String> {
     }
 }
 
+/// Roots of the matched process trees, sorted: processes whose parent is not
+/// itself a target process (an Electron app's main process, a lone CLI).
+fn root_pids(processes: &[(u32, Option<u32>)]) -> Vec<u32> {
+    let mut roots: Vec<u32> = processes
+        .iter()
+        .filter(|(_, parent)| {
+            parent.is_none_or(|parent| !processes.iter().any(|(pid, _)| *pid == parent))
+        })
+        .map(|(pid, _)| *pid)
+        .collect();
+    roots.sort_unstable();
+    roots
+}
+
+/// `(pid, parent pid)` of every process below `roots`, sorted by pid — what
+/// `taskkill /T` would have reached (node backends, terminal shells, ...).
+fn descendant_pids(all: &[(u32, Option<u32>)], roots: &[u32]) -> Vec<(u32, u32)> {
+    let mut tree: Vec<u32> = roots.to_vec();
+    let mut found: Vec<(u32, u32)> = Vec::new();
+    let mut index = 0;
+    while index < tree.len() {
+        let parent = tree[index];
+        let children: Vec<u32> = all
+            .iter()
+            .filter(|(pid, p)| *p == Some(parent) && !tree.contains(pid))
+            .map(|(pid, _)| *pid)
+            .collect();
+        for pid in children {
+            tree.push(pid);
+            found.push((pid, parent));
+        }
+        index += 1;
+    }
+    found.sort_unstable();
+    found
+}
+
+fn wait_for_pids_exit(app_type: &str, pids: &[u32], timeout: Duration) -> bool {
+    let start = Instant::now();
+    loop {
+        let alive = get_target_pids(app_type);
+        if !pids.iter().any(|pid| alive.contains(pid)) {
+            return true;
+        }
+        if start.elapsed() >= timeout {
+            return false;
+        }
+        thread::sleep(Duration::from_millis(150));
+    }
+}
+
 /// 安全静默清理目标应用进程树 (CREATE_NO_WINDOW 避免控制台闪烁)
+///
+/// 只对进程树的根 (Electron 主进程) 发送关闭请求，并且强杀时也先杀根进程：
+/// 若先杀掉渲染进程而主进程仍存活，Electron 应用 (如 DeepSeek Harness) 会弹出
+/// "renderer exited: killed" 的崩溃对话框。主进程退出后子进程会自行结束，
+/// 最后再清理残留。
 pub fn kill_app_processes(app_type: &str) -> Result<usize, String> {
-    let pids = get_target_pids(app_type);
-    let count = pids.len();
+    let processes = get_target_processes(app_type);
+    let count = processes.len();
 
     if count == 0 {
         return Ok(0);
     }
+    let roots = root_pids(&processes);
 
     #[cfg(target_os = "windows")]
-    {
-        // 先尝试优雅关闭 (WM_CLOSE)，等待 1.5 秒
-        for pid in &pids {
-            let _ = Command::new("taskkill")
-                .args(["/PID", &pid.to_string()])
-                .creation_flags(0x08000000) // CREATE_NO_WINDOW
-                .output();
+    let terminate = |pid: u32, force: bool| {
+        let pid = pid.to_string();
+        let args: &[&str] = if force {
+            &["/F", "/PID", &pid]
+        } else {
+            &["/PID", &pid]
+        };
+        let _ = Command::new("taskkill")
+            .args(args)
+            .creation_flags(0x08000000) // CREATE_NO_WINDOW
+            .output();
+    };
+    #[cfg(not(target_os = "windows"))]
+    let terminate = |pid: u32, force: bool| {
+        let signal = if force { "-9" } else { "-15" };
+        let _ = Command::new("kill")
+            .args([signal, &pid.to_string()])
+            .output();
+    };
+
+    // 1. 先请求根进程优雅退出 (Windows: WM_CLOSE / Unix: SIGTERM)
+    for pid in &roots {
+        terminate(*pid, false);
+    }
+    if wait_for_pids_exit(app_type, &roots, Duration::from_millis(2500)) {
+        // 子进程随主进程退出，稍等其收尾
+        let _ = wait_for_pids_exit(
+            app_type,
+            &get_target_pids(app_type),
+            Duration::from_millis(1000),
+        );
+    } else {
+        // 2. 仍存活的根进程单独强杀 (不带 /T)，确保主进程先于渲染进程结束；
+        //    先记下整棵进程树，主进程死后再清理它拉起的 node / 终端等子进程
+        let tree = descendant_pids(&crate::app_paths::all_process_parents(), &roots);
+        let alive = get_target_pids(app_type);
+        for pid in roots.iter().filter(|pid| alive.contains(pid)) {
+            terminate(*pid, true);
         }
-
-        thread::sleep(Duration::from_millis(1500));
-
-        // 检查是否还有残留进程，仅对残留进程执行强制终止
-        let remaining_pids = get_target_pids(app_type);
-        if !remaining_pids.is_empty() {
-            for pid in &remaining_pids {
-                let _ = Command::new("taskkill")
-                    .args(["/F", "/T", "/PID", &pid.to_string()])
-                    .creation_flags(0x08000000)
-                    .output();
+        let _ = wait_for_pids_exit(app_type, &alive, Duration::from_millis(1500));
+        // 仍挂在原父进程下的才清理，防止 PID 被系统复用后误杀无关进程
+        let now = crate::app_paths::all_process_parents();
+        for (pid, parent) in tree {
+            if now.contains(&(pid, Some(parent))) {
+                terminate(pid, true);
             }
         }
     }
 
-    #[cfg(not(target_os = "windows"))]
-    {
-        // Unix: 先发送 SIGTERM，等待 1.5 秒后对残留进程发送 SIGKILL
-        for pid in &pids {
-            let _ = Command::new("kill")
-                .args(["-15", &pid.to_string()])
-                .output();
-        }
-
-        thread::sleep(Duration::from_millis(1500));
-
-        let remaining_pids = get_target_pids(app_type);
-        if !remaining_pids.is_empty() {
-            for pid in &remaining_pids {
-                let _ = Command::new("kill").args(["-9", &pid.to_string()]).output();
-            }
-        }
+    // 3. 清理残留：此时已没有主进程，不会再触发崩溃对话框
+    for pid in get_target_pids(app_type) {
+        terminate(pid, true);
     }
 
     Ok(count)
@@ -174,6 +244,11 @@ pub fn resolve_app_path(app_type: &str, custom_path: Option<&str>) -> Option<Str
             .as_deref()
             .filter(|p| !p.trim().is_empty())
             .map(|s| s.to_string()),
+        "dsh" => saved
+            .dsh_client_path
+            .as_deref()
+            .filter(|p| !p.trim().is_empty())
+            .map(|s| s.to_string()),
         _ => None,
     };
 
@@ -197,6 +272,7 @@ pub fn resolve_app_path(app_type: &str, custom_path: Option<&str>) -> Option<Str
         "workbuddy" => crate::app_paths::detect_workbuddy_client_path(),
         "acciowork" => crate::app_paths::detect_accio_client_path(),
         "cursor" => crate::app_paths::detect_cursor_client_path(),
+        "dsh" => crate::app_paths::detect_dsh_client_path(),
         _ => return None,
     };
 
@@ -228,6 +304,9 @@ pub fn resolve_app_path(app_type: &str, custom_path: Option<&str>) -> Option<Str
             let _ = crate::app_paths::save_app_paths(&updated);
         } else if app_type == "cursor" {
             updated.cursor_client_path = Some(detected_path.clone());
+            let _ = crate::app_paths::save_app_paths(&updated);
+        } else if app_type == "dsh" {
+            updated.dsh_client_path = Some(detected_path.clone());
             let _ = crate::app_paths::save_app_paths(&updated);
         }
         Some(detected_path)
@@ -603,6 +682,44 @@ end tell"#,
                 Err("当前平台不支持自动拉起 Cursor 客户端".to_string())
             }
         }
+        "dsh" => {
+            #[cfg(any(target_os = "windows", target_os = "macos"))]
+            let path_str = resolved_path.ok_or_else(|| {
+                "未找到 DeepSeek Harness 安装路径，请先在路径管理中配置或执行自动探测".to_string()
+            })?;
+
+            #[cfg(target_os = "windows")]
+            {
+                let path = Path::new(&path_str);
+                if path.exists() {
+                    let mut cmd = Command::new(path);
+                    if let Some(parent) = path.parent() {
+                        cmd.current_dir(parent);
+                    }
+                    cmd.stdin(Stdio::null())
+                        .stdout(Stdio::null())
+                        .stderr(Stdio::null());
+                    cmd.spawn()
+                        .map_err(|e| format!("启动 DeepSeek Harness 失败: {}", e))?;
+                    return Ok(format!("DeepSeek Harness 已成功拉起: {}", path_str));
+                }
+                Err(format!("DeepSeek Harness 可执行文件不存在: {}", path_str))
+            }
+
+            #[cfg(target_os = "macos")]
+            {
+                let mut cmd = Command::new("open");
+                cmd.arg(&path_str);
+                cmd.spawn()
+                    .map_err(|e| format!("启动 DeepSeek Harness 失败: {}", e))?;
+                Ok(format!("DeepSeek Harness 已成功拉起: {}", path_str))
+            }
+
+            #[cfg(not(any(target_os = "windows", target_os = "macos")))]
+            {
+                Err("当前平台不支持自动拉起 DeepSeek Harness".to_string())
+            }
+        }
         _ => Err(format!("未知应用类型: {}", app_type)),
     }
 }
@@ -810,6 +927,7 @@ mod tests {
             ("workbuddy", "WorkBuddyAI.exe"),
             ("acciowork", "Accio.exe"),
             ("cursor", "Cursor.exe"),
+            ("dsh", "DeepSeek Harness.exe"),
         ] {
             let executable = directory.path().join(executable_name);
             std::fs::write(&executable, b"test").unwrap();
@@ -829,6 +947,40 @@ mod tests {
             normalize_launch_path("cursor", directory.path().to_str().unwrap()),
             None
         );
+    }
+
+    #[test]
+    fn only_process_tree_roots_are_closed_first() {
+        // Electron: main 10 spawns renderer 11 and gpu 12; 20 is a second,
+        // unrelated instance whose parent (1) is not a target process.
+        let processes = [
+            (11, Some(10)),
+            (10, Some(4)),
+            (12, Some(10)),
+            (20, Some(1)),
+            (30, None),
+        ];
+        assert_eq!(root_pids(&processes), vec![10, 20, 30]);
+        // A child whose main already exited becomes a root of its own.
+        assert_eq!(root_pids(&[(11, Some(10))]), vec![11]);
+    }
+
+    #[test]
+    fn descendants_cover_the_whole_tree_but_nothing_else() {
+        // 10 → 11 → 13 (e.g. a shell spawned by a renderer), 10 → 12; 4 and 20 unrelated.
+        let all = [
+            (10, Some(4)),
+            (11, Some(10)),
+            (12, Some(10)),
+            (13, Some(11)),
+            (20, Some(4)),
+            (4, None),
+        ];
+        assert_eq!(
+            descendant_pids(&all, &[10]),
+            vec![(11, 10), (12, 10), (13, 11)]
+        );
+        assert!(descendant_pids(&all, &[20]).is_empty());
     }
 
     #[test]

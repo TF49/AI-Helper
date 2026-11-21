@@ -22,10 +22,11 @@ export interface AppPathsConfig {
   workbuddy_client_path?: string | null;
   accio_client_path?: string | null;
   cursor_client_path?: string | null;
+  dsh_client_path?: string | null;
 }
 
 export interface DetectedPathInfo {
-  app_type: "claude" | "codex" | "chatgpt" | "workbuddy" | "acciowork" | "cursor";
+  app_type: "claude" | "codex" | "chatgpt" | "workbuddy" | "acciowork" | "cursor" | "dsh";
   path: string;
   exists: boolean;
   source: string;
@@ -202,6 +203,85 @@ export interface WorkbuddySavePayload {
   supported_efforts: string[];
   max_input_tokens?: number | null;
   max_output_tokens?: number | null;
+}
+
+/** DeepSeek Harness 中 AI Helper 管理的三条路由（按模型协议划分） */
+export type DshRouteKind = "claude" | "codex" | "domestic";
+
+export interface DshRouteState {
+  kind: DshRouteKind;
+  route: string;
+  display_name: string;
+  api: string;
+  key_ref: string;
+  configured: boolean;
+  api_key: string;
+  base_url: string;
+  models: string[];
+}
+
+export interface DshDefaultModel {
+  provider: string;
+  model: string;
+}
+
+export interface DshExternalRoute {
+  name: string;
+  display_name?: string | null;
+  api?: string | null;
+}
+
+/** DeepSeek Harness 官方路由（官方账号 deepseek-account / 官方 API Key deepseek-official）的现状 */
+export interface DshOfficialState {
+  /** 已登录 DeepSeek 官方账号 */
+  account_signed_in: boolean;
+  /** 当前默认模型指向官方路由 */
+  default_is_official: boolean;
+  /** 官方 API Key 路由 (llm-deepseek) 的地址被改到了非官方端点 */
+  api_key_route_redirected_to?: string | null;
+}
+
+export interface DshUIConfig {
+  is_installed: boolean;
+  is_running: boolean;
+  app_path?: string | null;
+  dsh_home: string;
+  home_exists: boolean;
+  profiles: string[];
+  selected_profile?: string | null;
+  default_profile?: string | null;
+  patch_path?: string | null;
+  credentials_path: string;
+  routes: DshRouteState[];
+  default_model?: DshDefaultModel | null;
+  external_routes: DshExternalRoute[];
+  official: DshOfficialState;
+  read_error?: string | null;
+}
+
+/**
+ * 单 Key 保存载荷：所有 aihelper-* 路由统一使用这一个 Key，
+ * 后端按模型协议把模型拆分到对应路由，没有模型的路由会被移除。
+ */
+export interface DshSavePayload {
+  profile?: string | null;
+  api_key: string;
+  base_url?: string | null;
+  models: string[];
+  /** null 表示保持当前默认模型（例如用户选择的 DeepSeek 官方模型） */
+  default_model?: string | null;
+}
+
+/** 模型按协议归属的 aihelper-* 路由 */
+export interface DshModelRoute {
+  model: string;
+  kind: DshRouteKind;
+  route: string;
+}
+
+export interface DshSaveResult {
+  profile: string;
+  requires_restart: boolean;
 }
 
 export interface AccioConfig {
@@ -433,7 +513,7 @@ export type MainNav =
   | "tools"
   | "settings";
 
-export type AgentTool = "chatgpt" | "claude" | "workbuddy" | "acciowork" | "cursor";
+export type AgentTool = "chatgpt" | "claude" | "workbuddy" | "acciowork" | "cursor" | "dsh";
 
 export interface AppSettings {
   autoStart: boolean;

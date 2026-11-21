@@ -25,7 +25,7 @@ interface FeedbackModalProps {
   open: boolean;
   onClose: () => void;
   appVersion: string;
-  activeTab: "chatgpt" | "claude" | "workbuddy" | "acciowork" | "cursor" | "paths";
+  activeTab: "chatgpt" | "claude" | "workbuddy" | "acciowork" | "cursor" | "dsh" | "paths";
   networkState: "checking" | "reachable" | "unreachable";
   currentUser?: UserInfo | null;
   onRefreshAuth?: () => Promise<void>;
@@ -61,7 +61,9 @@ export function FeedbackModal({
         ? "WorkBuddy"
         : activeTab === "acciowork"
           ? "Accio Work"
-          : activeTab === "paths"
+          : activeTab === "dsh"
+            ? "DeepSeek Harness"
+            : activeTab === "paths"
             ? "应用与 CLI 路径"
             : "ChatGPT (Codex)";
 

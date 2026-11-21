@@ -4,6 +4,7 @@ import { Loader2, RotateCw, Layers, Cpu } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/lib/useAuth";
 import { useBoundTokenGroup } from "@/lib/useBoundTokenGroup";
+import { dshBindingToolId } from "../../lib/dshQuickPayload";
 import { TactileButton } from "@/components/ui/TactileButton";
 
 export type AgentStatusType = "installed" | "uninstalled" | "unconfigured";
@@ -15,7 +16,7 @@ export interface AgentCardItem {
   category: "cli" | "desktop" | "ide";
   icon: React.ElementType;
   status: AgentStatusType;
-  toolKey?: "claude" | "chatgpt" | "cursor" | "workbuddy" | "acciowork";
+  toolKey?: "claude" | "chatgpt" | "cursor" | "workbuddy" | "acciowork" | "dsh";
   /** 已安装状态下操作按钮的文案，默认「一键配置」 */
   actionLabel?: string;
   /** 当前已配置的 API Key（若未配置为 null 或空） */
@@ -87,7 +88,8 @@ export const AgentCard: React.FC<AgentCardProps> = ({
   // 首页只展示密钥所属分组，不展示密钥本身
   const { authState } = useAuth();
   const { group: keyGroup } = useBoundTokenGroup(
-    agent.toolKey ?? "default",
+    // DeepSeek Harness 卡片展示一键配置所写国产模型分组路由绑定的令牌
+    agent.toolKey ? dshBindingToolId(agent.toolKey) : "default",
     agent.configuredKey ?? undefined,
     { preserveWhileResolving: true },
   );

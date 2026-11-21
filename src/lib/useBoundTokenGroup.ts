@@ -10,7 +10,15 @@ import {
   rememberTokenKeyFingerprint,
 } from "./tokenKeyFingerprint";
 
-const KNOWN_TOOL_IDS = ["chatgpt", "claude", "workbuddy", "acciowork", "cursor", "default"];
+const KNOWN_TOOL_IDS = [
+  "chatgpt",
+  "claude",
+  "workbuddy",
+  "acciowork",
+  "cursor",
+  "dsh-cn",
+  "default",
+];
 
 export type BoundTokenInfo = {
   id: number;
@@ -101,7 +109,7 @@ export function toBoundInfo(token: Pick<TokenItem, "id" | "name" | "group">): Bo
   };
 }
 
-function matchTokenByKey(tokens: TokenItem[], apiKey: string): TokenItem | null {
+export function matchTokenByKey(tokens: TokenItem[], apiKey: string): TokenItem | null {
   const val = normalizeApiKey(apiKey);
   if (!val) return null;
 

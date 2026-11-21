@@ -16,7 +16,7 @@
   <meta property="og:url" content="https://helper.bob-api.com/guides/codex-cli-custom-api.html">
   <meta property="og:image" content="https://helper.bob-api.com/assets/app-preview.png">
   <link rel="icon" type="image/x-icon" href="/assets/favicon.ico">
-  <link rel="stylesheet" href="/assets/docs.css?v=1.0.86">
+  <link rel="stylesheet" href="/assets/docs.css?v=1.0.87">
   <script type="application/ld+json">
   {
     "@context": "https://schema.org",
@@ -27,7 +27,7 @@
         "description": "在 ~/.codex/config.toml 中声明自定义 model_provider，或使用 AI Helper 自动写入。",
         "inLanguage": "zh-CN",
         "datePublished": "2026-11-20",
-        "dateModified": "2026-11-20",
+        "dateModified": "2026-11-21",
         "author": { "@id": "https://helper.bob-api.com/#organization" },
         "tool": [{ "@type": "HowToTool", "name": "AI Helper" }, { "@type": "HowToTool", "name": "OpenAI Codex CLI" }],
         "step": [
@@ -64,7 +64,7 @@
     <p class="breadcrumb"><a href="/">AI Helper</a> / <a href="/guides/">教程</a> / Codex CLI 配置自定义 API</p>
     <article>
       <h1>OpenAI Codex CLI 如何配置自定义 API 地址</h1>
-      <p class="doc-meta">适用于 AI Helper <span class="current-version-tag">v1.0.86</span> · Windows 与 macOS · 最后更新 <time class="last-updated" datetime="2026-11-20">2026-11-20</time></p>
+      <p class="doc-meta">适用于 AI Helper <span class="current-version-tag">v1.0.87</span> · Windows 与 macOS · 最后更新 <time class="last-updated" datetime="2026-11-21">2026-11-21</time></p>
 
       <div class="tldr">
         <p><strong>简短回答：</strong>在 <code>~/.codex/config.toml</code> 中声明一个自定义 provider（<code>[model_providers.custom]</code>，写入 <code>base_url</code> 和存放 Key 的环境变量名 <code>env_key</code>），再把顶层 <code>model_provider</code> 指向它、<code>model</code> 设为模型名。AI Helper 会自动写入这些字段，并把 API Key 放进 <code>CUSTOM_OPENAI_API_KEY</code> 环境变量。</p>

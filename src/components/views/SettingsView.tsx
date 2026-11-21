@@ -582,18 +582,20 @@ function ClientResetSection() {
     try {
       const next = await resetAllClientConfigs();
       setResult(next);
-      const storageKeys: Record<string, string> = {
-        "Codex / ChatGPT": "chatgpt",
-        "Claude Code": "claude",
-        WorkBuddy: "workbuddy",
-        "Accio Work": "acciowork",
-        Cursor: "cursor",
+      const storageKeys: Record<string, string[]> = {
+        "Codex / ChatGPT": ["chatgpt"],
+        "Claude Code": ["claude"],
+        WorkBuddy: ["workbuddy"],
+        "Accio Work": ["acciowork"],
+        Cursor: ["cursor"],
+        "DeepSeek Harness": ["dsh-cn"],
       };
       if (isTauri) {
         for (const item of next.clients) {
           if (item.status !== "failed") {
-            const key = storageKeys[item.client];
-            if (key) localStorage.removeItem(`bound_token_${key}`);
+            for (const key of storageKeys[item.client] ?? []) {
+              localStorage.removeItem(`bound_token_${key}`);
+            }
           }
         }
       }

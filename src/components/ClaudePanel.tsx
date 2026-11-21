@@ -161,7 +161,7 @@ export function ClaudePanel() {
       toast.warning("请选择或输入测试模型");
       return;
     }
-    if (!showSummary && (currentStep !== TOTAL_STEPS - 1 || !configConfirmed)) {
+    if (currentStep !== TOTAL_STEPS - 1 || !configConfirmed) {
       toast.warning("请先勾选确认配置无误");
       if (currentStep !== TOTAL_STEPS - 1) {
         goToStep(TOTAL_STEPS - 1);
@@ -480,37 +480,22 @@ export function ClaudePanel() {
       <div className="sticky bottom-0 z-20 mt-auto py-2.5 px-4 rounded-2xl bg-white/70 dark:bg-black/80 backdrop-blur-xl backdrop-saturate-150 border border-white/60 dark:border-white/10 shadow-[0_4px_24px_-2px_rgba(0,0,0,0.06),inset_0_1px_1px_0_rgba(255,255,255,0.7)] dark:shadow-[0_4px_24px_-2px_rgba(0,0,0,0.3),inset_0_1px_1px_0_rgba(255,255,255,0.08)] flex-shrink-0 transition-all">
         {showSummary ? (
           <div className="flex items-center justify-between gap-4">
-            {/* 左侧：辅助动作与状态指示 */}
-            <div className="flex items-center gap-3">
-              <button
-                type="button"
-                onClick={() => goToStep(0)}
-                className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-medium border border-white/80 dark:border-white/10 bg-white/60 hover:bg-white/90 text-slate-700 dark:bg-white/5 dark:hover:bg-white/10 dark:text-gray-300 transition-all shadow-2xs backdrop-blur-xs cursor-pointer"
-                title="重新启动分步配置向导"
-              >
-                <RefreshCw
-                  size={13}
-                  className="text-slate-500 dark:text-gray-400"
-                />
-                <span>重新配置向导</span>
-              </button>
-              <div className="hidden sm:flex items-center gap-1.5 text-[11px] text-slate-500 dark:text-gray-400 font-medium">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-                <span>Claude Code 配置已生效 (settings.json)</span>
-              </div>
-            </div>
-
-            {/* 右侧：主保存操作 */}
-            <div className="flex items-center gap-2.5">
-              <button
-                type="button"
-                onClick={handleSave}
-                disabled={testModalOpen}
-                className="flex items-center justify-center gap-2 px-6 py-2.5 min-w-[210px] rounded-xl text-xs font-semibold bg-black hover:bg-neutral-800 text-white dark:bg-white dark:hover:bg-neutral-200 dark:text-black transition-colors shadow-xs cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                <Save size={14} />
-                <span>保存并应用 Claude Code 配置</span>
-              </button>
+            <button
+              type="button"
+              onClick={() => goToStep(0)}
+              className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-medium border border-white/80 dark:border-white/10 bg-white/60 hover:bg-white/90 text-slate-700 dark:bg-white/5 dark:hover:bg-white/10 dark:text-gray-300 transition-all shadow-2xs backdrop-blur-xs cursor-pointer"
+              title="重新启动分步配置向导"
+            >
+              <RefreshCw
+                size={13}
+                className="text-slate-500 dark:text-gray-400"
+              />
+              <span>重新配置向导</span>
+            </button>
+            {/* 配置已生效：概览只读，修改请走配置向导 */}
+            <div className="hidden sm:flex items-center gap-1.5 text-[11px] text-slate-500 dark:text-gray-400 font-medium">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+              <span>Claude Code 配置已生效 (settings.json)</span>
             </div>
           </div>
         ) : (
@@ -537,8 +522,9 @@ export function ClaudePanel() {
               {configExists && (
                 <button
                   type="button"
-                  onClick={() => setShowSummary(true)}
+                  onClick={() => void load()}
                   className="text-xs text-slate-500 hover:text-slate-800 dark:text-gray-400 dark:hover:text-gray-200 px-3 py-2 rounded-lg transition-colors cursor-pointer"
+                  title="放弃未保存的修改并返回概览"
                 >
                   返回概览
                 </button>

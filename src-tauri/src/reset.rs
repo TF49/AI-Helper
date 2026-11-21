@@ -9,12 +9,13 @@ use std::sync::{
     PoisonError, RwLock, RwLockReadGuard,
 };
 
-pub const CLIENTS: [&str; 5] = [
+pub const CLIENTS: [&str; 6] = [
     "Codex / ChatGPT",
     "Claude Code",
     "WorkBuddy",
     "Accio Work",
     "Cursor",
+    crate::deepseek_harness::CLIENT,
 ];
 const CODEX_ENV: &str = "CUSTOM_OPENAI_API_KEY";
 /// Clients whose configuration files belong to AI Helper and are deleted on
@@ -370,9 +371,12 @@ fn capture_at(
                 if cleaned.is_some() {
                     baseline.legacy_limited = true;
                 }
-                baseline
-                    .files
-                    .insert(target.clone(), cleaned.or(original.clone()));
+                let snapshot = if receipt.client == crate::deepseek_harness::CLIENT {
+                    crate::deepseek_harness::baseline_snapshot(&target, original.clone())
+                } else {
+                    cleaned.or(original.clone())
+                };
+                baseline.files.insert(target.clone(), snapshot);
                 receipt.original_files.insert(target.clone(), original);
                 receipt.inserted_files.push(target.clone());
                 changed = true;
@@ -588,17 +592,26 @@ fn restore_baseline(baseline: &ClientBaseline, client: &str) -> Result<BaselineR
     for (primary, mut entries) in groups {
         entries.sort_by_key(|(path, _)| **path == primary);
         crate::safe_fs::with_file_lock(&primary, || {
-            for (path, original) in entries {
-                let action = restore_baseline_file_locked(
-                    baseline,
-                    client,
-                    path,
-                    original.as_deref(),
-                    &mut outcome.warnings,
-                )?;
-                outcome.applied.push((path.clone(), action));
+            let restore = || {
+                for (path, original) in entries {
+                    let action = restore_baseline_file_locked(
+                        baseline,
+                        client,
+                        path,
+                        original.as_deref(),
+                        &mut outcome.warnings,
+                    )?;
+                    outcome.applied.push((path.clone(), action));
+                }
+                Ok(())
+            };
+            // DeepSeek Harness also writes these files (e.g. refreshing the
+            // official account token) under its own lock.
+            if client == crate::deepseek_harness::CLIENT {
+                crate::deepseek_harness::with_dsh_locks(&[primary.as_path()], restore)
+            } else {
+                restore()
             }
-            Ok(())
         })?;
     }
 
@@ -642,6 +655,10 @@ enum FileDecision {
     RestoreSnapshot,
     /// Unchanged since AI Helper last wrote it and absent before takeover.
     Delete,
+    /// Unchanged since AI Helper last wrote it, but the snapshot only holds
+    /// the managed fields (DeepSeek Harness credentials): those go back,
+    /// everything else stays. Holds the new bytes.
+    RestoreManagedFields(Vec<u8>),
     /// Edited after AI Helper's last write, or no hash to tell: only the
     /// managed fields go back to their snapshot values. Holds the new bytes.
     CleanManagedFields(Vec<u8>),
@@ -654,7 +671,7 @@ enum FileDecision {
 impl FileDecision {
     fn action(&self) -> &'static str {
         match self {
-            Self::RestoreSnapshot => "restore_snapshot",
+            Self::RestoreSnapshot | Self::RestoreManagedFields(_) => "restore_snapshot",
             Self::Delete => "delete",
             Self::CleanManagedFields(_) => "clean_managed_fields",
             Self::Missing | Self::Unchanged => "skip",
@@ -679,6 +696,18 @@ fn decide_file_locked(
                 .get(path)
                 .is_some_and(|last| *last == compute_hash(bytes))
         });
+    if unchanged_since_write && client == crate::deepseek_harness::CLIENT {
+        if let Some(current) = current.as_deref() {
+            if crate::deepseek_harness::snapshot_is_partial(path) {
+                return Ok(
+                    match crate::deepseek_harness::reconcile_file(path, current, original)? {
+                        Some(bytes) => FileDecision::RestoreManagedFields(bytes),
+                        None => FileDecision::Unchanged,
+                    },
+                );
+            }
+        }
+    }
     if unchanged_since_write {
         return Ok(if original.is_some() {
             FileDecision::RestoreSnapshot
@@ -690,7 +719,7 @@ fn decide_file_locked(
         return Ok(FileDecision::Missing);
     };
     Ok(
-        match reconcile_managed_fields(client, &current, original)? {
+        match reconcile_managed_fields(client, path, &current, original)? {
             Some(bytes) => FileDecision::CleanManagedFields(bytes),
             None => FileDecision::Unchanged,
         },
@@ -709,6 +738,9 @@ fn restore_baseline_file_locked(
     match &decision {
         FileDecision::RestoreSnapshot => crate::safe_fs::restore_optional_locked(path, original)?,
         FileDecision::Delete => crate::safe_fs::remove_file_locked(path)?,
+        FileDecision::RestoreManagedFields(bytes) => {
+            crate::safe_fs::atomic_write_locked(path, bytes)?
+        }
         FileDecision::CleanManagedFields(bytes) => {
             crate::safe_fs::atomic_write_locked(path, bytes)?;
             warnings.push(if baseline.unhashed_snapshot {
@@ -741,6 +773,7 @@ fn restore_baseline_file_locked(
 /// Returns `None` when nothing would change.
 fn reconcile_managed_fields(
     client: &str,
+    path: &Path,
     current: &[u8],
     snapshot: Option<&[u8]>,
 ) -> Result<Option<Vec<u8>>, AppError> {
@@ -751,6 +784,9 @@ fn reconcile_managed_fields(
         "Claude Code" => reconcile_claude(current, snapshot),
         "Codex / ChatGPT" => reconcile_codex(current, snapshot),
         "WorkBuddy" => reconcile_workbuddy(current, snapshot),
+        crate::deepseek_harness::CLIENT => {
+            crate::deepseek_harness::reconcile_file(path, current, snapshot)
+        }
         _ => Ok(None),
     }
 }
@@ -1279,6 +1315,9 @@ fn legacy_cleanup(client: &str) -> Result<bool, AppError> {
         }
         "WorkBuddy" => crate::workbuddy::reset_legacy_configs(clean_legacy_workbuddy),
         "Accio Work" | "Cursor" => remove_owned_files(&owned_files(client)?),
+        // DeepSeek Harness was never written by older versions: without a
+        // baseline there is nothing AI Helper owns.
+        crate::deepseek_harness::CLIENT => Ok(false),
         _ => Err(AppError::Other("未知客户端".into())),
     }
 }
@@ -1517,6 +1556,9 @@ pub fn preview_reset() -> Result<ResetPreview, AppError> {
         if let Some(baseline) = state.clients.get(client) {
             plans.push(baseline_client_plan(client, baseline));
             continue;
+        } else if client == crate::deepseek_harness::CLIENT {
+            plan.action = "skip".to_string();
+            plan.reason = "AI Helper 尚未写入过该客户端配置".to_string();
         } else {
             plan.action = "clean_managed_fields".to_string();
             plan.reason = "缺少快照，将清理可识别的受管配置".to_string();
@@ -2371,5 +2413,84 @@ base_url = "https://other.example/v1"
         assert_eq!(baseline_client_plan("Claude Code", baseline).action, "skip");
         assert!(restore_baseline(baseline, "Claude Code").is_err());
         assert!(path.is_dir());
+    }
+
+    #[test]
+    fn deepseek_harness_reset_restores_snapshot_or_only_managed_fields() {
+        use crate::deepseek_harness::{
+            set_dsh_routes, with_test_home, DshRouteKind, DshRouteUpdate, DshRoutesPayload, CLIENT,
+        };
+        const PATCH: &str = "# header\n- id: llm-pi-ai\n  name: \"@deepseek-ai/dsh-llm-pi-ai\"\n  config:\n    providers:\n      bobapi:\n        api: anthropic-messages\n        baseURL: https://bob-api.com/\n        apiKeyEnv: BOBAPI_API_KEY\n        models:\n          - id: claude-sonnet-5\n            name: claude-sonnet-5\n";
+        const CREDENTIALS: &str =
+            "version: 1\nrefs:\n  BOBAPI_API_KEY: sk-fake-user\nrecords:\n  a/b:\n    kind: token\n    payload:\n      token: fake\n";
+        const KEY: &str = "sk-fake-dsh-reset";
+        crate::credential_policy::register_managed_key(KEY);
+
+        for user_edits_afterwards in [false, true] {
+            let home = tempfile::tempdir().unwrap();
+            let profile = home.path().join("profiles/desktop");
+            std::fs::create_dir_all(&profile).unwrap();
+            let patch_path = profile.join("cordis.patch.yml");
+            let credentials_path = home.path().join(".credentials.yaml");
+            std::fs::write(&patch_path, PATCH).unwrap();
+            std::fs::write(&credentials_path, CREDENTIALS).unwrap();
+            let baseline_path = home.path().join("reset.json");
+
+            with_test_state_path(&baseline_path, || {
+                with_test_home(home.path(), || {
+                    set_dsh_routes(DshRoutesPayload {
+                        profile: None,
+                        routes: vec![DshRouteUpdate {
+                            kind: DshRouteKind::Claude,
+                            enabled: true,
+                            api_key: KEY.into(),
+                            base_url: None,
+                            models: vec!["claude-sonnet-5-5".into()],
+                            only_same_key: false,
+                        }],
+                        default_model: None,
+                    })
+                    .unwrap();
+                });
+            });
+            assert!(std::fs::read_to_string(&patch_path)
+                .unwrap()
+                .contains("aihelper-claude:"));
+
+            let theme = "- id: ui-theme\n  config:\n    preference: dark\n";
+            if user_edits_afterwards {
+                let mut current = std::fs::read_to_string(&patch_path).unwrap();
+                current.push_str(theme);
+                std::fs::write(&patch_path, current).unwrap();
+            }
+
+            let state = load(&baseline_path);
+            let baseline = &state.clients[CLIENT];
+            let plan = baseline_client_plan(CLIENT, baseline);
+            let restore = restore_baseline(baseline, CLIENT).unwrap();
+
+            assert_eq!(
+                std::fs::read_to_string(&credentials_path).unwrap(),
+                CREDENTIALS
+            );
+            if user_edits_afterwards {
+                assert_eq!(plan.action, "clean_managed_fields");
+                assert!(restore.field_cleaned());
+                assert_eq!(
+                    std::fs::read_to_string(&patch_path).unwrap(),
+                    format!("{PATCH}{theme}")
+                );
+            } else {
+                assert_eq!(plan.action, "restore_snapshot");
+                assert!(!restore.field_cleaned());
+                assert_eq!(std::fs::read_to_string(&patch_path).unwrap(), PATCH);
+            }
+        }
+    }
+
+    #[test]
+    fn deepseek_harness_without_baseline_is_skipped() {
+        assert!(!legacy_cleanup(crate::deepseek_harness::CLIENT).unwrap());
+        assert!(CLIENTS.contains(&crate::deepseek_harness::CLIENT));
     }
 }

@@ -14,6 +14,8 @@ pub struct AppPathsConfig {
     pub accio_client_path: Option<String>,
     #[serde(default)]
     pub cursor_client_path: Option<String>,
+    #[serde(default)]
+    pub dsh_client_path: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -199,6 +201,18 @@ fn matches_process(
             }
             name_lower == "cursor.exe" || name_lower == "cursor" || cmd_line.contains("cursor.exe")
         }
+        "dsh" => {
+            // 只匹配桌面版主程序及其 Electron 子进程，不匹配 dsh.cmd 拉起的 node CLI
+            if name_lower.contains("crashpad")
+                || name_lower.contains("uninstall")
+                || name_lower.contains("helper")
+            {
+                return false;
+            }
+            name_lower == "deepseek harness.exe"
+                || name_lower == "deepseek harness"
+                || cmd_line.contains("deepseek harness.exe")
+        }
         _ => false,
     }
 }
@@ -248,6 +262,25 @@ pub fn is_target_running(target: &str) -> bool {
 
 /// 收集目标运行时的 PID
 pub fn get_target_pids(target: &str) -> Vec<u32> {
+    get_target_processes(target)
+        .into_iter()
+        .map(|(pid, _)| pid)
+        .collect()
+}
+
+/// `(pid, parent pid)` of every running process.
+pub fn all_process_parents() -> Vec<(u32, Option<u32>)> {
+    let mut system = System::new();
+    system.refresh_processes(sysinfo::ProcessesToUpdate::All);
+    system
+        .processes()
+        .iter()
+        .map(|(pid, proc)| (pid.as_u32(), proc.parent().map(|parent| parent.as_u32())))
+        .collect()
+}
+
+/// `(pid, parent pid)` of every process matching `target`.
+pub fn get_target_processes(target: &str) -> Vec<(u32, Option<u32>)> {
     let mut system = System::new();
     system.refresh_processes(sysinfo::ProcessesToUpdate::All);
     let mut pids = Vec::new();
@@ -262,7 +295,7 @@ pub fn get_target_pids(target: &str) -> Vec<u32> {
             .join(" ");
 
         if matches_process(target, &name_lower, &cmd_line, proc.exe()) {
-            pids.push(pid.as_u32());
+            pids.push((pid.as_u32(), proc.parent().map(|parent| parent.as_u32())));
         }
     }
     pids
@@ -1371,6 +1404,128 @@ pub fn detect_cursor_client_path() -> DetectedPathInfo {
     detect_cursor_client_path_internal(is_running, running_exe)
 }
 
+const DSH_EXE: &str = "DeepSeek Harness.exe";
+
+#[cfg(target_os = "windows")]
+fn find_dsh_in_registry() -> Option<String> {
+    use winreg::enums::*;
+    use winreg::RegKey;
+
+    for root_hkey in [HKEY_CURRENT_USER, HKEY_LOCAL_MACHINE] {
+        let root = RegKey::predef(root_hkey);
+        for uninstall_prefix in &[
+            "Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall",
+            "Software\\WOW6432Node\\Microsoft\\Windows\\CurrentVersion\\Uninstall",
+        ] {
+            let Ok(uninstall_key) = root.open_subkey(uninstall_prefix) else {
+                continue;
+            };
+            for subkey_name in uninstall_key.enum_keys().flatten() {
+                let Ok(item) = uninstall_key.open_subkey(&subkey_name) else {
+                    continue;
+                };
+                let display_name: String = item.get_value("DisplayName").unwrap_or_default();
+                if !display_name.trim().eq_ignore_ascii_case("DeepSeek Harness") {
+                    continue;
+                }
+                if let Ok(location) = item.get_value::<String, _>("InstallLocation") {
+                    let location = location.trim().trim_matches('"');
+                    if !location.is_empty() {
+                        let candidate = Path::new(location).join(DSH_EXE);
+                        if candidate.exists() {
+                            return Some(candidate.to_string_lossy().to_string());
+                        }
+                    }
+                }
+                if let Ok(icon) = item.get_value::<String, _>("DisplayIcon") {
+                    let icon = icon.split(',').next().unwrap_or_default();
+                    let icon = icon.trim().trim_matches('"');
+                    if icon.to_lowercase().ends_with(".exe") && Path::new(icon).exists() {
+                        return Some(icon.to_string());
+                    }
+                }
+            }
+        }
+    }
+    None
+}
+
+/// 探测 DeepSeek Harness 桌面版路径
+pub fn detect_dsh_client_path_internal(
+    is_running: bool,
+    running_exe: Option<PathBuf>,
+) -> DetectedPathInfo {
+    let found = |path: String, source: &str, extra: &str| DetectedPathInfo {
+        app_type: "dsh".to_string(),
+        path,
+        exists: true,
+        source: source.to_string(),
+        is_running,
+        extra_info: Some(extra.to_string()),
+    };
+
+    if let Some(path) = running_exe {
+        return found(
+            path.to_string_lossy().to_string(),
+            "running_process",
+            "探测自当前运行中进程",
+        );
+    }
+
+    #[cfg(target_os = "windows")]
+    {
+        if let Some(path) = find_dsh_in_registry() {
+            return found(path, "registry", "探测自 Windows 注册表安装记录");
+        }
+        if let Ok(local_appdata) = std::env::var("LOCALAPPDATA") {
+            let candidate = PathBuf::from(local_appdata)
+                .join("Programs")
+                .join("DeepSeek Harness")
+                .join(DSH_EXE);
+            if candidate.exists() {
+                return found(
+                    candidate.to_string_lossy().to_string(),
+                    "standard_dir",
+                    "标准用户安装目录 (%LOCALAPPDATA%\\Programs)",
+                );
+            }
+        }
+    }
+
+    #[cfg(target_os = "macos")]
+    {
+        let candidate = "/Applications/DeepSeek Harness.app";
+        if Path::new(candidate).exists() {
+            return found(
+                candidate.to_string(),
+                "standard_dir",
+                "macOS 应用目录 (/Applications)",
+            );
+        }
+    }
+
+    if let Some(saved) = load_app_paths()
+        .dsh_client_path
+        .filter(|path| !path.is_empty() && Path::new(path).exists())
+    {
+        return found(saved, "saved_path", "来自已保存的自定义路径");
+    }
+
+    DetectedPathInfo {
+        app_type: "dsh".to_string(),
+        path: String::new(),
+        exists: false,
+        source: "not_found".to_string(),
+        is_running,
+        extra_info: None,
+    }
+}
+
+pub fn detect_dsh_client_path() -> DetectedPathInfo {
+    let (is_running, running_exe) = inspect_target_process("dsh");
+    detect_dsh_client_path_internal(is_running, running_exe)
+}
+
 /// 单次扫描系统进程树，高效全量探测所有应用路径
 pub fn detect_all_app_paths() -> Vec<DetectedPathInfo> {
     let mut system = System::new();
@@ -1382,6 +1537,7 @@ pub fn detect_all_app_paths() -> Vec<DetectedPathInfo> {
     let (workbuddy_run, workbuddy_exe) = inspect_target_process_with_system("workbuddy", &system);
     let (accio_run, accio_exe) = inspect_target_process_with_system("acciowork", &system);
     let (cursor_run, cursor_exe) = inspect_target_process_with_system("cursor", &system);
+    let (dsh_run, dsh_exe) = inspect_target_process_with_system("dsh", &system);
 
     let results = vec![
         detect_claude_cli_path_internal(claude_run, claude_exe),
@@ -1390,6 +1546,7 @@ pub fn detect_all_app_paths() -> Vec<DetectedPathInfo> {
         detect_workbuddy_client_path_internal(workbuddy_run, workbuddy_exe),
         detect_accio_client_path_internal(accio_run, accio_exe),
         detect_cursor_client_path_internal(cursor_run, cursor_exe),
+        detect_dsh_client_path_internal(dsh_run, dsh_exe),
     ];
 
     // 静默自愈：若保存的配置路径物理失效或尚未持久化，自动写回已探测到的最新有效路径
@@ -1454,6 +1611,11 @@ pub fn browse_path_dialog(app_type: &str) -> Result<Option<String>, String> {
             "*.exe",
             "选择 Cursor 客户端可执行文件 (Cursor.exe)",
         ),
+        "dsh" => (
+            "可执行文件 (*.exe)",
+            "*.exe",
+            "选择 DeepSeek Harness 客户端路径 (DeepSeek Harness.exe)",
+        ),
         _ => return Err(format!("不支持的应用类型选择: {}", app_type)),
     };
 
@@ -1496,6 +1658,7 @@ pub fn browse_path_dialog(app_type: &str) -> Result<Option<String>, String> {
         "workbuddy" => "选择 WorkBuddy 客户端应用",
         "acciowork" => "选择 Accio 客户端应用",
         "cursor" => "选择 Cursor 客户端应用 (Cursor.app)",
+        "dsh" => "选择 DeepSeek Harness 客户端应用 (DeepSeek Harness.app)",
         _ => "选择应用文件",
     };
     let script = format!(
@@ -1567,6 +1730,35 @@ mod tests {
     }
 
     #[test]
+    fn test_detect_dsh_client_path_does_not_panic() {
+        let detected = detect_dsh_client_path();
+        assert_eq!(detected.app_type, "dsh");
+    }
+
+    #[test]
+    fn dsh_process_matching_ignores_cli_and_helpers() {
+        let exe = Path::new("E:\\Developer Tool\\DeepSeek Harness\\DeepSeek Harness.exe");
+        assert!(matches_process(
+            "dsh",
+            "deepseek harness.exe",
+            "",
+            Some(exe)
+        ));
+        assert!(!matches_process(
+            "dsh",
+            "node.exe",
+            "node c:\\npm\\node_modules\\dsh\\bin\\dsh.js",
+            None
+        ));
+        assert!(!matches_process(
+            "dsh",
+            "uninstall deepseek harness.exe",
+            "",
+            None
+        ));
+    }
+
+    #[test]
     fn test_app_paths_config_serde() {
         let cfg = AppPathsConfig {
             claude_cli_path: Some("C:\\bin\\claude.cmd".to_string()),
@@ -1579,6 +1771,9 @@ mod tests {
                 "C:\\Users\\Administrator\\AppData\\Local\\Programs\\Accio\\Accio.exe".to_string(),
             ),
             cursor_client_path: Some("E:\\Developer Tool\\Cursor\\Cursor.exe".to_string()),
+            dsh_client_path: Some(
+                "E:\\Developer Tool\\DeepSeek Harness\\DeepSeek Harness.exe".to_string(),
+            ),
         };
 
         let json = serde_json::to_string(&cfg).expect("serialize");
@@ -1593,5 +1788,6 @@ mod tests {
         );
         assert_eq!(deserialized.accio_client_path, cfg.accio_client_path);
         assert_eq!(deserialized.cursor_client_path, cfg.cursor_client_path);
+        assert_eq!(deserialized.dsh_client_path, cfg.dsh_client_path);
     }
 }

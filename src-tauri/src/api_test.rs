@@ -253,7 +253,7 @@ pub async fn test_codex_stream(
                     _ => "建议: 请检查填写的 Base URL、API Key 与 Model 名称是否匹配。",
                 };
                 let _ = on_event.send(TestStreamEvent::Log {
-                    text: hint.to_string(),
+                    text: model_unavailable_hint(&body).unwrap_or(hint).to_string(),
                     level: "warn".to_string(),
                 });
 
@@ -398,7 +398,7 @@ pub async fn test_claude_stream(
                     _ => "建议: 请检查 Base URL、API Key 与 Model 配置。",
                 };
                 let _ = on_event.send(TestStreamEvent::Log {
-                    text: hint.to_string(),
+                    text: model_unavailable_hint(&body).unwrap_or(hint).to_string(),
                     level: "warn".to_string(),
                 });
 
@@ -532,7 +532,7 @@ pub async fn test_workbuddy_stream(
                     _ => "建议: 请检查 Base URL、API Key 与 Model 配置。",
                 };
                 let _ = on_event.send(TestStreamEvent::Log {
-                    text: hint.to_string(),
+                    text: model_unavailable_hint(&body).unwrap_or(hint).to_string(),
                     level: "warn".to_string(),
                 });
 
@@ -620,6 +620,15 @@ fn sanitize_error(body: &str, api_key: &str) -> String {
         cleaned.push_str("... (截断)");
     }
     cleaned
+}
+
+/// 中转站（new-api）在 Key 所属分组没有该模型的渠道时返回 `model_not_found`，
+/// 状态码常为 503，不能按「上游故障」提示：多半是分组被切换、模型已不在新分组中。
+fn model_unavailable_hint(body: &str) -> Option<&'static str> {
+    let lower = body.to_ascii_lowercase();
+    (lower.contains("model_not_found") || lower.contains("no available channel for model")).then_some(
+        "建议: 该模型不在此 API Key 当前分组中（分组可能已在 bob-api 网页切换）。请在配置向导「选择模型」中重新拉取可用模型，取消勾选不可用的模型后再保存。",
+    )
 }
 
 fn api_root(url: &str) -> &str {
@@ -1008,7 +1017,7 @@ pub async fn test_accio_stream(
                     _ => "建议: 请检查填写的 Base URL、API Key 与 Model 名称是否匹配。",
                 };
                 let _ = on_event.send(TestStreamEvent::Log {
-                    text: hint.to_string(),
+                    text: model_unavailable_hint(&body).unwrap_or(hint).to_string(),
                     level: "warn".to_string(),
                 });
 
@@ -1224,7 +1233,7 @@ pub async fn test_cursor_stream(
                     _ => "建议: 请检查 Base URL、API Key 与 Model 配置。",
                 };
                 let _ = on_event.send(TestStreamEvent::Log {
-                    text: hint.to_string(),
+                    text: model_unavailable_hint(&body).unwrap_or(hint).to_string(),
                     level: "warn".to_string(),
                 });
 
@@ -1251,6 +1260,13 @@ pub async fn test_cursor_stream(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn model_missing_from_group_gets_its_own_hint() {
+        let body = r#"{"error":{"code":"model_not_found","message":"No available channel for model claude-fable-5 under group ClaudeCode Kiro-1 (distributor)","type":"new_api_error"}}"#;
+        assert!(model_unavailable_hint(body).is_some_and(|hint| hint.contains("当前分组")));
+        assert!(model_unavailable_hint(r#"{"error":{"message":"upstream timeout"}}"#).is_none());
+    }
 
     #[test]
     fn test_reject_unsafe_remote_http() {

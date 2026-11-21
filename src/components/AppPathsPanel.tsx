@@ -26,6 +26,7 @@ import {
   WorkbuddyIcon,
   AccioWorkIcon,
   CursorIcon,
+  DeepSeekHarnessIcon,
 } from "./BrandIcons";
 import {
   browseAppPath,
@@ -121,6 +122,7 @@ export function AppPathsPanel() {
   const [workbuddyPath, setWorkbuddyPath] = useState("");
   const [accioPath, setAccioPath] = useState("");
   const [cursorPath, setCursorPath] = useState("");
+  const [dshPath, setDshPath] = useState("");
 
   // 运行与探测状态
   const [claudeInfo, setClaudeInfo] = useState<DetectedPathInfo | null>(null);
@@ -131,6 +133,7 @@ export function AppPathsPanel() {
   );
   const [accioInfo, setAccioInfo] = useState<DetectedPathInfo | null>(null);
   const [cursorInfo, setCursorInfo] = useState<DetectedPathInfo | null>(null);
+  const [dshInfo, setDshInfo] = useState<DetectedPathInfo | null>(null);
 
   const [claudeRunning, setClaudeRunning] = useState(false);
   const [codexRunning, setCodexRunning] = useState(false);
@@ -138,6 +141,7 @@ export function AppPathsPanel() {
   const [workbuddyRunning, setWorkbuddyRunning] = useState(false);
   const [accioRunning, setAccioRunning] = useState(false);
   const [cursorRunning, setCursorRunning] = useState(false);
+  const [dshRunning, setDshRunning] = useState(false);
 
   const [detectingType, setDetectingType] = useState<string | null>(null);
   const [launchingType, setLaunchingType] = useState<string | null>(null);
@@ -233,6 +237,7 @@ export function AppPathsPanel() {
       setWorkbuddyPath(saved.workbuddy_client_path || "");
       setAccioPath(saved.accio_client_path || "");
       setCursorPath(saved.cursor_client_path || "");
+      setDshPath(saved.dsh_client_path || "");
 
       // 动态校准 ChatGPT 路径（若经历微软商店后台静默升级导致旧路径失效，自动纠偏为最新物理路径）
       detectAppPath("chatgpt")
@@ -245,13 +250,14 @@ export function AppPathsPanel() {
         .catch(() => {});
 
       // 并发检查当前运行状态
-      const [cRun, xRun, gRun, wbRun, accioRun, curRun] = await Promise.all([
+      const [cRun, xRun, gRun, wbRun, accioRun, curRun, dshRun] = await Promise.all([
         checkAppProcessStatus("claude").catch(() => false),
         checkAppProcessStatus("codex").catch(() => false),
         checkAppProcessStatus("chatgpt").catch(() => false),
         checkAppProcessStatus("workbuddy").catch(() => false),
         checkAppProcessStatus("acciowork").catch(() => false),
         checkAppProcessStatus("cursor").catch(() => false),
+        checkAppProcessStatus("dsh").catch(() => false),
       ]);
       setClaudeRunning(cRun);
       setCodexRunning(xRun);
@@ -259,6 +265,7 @@ export function AppPathsPanel() {
       setWorkbuddyRunning(wbRun);
       setAccioRunning(accioRun);
       setCursorRunning(curRun);
+      setDshRunning(dshRun);
     } catch (err) {
       toast.error(`读取路径配置失败: ${err}`);
     } finally {
@@ -276,7 +283,7 @@ export function AppPathsPanel() {
 
   // 单项自动探测
   const handleDetectSingle = async (
-    type: "claude" | "codex" | "chatgpt" | "workbuddy" | "acciowork" | "cursor",
+    type: "claude" | "codex" | "chatgpt" | "workbuddy" | "acciowork" | "cursor" | "dsh",
   ) => {
     setDetectingType(type);
     try {
@@ -305,6 +312,10 @@ export function AppPathsPanel() {
         setCursorInfo(info);
         if (info.path) setCursorPath(info.path);
         setCursorRunning(info.is_running);
+      } else if (type === "dsh") {
+        setDshInfo(info);
+        if (info.path) setDshPath(info.path);
+        setDshRunning(info.is_running);
       }
 
       if (info.exists && info.path) {
@@ -359,6 +370,10 @@ export function AppPathsPanel() {
           setCursorInfo(info);
           if (info.path) setCursorPath(info.path);
           setCursorRunning(info.is_running);
+        } else if (info.app_type === "dsh") {
+          setDshInfo(info);
+          if (info.path) setDshPath(info.path);
+          setDshRunning(info.is_running);
         }
       }
       toast.success("已完成全部应用与 CLI 路径深度探测！");
@@ -371,7 +386,7 @@ export function AppPathsPanel() {
 
   // 浏览选择文件
   const handleBrowse = async (
-    type: "claude" | "codex" | "chatgpt" | "workbuddy" | "acciowork" | "cursor",
+    type: "claude" | "codex" | "chatgpt" | "workbuddy" | "acciowork" | "cursor" | "dsh",
   ) => {
     try {
       const selected = await browseAppPath(type);
@@ -382,6 +397,7 @@ export function AppPathsPanel() {
         if (type === "workbuddy") setWorkbuddyPath(selected);
         if (type === "acciowork") setAccioPath(selected);
         if (type === "cursor") setCursorPath(selected);
+        if (type === "dsh") setDshPath(selected);
         toast.success(`已选择路径: ${selected}`);
       }
     } catch (err) {
@@ -398,6 +414,7 @@ export function AppPathsPanel() {
       workbuddy_client_path: workbuddyPath.trim() || null,
       accio_client_path: accioPath.trim() || null,
       cursor_client_path: cursorPath.trim() || null,
+      dsh_client_path: dshPath.trim() || null,
     };
     try {
       await saveAppPaths(cfg);
@@ -409,7 +426,7 @@ export function AppPathsPanel() {
 
   // 测试启动 / 重启目标
   const handleLaunchOrRestart = async (
-    type: "claude" | "codex" | "chatgpt" | "workbuddy" | "acciowork" | "cursor",
+    type: "claude" | "codex" | "chatgpt" | "workbuddy" | "acciowork" | "cursor" | "dsh",
   ) => {
     setLaunchingType(type);
     try {
@@ -424,7 +441,9 @@ export function AppPathsPanel() {
                 ? accioPath
                 : type === "cursor"
                   ? cursorPath
-                  : chatgptPath;
+                  : type === "dsh"
+                    ? dshPath
+                    : chatgptPath;
 
       const result = await restartTargetApp(type, custom || undefined);
       toast.success(result);
@@ -442,6 +461,7 @@ export function AppPathsPanel() {
         if (type === "workbuddy") setWorkbuddyRunning(isRun);
         if (type === "acciowork") setAccioRunning(isRun);
         if (type === "cursor") setCursorRunning(isRun);
+        if (type === "dsh") setDshRunning(isRun);
         delete refreshTimersRef.current[type];
       }, 1000);
     } catch (err) {
@@ -2481,6 +2501,111 @@ export function AppPathsPanel() {
               <span className="text-black dark:text-white font-bold">ℹ️</span>
               <span>
                 接入说明：在此拉起 Cursor 客户端时，AI-Helper 会注入本地 Bridge 网关并启用转译中继；先点击“接入 AI Helper”，即可使用自有模型站点，支持 Agent 模式与全模型中继。
+              </span>
+            </div>
+          </div>
+        </SpotlightCard>
+
+        {/* 卡片 7: DeepSeek Harness 桌面客户端 */}
+        <SpotlightCard
+          className="p-5 rounded-2xl border border-slate-200/90 dark:border-white/10 bg-white/80 dark:bg-black/60 shadow-sm dark:shadow-none flex-shrink-0 min-h-fit"
+          spotlightColor="rgba(255, 255, 255, 0.08)"
+        >
+          <div className="flex flex-col gap-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-lg bg-neutral-100 text-black dark:bg-white/10 dark:text-white flex items-center justify-center flex-shrink-0">
+                  <DeepSeekHarnessIcon size={16} />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-bold text-slate-900 dark:text-white">
+                      DeepSeek Harness 桌面客户端路径
+                    </span>
+                    {dshRunning && (
+                      <span className="inline-flex items-center gap-1 text-[10px] font-medium px-2 py-0.2 rounded-full bg-neutral-100 text-neutral-800 border border-neutral-200 dark:bg-white/10 dark:text-neutral-200 dark:border-white/10">
+                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                        运行中
+                      </span>
+                    )}
+                  </div>
+                  <span className="text-[11px] text-slate-400 dark:text-gray-500 font-mono">
+                    Win32 可执行程序 (DeepSeek Harness.exe) / 注册表安装路径
+                  </span>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2">
+                {dshPath ? (
+                  <span className="text-[11px] text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
+                    <CheckCircle2 size={13} />
+                    <span>已就绪</span>
+                  </span>
+                ) : (
+                  <span className="text-[11px] text-amber-600 dark:text-amber-400 flex items-center gap-1">
+                    <AlertCircle size={13} />
+                    <span>待配置</span>
+                  </span>
+                )}
+              </div>
+            </div>
+
+            <div className="flex flex-col sm:flex-row gap-2 items-center">
+              <div className="relative flex-1 w-full">
+                <input
+                  type="text"
+                  value={dshPath}
+                  onChange={(e) => setDshPath(e.target.value)}
+                  placeholder="例如: E:\Developer Tool\DeepSeek Harness\DeepSeek Harness.exe"
+                  className="w-full text-xs font-mono px-3 py-2 rounded-xl border border-slate-200 dark:border-white/10 bg-slate-50/70 dark:bg-black/30 text-slate-800 dark:text-gray-200 focus:outline-none focus:border-black dark:focus:border-white focus:ring-1 focus:ring-black/20 dark:focus:ring-white/20"
+                />
+              </div>
+
+              <div className="flex items-center gap-1.5 w-full sm:w-auto justify-end">
+                <button
+                  type="button"
+                  onClick={() => void handleDetectSingle("dsh")}
+                  disabled={detectingType === "dsh"}
+                  className="px-2.5 py-1.5 rounded-lg border border-slate-200 text-slate-700 bg-white hover:bg-slate-50 dark:border-white/10 dark:bg-white/5 dark:text-gray-300 dark:hover:bg-white/10 text-xs font-medium flex items-center gap-1 cursor-pointer transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+                  title="自动探测 DeepSeek Harness 安装路径"
+                >
+                  <Search size={12} className={detectingType === "dsh" ? "animate-spin" : ""} />
+                  <span>探测</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => void handleBrowse("dsh")}
+                  className="px-2.5 py-1.5 rounded-lg border border-slate-200 dark:border-white/10 text-slate-700 dark:text-gray-300 hover:bg-slate-100 dark:hover:bg-white/5 text-xs font-medium flex items-center gap-1 cursor-pointer transition-colors"
+                  title="通过文件管理器浏览 DeepSeek Harness 路径"
+                >
+                  <FolderOpen size={12} />
+                  <span>浏览</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => void handleLaunchOrRestart("dsh")}
+                  disabled={launchingType === "dsh"}
+                  className="px-2.5 py-1.5 rounded-lg bg-black hover:bg-neutral-800 text-white dark:bg-white dark:hover:bg-neutral-200 dark:text-black text-xs font-medium flex items-center gap-1 cursor-pointer transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+                  title="启动或重启 DeepSeek Harness"
+                >
+                  <Play size={12} className={launchingType === "dsh" ? "animate-spin" : ""} />
+                  <span>{dshRunning ? "重启客户端" : "启动客户端"}</span>
+                </button>
+              </div>
+            </div>
+
+            {dshInfo?.extra_info && (
+              <div className="text-[11px] text-neutral-800 dark:text-neutral-200 bg-neutral-100/70 dark:bg-white/5 px-2.5 py-1 rounded-lg border border-neutral-200 dark:border-white/10">
+                💡 {dshInfo.extra_info}
+              </div>
+            )}
+
+            <div className="text-[11px] text-slate-500 dark:text-gray-400 bg-slate-50/60 dark:bg-white/[0.03] px-2.5 py-1.5 rounded-lg border border-slate-200/60 dark:border-white/5 flex items-start gap-1.5">
+              <span className="text-black dark:text-white font-bold">ℹ️</span>
+              <span>
+                DeepSeek Harness 在启动时读取配置档案；在 AI Helper 中保存分组路由后，可在此重启客户端使新路由生效。
               </span>
             </div>
           </div>

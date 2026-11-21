@@ -12,6 +12,8 @@ module.exports = {
         4.5: "1.125rem",
         5.5: "1.375rem",
         8.5: "2.125rem",
+        // ApiKeyInput 输入框高度 (42px)；未定义时 tailwind-merge 仍会剔除 Input 默认的 h-9，导致输入框被压扁
+        10.5: "2.625rem",
       },
       colors: {
         background: "hsl(var(--background))",

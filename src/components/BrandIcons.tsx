@@ -181,6 +181,40 @@ export const CursorIcon: React.FC<
   );
 };
 
+export const DSH_BRAND_COLOR = "#4D6BFE";
+
+/**
+ * DeepSeek Harness 图标（AI Helper 自绘：线框挽具环 + 中心节点，非官方商标）
+ */
+export const DeepSeekHarnessIcon: React.FC<
+  BrandIconProps & { useOfficialColor?: boolean }
+> = ({ size = 16, className = "", color, useOfficialColor = false }) => {
+  const iconStroke = color || (useOfficialColor ? DSH_BRAND_COLOR : "currentColor");
+
+  return (
+    <svg
+      height={size}
+      width={size}
+      className={cn("flex-shrink-0 transition-colors", className)}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke={iconStroke}
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      xmlns="http://www.w3.org/2000/svg"
+    >
+      <title>DeepSeek Harness</title>
+      <rect x="3" y="3" width="18" height="18" rx="5" />
+      <path d="M7.5 9h9" />
+      <path d="M7.5 15h9" />
+      <path d="M9.5 6.5v11" />
+      <path d="M14.5 6.5v11" />
+      <circle cx="12" cy="12" r="1.2" fill={iconStroke} stroke="none" />
+    </svg>
+  );
+};
+
 /**
  * Google Gemini 品牌图标 (四芒彩虹星)
  */

@@ -17,6 +17,7 @@ import {
   WorkbuddyIcon,
   AccioWorkIcon,
   CursorIcon,
+  DeepSeekHarnessIcon,
 } from "./BrandIcons";
 import { toast } from "sonner";
 import {
@@ -25,6 +26,7 @@ import {
   setWorkbuddyConfig,
   setAccioConfig,
   setCursorConfig,
+  setDshConfig,
   testCodexStream,
   testClaudeStream,
   testWorkbuddyStream,
@@ -36,23 +38,29 @@ import {
   restartTargetApp,
 } from "../lib/api";
 import type {
+  ApiTestResult,
   TestStreamEvent,
   WorkbuddySavePayload,
   AccioConfig,
   CursorConfig,
+  DshSavePayload,
 } from "../types";
 import { ButtonToLoaderToSuccess } from "./ui/ButtonToLoaderToSuccess";
+import { runDshConnectivityTests } from "../lib/dshQuickPayload";
+
 
 export interface TerminalTestModalProps {
   open: boolean;
   onClose: () => void;
-  type: "codex" | "claude" | "workbuddy" | "acciowork" | "cursor";
+  type: "codex" | "claude" | "workbuddy" | "acciowork" | "cursor" | "dsh";
   url: string;
   apiKey: string;
   model: string;
   workbuddyPayload?: WorkbuddySavePayload;
   accioPayload?: AccioConfig;
   cursorPayload?: CursorConfig;
+  /** DeepSeek Harness：逐个测试已启用的分组路由，全部通过后一次写入 */
+  dshPayload?: DshSavePayload;
   onSuccess?: () => void | Promise<void>;
   isSessionCurrent?: () => boolean;
 }
@@ -74,6 +82,7 @@ export function TerminalTestModal({
   workbuddyPayload,
   accioPayload,
   cursorPayload,
+  dshPayload,
   onSuccess,
   isSessionCurrent = () => true,
 }: TerminalTestModalProps) {
@@ -94,6 +103,7 @@ export function TerminalTestModal({
   const [workbuddyRunning, setWorkbuddyRunning] = useState(false);
   const [accioRunning, setAccioRunning] = useState(false);
   const [cursorRunning, setCursorRunning] = useState(false);
+  const [dshRunning, setDshRunning] = useState(false);
   const [restartingTarget, setRestartingTarget] = useState<string | null>(null);
   const [showRestartCard, setShowRestartCard] = useState(false);
 
@@ -159,7 +169,7 @@ export function TerminalTestModal({
   }, [countdown]);
 
   const handleRestart = async (
-    target: "chatgpt" | "codex" | "claude" | "workbuddy" | "acciowork" | "cursor",
+    target: "chatgpt" | "codex" | "claude" | "workbuddy" | "acciowork" | "cursor" | "dsh",
   ) => {
     setRestartingTarget(target);
     const targetName =
@@ -173,7 +183,9 @@ export function TerminalTestModal({
               ? "Accio Work 客户端"
               : target === "cursor"
                 ? "Cursor 客户端"
-                : "Claude Code CLI";
+                : target === "dsh"
+                  ? "DeepSeek Harness"
+                  : "Claude Code CLI";
 
     // 用户已选择立即重启：停止自动关闭倒计时，避免重启进行中弹窗被卸载
     if (countdownTimerRef.current) {
@@ -202,6 +214,7 @@ export function TerminalTestModal({
       if (target === "workbuddy") setWorkbuddyRunning(true);
       if (target === "acciowork") setAccioRunning(true);
       if (target === "cursor") setCursorRunning(true);
+      if (target === "dsh") setDshRunning(true);
       toast.success(`${targetName} 操作成功！`);
       setCountdown(5);
     } catch (err) {
@@ -240,7 +253,9 @@ export function TerminalTestModal({
             ? "Accio Work"
             : type === "cursor"
               ? "Cursor IDE"
-              : "Claude Code";
+              : type === "dsh"
+                ? "DeepSeek Harness"
+                : "Claude Code";
     // Accio Work 根据模型名前缀自动检测使用的协议（与 Rust 端 detect_accio_model_protocol 保持一致）
     const detectAccioProtocol = (m: string): string => {
       const lower = m.trim().toLowerCase();
@@ -258,7 +273,9 @@ export function TerminalTestModal({
             ? detectAccioProtocol(model)
             : type === "cursor"
               ? "Cursor Connect-RPC / OpenAI Bridge"
-              : "Anthropic Messages Protocol";
+              : type === "dsh"
+                ? "按分组协议逐个测试 (Anthropic / OpenAI Responses / Chat Completions)"
+                : "Anthropic Messages Protocol";
 
     addLog(`🚀 启动 ${platformName} 连通性测试与配置流程...`, "info");
     addLog(`目标协议: ${protocolName}`, "dim");
@@ -282,8 +299,21 @@ export function TerminalTestModal({
         }
       };
 
+      // DeepSeek Harness：模型按协议落到哪几条路由就各测一次，任一失败即不写入
+      const runDshTests = async (): Promise<ApiTestResult> => {
+        if (!dshPayload) return { success: false, message: "缺少 DeepSeek Harness 配置载荷" };
+        return runDshConnectivityTests(
+          dshPayload,
+          handleEvent,
+          (text, level) => addLog(text, level),
+          isSessionCurrent,
+        );
+      };
+
       let testResult;
-      if (type === "codex") {
+      if (type === "dsh") {
+        testResult = await runDshTests();
+      } else if (type === "codex") {
         testResult = await testCodexStream(
           url,
           apiKey.trim(),
@@ -396,6 +426,22 @@ export function TerminalTestModal({
           } catch (bridgeErr) {
             addLog(`⚠️ Bridge 启动告警: ${bridgeErr}`, "warn");
           }
+        } else if (type === "dsh") {
+          if (!dshPayload) throw new Error("缺少 DeepSeek Harness 配置载荷");
+          addLog(`💾 正在写入 DeepSeek Harness 配置档案与凭据 (与 DeepSeek Harness 共用写锁)...`, "info");
+          if (!isSessionCurrent()) return;
+          const saved = await setDshConfig(dshPayload);
+          addLog(
+            `✓ 已写入 ~/.dsh/profiles/${saved.profile}/cordis.patch.yml (${dshPayload.models.length} 个模型，按协议分配到 aihelper-* 路由)`,
+            "success",
+          );
+          addLog(
+            `✓ 已写入 ~/.dsh/.credentials.yaml (仅 AIHELPER_* 密钥引用；DeepSeek 官方账号登录与官方 API Key 未改动)`,
+            "success",
+          );
+          if (!dshPayload.default_model) {
+            addLog(`💡 默认模型保持不变（未覆盖您选择的 DeepSeek 官方模型）`, "dim");
+          }
         } else if (type === "cursor") {
           addLog(`💾 正在将配置写入本地 ~/.ai-helper/cursor_config.json...`, "info");
           const payload: CursorConfig = cursorPayload || {
@@ -465,6 +511,13 @@ export function TerminalTestModal({
           anyRunning = aRun;
           if (aRun) addLog(`💡 检测到 Accio Work 客户端正在运行中`, "info");
           else addLog(`💡 当前未检测到运行中的 Accio Work 进程`, "dim");
+        } else if (type === "dsh") {
+          const dRun = await checkAppProcessStatus("dsh").catch(() => false);
+          setDshRunning(dRun);
+          anyRunning = dRun;
+          if (dRun)
+            addLog(`💡 检测到 DeepSeek Harness 正在运行中，需重启后加载新的分组路由`, "warn");
+          else addLog(`💡 当前未检测到运行中的 DeepSeek Harness 进程`, "dim");
         } else if (type === "cursor") {
           const curRun = await checkAppProcessStatus("cursor").catch(() => false);
           setCursorRunning(curRun);
@@ -582,7 +635,9 @@ export function TerminalTestModal({
                       ? "Accio Work"
                       : type === "cursor"
                         ? "Cursor IDE"
-                        : "Claude Code"}{" "}
+                        : type === "dsh"
+                          ? "DeepSeek Harness"
+                          : "Claude Code"}{" "}
                 连通性测试与配置部署终端
               </span>
             </div>
@@ -723,6 +778,10 @@ export function TerminalTestModal({
                         ? cursorRunning
                           ? "检测到 Cursor 客户端运行中"
                           : "当前未运行"
+                        : type === "dsh"
+                          ? dshRunning
+                            ? "检测到 DeepSeek Harness 运行中 (重启后生效)"
+                            : "当前未运行"
                         : claudeRunning
                           ? "检测到 CLI 运行中"
                           : "当前未运行"}
@@ -832,6 +891,26 @@ export function TerminalTestModal({
                     resetAfterMs={3000}
                     holdMs={800}
                     onAction={() => handleRestart("cursor")}
+                  />
+                ) : type === "dsh" ? (
+                  <ButtonToLoaderToSuccess
+                    accent="blue"
+                    disabled={restartingTarget !== null}
+                    className="px-3 py-1.5 rounded-lg text-xs font-medium min-w-[185px]"
+                    idleLabel={
+                      <>
+                        <DeepSeekHarnessIcon size={13} />
+                        <span>
+                          {dshRunning
+                            ? "重启 DeepSeek Harness"
+                            : "启动 DeepSeek Harness"}
+                        </span>
+                      </>
+                    }
+                    successLabel="DeepSeek Harness 已拉起"
+                    resetAfterMs={3000}
+                    holdMs={800}
+                    onAction={() => handleRestart("dsh")}
                   />
                 ) : (
                   <ButtonToLoaderToSuccess

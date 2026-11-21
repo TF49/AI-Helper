@@ -16,6 +16,7 @@ import {
   WorkbuddyIcon,
   AccioWorkIcon,
   CursorIcon,
+  DeepSeekHarnessIcon,
 } from "../BrandIcons";
 import {
   setCodexConfig,
@@ -23,6 +24,7 @@ import {
   setWorkbuddyConfig,
   setAccioConfig,
   setCursorConfig,
+  setDshConfig,
   testCodexStream,
   testClaudeStream,
   testWorkbuddyStream,
@@ -42,15 +44,24 @@ import type {
   CursorConfig,
   AccioConfig,
   WorkbuddySavePayload,
+  DshSavePayload,
 } from "../../types";
 import { maskApiKey } from "./AgentCard";
+import {
+  buildDshQuickPayload,
+  runDshConnectivityTests,
+  dshBindingToolId,
+  DSH_QUICK_GROUP,
+  DSH_QUICK_MODEL,
+} from "../../lib/dshQuickPayload";
 
 export type BatchApplyTarget =
   | "claude"
   | "chatgpt"
   | "cursor"
   | "workbuddy"
-  | "acciowork";
+  | "acciowork"
+  | "dsh";
 
 interface LogEntry {
   id: string;
@@ -77,6 +88,7 @@ const TARGET_DISPLAY_NAMES: Record<BatchApplyTarget, string> = {
   cursor: "Cursor IDE",
   workbuddy: "WorkBuddy",
   acciowork: "Accio Work",
+  dsh: "DeepSeek Harness (国产模型分组)",
 };
 
 const TARGET_MODELS: Record<BatchApplyTarget, string> = {
@@ -85,6 +97,7 @@ const TARGET_MODELS: Record<BatchApplyTarget, string> = {
   cursor: "glm-5.3",
   workbuddy: "glm-5.3",
   acciowork: "glm-5.3",
+  dsh: DSH_QUICK_MODEL,
 };
 
 const TARGET_GROUPS: Record<BatchApplyTarget, string> = {
@@ -93,6 +106,7 @@ const TARGET_GROUPS: Record<BatchApplyTarget, string> = {
   cursor: "国产Token计划",
   workbuddy: "国产Token计划",
   acciowork: "国产Token计划",
+  dsh: DSH_QUICK_GROUP,
 };
 
 export function BatchTerminalModal({
@@ -123,6 +137,7 @@ export function BatchTerminalModal({
     cursor: boolean;
     workbuddy: boolean;
     acciowork: boolean;
+    dsh: boolean;
   }>({
     chatgpt: false,
     codex: false,
@@ -130,6 +145,7 @@ export function BatchTerminalModal({
     cursor: false,
     workbuddy: false,
     acciowork: false,
+    dsh: false,
   });
   const [restartingTarget, setRestartingTarget] = useState<string | null>(null);
 
@@ -193,7 +209,7 @@ export function BatchTerminalModal({
   }, [countdown]);
 
   const handleRestart = async (
-    target: "chatgpt" | "codex" | "claude" | "workbuddy" | "acciowork" | "cursor",
+    target: "chatgpt" | "codex" | "claude" | "workbuddy" | "acciowork" | "cursor" | "dsh",
   ) => {
     setRestartingTarget(target);
     const targetName =
@@ -207,7 +223,9 @@ export function BatchTerminalModal({
               ? "Accio Work 客户端"
               : target === "cursor"
                 ? "Cursor 客户端"
-                : "Claude Code CLI";
+                : target === "dsh"
+                  ? "DeepSeek Harness"
+                  : "Claude Code CLI";
 
     // 用户已选择立即重启：停止自动关闭倒计时，避免重启进行中弹窗被卸载
     if (countdownTimerRef.current) {
@@ -258,7 +276,7 @@ export function BatchTerminalModal({
       if (!openRef.current || !isSessionCurrent()) return;
       const target = targets[i];
       const targetName = TARGET_DISPLAY_NAMES[target];
-      const model = TARGET_MODELS[target];
+      let model = TARGET_MODELS[target];
       const group = TARGET_GROUPS[target];
       let defaultUrl =
         target === "workbuddy" ? "https://bob-api.com/v1" : "https://bob-api.com/";
@@ -294,6 +312,32 @@ export function BatchTerminalModal({
       }
 
       addLog(`✓ 专属令牌已就绪: ${maskApiKey(resolved.key)} (分组: ${group})`, "dim");
+
+      let dshPayload: DshSavePayload | undefined;
+      if (target === "dsh") {
+        const built = await buildDshQuickPayload(resolved.key, model);
+        dshPayload = built.payload;
+        defaultUrl = built.url;
+        if (!openRef.current || !isSessionCurrent()) return;
+        if (built.defaultModel) model = built.defaultModel;
+        if (built.fetchedCount !== null) {
+          addLog(
+            `✓ 已从中转站拉取该 Key 可用的 ${built.fetchedCount} 个对话模型，将全部写入（按协议自动分配到 aihelper-* 路由）`,
+            "dim",
+          );
+        } else {
+          addLog(
+            `⚠️ 拉取该 Key 可用模型失败，沿用已有 ${built.payload.models.length} 个模型: ${built.fetchError}`,
+            "warn",
+          );
+        }
+        if (built.keptDefault) {
+          addLog(
+            `💡 保留当前默认模型 ${built.keptDefault}；官方路由与其它 Key 已接入的路由不做改动`,
+            "dim",
+          );
+        }
+      }
       addLog(`目标协议端点: ${defaultUrl} | 指定模型: ${model}`, "dim");
       addLog(`正在向网关发起握手连通性探测...`, "info");
 
@@ -325,6 +369,14 @@ export function BatchTerminalModal({
             resolved.key.trim(),
             model.trim(),
             handleEvent,
+          );
+        } else if (target === "dsh" && dshPayload) {
+          // DeepSeek Harness 按模型协议分别测试各条 aihelper-* 路由
+          testResult = await runDshConnectivityTests(
+            dshPayload,
+            handleEvent,
+            (text, level) => addLog(text, level),
+            () => openRef.current && isSessionCurrent(),
           );
         } else if (target === "workbuddy") {
           testResult = await testWorkbuddyStream(
@@ -409,6 +461,13 @@ export function BatchTerminalModal({
             } catch (bErr) {
               addLog(`⚠️ Accio Bridge 告警: ${bErr}`, "warn");
             }
+          } else if (target === "dsh") {
+            if (!dshPayload) throw new Error("缺少 DeepSeek Harness 配置载荷");
+            const saved = await setDshConfig(dshPayload);
+            addLog(
+              `✓ ~/.dsh/profiles/${saved.profile}/cordis.patch.yml 已写入 ${dshPayload.models.length} 个模型${dshPayload.default_model ? ` (默认模型 ${dshPayload.default_model})` : ""}`,
+              "success",
+            );
           } else if (target === "cursor") {
             const curCfg = await getCursorConfig().catch(() => null);
             const payload: CursorConfig = {
@@ -442,7 +501,7 @@ export function BatchTerminalModal({
               group: resolved.token.group ?? undefined,
             });
             try {
-              localStorage.setItem(`bound_token_${target}`, bound);
+              localStorage.setItem(`bound_token_${dshBindingToolId(target)}`, bound);
             } catch {}
           }
 
@@ -480,13 +539,16 @@ export function BatchTerminalModal({
 
     // 探测正在运行的客户端进程
     try {
-      const [cRun, xRun, gRun, curRun, wbRun, aRun] = await Promise.all([
+      const [cRun, xRun, gRun, curRun, wbRun, aRun, dRun] = await Promise.all([
         checkAppProcessStatus("claude").catch(() => false),
         checkAppProcessStatus("codex").catch(() => false),
         checkAppProcessStatus("chatgpt").catch(() => false),
         checkAppProcessStatus("cursor").catch(() => false),
         checkAppProcessStatus("workbuddy").catch(() => false),
         checkAppProcessStatus("acciowork").catch(() => false),
+        targets.includes("dsh")
+          ? checkAppProcessStatus("dsh").catch(() => false)
+          : Promise.resolve(false),
       ]);
       setRunningApps({
         claude: cRun,
@@ -495,9 +557,10 @@ export function BatchTerminalModal({
         cursor: curRun,
         workbuddy: wbRun,
         acciowork: aRun,
+        dsh: dRun,
       });
 
-      const anyRun = cRun || xRun || gRun || curRun || wbRun || aRun;
+      const anyRun = cRun || xRun || gRun || curRun || wbRun || aRun || dRun;
       if (!anyRun) {
         setCountdown(8);
       }
@@ -508,7 +571,7 @@ export function BatchTerminalModal({
     // 触发全局 token 同步事件并通知父组件
     window.dispatchEvent(
       new CustomEvent("ai_helper_sync_all_tokens", {
-        detail: { toolIds: targets },
+        detail: { toolIds: targets.map(dshBindingToolId) },
       }),
     );
     if (isSessionCurrent()) onSuccess?.();
@@ -557,7 +620,8 @@ export function BatchTerminalModal({
     runningApps.chatgpt ||
     runningApps.cursor ||
     runningApps.workbuddy ||
-    runningApps.acciowork;
+    runningApps.acciowork ||
+    runningApps.dsh;
 
   return (
     <div className="fixed inset-0 top-11 z-50 flex items-center justify-center p-4 bg-black/65 backdrop-blur-sm animate-fade-in">
@@ -738,6 +802,17 @@ export function BatchTerminalModal({
                 >
                   <AccioWorkIcon size={12} />
                   <span>重启 Accio Work</span>
+                </button>
+              )}
+              {runningApps.dsh && (
+                <button
+                  type="button"
+                  disabled={restartingTarget !== null}
+                  onClick={() => handleRestart("dsh")}
+                  className="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg bg-[#21262d] hover:bg-[#30363d] border border-[#30363d] text-xs font-medium text-slate-200 transition-colors disabled:opacity-50"
+                >
+                  <DeepSeekHarnessIcon size={12} />
+                  <span>重启 DeepSeek Harness</span>
                 </button>
               )}
               {runningApps.codex && (

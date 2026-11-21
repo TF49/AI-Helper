@@ -51,6 +51,7 @@ import { isMac } from "./lib/platform";
 import { ForceUpdateModal, useAppUpdater } from "./components/ForceUpdateModal";
 import { useSettings } from "./lib/useSettings";
 import type { MainNav, AgentTool, UserInfo } from "./types";
+import { dshBindingToolId, DSH_QUICK_MODEL } from "./lib/dshQuickPayload";
 
 type NetworkState = "checking" | "reachable" | "unreachable";
 
@@ -853,17 +854,20 @@ function AppContent() {
       <QuickToolsModal
         open={toolsOpen}
         onClose={() => setToolsOpen(false)}
-        activeTab={activeTool}
+        // DeepSeek Harness 默认的国产模型走 OpenAI Chat Completions
+        activeTab={activeTool === "dsh" ? "cursor" : activeTool}
         currentUrl="https://bob-api.com/"
         currentKey=""
         currentModel={
-          activeTool === "claude"
-            ? "claude-sonnet-5-5"
-            : activeTool === "workbuddy"
-              ? "gpt-5.6-sol"
-              : activeTool === "acciowork"
-                ? "claude-3-7-sonnet"
-                : "gpt-4o"
+          activeTool === "dsh"
+            ? DSH_QUICK_MODEL
+            : activeTool === "claude"
+              ? "claude-sonnet-5-5"
+              : activeTool === "workbuddy"
+                ? "gpt-5.6-sol"
+                : activeTool === "acciowork"
+                  ? "claude-3-7-sonnet"
+                  : "gpt-4o"
         }
       />
 
@@ -918,7 +922,8 @@ function AppContent() {
         open={tokenModalOpen}
         toolId={activeTool}
         onSelectKey={(_plainKey, token) => {
-          const tid = activeTool;
+          // DeepSeek Harness 的主令牌绑定在国产模型分组路由上
+          const tid = dshBindingToolId(activeTool);
           const targetGroup = token.group?.trim() || "default";
           try {
             localStorage.setItem(
@@ -939,7 +944,9 @@ function AppContent() {
                   ? "WorkBuddy"
                   : activeTool === "acciowork"
                     ? "Accio Work"
-                    : "ChatGPT (Codex)"
+                    : activeTool === "dsh"
+                      ? "DeepSeek Harness · 国产模型分组"
+                      : "ChatGPT (Codex)"
             }」成功关联 API Key：${token.name}`,
           );
         }}
@@ -951,7 +958,9 @@ function AppContent() {
               ? "WorkBuddy"
               : activeTool === "acciowork"
                 ? "Accio Work"
-                : "ChatGPT (Codex)"
+                : activeTool === "dsh"
+                  ? "DeepSeek Harness"
+                  : "ChatGPT (Codex)"
         }
         accentColor={
           activeTool === "claude"

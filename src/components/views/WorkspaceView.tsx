@@ -8,12 +8,14 @@ import {
   WorkbuddyIcon,
   AccioWorkIcon,
   CursorIcon,
+  DeepSeekHarnessIcon,
 } from "../BrandIcons";
 import { ChatGPTPanel } from "../ChatGPTPanel";
 import { ClaudePanel } from "../ClaudePanel";
 import { WorkbuddyPanel } from "../WorkbuddyPanel";
 import { AccioWorkPanel } from "../AccioWorkPanel";
 import { CursorPanel } from "../CursorPanel";
+import { DshPanel } from "../DshPanel";
 import { AgentMatrixLobby } from "../workbench/AgentMatrixLobby";
 import { cn } from "../../lib/utils";
 import type { AgentTool } from "../../types";
@@ -58,6 +60,12 @@ const TOOLS: {
     id: "cursor",
     name: "Cursor",
     icon: CursorIcon,
+    activeColor: "text-black dark:text-white",
+  },
+  {
+    id: "dsh",
+    name: "DeepSeek Harness",
+    icon: DeepSeekHarnessIcon,
     activeColor: "text-black dark:text-white",
   },
 ];
@@ -212,6 +220,8 @@ export function WorkspaceView({
                 <WorkbuddyPanel />
               ) : activeTool === "acciowork" ? (
                 <AccioWorkPanel />
+              ) : activeTool === "dsh" ? (
+                <DshPanel />
               ) : (
                 <CursorPanel />
               )}

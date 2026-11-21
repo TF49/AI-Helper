@@ -20,6 +20,7 @@ import {
   CursorIcon,
   WorkbuddyIcon,
   AccioWorkIcon,
+  DeepSeekHarnessIcon,
 } from "../BrandIcons";
 import {
   detectAllAppPaths,
@@ -29,6 +30,7 @@ import {
   getCursorConfig,
   getWorkbuddyConfig,
   getAccioConfig,
+  getDshConfig,
   startAccioBridge,
   startCursorBridge,
   getCursorPatchStatus,
@@ -43,7 +45,14 @@ import type {
   CursorConfig,
   AccioConfig,
   WorkbuddySavePayload,
+  DshSavePayload,
 } from "../../types";
+import {
+  buildDshQuickPayload,
+  dshBindingToolId,
+  DSH_QUICK_GROUP,
+  DSH_QUICK_MODEL,
+} from "../../lib/dshQuickPayload";
 
 interface AgentMatrixLobbyProps {
   onSelectTool: (tool: AgentTool) => void;
@@ -59,14 +68,15 @@ let cachedAgentsConfigMap: Record<
 > | null = null;
 
 // 卡片 → 后端 apply_api_key_to_agents 的写入目标（ChatGPT 桌面端无需写配置，不在此列）
-type ApplyTarget = "claude" | "chatgpt" | "cursor" | "workbuddy" | "acciowork";
+type ApplyTarget = "claude" | "chatgpt" | "cursor" | "workbuddy" | "acciowork" | "dsh";
 type RestartTarget =
   | "claude"
   | "codex"
   | "chatgpt"
   | "cursor"
   | "workbuddy"
-  | "acciowork";
+  | "acciowork"
+  | "dsh";
 
 const APPLY_TARGET_BY_CARD: Record<string, ApplyTarget> = {
   "claude-cli": "claude",
@@ -74,6 +84,7 @@ const APPLY_TARGET_BY_CARD: Record<string, ApplyTarget> = {
   "cursor-ide": "cursor",
   "workbuddy-app": "workbuddy",
   "accio-work": "acciowork",
+  "dsh-app": "dsh",
 };
 
 const RESTART_TARGET_BY_CARD: Record<string, RestartTarget> = {
@@ -83,6 +94,7 @@ const RESTART_TARGET_BY_CARD: Record<string, RestartTarget> = {
   "cursor-ide": "cursor",
   "workbuddy-app": "workbuddy",
   "accio-work": "acciowork",
+  "dsh-app": "dsh",
 };
 
 // 各客户端默认分组与推荐模型配置
@@ -92,6 +104,8 @@ const TARGET_DEFAULT_GROUP: Record<ApplyTarget, string> = {
   cursor: "国产Token计划",
   workbuddy: "国产Token计划",
   acciowork: "国产Token计划",
+  // DeepSeek Harness 一键配置自动挑选令牌的推荐分组；写入该 Key 可用的全部模型
+  dsh: DSH_QUICK_GROUP,
 };
 
 const TARGET_DEFAULT_MODEL: Record<ApplyTarget, string> = {
@@ -100,6 +114,7 @@ const TARGET_DEFAULT_MODEL: Record<ApplyTarget, string> = {
   cursor: "glm-5.3",
   workbuddy: "glm-5.3",
   acciowork: "glm-5.3",
+  dsh: DSH_QUICK_MODEL,
 };
 
 const GROUP_DEFAULT_TOKEN_NAMES: Record<string, string> = {
@@ -130,7 +145,7 @@ export const AgentMatrixLobby: React.FC<AgentMatrixLobbyProps> = ({
 
   // 单卡片类终端连通性测试模态框状态
   const [activeTerminalTarget, setActiveTerminalTarget] = useState<{
-    type: "codex" | "claude" | "workbuddy" | "acciowork" | "cursor";
+    type: "codex" | "claude" | "workbuddy" | "acciowork" | "cursor" | "dsh";
     target: ApplyTarget;
     url: string;
     apiKey: string;
@@ -140,6 +155,7 @@ export const AgentMatrixLobby: React.FC<AgentMatrixLobbyProps> = ({
     cursorPayload?: CursorConfig;
     accioPayload?: AccioConfig;
     workbuddyPayload?: WorkbuddySavePayload;
+    dshPayload?: DshSavePayload;
   } | null>(null);
 
   // 矩阵批量连通性测试终端模态框状态
@@ -170,7 +186,7 @@ export const AgentMatrixLobby: React.FC<AgentMatrixLobbyProps> = ({
     setBatchModalOpen(false);
   }, [authSessionGeneration]);
 
-  // 严格基于 AI-Helper 真实可接入的 6 席原生客户端矩阵 (2 列 × 3 行)
+  // AI-Helper 真实可接入的原生客户端矩阵 (2 列 × 4 行)
   const [agents, setAgents] = useState<AgentCardItem[]>(() => [
     {
       id: "claude-cli",
@@ -239,6 +255,17 @@ export const AgentMatrixLobby: React.FC<AgentMatrixLobbyProps> = ({
       configuredKey: cachedAgentsConfigMap?.["accio-work"]?.key ?? null,
       configuredModel: cachedAgentsConfigMap?.["accio-work"]?.model ?? null,
     },
+    {
+      id: "dsh-app",
+      name: "DeepSeek Harness",
+      subtitle: "DeepSeek 桌面 Agent 工作台",
+      category: "desktop",
+      icon: DeepSeekHarnessIcon,
+      status: cachedAgentsStatusMap?.["dsh-app"] ?? "unconfigured",
+      toolKey: "dsh",
+      configuredKey: cachedAgentsConfigMap?.["dsh-app"]?.key ?? null,
+      configuredModel: cachedAgentsConfigMap?.["dsh-app"]?.model ?? null,
+    },
   ]);
 
   // 初始化探测各个真实本地 AI 工具的安装与配置状态
@@ -252,6 +279,7 @@ export const AgentMatrixLobby: React.FC<AgentMatrixLobbyProps> = ({
         cursorCfgRes,
         workbuddyCfgRes,
         accioCfgRes,
+        dshCfgRes,
       ] = await Promise.allSettled([
         detectAllAppPaths(),
         getAppPaths(),
@@ -260,6 +288,7 @@ export const AgentMatrixLobby: React.FC<AgentMatrixLobbyProps> = ({
         getCursorConfig(),
         getWorkbuddyConfig(),
         getAccioConfig(),
+        getDshConfig(),
       ]);
 
       const pathMap: Record<string, { exists: boolean; path: string }> = {};
@@ -275,6 +304,7 @@ export const AgentMatrixLobby: React.FC<AgentMatrixLobbyProps> = ({
       const cursorCfg = cursorCfgRes.status === "fulfilled" ? cursorCfgRes.value : null;
       const workbuddyCfg = workbuddyCfgRes.status === "fulfilled" ? workbuddyCfgRes.value : null;
       const accioCfg = accioCfgRes.status === "fulfilled" ? accioCfgRes.value : null;
+      const dshCfg = dshCfgRes.status === "fulfilled" ? dshCfgRes.value : null;
 
       setAgents((prev) => {
         const next = prev.map((item) => {
@@ -344,6 +374,26 @@ export const AgentMatrixLobby: React.FC<AgentMatrixLobbyProps> = ({
               status: (hasKey ? "installed" : exists ? "unconfigured" : "uninstalled") as AgentCardItem["status"],
               configuredKey: accioCfg?.api_key?.trim() || null,
               configuredModel: accioCfg?.model?.trim() || null,
+            };
+          }
+          if (item.id === "dsh-app") {
+            // 任一 AI Helper 分组路由已写入即视为已接入；卡片优先展示一键配置所写的国产分组 Key
+            const routes = dshCfg?.routes ?? [];
+            const configured = routes.filter((r) => r.configured && r.api_key.trim());
+            const primary = configured.find((r) => r.kind === "domestic") ?? configured[0];
+            const exists = Boolean(pathMap["dsh"]?.exists || dshCfg?.is_installed);
+            const managedDefault = dshCfg?.default_model?.provider.startsWith("aihelper-")
+              ? dshCfg.default_model.model
+              : null;
+            return {
+              ...item,
+              status: (configured.length > 0
+                ? "installed"
+                : exists
+                  ? "unconfigured"
+                  : "uninstalled") as AgentCardItem["status"],
+              configuredKey: primary?.api_key?.trim() || null,
+              configuredModel: managedDefault || primary?.models[0] || null,
             };
           }
           return item;
@@ -468,7 +518,7 @@ export const AgentMatrixLobby: React.FC<AgentMatrixLobbyProps> = ({
       toast.dismiss(toastId);
 
       // 映射到 TerminalTestModal 对应的 target type
-      const modalType: "codex" | "claude" | "workbuddy" | "acciowork" | "cursor" =
+      const modalType: "codex" | "claude" | "workbuddy" | "acciowork" | "cursor" | "dsh" =
         target === "chatgpt" ? "codex" : target;
       const defaultModel = TARGET_DEFAULT_MODEL[target];
 
@@ -478,8 +528,23 @@ export const AgentMatrixLobby: React.FC<AgentMatrixLobbyProps> = ({
       let cursorPayload: CursorConfig | undefined;
       let accioPayload: AccioConfig | undefined;
       let workbuddyPayload: WorkbuddySavePayload | undefined;
+      let dshPayload: DshSavePayload | undefined;
 
-      if (modalType === "cursor") {
+      if (modalType === "dsh") {
+        const built = await buildDshQuickPayload(resolved.key, defaultModel);
+        targetUrl = built.url;
+        dshPayload = built.payload;
+        if (built.fetchError) {
+          toast.warning("拉取该 Key 可用模型失败，将沿用已有模型", {
+            description: built.fetchError,
+          });
+        }
+        if (built.keptDefault) {
+          toast.info("已保留 DeepSeek Harness 当前的默认模型", {
+            description: `${built.keptDefault}；新写入的模型可在模型选择器中随时切换使用`,
+          });
+        }
+      } else if (modalType === "cursor") {
         const curCfg = await getCursorConfig().catch(() => null);
         if (curCfg?.base_url?.trim()) {
           targetUrl = curCfg.base_url.trim();
@@ -553,6 +618,7 @@ export const AgentMatrixLobby: React.FC<AgentMatrixLobbyProps> = ({
         cursorPayload,
         accioPayload,
         workbuddyPayload,
+        dshPayload,
       });
     } catch (err) {
       toast.dismiss(toastId);
@@ -569,6 +635,7 @@ export const AgentMatrixLobby: React.FC<AgentMatrixLobbyProps> = ({
    * - Claude Code: CC-Kiro-Max (模型: claude-sonnet-5-5)
    * - Codex / ChatGPT: Codex-不降质 (模型: gpt-5.6-sol)
    * - Cursor / WorkBuddy / Accio: 国产Token计划 (模型: glm-5.3)
+   * - DeepSeek Harness: 国产Token计划 (默认模型: deepseek-v4.1-flash，写入该分组全部可对话模型)
    *
    * 若用户账号下暂无对应分组的有效 Token，将自动在 Bob API 创建对应分组的专属令牌。
    */
@@ -583,7 +650,11 @@ export const AgentMatrixLobby: React.FC<AgentMatrixLobbyProps> = ({
     try {
       // Backend refreshes the list before deciding whether to create. A lookup
       // or key-read failure is surfaced instead of turning into a duplicate POST.
-      const token = await ensureUserToken(tokenName, targetGroup, readBoundTokenId(target));
+      const token = await ensureUserToken(
+        tokenName,
+        targetGroup,
+        readBoundTokenId(dshBindingToolId(target)),
+      );
       if (!mountedRef.current || requestSession !== sessionRef.current) {
         throw new Error("会话已切换，已丢弃旧令牌结果");
       }
@@ -752,7 +823,7 @@ export const AgentMatrixLobby: React.FC<AgentMatrixLobbyProps> = ({
             <div className="flex items-center justify-between text-[11px] xl:text-xs text-slate-500 dark:text-slate-400 px-1">
               <div className="flex items-center gap-1.5">
                 <Cpu size={14} className="text-slate-400" />
-                <span>已接入 {installedCount} / 6 席 Agent</span>
+                <span>已接入 {installedCount} / {agents.length} 席 Agent</span>
               </div>
               <div className="flex items-center gap-1 text-emerald-600 dark:text-emerald-400 font-medium">
                 <CheckCircle2 size={13} />
@@ -786,11 +857,11 @@ export const AgentMatrixLobby: React.FC<AgentMatrixLobbyProps> = ({
           </div>
         </div>
 
-        {/* ──── 右侧：2 列 × 3 行 纯白高质感 Agent 矩阵网格 (全屏大屏舒展对齐) ──── */}
-        {/* 容器高度不足以容纳 3 行卡片（每行最小 160px）时，卡片区自身纵向滚动，保证按钮始终可达；
-            p-2/-m-2 为卡片阴影与悬停位移预留空间，避免被滚动容器裁切 */}
+        {/* ──── 右侧：2 列 × 4 行 纯白高质感 Agent 矩阵网格 (全屏大屏舒展对齐) ──── */}
+        {/* 行高下限取卡片内容高度 (min-content)，窗口够高时按 1fr 均分铺满；容器放不下 4 行时卡片区自身纵向滚动，
+            卡片内容（尤其底部按钮）永远不会被裁切。p-2/-m-2 为卡片阴影与悬停位移预留空间 */}
         <div className="flex-1 min-w-0 min-h-0 p-2 -m-2 [@media(min-width:900px)]:overflow-y-auto">
-          <div className="grid grid-cols-2 gap-3.5 xl:gap-4 w-full auto-rows-[minmax(160px,auto)] [@media(min-width:900px)]:h-full [@media(min-width:900px)]:min-h-[512px] [@media(min-width:900px)]:grid-rows-[repeat(3,minmax(160px,1fr))]">
+          <div className="grid grid-cols-2 gap-3.5 xl:gap-4 w-full auto-rows-[minmax(min-content,auto)] [@media(min-width:900px)]:min-h-full [@media(min-width:900px)]:grid-rows-[repeat(4,minmax(min-content,1fr))]">
             {agents.map((agent, idx) => (
               <AgentCard
                 key={agent.id}
@@ -826,6 +897,7 @@ export const AgentMatrixLobby: React.FC<AgentMatrixLobbyProps> = ({
           cursorPayload={activeTerminalTarget.cursorPayload}
           accioPayload={activeTerminalTarget.accioPayload}
           workbuddyPayload={activeTerminalTarget.workbuddyPayload}
+          dshPayload={activeTerminalTarget.dshPayload}
           isSessionCurrent={() =>
             mountedRef.current &&
             activeTerminalTarget.session === sessionRef.current
@@ -838,7 +910,8 @@ export const AgentMatrixLobby: React.FC<AgentMatrixLobbyProps> = ({
               return;
             }
             if (activeTerminalTarget.token) {
-              const { token, target } = activeTerminalTarget;
+              const { token } = activeTerminalTarget;
+              const target = dshBindingToolId(activeTerminalTarget.target);
               const bound = JSON.stringify({
                 id: token.id,
                 name: token.name,

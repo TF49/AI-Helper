@@ -7,6 +7,7 @@ import {
   WorkbuddyIcon,
   AccioWorkIcon,
   CursorIcon,
+  DeepSeekHarnessIcon,
 } from "../BrandIcons";
 import { cn } from "../../lib/utils";
 import type { AgentTool } from "../../types";
@@ -70,6 +71,15 @@ const TOOLS_CONFIG: Array<{
     activeBg: "bg-neutral-800/15 text-neutral-900 dark:text-neutral-100",
     activeBorder: "border-neutral-500/50 shadow-xs ring-1 ring-neutral-500/20",
     activeText: "text-neutral-900 dark:text-neutral-100",
+  },
+  {
+    id: "dsh",
+    name: "DeepSeek Harness",
+    icon: DeepSeekHarnessIcon,
+    color: "text-indigo-500",
+    activeBg: "bg-indigo-500/15 text-indigo-600 dark:text-indigo-400",
+    activeBorder: "border-indigo-500/50 shadow-xs ring-1 ring-indigo-500/20",
+    activeText: "text-indigo-600 dark:text-indigo-400",
   },
 ];
 

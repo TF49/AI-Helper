@@ -14,6 +14,10 @@ import type {
   WorkbuddyUIConfig,
   WorkbuddySavePayload,
   WorkbuddyModelItem,
+  DshModelRoute,
+  DshSavePayload,
+  DshSaveResult,
+  DshUIConfig,
   AccioConfig,
   AccioBridgeStatus,
   CursorConfig,
@@ -90,6 +94,60 @@ function getMockResponse<T>(cmd: string, _args?: Record<string, unknown>): T {
         config_path: "~/.workbuddy/models.json",
         configured_models: [],
       } as unknown as T;
+    case "get_dsh_config":
+      return {
+        is_installed: true,
+        is_running: false,
+        app_path: "C:\\Program Files\\DeepSeek Harness\\DeepSeek Harness.exe",
+        dsh_home: "~/.dsh",
+        home_exists: true,
+        profiles: ["desktop"],
+        selected_profile: "desktop",
+        default_profile: "desktop",
+        patch_path: "~/.dsh/profiles/desktop/cordis.patch.yml",
+        credentials_path: "~/.dsh/.credentials.yaml",
+        routes: (["claude", "codex", "domestic"] as const).map((kind) => ({
+          kind,
+          route: kind === "domestic" ? "aihelper-cn" : `aihelper-${kind}`,
+          display_name: kind === "claude" ? "AI Helper · Claude" : kind === "codex" ? "AI Helper · Codex" : "AI Helper · 国产模型",
+          api: kind === "claude" ? "anthropic-messages" : kind === "codex" ? "openai-responses" : "openai-completions",
+          key_ref: kind === "domestic" ? "AIHELPER_CN_API_KEY" : `AIHELPER_${kind.toUpperCase()}_API_KEY`,
+          configured: false,
+          api_key: "",
+          base_url: kind === "claude" ? "https://bob-api.com/" : "https://bob-api.com/v1",
+          models: [],
+        })),
+        default_model: null,
+        external_routes: [],
+        official: {
+          account_signed_in: false,
+          default_is_official: false,
+          api_key_route_redirected_to: null,
+        },
+        read_error: null,
+      } as unknown as T;
+    case "set_dsh_config":
+      return { profile: "desktop", requires_restart: false } as unknown as T;
+    case "fetch_dsh_models":
+      return [
+        "claude-sonnet-5-5",
+        "deepseek-v4-pro",
+        "deepseek-v4.1-flash",
+        "glm-5.3",
+        "gpt-6-sol",
+        "kimi-k3",
+      ] as unknown as T;
+    case "classify_dsh_models":
+      return ((_args?.models as string[]) ?? []).map((model) => {
+        const lower = model.toLowerCase();
+        const kind = /claude|anthropic|sonnet/.test(lower)
+          ? "claude"
+          : /^(gpt-|o1|o3|o4)|codex/.test(lower)
+            ? "codex"
+            : "domestic";
+        const route = { claude: "aihelper-claude", codex: "aihelper-codex", domestic: "aihelper-cn" }[kind];
+        return { model, kind, route };
+      }) as unknown as T;
     case "get_accio_config":
       return {
         config_exists: true,
@@ -598,8 +656,10 @@ export async function previewClientReset(): Promise<ResetPreview> {
   return invoke<ResetPreview>("preview_client_reset");
 }
 
+export type AppType = "claude" | "codex" | "chatgpt" | "workbuddy" | "acciowork" | "cursor" | "dsh";
+
 export async function detectAppPath(
-  appType: "claude" | "codex" | "chatgpt" | "workbuddy" | "acciowork" | "cursor",
+  appType: AppType,
 ): Promise<DetectedPathInfo> {
   return invoke<DetectedPathInfo>("detect_app_path", { appType });
 }
@@ -609,19 +669,19 @@ export async function detectAllAppPaths(): Promise<DetectedPathInfo[]> {
 }
 
 export async function browseAppPath(
-  appType: "claude" | "codex" | "chatgpt" | "workbuddy" | "acciowork" | "cursor",
+  appType: AppType,
 ): Promise<string | null> {
   return invoke<string | null>("browse_app_path", { appType });
 }
 
 export async function checkAppProcessStatus(
-  appType: "claude" | "codex" | "chatgpt" | "workbuddy" | "acciowork" | "cursor",
+  appType: AppType,
 ): Promise<boolean> {
   return invoke<boolean>("check_app_process_status", { appType });
 }
 
 export async function restartTargetApp(
-  appType: "claude" | "codex" | "chatgpt" | "workbuddy" | "acciowork" | "cursor",
+  appType: AppType,
   customPath?: string,
 ): Promise<string> {
   return invoke<string>("restart_target_app", { appType, customPath });
@@ -659,6 +719,24 @@ export async function setWorkbuddyConfig(
   payload: WorkbuddySavePayload,
 ): Promise<void> {
   return invoke("set_workbuddy_config", { payload });
+}
+
+export async function getDshConfig(profile?: string | null): Promise<DshUIConfig> {
+  return invoke<DshUIConfig>("get_dsh_config", { profile: profile ?? null });
+}
+
+export async function setDshConfig(payload: DshSavePayload): Promise<DshSaveResult> {
+  return invoke<DshSaveResult>("set_dsh_config", { payload });
+}
+
+/** 该 Key 可用的全部对话模型 ID（已过滤图像/语音/向量等非对话模型） */
+export async function fetchDshModels(url: string | null, apiKey: string): Promise<string[]> {
+  return invoke<string[]>("fetch_dsh_models", { url, apiKey });
+}
+
+/** 查询各模型按协议会写入哪条 aihelper-* 路由 */
+export async function classifyDshModels(models: string[]): Promise<DshModelRoute[]> {
+  return invoke<DshModelRoute[]>("classify_dsh_models", { models });
 }
 
 export async function deleteWorkbuddyModel(
