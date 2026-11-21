@@ -6,7 +6,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>AI Helper 使用教程：Cursor、Claude Code、Codex 配置指南</title>
   <meta name="description"
-    content="AI Helper 使用教程合集：给 Cursor 配置 glm-5.3 等第三方模型、Claude Code 切换 API 地址、Codex CLI 配置自定义 API，以及 macOS 提示“已损坏”的解决方法。">
+    content="AI Helper 使用教程合集：给 Cursor 配置 glm-5.3 等第三方模型、Claude Code 切换 API 地址、Codex CLI 配置自定义 API、DeepSeek Harness 接入 Claude / GPT / 国产模型，以及 macOS 提示“已损坏”的解决方法。">
   <link rel="canonical" href="https://helper.bob-api.com/guides/">
   <meta name="robots" content="index, follow, max-snippet:-1">
   <meta property="og:type" content="website">
@@ -31,6 +31,7 @@
           { "@type": "HowTo", "name": "如何给 Cursor 配置 glm-5.3 等第三方模型", "url": "https://helper.bob-api.com/guides/cursor-custom-model.html" },
           { "@type": "HowTo", "name": "Claude Code 如何切换 API 地址与模型", "url": "https://helper.bob-api.com/guides/claude-code-custom-api.html" },
           { "@type": "HowTo", "name": "OpenAI Codex CLI 如何配置自定义 API 地址", "url": "https://helper.bob-api.com/guides/codex-cli-custom-api.html" },
+          { "@type": "HowTo", "name": "DeepSeek Harness 怎么接入 Claude、GPT 和国产模型", "url": "https://helper.bob-api.com/guides/deepseek-harness-custom-api.html" },
           { "@type": "HowTo", "name": "macOS 打开 AI Helper 提示“已损坏”怎么办", "url": "https://helper.bob-api.com/guides/macos-app-damaged.html" }
         ]
       },
@@ -60,7 +61,7 @@
     <p class="breadcrumb"><a href="/">AI Helper</a> / 教程</p>
     <h1>AI Helper 使用教程</h1>
     <p class="doc-meta">最后更新 <time class="last-updated" datetime="2026-11-21">2026-11-21</time></p>
-    <p>AI Helper 是一款 MIT 开源的桌面工具，用于在 Windows 和 macOS 上一键配置 Cursor、Claude Code、OpenAI Codex CLI、ChatGPT Desktop、WorkBuddy 与 Accio Work 的 API 地址、API Key 和模型。下面每篇教程回答一个具体问题。</p>
+    <p>AI Helper 是一款 MIT 开源的桌面工具，用于在 Windows 和 macOS 上一键配置 Cursor、Claude Code、OpenAI Codex CLI、ChatGPT Desktop、WorkBuddy、Accio Work 与 DeepSeek Harness 的 API 地址、API Key 和模型。下面每篇教程回答一个具体问题。</p>
 
     <ul class="guide-list">
       <li>
@@ -74,6 +75,10 @@
       <li>
         <a href="/guides/codex-cli-custom-api.html">OpenAI Codex CLI 如何配置自定义 API 地址</a>
         <p>在 <code>~/.codex/config.toml</code> 中声明自定义 <code>model_providers</code>，并设置 API Key 环境变量。</p>
+      </li>
+      <li>
+        <a href="/guides/deepseek-harness-custom-api.html">DeepSeek Harness 怎么接入 Claude、GPT 和国产模型</a>
+        <p>一个 API Key 按协议自动写入 <code>aihelper-claude</code>、<code>aihelper-codex</code>、<code>aihelper-cn</code> 三条路由，自建路由与 DeepSeek 官方账号原样保留。</p>
       </li>
       <li>
         <a href="/guides/macos-app-damaged.html">macOS 打开 AI Helper 提示“已损坏”怎么办</a>
