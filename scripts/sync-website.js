@@ -87,8 +87,12 @@ if (fs.existsSync(indexHtmlPath)) {
   }
 
   // 1.2 资源防缓存版本后缀（Cache-busting query strings）
-  html = html.replace(/assets\/style\.css\?v=[^"'\s>]+/g, `assets/style.css?v=${targetVersion}`);
-  html = html.replace(/assets\/script\.js\?v=[^"'\s>]+/g, `assets/script.js?v=${targetVersion}`);
+  // 静态资源在线上缓存 7 天（immutable）。同一版本内更新官网时，可手动改成 ?v=<版本>-<后缀>
+  // 强制刷新缓存：版本号一致时保留后缀，发新版时统一回到纯版本号。
+  const assetVersion = (current) =>
+    current.startsWith(`${targetVersion}-`) ? current : targetVersion;
+  html = html.replace(/assets\/style\.css\?v=([^"'\s>]+)/g, (_, v) => `assets/style.css?v=${assetVersion(v)}`);
+  html = html.replace(/assets\/script\.js\?v=([^"'\s>]+)/g, (_, v) => `assets/script.js?v=${assetVersion(v)}`);
 
   // 1.3 替换所有带有 current-version-tag class 的标签内容（如 span, strong, small 等）
   html = html.replace(
