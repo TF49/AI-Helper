@@ -1404,6 +1404,7 @@ pub fn detect_cursor_client_path() -> DetectedPathInfo {
     detect_cursor_client_path_internal(is_running, running_exe)
 }
 
+#[cfg(target_os = "windows")]
 const DSH_EXE: &str = "DeepSeek Harness.exe";
 
 #[cfg(target_os = "windows")]
