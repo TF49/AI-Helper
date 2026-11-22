@@ -22,13 +22,16 @@
     "@context": "https://schema.org",
     "@graph": [
       {
-        "@type": "HowTo",
+        "@type": ["TechArticle", "HowTo"],
         "name": "macOS 打开 AI Helper 提示“已损坏”的解决方法",
+        "headline": "macOS 打开 AI Helper 提示“已损坏”的解决方法",
+        "image": "https://helper.bob-api.com/assets/app-preview.png",
         "description": "清除 macOS Gatekeeper 隔离标记，使 AI Helper 可以正常打开。",
         "inLanguage": "zh-CN",
         "datePublished": "2026-11-20",
         "dateModified": "2026-11-22",
-        "author": { "@id": "https://helper.bob-api.com/#organization" },
+        "author": { "@type": "Person", "@id": "https://helper.bob-api.com/about.html#maintainer", "name": "TF49", "url": "https://helper.bob-api.com/about.html", "sameAs": ["https://github.com/TF49"] },
+        "publisher": { "@type": "Organization", "@id": "https://helper.bob-api.com/#organization", "name": "AI Helper" },
         "step": [
           { "@type": "HowToStep", "name": "拖入应用程序", "text": "打开 DMG，把 AI Helper 拖入「应用程序」文件夹。" },
           { "@type": "HowToStep", "name": "清除隔离标记", "text": "打开「终端」，执行 xattr -cr /Applications/AI\\ Helper.app。" },
@@ -62,7 +65,7 @@
     <p class="breadcrumb"><a href="/">AI Helper</a> / <a href="/guides/">教程</a> / macOS 提示已损坏</p>
     <article>
       <h1>macOS 打开 AI Helper 提示“已损坏，无法打开”怎么办</h1>
-      <p class="doc-meta">适用于 macOS 11 及以上 · Apple Silicon 与 Intel · 最后更新 <time class="last-updated" datetime="2026-11-22">2026-11-22</time></p>
+      <p class="doc-meta">适用于 macOS 11 及以上 · Apple Silicon 与 Intel · 最后更新 <time class="last-updated" datetime="2026-11-22">2026-11-22</time> · 作者 <a href="/about.html">TF49</a></p>
 
       <div class="tldr">
         <p><strong>简短回答：</strong>安装包本身没有损坏。AI Helper 是开源软件，没有经过 Apple 公证，macOS Gatekeeper 会给从网上下载的文件加上隔离标记并阻止打开。打开「终端」执行下面这条命令清除标记，再双击打开即可：</p>
@@ -93,6 +96,11 @@
 
       <div class="note">请只从 <a href="/#downloads">AI Helper 官网</a> 或 <a href="https://github.com/TF49/AI-Helper/releases">GitHub Releases</a> 下载安装包，不要对来源不明的应用执行上面的命令。官网提供每个安装包的 SHA-256 校验值。</div>
 
+      <h2>参考：Apple 官方说明</h2>
+      <ul>
+        <li><a href="https://support.apple.com/zh-cn/102445">在 Mac 上安全地打开 App（Gatekeeper）</a></li>
+      </ul>
+
       <p><a class="cta" href="/#downloads">下载 AI Helper</a></p>
       <p>相关教程：<a href="/guides/cursor-custom-model.html">Cursor 配置第三方模型</a> · <a href="/guides/claude-code-custom-api.html">Claude Code 切换 API 地址</a></p>
     </article>
@@ -100,7 +108,7 @@
 
   <footer class="doc-footer">
     <div class="doc-footer-inner">
-      <span><a href="/">首页</a><a href="/guides/">教程</a><a href="/en/">English</a><a href="https://github.com/TF49/AI-Helper">GitHub</a></span>
+      <span><a href="/">首页</a><a href="/guides/">教程</a><a href="/about.html">关于</a><a href="/en/">English</a><a href="https://github.com/TF49/AI-Helper">GitHub</a></span>
       <span>© 2026 AI Helper · MIT License</span>
     </div>
   </footer>

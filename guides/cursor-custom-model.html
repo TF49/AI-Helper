@@ -22,13 +22,16 @@
     "@context": "https://schema.org",
     "@graph": [
       {
-        "@type": "HowTo",
+        "@type": ["TechArticle", "HowTo"],
         "name": "如何给 Cursor 配置 glm-5.3 等第三方模型",
+        "headline": "如何给 Cursor 配置 glm-5.3 等第三方模型",
+        "image": "https://helper.bob-api.com/assets/app-preview.png",
         "description": "使用 AI Helper 的本地 Bridge，让 Cursor 通过 OpenAI 兼容接口使用第三方模型。",
         "inLanguage": "zh-CN",
         "datePublished": "2026-11-20",
         "dateModified": "2026-11-22",
-        "author": { "@id": "https://helper.bob-api.com/#organization" },
+        "author": { "@type": "Person", "@id": "https://helper.bob-api.com/about.html#maintainer", "name": "TF49", "url": "https://helper.bob-api.com/about.html", "sameAs": ["https://github.com/TF49"] },
+        "publisher": { "@type": "Organization", "@id": "https://helper.bob-api.com/#organization", "name": "AI Helper" },
         "tool": [{ "@type": "HowToTool", "name": "AI Helper" }, { "@type": "HowToTool", "name": "Cursor" }],
         "step": [
           { "@type": "HowToStep", "name": "安装 AI Helper", "text": "从 helper.bob-api.com 或 GitHub Releases 下载并安装 AI Helper。" },
@@ -64,7 +67,7 @@
     <p class="breadcrumb"><a href="/">AI Helper</a> / <a href="/guides/">教程</a> / Cursor 配置第三方模型</p>
     <article>
       <h1>如何给 Cursor 配置 glm-5.3 等第三方模型</h1>
-      <p class="doc-meta">适用于 AI Helper <span class="current-version-tag">v1.0.88</span> · Windows 与 macOS · 最后更新 <time class="last-updated" datetime="2026-11-22">2026-11-22</time></p>
+      <p class="doc-meta">适用于 AI Helper <span class="current-version-tag">v1.0.88</span> · Windows 与 macOS · 最后更新 <time class="last-updated" datetime="2026-11-22">2026-11-22</time> · 作者 <a href="/about.html">TF49</a></p>
 
       <div class="tldr">
         <p><strong>简短回答：</strong>Cursor 的 Agent 和 Composer 使用 Connect-RPC / HTTP2 和内部消息格式通信，只在设置里改 OpenAI Base URL 无法完整接入第三方模型。AI Helper 会在本机运行一个 Bridge（默认监听 <code>127.0.0.1:8969</code>），把 Cursor 的请求转换成 OpenAI 兼容接口请求，再转发到你指定的 API 地址，因此可以让 Cursor 使用 glm-5.3 或任意 OpenAI 兼容模型。</p>
@@ -86,7 +89,7 @@
         <li><strong>重启 Cursor。</strong>点击「重启 Cursor」，然后在 Cursor 的模型选择器中选择刚才配置的模型。</li>
       </ol>
 
-      <div class="note">如果你使用 Bob API 账号登录 AI Helper 并执行「一键配置」，Cursor 会自动使用「国产Token计划」分组的 API Key，推荐模型为 <code>glm-5.3</code>；账号下没有该分组的 Key 时会自动创建。</div>
+      <div class="note">如果你使用 Bob API 账号登录 AI Helper 并执行「一键配置」，Cursor 会自动使用「国产Token计划」分组（Bob API 账号下国产模型专用的令牌分组，<a href="/about.html#groups">分组说明</a>）的 API Key，推荐模型为 <code>glm-5.3</code>；账号下没有该分组的 Key 时会自动创建。</div>
 
       <h2>Bridge 支持哪些能力</h2>
       <ul>
@@ -109,6 +112,11 @@
       <h3>Cursor 升级后第三方模型失效了？</h3>
       <p>Cursor 更新可能覆盖被修补的文件。重新打开 AI Helper 的 Cursor 面板，再执行一次「保存并应用 Cursor 配置」。</p>
 
+      <h2>参考：Cursor 官方文档</h2>
+      <ul>
+        <li><a href="https://cursor.com/help/models-and-usage/api-keys">Bring your own API key（Cursor 官方的自带 Key 方式）</a></li>
+      </ul>
+
       <p><a class="cta" href="/#downloads">下载 AI Helper</a></p>
       <p>相关教程：<a href="/guides/claude-code-custom-api.html">Claude Code 切换 API 地址</a> · <a href="/guides/codex-cli-custom-api.html">Codex CLI 配置自定义 API</a></p>
     </article>
@@ -116,7 +124,7 @@
 
   <footer class="doc-footer">
     <div class="doc-footer-inner">
-      <span><a href="/">首页</a><a href="/guides/">教程</a><a href="/en/">English</a><a href="https://github.com/TF49/AI-Helper">GitHub</a></span>
+      <span><a href="/">首页</a><a href="/guides/">教程</a><a href="/about.html">关于</a><a href="/en/">English</a><a href="https://github.com/TF49/AI-Helper">GitHub</a></span>
       <span>© 2026 AI Helper · MIT License</span>
     </div>
   </footer>
