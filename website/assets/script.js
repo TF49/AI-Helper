@@ -206,7 +206,7 @@ const GROUP_MONITOR_DATA = {
     failed: "2 告警",
     health: 96,
     statusText: "99.5% 优质可用",
-    guide: "WorkBuddy 一键配置使用国产Token计划分组的 Key，默认预设 glm-5.3，写入 ~/.workbuddy-ai/models.json 后由 WorkBuddy 热重载即时生效。",
+    guide: "WorkBuddy 一键配置使用国产Token计划分组的 Key，默认预设 glm-5.3，写入 ~/.workbuddy/models.json 后由 WorkBuddy 热重载即时生效。",
     ribbonPoints: [
       { rate: 100, lat: 58 }, { rate: 100, lat: 60 }, { rate: 99.2, lat: 68 }, { rate: 100, lat: 61 },
       { rate: 100, lat: 59 }, { rate: 100, lat: 62 }, { rate: 100, lat: 63 }, { rate: 100, lat: 60 },
