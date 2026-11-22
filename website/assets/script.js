@@ -160,7 +160,7 @@ const GROUP_MONITOR_DATA = {
   },
   claude: {
     groupName: "CC-Kiro-Max",
-    tag: "Anthropic 深度推理",
+    tag: "Claude Code 专用",
     successRate: 100.0,
     latency: "138ms",
     latencyVal: 138,
@@ -179,14 +179,14 @@ const GROUP_MONITOR_DATA = {
   },
   cursor: {
     groupName: "国产Token计划",
-    tag: "国产强力大模型专区",
+    tag: "Cursor 自定义模型",
     successRate: 99.9,
     latency: "42ms",
     latencyVal: 42,
     totalRequests: "32,450",
     failed: "0 熔断",
     statusText: "99.9% 极速流式",
-    guide: "专为 Cursor、WorkBuddy、Accio Work 与 DeepSeek Harness 打造的国内超低时延专属通道，默认全面预设高质高性价比 glm-5.3 基座，IDE 内代码补全秒级响应。",
+    guide: "Cursor 一键配置使用国产Token计划分组的 Key（与 WorkBuddy、Accio Work、DeepSeek Harness 共用），默认预设 glm-5.3。",
     ribbonPoints: [
       { rate: 100, lat: 41 }, { rate: 100, lat: 42 }, { rate: 100, lat: 40 }, { rate: 100, lat: 44 },
       { rate: 100, lat: 42 }, { rate: 100, lat: 43 }, { rate: 100, lat: 41 }, { rate: 100, lat: 42 },
@@ -197,15 +197,16 @@ const GROUP_MONITOR_DATA = {
     ]
   },
   workbuddy: {
-    groupName: "WorkBuddy-AllModels",
-    tag: "多模型异构聚合",
+    groupName: "国产Token计划",
+    tag: "WorkBuddy models.json",
     successRate: 99.5,
     latency: "62ms",
     latencyVal: 62,
     totalRequests: "24,190",
     failed: "2 告警",
+    health: 96,
     statusText: "99.5% 优质可用",
-    guide: "聚合管理异构模型（glm-5.3、Claude、DeepSeek、GPT-4o），自动路由至 models.json 中目标模型权限与配额全覆盖分组。",
+    guide: "WorkBuddy 一键配置使用国产Token计划分组的 Key，默认预设 glm-5.3，写入 ~/.workbuddy-ai/models.json 后由 WorkBuddy 热重载即时生效。",
     ribbonPoints: [
       { rate: 100, lat: 58 }, { rate: 100, lat: 60 }, { rate: 99.2, lat: 68 }, { rate: 100, lat: 61 },
       { rate: 100, lat: 59 }, { rate: 100, lat: 62 }, { rate: 100, lat: 63 }, { rate: 100, lat: 60 },
@@ -216,15 +217,15 @@ const GROUP_MONITOR_DATA = {
     ]
   },
   acciowork: {
-    groupName: "Accio-Enterprise-Bridge",
-    tag: "企业级长链路网关",
+    groupName: "国产Token计划",
+    tag: "Accio Work 多 Agent 工作流",
     successRate: 99.8,
     latency: "115ms",
     latencyVal: 115,
     totalRequests: "9,640",
     failed: "0 熔断",
     statusText: "99.8% 高度稳定",
-    guide: "专为 Accio Work 多 Agent 长链路复杂工作流设计，Rust 本地 Bridge 路径凭据鉴权与防泄露白名单守护，保障长时间无断连。",
+    guide: "Accio Work 一键配置与 Cursor、WorkBuddy、DeepSeek Harness 共用国产Token计划分组的 Key，默认预设 glm-5.3；账号下缺少该分组 Key 时会在登录后自动创建并继续写入。",
     ribbonPoints: [
       { rate: 100, lat: 112 }, { rate: 100, lat: 114 }, { rate: 100, lat: 118 }, { rate: 100, lat: 115 },
       { rate: 100, lat: 113 }, { rate: 100, lat: 116 }, { rate: 99.8, lat: 122 }, { rate: 100, lat: 115 },
@@ -1622,6 +1623,13 @@ function initGroupMonitorSection() {
 
     setText("hud-metric-requests", data.totalRequests);
     setText("hud-metric-failed", data.failed);
+    setText("hud-metric-health", "健康指数 " + (data.health || 100));
+    const failedEl = document.getElementById("hud-metric-failed");
+    if (failedEl) {
+      const hasWarning = data.failed.indexOf("0 ") !== 0;
+      failedEl.classList.toggle("text-emerald", !hasWarning);
+      failedEl.classList.toggle("text-amber", hasWarning);
+    }
 
     // 4. 渲染三大图表视图
     renderRibbonView(data.ribbonPoints, animateBars);
@@ -1636,7 +1644,7 @@ function initGroupMonitorSection() {
 
     points.forEach(function (pt, idx) {
       const seg = document.createElement("div");
-      seg.className = "ribbon-segment" + (pt.rate < 99.5 ? " rate-jitter" : pt.rate < 100 ? " rate-99" : "");
+      seg.className = "ribbon-segment" + (pt.rate < 95 ? " rate-jitter" : pt.rate < 100 ? " rate-99" : "");
       seg.title = "时间桶 #" + (idx + 1) + " (5分钟) · 可用率: " + pt.rate + "% · 平均时延: " + pt.lat + "ms";
       track.appendChild(seg);
     });
@@ -1659,13 +1667,25 @@ function initGroupMonitorSection() {
     const height = 70;
     const step = width / (points.length - 1);
 
-    const minLat = 50;
-    const maxLat = 160;
+    const lats = points.map(function (pt) { return pt.lat; });
+    const minLat = Math.min.apply(null, lats);
+    const maxLat = Math.max.apply(null, lats);
+    const avgLat = lats.reduce(function (a, b) { return a + b; }, 0) / lats.length;
+    // 以均值为中心、至少 ±10% 的纵轴范围，避免小幅抖动被放大成剧烈波形
+    const half = Math.max((maxLat - minLat) / 2, avgLat * 0.1);
+    const lo = avgLat - half;
+    const hi = avgLat + half;
     const coords = points.map(function (pt, i) {
-      const norm = (pt.lat - minLat) / (maxLat - minLat);
-      const y = Math.max(12, Math.min(58, height - (norm * (height - 24) + 12)));
+      const norm = (pt.lat - lo) / (hi - lo);
+      const y = Math.max(8, Math.min(62, height - (norm * (height - 16) + 8)));
       return { x: i * step, y: y };
     });
+
+    setText("area-lat-range", minLat + "ms ~ " + maxLat + "ms");
+    // 抖动率 = TTFT 标准差 / 均值（变异系数）
+    const variance = lats.reduce(function (acc, v) { return acc + (v - avgLat) * (v - avgLat); }, 0) / lats.length;
+    const jitter = (Math.sqrt(variance) / avgLat) * 100;
+    setText("area-jitter", "< " + Math.max(0.1, Math.ceil(jitter * 10) / 10).toFixed(1) + "%");
 
     let d = "M " + coords[0].x.toFixed(1) + " " + coords[0].y.toFixed(1);
     for (let i = 1; i < coords.length; i++) {
@@ -1711,20 +1731,39 @@ function initGroupMonitorSection() {
     }
   }
 
-  // 1. Tab 切换
-  tabs.forEach(function (button) {
+  // 1. Tab 切换（支持方向键 / Home / End 漫游焦点）
+  const panel = document.getElementById("group-monitor-panel");
+
+  function selectTab(button, focus) {
+    const key = button.getAttribute("data-group-key");
+    if (!key) return;
+    if (focus) button.focus();
+    if (key === activeKey) return;
+
+    tabs.forEach(function (t) {
+      const isActive = t === button;
+      t.classList.toggle("active", isActive);
+      t.setAttribute("aria-selected", isActive ? "true" : "false");
+      t.setAttribute("tabindex", isActive ? "0" : "-1");
+    });
+    if (panel && button.id) panel.setAttribute("aria-labelledby", button.id);
+
+    renderGroupData(key, true);
+  }
+
+  tabs.forEach(function (button, index) {
     button.addEventListener("click", function () {
-      const key = button.getAttribute("data-group-key");
-      if (!key || key === activeKey) return;
-
-      tabs.forEach(function (t) {
-        t.classList.remove("active");
-        t.setAttribute("aria-selected", "false");
-      });
-      button.classList.add("active");
-      button.setAttribute("aria-selected", "true");
-
-      renderGroupData(key, true);
+      selectTab(button, false);
+    });
+    button.addEventListener("keydown", function (event) {
+      let next = -1;
+      if (event.key === "ArrowRight" || event.key === "ArrowDown") next = (index + 1) % tabs.length;
+      else if (event.key === "ArrowLeft" || event.key === "ArrowUp") next = (index - 1 + tabs.length) % tabs.length;
+      else if (event.key === "Home") next = 0;
+      else if (event.key === "End") next = tabs.length - 1;
+      if (next < 0) return;
+      event.preventDefault();
+      selectTab(tabs[next], true);
     });
   });
 
@@ -1734,8 +1773,11 @@ function initGroupMonitorSection() {
       const mode = btn.getAttribute("data-mode");
       if (!mode || mode === activeMode) return;
 
-      modeButtons.forEach(function (b) { b.classList.remove("active"); });
-      btn.classList.add("active");
+      modeButtons.forEach(function (b) {
+        const isActive = b === btn;
+        b.classList.toggle("active", isActive);
+        b.setAttribute("aria-checked", isActive ? "true" : "false");
+      });
       activeMode = mode;
 
       const views = [

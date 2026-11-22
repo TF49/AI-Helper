@@ -1,8 +1,8 @@
-# AI Helper
+# Bob AI Helper
 
-> AI Helper is a free, MIT-licensed desktop app for Windows and macOS that configures the API endpoint, API key and model for AI coding clients — Cursor, Claude Code, OpenAI Codex CLI, ChatGPT Desktop, WorkBuddy, Accio Work and DeepSeek Harness — from one place. It detects installed clients, writes their local config files, runs a real streaming connection test, and restarts the client. Cursor and Accio Work are connected to third-party models through a built-in local bridge; DeepSeek Harness gets one API key split across Claude, GPT and Chinese-model routes by protocol.
+> Bob AI Helper (shown in the app as "AI Helper") is a free, MIT-licensed desktop app for Windows and macOS that configures the API endpoint, API key and model for AI coding clients — Cursor, Claude Code, OpenAI Codex CLI, ChatGPT Desktop, WorkBuddy, Accio Work and DeepSeek Harness — from one place. It detects installed clients, writes their local config files, runs a real streaming connection test, and restarts the client. Cursor and Accio Work are connected to third-party models through a built-in local bridge; DeepSeek Harness gets one API key split across Claude, GPT and Chinese-model routes by protocol.
 >
-> AI Helper 是一款 MIT 开源的桌面工具，用于在 Windows 和 macOS 上一键配置 Cursor、Claude Code、OpenAI Codex CLI、ChatGPT Desktop、WorkBuddy、Accio Work 与 DeepSeek Harness 的 API 地址、API Key 和模型。
+> Bob AI Helper（应用内显示为 AI Helper）是一款 MIT 开源的桌面工具，用于在 Windows 和 macOS 上一键配置 Cursor、Claude Code、OpenAI Codex CLI、ChatGPT Desktop、WorkBuddy、Accio Work 与 DeepSeek Harness 的 API 地址、API Key 和模型。
 
 - Current version: v1.0.88 (last updated: 2026-11-22)
 - Platforms: Windows 10/11 x64 (requires Microsoft Edge WebView2 Runtime); macOS 11+ on Apple Silicon (aarch64) and Intel (x64)
@@ -10,7 +10,7 @@
 - Source code: https://github.com/TF49/AI-Helper
 - Maintainer: TF49 (https://github.com/TF49); about page: https://helper.bob-api.com/about.html
 - Built with: Tauri 2, Rust, React, TypeScript
-- Not to be confused with other products named "AI Helper" (e.g. the Discourse plugin or browser extensions). This AI Helper is the desktop configuration tool published at helper.bob-api.com and github.com/TF49/AI-Helper.
+- Not to be confused with other products named "AI Helper" (e.g. the Discourse plugin or browser extensions). Bob AI Helper is the desktop configuration tool published at helper.bob-api.com and github.com/TF49/AI-Helper.
 
 ## Supported clients and the files AI Helper writes
 

@@ -1905,64 +1905,92 @@ svg {
 }
 
 .group-monitor-head {
-  display: grid;
-  grid-template-columns: 1fr auto;
-  align-items: start;
+  display: flex;
+  flex-direction: column;
   gap: 24px;
 }
 
+.group-head-copy {
+  max-width: 820px;
+}
+
 .group-head-copy h3 {
-  margin: 14px 0 8px;
+  margin: 14px 0 10px;
   font-size: clamp(24px, 2.4vw, 32px);
+  line-height: 1.25;
   letter-spacing: -0.04em;
 }
 
 .group-head-copy p {
-  width: min(100%, 720px);
   color: var(--text-soft);
   font-size: 14.5px;
-  line-height: 1.65;
+  line-height: 1.75;
+}
+
+.group-head-copy .demo-data-note {
+  display: block;
+  margin-top: 8px;
 }
 
 /* Group Tabs List */
 .group-tabs-list {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  padding: 4px;
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 6px;
+  padding: 5px;
   background: rgba(8, 119, 249, 0.05);
   border: 1px solid var(--line);
   border-radius: 14px;
 }
 
 .group-tab-btn {
-  display: flex;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  grid-template-rows: auto auto;
   align-items: center;
-  gap: 8px;
-  padding: 8px 14px;
+  column-gap: 8px;
+  row-gap: 3px;
+  min-width: 0;
+  padding: 10px 12px;
   border: 1px solid transparent;
   border-radius: 10px;
   background: transparent;
   color: var(--text-soft);
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 700;
+  text-align: left;
   cursor: pointer;
   transition: all 200ms var(--ease-out);
 }
 
 .group-tab-btn i {
-  width: 7px;
-  height: 7px;
+  grid-row: 1;
+  grid-column: 1;
+  width: 8px;
+  height: 8px;
   border-radius: 50%;
   flex-shrink: 0;
 }
 
+.group-tab-btn span {
+  grid-row: 1;
+  grid-column: 2;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
 .group-tab-btn small {
+  grid-row: 2;
+  grid-column: 2;
   display: block;
+  overflow: hidden;
   color: var(--text-faint);
   font-family: var(--font-mono);
-  font-size: 9px;
+  font-size: 10.5px;
   font-weight: 500;
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }
 
 .group-tab-btn:hover {
@@ -2017,7 +2045,7 @@ svg {
   border-radius: 6px;
   background: rgba(8, 119, 249, 0.06);
   color: var(--blue);
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 750;
 }
 
@@ -2072,12 +2100,12 @@ svg {
 }
 
 .mode-btn {
-  padding: 4px 10px;
+  padding: 5px 11px;
   border: 0;
   border-radius: 7px;
   background: transparent;
   color: var(--text-soft);
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 700;
   cursor: pointer;
   transition: all 160ms ease;
@@ -2149,6 +2177,10 @@ svg {
   color: var(--blue);
 }
 
+.hud-value.text-amber {
+  color: #d97706;
+}
+
 .hud-item small {
   display: block;
   margin-top: 5px;
@@ -2212,11 +2244,12 @@ svg {
 
 .ribbon-legend {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 16px;
+  gap: 8px 16px;
   margin-top: 10px;
   color: var(--text-faint);
-  font-size: 10px;
+  font-size: 11px;
 }
 
 .legend-dot {
@@ -2242,6 +2275,8 @@ svg {
 
 .area-stats-overlay {
   display: flex;
+  flex-wrap: wrap;
+  gap: 6px 16px;
   justify-content: space-between;
   margin-top: 6px;
   color: var(--text-soft);
@@ -2271,10 +2306,12 @@ svg {
 
 .bar-legend {
   display: flex;
+  flex-wrap: wrap;
+  gap: 6px 16px;
   justify-content: space-between;
   margin-top: 8px;
   color: var(--text-faint);
-  font-size: 10px;
+  font-size: 11px;
 }
 
 /* Guide Callout */
@@ -2295,15 +2332,15 @@ svg {
   border-radius: 6px;
   background: rgba(8, 119, 249, 0.08);
   color: var(--blue-deep);
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 800;
 }
 
 .widget-guide-box p {
   margin: 0;
   color: var(--text-soft);
-  font-size: 12.5px;
-  line-height: 1.6;
+  font-size: 13px;
+  line-height: 1.65;
 }
 
 /* Chips Row */
@@ -2315,7 +2352,7 @@ svg {
   padding-top: 14px;
   border-top: 1px dashed var(--line);
   color: var(--text-faint);
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 600;
 }
 
@@ -3073,6 +3110,10 @@ svg {
 
 /* Tablet */
 @media (max-width: 1180px) {
+  .group-tabs-list {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
   .desktop-nav {
     gap: 0;
   }
@@ -3203,10 +3244,6 @@ svg {
 
   .capability-card-half {
     grid-column: span 6;
-  }
-
-  .group-monitor-head {
-    grid-template-columns: 1fr;
   }
 
   .widget-hud-grid {
@@ -3615,19 +3652,31 @@ svg {
     justify-content: space-between;
   }
 
+  .widget-guide-box {
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .group-monitor-widget {
+    padding: 16px 14px;
+  }
+
+  .group-monitor-widget .wallet-quota-hud {
+    padding: 12px 14px;
+  }
+
+  .wallet-quota-hud .wallet-metrics {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
   .ribbon-track,
   .bar-track {
     gap: 2px;
   }
 
   .group-tabs-list {
-    flex-direction: column;
-    width: 100%;
-  }
-
-  .group-tab-btn {
-    width: 100%;
-    justify-content: flex-start;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .capability-card-main h3 {
@@ -4132,8 +4181,10 @@ svg {
 
 .wallet-header {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
+  gap: 8px 12px;
   margin-bottom: 10px;
 }
 
@@ -4159,9 +4210,10 @@ svg {
 
 .wallet-metrics {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
-  gap: 20px;
+  gap: 12px 20px;
 }
 
 .wallet-label {
@@ -4173,8 +4225,10 @@ svg {
 
 .wallet-currency-pair {
   display: inline-flex;
+  flex-wrap: wrap;
   align-items: baseline;
-  gap: 8px;
+  gap: 4px 8px;
+  white-space: nowrap;
 }
 
 .wallet-currency-pair .cur-usd {
