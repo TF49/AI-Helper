@@ -2861,7 +2861,7 @@ pub async fn apply_api_key_to_agents(
                         use_custom_protocol: false,
                         default_effort: None,
                         supported_efforts: vec![],
-                        max_input_tokens: None,
+                        max_input_tokens: Some(262144),
                         max_output_tokens: None,
                     };
                     crate::workbuddy::set_workbuddy_default_config_at_generation(

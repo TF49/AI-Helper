@@ -815,7 +815,7 @@ export function InitializationModal({
           use_custom_protocol: existing?.use_custom_protocol ?? false,
           default_effort: existing?.default_effort ?? null,
           supported_efforts: existing?.supported_efforts ?? ["medium"],
-          max_input_tokens: existing?.max_input_tokens ?? 32768,
+          max_input_tokens: existing?.max_input_tokens ?? 262144,
           max_output_tokens: existing?.max_output_tokens ?? 32768,
         });
         toast.success("WorkBuddy 自定义模型配置已保存更新");

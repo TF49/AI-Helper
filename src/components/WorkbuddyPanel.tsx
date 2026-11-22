@@ -117,7 +117,7 @@ export function WorkbuddyPanel() {
   ]);
 
   // Token 限制
-  const [maxInputTokens, setMaxInputTokens] = useState<number | "">(32768);
+  const [maxInputTokens, setMaxInputTokens] = useState<number | "">(262144);
   const [maxOutputTokens, setMaxOutputTokens] = useState<number | "">(32768);
 
   const { models, refreshingModels, refreshModels } = useModelFetch(
@@ -159,7 +159,7 @@ export function WorkbuddyPanel() {
         ? item.reasoning.supportedEfforts
         : ["medium"],
     );
-    setMaxInputTokens(item.maxInputTokens ?? 32768);
+    setMaxInputTokens(item.maxInputTokens ?? 262144);
     setMaxOutputTokens(item.maxOutputTokens ?? 32768);
   };
 
@@ -201,7 +201,7 @@ export function WorkbuddyPanel() {
           cfg.supported_efforts.length > 0 ? cfg.supported_efforts : ["medium"],
         );
 
-        setMaxInputTokens(cfg.max_input_tokens ?? 32768);
+        setMaxInputTokens(cfg.max_input_tokens ?? 262144);
         setMaxOutputTokens(cfg.max_output_tokens ?? 32768);
       }
     } catch (e) {
@@ -998,7 +998,7 @@ export function WorkbuddyPanel() {
                                   : Number(e.target.value),
                               )
                             }
-                            placeholder="默认 32768"
+                            placeholder="默认 262144"
                             className="w-full text-xs font-mono bg-slate-50 dark:bg-neutral-900 border border-slate-200 dark:border-white/10 rounded-lg px-2.5 py-1.5 text-slate-800 dark:text-gray-200 focus:outline-none focus:ring-1 focus:ring-black dark:focus:ring-white"
                           />
                           <div className="flex gap-1">

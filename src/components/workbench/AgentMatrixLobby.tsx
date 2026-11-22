@@ -589,7 +589,7 @@ export const AgentMatrixLobby: React.FC<AgentMatrixLobbyProps> = ({
           use_custom_protocol: false,
           default_effort: null,
           supported_efforts: ["medium"],
-          max_input_tokens: 32768,
+          max_input_tokens: 262144,
           max_output_tokens: 32768,
         };
       } else if (modalType === "claude") {

@@ -75,7 +75,7 @@
 
   class DiagnosticsCore {
     constructor() {
-      this.version = '1.0.87';
+      this.version = '1.0.88';
       this.deviceId = getOrCreateDeviceId();
       this.sessionId = getOrCreateSessionId();
       this.sessionStartTime = Date.now();

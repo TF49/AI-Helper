@@ -1142,7 +1142,7 @@ pub fn get_workbuddy_config() -> Result<WorkbuddyUIConfig, AppError> {
     let mut use_custom_protocol = false;
     let mut default_effort = String::new();
     let mut supported_efforts = vec!["medium".to_string()];
-    let mut max_input_tokens = Some(32768);
+    let mut max_input_tokens = Some(262144);
     let mut max_output_tokens = Some(32768);
 
     if let Some(entry) = entries
