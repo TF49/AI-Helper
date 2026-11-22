@@ -16,7 +16,7 @@
   <meta property="og:url" content="https://helper.bob-api.com/guides/cursor-custom-model.html">
   <meta property="og:image" content="https://helper.bob-api.com/assets/app-preview.png">
   <link rel="icon" type="image/x-icon" href="/assets/favicon.ico">
-  <link rel="stylesheet" href="/assets/docs.css?v=1.0.87">
+  <link rel="stylesheet" href="/assets/docs.css?v=1.0.88">
   <script type="application/ld+json">
   {
     "@context": "https://schema.org",
@@ -27,7 +27,7 @@
         "description": "使用 AI Helper 的本地 Bridge，让 Cursor 通过 OpenAI 兼容接口使用第三方模型。",
         "inLanguage": "zh-CN",
         "datePublished": "2026-11-20",
-        "dateModified": "2026-11-21",
+        "dateModified": "2026-11-22",
         "author": { "@id": "https://helper.bob-api.com/#organization" },
         "tool": [{ "@type": "HowToTool", "name": "AI Helper" }, { "@type": "HowToTool", "name": "Cursor" }],
         "step": [
@@ -64,7 +64,7 @@
     <p class="breadcrumb"><a href="/">AI Helper</a> / <a href="/guides/">教程</a> / Cursor 配置第三方模型</p>
     <article>
       <h1>如何给 Cursor 配置 glm-5.3 等第三方模型</h1>
-      <p class="doc-meta">适用于 AI Helper <span class="current-version-tag">v1.0.87</span> · Windows 与 macOS · 最后更新 <time class="last-updated" datetime="2026-11-21">2026-11-21</time></p>
+      <p class="doc-meta">适用于 AI Helper <span class="current-version-tag">v1.0.88</span> · Windows 与 macOS · 最后更新 <time class="last-updated" datetime="2026-11-22">2026-11-22</time></p>
 
       <div class="tldr">
         <p><strong>简短回答：</strong>Cursor 的 Agent 和 Composer 使用 Connect-RPC / HTTP2 和内部消息格式通信，只在设置里改 OpenAI Base URL 无法完整接入第三方模型。AI Helper 会在本机运行一个 Bridge（默认监听 <code>127.0.0.1:8969</code>），把 Cursor 的请求转换成 OpenAI 兼容接口请求，再转发到你指定的 API 地址，因此可以让 Cursor 使用 glm-5.3 或任意 OpenAI 兼容模型。</p>

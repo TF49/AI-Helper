@@ -4,7 +4,7 @@
 >
 > AI Helper 是一款 MIT 开源的桌面工具，用于在 Windows 和 macOS 上一键配置 Cursor、Claude Code、OpenAI Codex CLI、ChatGPT Desktop、WorkBuddy、Accio Work 与 DeepSeek Harness 的 API 地址、API Key 和模型。
 
-- Current version: v1.0.87 (last updated: 2026-11-21)
+- Current version: v1.0.88 (last updated: 2026-11-22)
 - Platforms: Windows 10/11 x64 (requires Microsoft Edge WebView2 Runtime); macOS 11+ on Apple Silicon (aarch64) and Intel (x64)
 - License: MIT. The client is free; model usage is billed by whichever API provider you configure.
 - Source code: https://github.com/TF49/AI-Helper
@@ -37,10 +37,10 @@
 
 - [Official download page](https://helper.bob-api.com/#downloads)
 - [GitHub Releases (latest)](https://github.com/TF49/AI-Helper/releases/latest)
-- [Windows x64 installer](https://github.com/TF49/AI-Helper/releases/download/v1.0.87/AI-Helper-v1.0.87-Windows-x64-Setup.exe)
-- [Windows x64 portable ZIP](https://github.com/TF49/AI-Helper/releases/download/v1.0.87/AI-Helper-v1.0.87-Windows-x64-Standalone.zip)
-- [macOS Apple Silicon DMG](https://github.com/TF49/AI-Helper/releases/download/v1.0.87/AI-Helper-v1.0.87-macOS-aarch64.dmg)
-- [macOS Intel DMG](https://github.com/TF49/AI-Helper/releases/download/v1.0.87/AI-Helper-v1.0.87-macOS-x64.dmg)
+- [Windows x64 installer](https://github.com/TF49/AI-Helper/releases/download/v1.0.88/AI-Helper-v1.0.88-Windows-x64-Setup.exe)
+- [Windows x64 portable ZIP](https://github.com/TF49/AI-Helper/releases/download/v1.0.88/AI-Helper-v1.0.88-Windows-x64-Standalone.zip)
+- [macOS Apple Silicon DMG](https://github.com/TF49/AI-Helper/releases/download/v1.0.88/AI-Helper-v1.0.88-macOS-aarch64.dmg)
+- [macOS Intel DMG](https://github.com/TF49/AI-Helper/releases/download/v1.0.88/AI-Helper-v1.0.88-macOS-x64.dmg)
 
 ## Guides (Chinese)
 

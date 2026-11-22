@@ -16,7 +16,7 @@
   <meta property="og:url" content="https://helper.bob-api.com/guides/deepseek-harness-custom-api.html">
   <meta property="og:image" content="https://helper.bob-api.com/assets/app-preview.png">
   <link rel="icon" type="image/x-icon" href="/assets/favicon.ico">
-  <link rel="stylesheet" href="/assets/docs.css?v=1.0.87">
+  <link rel="stylesheet" href="/assets/docs.css?v=1.0.88">
   <script type="application/ld+json">
   {
     "@context": "https://schema.org",
@@ -27,7 +27,7 @@
         "description": "用 AI Helper 为 DeepSeek Harness 桌面版写入 API 节点、API Key 和模型，模型按协议自动分到 aihelper-claude、aihelper-codex、aihelper-cn 三条路由。",
         "inLanguage": "zh-CN",
         "datePublished": "2026-11-21",
-        "dateModified": "2026-11-21",
+        "dateModified": "2026-11-22",
         "author": { "@id": "https://helper.bob-api.com/#organization" },
         "tool": [{ "@type": "HowToTool", "name": "AI Helper" }, { "@type": "HowToTool", "name": "DeepSeek Harness" }],
         "step": [
@@ -91,7 +91,7 @@
     <p class="breadcrumb"><a href="/">AI Helper</a> / <a href="/guides/">教程</a> / DeepSeek Harness 接入自定义 API</p>
     <article>
       <h1>DeepSeek Harness 怎么接入 Claude、GPT 和国产模型</h1>
-      <p class="doc-meta">适用于 AI Helper <span class="current-version-tag">v1.0.87</span> · Windows 与 macOS · 最后更新 <time class="last-updated" datetime="2026-11-21">2026-11-21</time></p>
+      <p class="doc-meta">适用于 AI Helper <span class="current-version-tag">v1.0.88</span> · Windows 与 macOS · 最后更新 <time class="last-updated" datetime="2026-11-22">2026-11-22</time></p>
 
       <div class="tldr">
         <p><strong>简短回答：</strong>DeepSeek Harness（DSH）桌面版的模型路由写在 <code>~/.dsh/profiles/desktop/cordis.patch.yml</code>，对应的 API Key 写在同目录体系下的 <code>.credentials.yaml</code>。Claude、GPT 和国产模型使用三种不同的协议，需要分别配置路由。AI Helper 可以用一个 API Key 拉取全部可用模型，按协议自动写入 <code>aihelper-claude</code>、<code>aihelper-codex</code>、<code>aihelper-cn</code> 三条路由，并保留你的自建路由、注释和 DeepSeek 官方账号。</p>
