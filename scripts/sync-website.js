@@ -8,7 +8,7 @@
  * 2. website/assets/script.js 中的 CURRENT_VERSION 常量
  * 3. website/version.json 中的版本号、发布日期与各分流下载地址
  * 4. GEO 页面（llms.txt、en/、guides/、404.html）中的版本号、下载链接与「最后更新」日期
- * 5. website/sitemap.xml 中的 lastmod（日期按北京时间计算）
+ * 5. website/sitemap.xml 中的 lastmod（首页与英文页取发版日期，其余页面取最后一次非发版提交的日期）
  * 
  * 用法：
  *   node scripts/sync-website.js [新版本号，如 1.0.52，不传则自动读取 package.json]
@@ -16,6 +16,7 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
+import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -45,18 +46,93 @@ const ghfastPrefix = 'https://ghfast.top/';
 
 console.log(`[sync-website] 正在全量同步官网版本信息 -> ${targetVersion} (${tag})`);
 
+const websiteDir = path.join(repoRoot, 'website');
+
+/**
+ * 页面「内容」的最后修改日期，用于 sitemap lastmod、JSON-LD dateModified 与页面上的「最后更新」。
+ *
+ * 只把真正的内容改动算作修改：比较时先用 normalizeForDate 抹掉本脚本会自动改写的部分
+ * （版本号、下载链接、docs.css 防缓存后缀、各类日期）。这样：
+ * - 发版只替换版本号时不会刷新日期（否则所有页面每次都是同一天，搜索引擎会学着忽略 lastmod）；
+ * - release.ps1 会先经 bump-version.ps1 跑一次本脚本、再跑一次，第二次看到的「未提交改动」
+ *   只有版本号，同样不会误判为内容更新；
+ * - 内容改动即使混在发版提交里，也能按那次提交的日期识别出来。
+ *
+ * 判断顺序：工作区与 HEAD 内容不同 → 今天（这次会一起提交）；否则沿 git 历史往回找
+ * 最近一次内容有变化的提交，取其日期。git 不可用时回退为今天。
+ */
+const DATE_PLACEHOLDER = '0000-00-00';
+function normalizeForDate(text) {
+  return syncSecondaryPage(text.replace(/\r\n/g, '\n'), DATE_PLACEHOLDER)
+    .replace(/<lastmod>[^<]*<\/lastmod>/g, '')
+    .trim();
+}
+
+function contentDate(file) {
+  const rel = path.relative(repoRoot, file).replace(/\\/g, '/');
+  const git = (args) =>
+    execFileSync('git', args, {
+      cwd: repoRoot,
+      encoding: 'utf8',
+      maxBuffer: 64 * 1024 * 1024,
+      stdio: ['ignore', 'pipe', 'ignore'],
+    });
+  const show = (rev) => {
+    try {
+      return git(['show', `${rev}:${rel}`]);
+    } catch {
+      return null; // 该提交里不存在这个文件（新建或已删除）
+    }
+  };
+  try {
+    const head = show('HEAD');
+    if (head === null || normalizeForDate(fs.readFileSync(file, 'utf8')) !== normalizeForDate(head)) {
+      return today;
+    }
+    const commits = git(['log', '-n', '100', '--date=short', '--format=%H %cd', '--', rel])
+      .split('\n')
+      .map((line) => line.trim().split(' '))
+      .filter(([hash, date]) => hash && /^\d{4}-\d{2}-\d{2}$/.test(date || ''));
+    for (const [hash, date] of commits) {
+      const current = show(hash);
+      if (current === null) continue;
+      const parent = show(`${hash}^`);
+      if (parent === null || normalizeForDate(current) !== normalizeForDate(parent)) return date;
+    }
+    return commits.length ? commits[commits.length - 1][1] : today;
+  } catch {
+    return today;
+  }
+}
+
+/**
+ * 每次发版都会实际变化的页面（版本号、下载区是页面主体内容），日期固定取今天；
+ * 其余页面（教程、关于页、llms.txt 以外的 GEO 页）按 contentDate 计算。
+ */
+const releaseDrivenPages = new Set([
+  path.join(websiteDir, 'index.html'),
+  path.join(websiteDir, 'en', 'index.html'),
+  path.join(websiteDir, 'llms.txt'),
+]);
+const pageDates = new Map();
+function pageDate(file) {
+  if (releaseDrivenPages.has(file)) return today;
+  if (!pageDates.has(file)) pageDates.set(file, contentDate(file));
+  return pageDates.get(file);
+}
+
 /** 同步 JSON-LD dateModified 与 <time class="last-updated"> 的日期 */
-function syncGeoDates(text) {
+function syncGeoDates(text, date = today) {
   return text
-    .replace(/"dateModified":\s*"[^"]*"/g, `"dateModified": "${today}"`)
+    .replace(/"dateModified":\s*"[^"]*"/g, `"dateModified": "${date}"`)
     .replace(
       /(<time\s+class="last-updated"\s+datetime=")[^"]*(">)[^<]*(<\/time>)/g,
-      `$1${today}$2${today}$3`
+      `$1${date}$2${date}$3`
     );
 }
 
-/** 同步教程页 / 英文页 / 404 页 / llms.txt 中的版本号、下载链接、资源版本后缀与日期 */
-function syncSecondaryPage(text) {
+/** 同步教程页 / 英文页 / 404 页 / 关于页 / llms.txt 中的版本号、下载链接、资源版本后缀与日期 */
+function syncSecondaryPage(text, date) {
   return syncGeoDates(
     text
       .replace(
@@ -69,8 +145,41 @@ function syncSecondaryPage(text) {
       .replace(/"softwareVersion":\s*"[^"]*"/g, `"softwareVersion": "${targetVersion}"`)
       .replace(/assets\/docs\.css\?v=[^"'\s>]+/g, `assets/docs.css?v=${targetVersion}`)
       // llms.txt 中的纯文本版本行
-      .replace(/^- Current version: v[0-9.]+ \(last updated: [0-9-]+\)$/m, `- Current version: ${tag} (last updated: ${today})`)
+      .replace(/^- Current version: v[0-9.]+ \(last updated: [0-9-]+\)$/m, `- Current version: ${tag} (last updated: ${today})`),
+    date
   );
+}
+
+// 在写入任何文件之前，先算好所有 GEO 页面与 sitemap 页面的内容日期
+const geoFiles = [
+  path.join(websiteDir, 'llms.txt'),
+  path.join(websiteDir, '404.html'),
+  path.join(websiteDir, 'about.html'),
+  path.join(websiteDir, 'en', 'index.html'),
+];
+const guidesDir = path.join(websiteDir, 'guides');
+if (fs.existsSync(guidesDir)) {
+  for (const name of fs.readdirSync(guidesDir)) {
+    if (name.endsWith('.html')) geoFiles.push(path.join(guidesDir, name));
+  }
+}
+for (const file of geoFiles) {
+  if (fs.existsSync(file)) pageDate(file);
+}
+
+/** sitemap 中的 <loc> 映射到 website/ 下的文件 */
+function sitemapLocToFile(loc) {
+  const urlPath = new URL(loc).pathname;
+  const rel = urlPath.endsWith('/') ? `${urlPath}index.html` : urlPath;
+  return path.join(websiteDir, ...rel.split('/').filter(Boolean));
+}
+const sitemapPath = path.join(websiteDir, 'sitemap.xml');
+if (fs.existsSync(sitemapPath)) {
+  const locs = fs.readFileSync(sitemapPath, 'utf8').match(/<loc>[^<]+<\/loc>/g) || [];
+  for (const loc of locs) {
+    const file = sitemapLocToFile(loc.slice(5, -6));
+    if (fs.existsSync(file)) pageDate(file);
+  }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -235,37 +344,31 @@ if (fs.existsSync(downloadConfigPath)) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 4.1 同步 GEO 相关页面：llms.txt、英文页、教程页、404 页
+// 4.1 同步 GEO 相关页面：llms.txt、英文页、教程页、关于页、404 页
 // ─────────────────────────────────────────────────────────────────────────────
-const websiteDir = path.join(repoRoot, 'website');
-const geoFiles = [
-  path.join(websiteDir, 'llms.txt'),
-  path.join(websiteDir, '404.html'),
-  path.join(websiteDir, 'en', 'index.html'),
-];
-const guidesDir = path.join(websiteDir, 'guides');
-if (fs.existsSync(guidesDir)) {
-  for (const name of fs.readdirSync(guidesDir)) {
-    if (name.endsWith('.html')) geoFiles.push(path.join(guidesDir, name));
-  }
-}
 for (const file of geoFiles) {
   if (!fs.existsSync(file)) continue;
+  const date = pageDate(file);
   const before = fs.readFileSync(file, 'utf8');
-  const after = syncSecondaryPage(before);
+  const after = syncSecondaryPage(before, date);
   if (after !== before) fs.writeFileSync(file, after, 'utf8');
-  console.log(`[sync-website] ✓ ${path.relative(repoRoot, file).replace(/\\/g, '/')} 已同步`);
+  console.log(`[sync-website] ✓ ${path.relative(repoRoot, file).replace(/\\/g, '/')} 已同步 (内容日期: ${date})`);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 5. 同步 website/sitemap.xml 中的 <lastmod>
+// 5. 同步 website/sitemap.xml 中的 <lastmod>（每页取各自的内容日期）
 // ─────────────────────────────────────────────────────────────────────────────
-const sitemapPath = path.join(repoRoot, 'website', 'sitemap.xml');
 if (fs.existsSync(sitemapPath)) {
   let sitemap = fs.readFileSync(sitemapPath, 'utf8');
-  sitemap = sitemap.replace(/<lastmod>[^<]+<\/lastmod>/g, `<lastmod>${today}</lastmod>`);
+  sitemap = sitemap.replace(/<url>[\s\S]*?<\/url>/g, (block) => {
+    const loc = block.match(/<loc>([^<]+)<\/loc>/);
+    if (!loc) return block;
+    const file = sitemapLocToFile(loc[1]);
+    const date = fs.existsSync(file) ? pageDate(file) : today;
+    return block.replace(/<lastmod>[^<]*<\/lastmod>/, `<lastmod>${date}</lastmod>`);
+  });
   fs.writeFileSync(sitemapPath, sitemap, 'utf8');
-  console.log(`[sync-website] ✓ website/sitemap.xml 已同步 (lastmod: ${today})`);
+  console.log(`[sync-website] ✓ website/sitemap.xml 已同步 (lastmod 按页面内容日期)`);
 }
 
 console.log(`[sync-website] 全部官网文件同步完成！`);

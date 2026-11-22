@@ -22,13 +22,16 @@
     "@context": "https://schema.org",
     "@graph": [
       {
-        "@type": "HowTo",
+        "@type": ["TechArticle", "HowTo"],
         "name": "Claude Code 如何切换 API 地址与模型",
+        "headline": "Claude Code 如何切换 API 地址与模型",
+        "image": "https://helper.bob-api.com/assets/app-preview.png",
         "description": "修改 ~/.claude/settings.json 中的 ANTHROPIC_BASE_URL、ANTHROPIC_AUTH_TOKEN 和 ANTHROPIC_MODEL，或使用 AI Helper 自动写入。",
         "inLanguage": "zh-CN",
         "datePublished": "2026-11-20",
         "dateModified": "2026-11-22",
-        "author": { "@id": "https://helper.bob-api.com/#organization" },
+        "author": { "@type": "Person", "@id": "https://helper.bob-api.com/about.html#maintainer", "name": "TF49", "url": "https://helper.bob-api.com/about.html", "sameAs": ["https://github.com/TF49"] },
+        "publisher": { "@type": "Organization", "@id": "https://helper.bob-api.com/#organization", "name": "AI Helper" },
         "tool": [{ "@type": "HowToTool", "name": "AI Helper" }, { "@type": "HowToTool", "name": "Claude Code" }],
         "step": [
           { "@type": "HowToStep", "name": "打开 Claude Code 面板", "text": "启动 AI Helper，进入 Claude Code 配置面板，AI Helper 会自动探测 claude CLI 的位置。" },
@@ -64,7 +67,7 @@
     <p class="breadcrumb"><a href="/">AI Helper</a> / <a href="/guides/">教程</a> / Claude Code 切换 API 地址</p>
     <article>
       <h1>Claude Code 如何切换 API 地址与模型</h1>
-      <p class="doc-meta">适用于 AI Helper <span class="current-version-tag">v1.0.88</span> · Windows 与 macOS · 最后更新 <time class="last-updated" datetime="2026-11-22">2026-11-22</time></p>
+      <p class="doc-meta">适用于 AI Helper <span class="current-version-tag">v1.0.88</span> · Windows 与 macOS · 最后更新 <time class="last-updated" datetime="2026-11-22">2026-11-22</time> · 作者 <a href="/about.html">TF49</a></p>
 
       <div class="tldr">
         <p><strong>简短回答：</strong>Claude Code 从 <code>~/.claude/settings.json</code> 的 <code>env</code> 字段读取 API 配置。把 <code>ANTHROPIC_BASE_URL</code> 设为新的 API 地址、<code>ANTHROPIC_AUTH_TOKEN</code> 设为对应的 API Key、<code>ANTHROPIC_MODEL</code> 设为模型名，然后重新启动 <code>claude</code> 即可切换。AI Helper 可以自动完成这三项写入，并在保存前做一次流式连通性测试。</p>
@@ -90,7 +93,7 @@
         <li>点击「保存并应用 Claude Code 配置」。AI Helper 只更新 <code>env</code> 中的 <code>ANTHROPIC_BASE_URL</code>、<code>ANTHROPIC_AUTH_TOKEN</code>、<code>ANTHROPIC_MODEL</code> 以及顶层 <code>model</code>，文件中的其他字段保持不变。</li>
         <li>重新打开 <code>claude</code> 会话，新配置即生效。</li>
       </ol>
-      <div class="note">登录 Bob API 账号后使用「一键配置」时，Claude Code 会使用「CC-Kiro-Max」分组的 API Key，推荐模型为 <code>claude-sonnet-5-5</code>。</div>
+      <div class="note">登录 Bob API 账号后使用「一键配置」时，Claude Code 会使用「CC-Kiro-Max」分组（Bob API 账号下 Claude Code 专用的令牌分组，<a href="/about.html#groups">分组说明</a>）的 API Key，推荐模型为 <code>claude-sonnet-5-5</code>。</div>
 
       <h2>如何恢复原来的配置</h2>
       <p>AI Helper 首次修改 Claude Code 配置前会保存快照（位于 <code>~/.ai-helper/reset_state.json</code>）。在设置页使用一键恢复，即可还原到 AI Helper 修改之前的状态。</p>
@@ -101,6 +104,12 @@
       <h3>改了配置但 Claude Code 仍连旧地址？</h3>
       <p>检查系统环境变量中是否也设置了 <code>ANTHROPIC_BASE_URL</code>，并确认已经完全退出并重新启动了 <code>claude</code> 会话。</p>
 
+      <h2>参考：Claude Code 官方文档</h2>
+      <ul>
+        <li><a href="https://code.claude.com/docs/zh-CN/settings">设置文件和优先级（settings.json 与 env 字段）</a></li>
+        <li><a href="https://code.claude.com/docs/zh-CN/llm-gateway">接入其他 LLM 网关（ANTHROPIC_BASE_URL）</a></li>
+      </ul>
+
       <p><a class="cta" href="/#downloads">下载 AI Helper</a></p>
       <p>相关教程：<a href="/guides/codex-cli-custom-api.html">Codex CLI 配置自定义 API</a> · <a href="/guides/cursor-custom-model.html">Cursor 配置第三方模型</a></p>
     </article>
@@ -108,7 +117,7 @@
 
   <footer class="doc-footer">
     <div class="doc-footer-inner">
-      <span><a href="/">首页</a><a href="/guides/">教程</a><a href="/en/">English</a><a href="https://github.com/TF49/AI-Helper">GitHub</a></span>
+      <span><a href="/">首页</a><a href="/guides/">教程</a><a href="/about.html">关于</a><a href="/en/">English</a><a href="https://github.com/TF49/AI-Helper">GitHub</a></span>
       <span>© 2026 AI Helper · MIT License</span>
     </div>
   </footer>
