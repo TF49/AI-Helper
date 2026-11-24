@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Fix “AI Helper Is Damaged” on macOS | Bob AI Helper</title>
+  <meta name="description"
+    content="macOS says AI Helper “is damaged and can't be opened”? Gatekeeper's quarantine flag is the cause. Run xattr -cr /Applications/AI Helper.app, or right-click and choose Open.">
+  <link rel="canonical" href="https://helper.bob-api.com/en/guides/macos-app-damaged.html">
+  <link rel="alternate" hreflang="en" href="https://helper.bob-api.com/en/guides/macos-app-damaged.html">
+  <link rel="alternate" hreflang="zh-CN" href="https://helper.bob-api.com/guides/macos-app-damaged.html">
+  <link rel="alternate" hreflang="x-default" href="https://helper.bob-api.com/guides/macos-app-damaged.html">
+  <meta name="robots" content="index, follow, max-snippet:-1">
+  <meta property="og:type" content="article">
+  <meta property="og:site_name" content="Bob AI Helper">
+  <meta property="og:locale" content="en_US">
+  <meta property="og:locale:alternate" content="zh_CN">
+  <meta property="og:title" content="macOS says AI Helper is damaged — how to fix it">
+  <meta property="og:description" content="Clear the quarantine flag with xattr -cr, or Control-click the app and choose Open.">
+  <meta property="og:url" content="https://helper.bob-api.com/en/guides/macos-app-damaged.html">
+  <meta property="og:image" content="https://helper.bob-api.com/assets/app-preview.png">
+  <link rel="icon" type="image/x-icon" href="/assets/favicon.ico">
+  <link rel="stylesheet" href="/assets/docs.css?v=1.0.88-1">
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@graph": [
+      {
+        "@type": ["TechArticle", "HowTo"],
+        "@id": "https://helper.bob-api.com/en/guides/macos-app-damaged.html#article",
+        "url": "https://helper.bob-api.com/en/guides/macos-app-damaged.html",
+        "name": "How to fix the \"AI Helper is damaged\" warning on macOS",
+        "headline": "How to fix the \"AI Helper is damaged\" warning on macOS",
+        "image": "https://helper.bob-api.com/assets/app-preview.png",
+        "description": "Clear the macOS Gatekeeper quarantine flag so AI Helper opens normally.",
+        "inLanguage": "en",
+        "datePublished": "2026-11-20",
+        "dateModified": "2026-11-24",
+        "translationOfWork": { "@type": "TechArticle", "url": "https://helper.bob-api.com/guides/macos-app-damaged.html", "inLanguage": "zh-CN" },
+        "author": { "@type": "Person", "@id": "https://helper.bob-api.com/about.html#maintainer", "name": "TF49", "url": "https://helper.bob-api.com/about.html", "sameAs": ["https://github.com/TF49"] },
+        "publisher": { "@type": "Organization", "@id": "https://helper.bob-api.com/#organization", "name": "Bob AI Helper" },
+        "step": [
+          { "@type": "HowToStep", "name": "Move the app to Applications", "text": "Open the DMG and drag AI Helper into the Applications folder." },
+          { "@type": "HowToStep", "name": "Clear the quarantine flag", "text": "Open Terminal and run xattr -cr /Applications/AI\\ Helper.app." },
+          { "@type": "HowToStep", "name": "Open the app again", "text": "Double-click AI Helper and it opens normally." }
+        ]
+      },
+      {
+        "@type": "FAQPage",
+        "mainEntity": [
+          {
+            "@type": "Question",
+            "name": "Why does macOS say AI Helper is damaged?",
+            "acceptedAnswer": { "@type": "Answer", "text": "The download isn't actually damaged. AI Helper is MIT-licensed open-source software that is not notarized by Apple, so macOS Gatekeeper adds a quarantine flag to apps downloaded from the internet and blocks them. Once you clear the flag, the app works normally." }
+          },
+          {
+            "@type": "Question",
+            "name": "Is it safe to run xattr -cr?",
+            "acceptedAnswer": { "@type": "Answer", "text": "xattr -cr only recursively removes extended attributes from the app bundle (including the com.apple.quarantine flag); it does not modify the app's code. Only run it on packages downloaded from the AI Helper website or GitHub Releases — the official site lists a SHA-256 checksum for every package." }
+          },
+          {
+            "@type": "Question",
+            "name": "Is there a way to do this without Terminal?",
+            "acceptedAnswer": { "@type": "Answer", "text": "In Finder, Control-click (or right-click) AI Helper, choose Open and confirm. If there is no Open button, go to System Settings → Privacy & Security, scroll to the bottom and click Open Anyway." }
+          },
+          {
+            "@type": "Question",
+            "name": "Which DMG should I download for an Apple Silicon or Intel Mac?",
+            "acceptedAnswer": { "@type": "Answer", "text": "Macs with Apple Silicon (M1 to M5 series) need the aarch64 DMG; Macs with an Intel processor need the x64 DMG. You can check your chip under About This Mac. AI Helper requires macOS 11 or later." }
+          }
+        ]
+      },
+      {
+        "@type": "BreadcrumbList",
+        "itemListElement": [
+          { "@type": "ListItem", "position": 1, "name": "Bob AI Helper", "item": "https://helper.bob-api.com/en/" },
+          { "@type": "ListItem", "position": 2, "name": "Guides", "item": "https://helper.bob-api.com/en/guides/" },
+          { "@type": "ListItem", "position": 3, "name": "macOS says the app is damaged", "item": "https://helper.bob-api.com/en/guides/macos-app-damaged.html" }
+        ]
+      }
+    ]
+  }
+  </script>
+</head>
+
+<body>
+  <header class="doc-nav">
+    <div class="doc-nav-inner">
+      <a class="doc-brand" href="/en/"><img src="/assets/logo.png" alt="Bob AI Helper logo" width="28" height="28">Bob AI Helper</a>
+      <nav class="doc-nav-links" aria-label="Main navigation">
+        <a href="/en/guides/">Guides</a><a href="/en/#downloads">Download</a><a class="hide-sm" href="https://github.com/TF49/AI-Helper">GitHub</a>
+      </nav>
+    </div>
+  </header>
+
+  <main class="doc-main">
+    <p class="breadcrumb"><a href="/en/">Bob AI Helper</a> / <a href="/en/guides/">Guides</a> / macOS says the app is damaged</p>
+    <article>
+      <h1>macOS says AI Helper “is damaged and can't be opened” — how to fix it</h1>
+      <p class="doc-meta">For AI Helper <span class="current-version-tag">v1.0.88</span> · macOS 11 and later · Apple Silicon &amp; Intel · Last updated <time class="last-updated" datetime="2026-11-24">2026-11-24</time> · By <a href="/about.html">TF49</a></p>
+
+      <div class="tldr">
+        <p><strong>Short answer:</strong> The download isn't actually damaged. AI Helper is MIT-licensed open-source software that is not notarized by Apple, so macOS Gatekeeper flags anything downloaded from the internet as quarantined and refuses to open it. Open Terminal, run the command below to clear the flag, then double-click the app again:</p>
+        <pre><code>xattr -cr /Applications/AI\ Helper.app</code></pre>
+      </div>
+
+      <h2>Messages you might see</h2>
+      <ul>
+        <li>“AI Helper” is damaged and can't be opened. You should move it to the Trash.</li>
+        <li>“AI Helper” can't be opened because the developer cannot be verified.</li>
+        <li>Apple could not verify “AI Helper” is free of malware.</li>
+      </ul>
+
+      <h2>Option 1: clear the quarantine flag in Terminal (recommended)</h2>
+      <ol>
+        <li>Open the DMG you downloaded and drag <strong>AI Helper</strong> into the Applications folder.</li>
+        <li>Open Terminal (search for “Terminal” in Launchpad or Spotlight).</li>
+        <li>Paste and run <code>xattr -cr /Applications/AI\ Helper.app</code> — note the backslash and space between <code>AI</code> and <code>Helper</code>.</li>
+        <li>Go back to Applications and double-click AI Helper.</li>
+      </ol>
+      <p><code>xattr -cr</code> recursively removes extended attributes from the app bundle, including the <code>com.apple.quarantine</code> flag. It does not modify the app's code.</p>
+
+      <h2>Option 2: Control-click and choose Open</h2>
+      <p>Find AI Helper in Finder, Control-click it (or right-click), choose <strong>Open</strong>, then click <strong>Open</strong> again in the dialog. If the dialog doesn't offer an Open button, go to <strong>System Settings → Privacy &amp; Security</strong>, scroll to the bottom and click <strong>Open Anyway</strong>.</p>
+
+      <h2>Did you download the right build?</h2>
+      <p>Macs with Apple Silicon (M1 to M5 series) need the <code>aarch64</code> DMG; Macs with an Intel processor need the <code>x64</code> DMG. You can check your chip under <strong>About This Mac</strong>.</p>
+
+      <div class="note">Only download AI Helper from the <a href="/en/#downloads">official site</a> or <a href="https://github.com/TF49/AI-Helper/releases">GitHub Releases</a>, and never run the command above on apps from sources you don't trust. The official site lists a SHA-256 checksum for every package.</div>
+
+      <h2>FAQ</h2>
+      <h3>Why does macOS say AI Helper is damaged?</h3>
+      <p>The download isn't actually damaged. AI Helper is MIT-licensed open-source software that is not notarized by Apple, so macOS Gatekeeper adds a quarantine flag to apps downloaded from the internet and blocks them. Once you clear the flag, the app works normally.</p>
+      <h3>Is it safe to run xattr -cr?</h3>
+      <p><code>xattr -cr</code> only recursively removes extended attributes from the app bundle (including the <code>com.apple.quarantine</code> flag); it does not modify the app's code. Only run it on packages downloaded from the AI Helper website or GitHub Releases — the official site lists a SHA-256 checksum for every package.</p>
+      <h3>Is there a way to do this without Terminal?</h3>
+      <p>In Finder, Control-click (or right-click) AI Helper, choose Open and confirm. If there is no Open button, go to System Settings → Privacy &amp; Security, scroll to the bottom and click Open Anyway.</p>
+      <h3>Which DMG should I download for an Apple Silicon or Intel Mac?</h3>
+      <p>Macs with Apple Silicon (M1 to M5 series) need the <code>aarch64</code> DMG; Macs with an Intel processor need the <code>x64</code> DMG. You can check your chip under About This Mac. AI Helper requires macOS 11 or later.</p>
+
+      <h2>Reference: Apple documentation</h2>
+      <ul>
+        <li><a href="https://support.apple.com/en-us/102445">Open apps safely on your Mac (Gatekeeper)</a></li>
+      </ul>
+
+      <p><a class="cta" href="/en/#downloads">Download AI Helper</a></p>
+      <p>Related guides: <a href="/en/guides/cursor-custom-model.html">Third-party models in Cursor</a> · <a href="/en/guides/claude-code-custom-api.html">Change the API endpoint in Claude Code</a></p>
+      <p>Source code and issues: <a href="https://github.com/TF49/AI-Helper">GitHub (MIT)</a> · <a href="https://github.com/TF49/AI-Helper/issues">GitHub Issues</a></p>
+    </article>
+  </main>
+
+  <footer class="doc-footer">
+    <div class="doc-footer-inner">
+      <span><a href="/en/">Home</a><a href="/en/guides/">Guides</a><a href="/guides/macos-app-damaged.html" hreflang="zh-CN" lang="zh-CN">中文</a><a href="https://github.com/TF49/AI-Helper">GitHub</a></span>
+      <span>© 2026 Bob AI Helper · MIT License</span>
+    </div>
+  </footer>
+</body>
+
+</html>

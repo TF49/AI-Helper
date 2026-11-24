@@ -16,7 +16,7 @@
   <meta property="og:url" content="https://helper.bob-api.com/about.html">
   <meta property="og:image" content="https://helper.bob-api.com/assets/app-preview.png">
   <link rel="icon" type="image/x-icon" href="/assets/favicon.ico">
-  <link rel="stylesheet" href="/assets/docs.css?v=1.0.88">
+  <link rel="stylesheet" href="/assets/docs.css?v=1.0.88-1">
   <script type="application/ld+json">
   {
     "@context": "https://schema.org",
@@ -28,7 +28,7 @@
         "name": "关于 Bob AI Helper",
         "inLanguage": "zh-CN",
         "datePublished": "2026-11-22",
-        "dateModified": "2026-11-22",
+        "dateModified": "2026-11-24",
         "about": { "@id": "https://helper.bob-api.com/#software" },
         "author": { "@id": "https://helper.bob-api.com/about.html#maintainer" },
         "publisher": { "@id": "https://helper.bob-api.com/#organization" }
@@ -89,10 +89,10 @@
     <p class="breadcrumb"><a href="/">Bob AI Helper</a> / 关于</p>
     <article>
       <h1>关于 Bob AI Helper</h1>
-      <p class="doc-meta">当前版本 <span class="current-version-tag">v1.0.88</span> · 最后更新 <time class="last-updated" datetime="2026-11-22">2026-11-22</time></p>
+      <p class="doc-meta">当前版本 <span class="current-version-tag">v1.0.88</span> · 最后更新 <time class="last-updated" datetime="2026-11-24">2026-11-24</time></p>
 
       <div class="tldr">
-        <p><strong>简短回答：</strong>Bob AI Helper（应用内显示为 AI Helper）是一款 MIT 开源的桌面工具，由 GitHub 用户 <a href="https://github.com/TF49">TF49</a> 开发和维护，源码在 <a href="https://github.com/TF49/AI-Helper">github.com/TF49/AI-Helper</a>。它用来在 Windows 和 macOS 上配置 Cursor、Claude Code、OpenAI Codex CLI 等 AI 编程客户端的 API 地址、API Key 和模型。手动配置可以填写任意兼容的 API 服务；「一键配置」功能需要登录 Bob API 账号。</p>
+        <p><strong>简短回答：</strong>Bob AI Helper（应用内显示为 AI Helper）是一款 MIT 开源的桌面工具，由 GitHub 用户 <a href="https://github.com/TF49">TF49</a> 开发和维护，源码在 <a href="https://github.com/TF49/AI-Helper">github.com/TF49/AI-Helper</a>。它用来在 Windows 和 macOS 上配置 Cursor、Claude Code、OpenAI Codex CLI 等 AI 编程客户端的 API 地址、API Key 和模型。它配合 Bob API 服务使用：可选 BobAPI 官方节点或 TaijiAI 加速节点（备用线路），手动填写 API Key，或登录 Bob API 账号使用「一键配置」。</p>
       </div>
 
       <h2>谁在维护</h2>
@@ -100,11 +100,11 @@
 
       <h2>和 Bob API 是什么关系</h2>
       <p>本站托管在 <code>helper.bob-api.com</code>。AI Helper 内置了 Bob API 账号登录，登录后可以使用「一键配置」：按客户端自动选择对应分组的 API Key 和推荐模型并写入配置。</p>
-      <p>不登录也可以使用 AI Helper。每个客户端面板都支持手动填写 API 地址、API Key 和模型，可以接入任何提供 Anthropic Messages、OpenAI Responses 或 Chat Completions 兼容接口的服务。AI Helper 客户端本身免费，模型调用按你所配置的 API 服务商计费。</p>
+      <p>不登录也可以使用 AI Helper。每个客户端面板都可以选择 BobAPI 官方节点（<code>https://bob-api.com</code>）或 TaijiAI 加速节点（<code>https://taijiai.online</code>，备用线路），再手动填写 API Key 和模型（手动填写的 Key 首次用于某个节点时需点一次「确认用于此节点」）。从账号获取的 Key 和「一键配置」只能用于 BobAPI 官方节点。AI Helper 不提供填写其他 API 服务商地址的入口。客户端本身免费，模型调用按 Bob API 的用量计费。</p>
 
       <h2>AI Helper 怎么处理你的数据</h2>
       <ul>
-        <li>API Key 只写入本机各客户端的配置文件，只会发送到你配置的 API 地址。</li>
+        <li>API Key 只写入本机各客户端的配置文件，只会发送到你所选的 BobAPI 节点；从账号获取的 Key 只能发往 Bob API 官方域名。</li>
         <li>登录会话凭据在 Windows 上用 DPAPI 加密，在 macOS 上存入钥匙串。</li>
         <li>首次修改某个客户端的配置前会保存快照，可以在设置页一键恢复。</li>
         <li>自动更新使用签名清单和 SHA-256 校验，下载源为官网、国内镜像和 GitHub Releases。</li>

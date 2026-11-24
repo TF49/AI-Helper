@@ -65,6 +65,8 @@ const DATE_PLACEHOLDER = '0000-00-00';
 function normalizeForDate(text) {
   return syncSecondaryPage(text.replace(/\r\n/g, '\n'), DATE_PLACEHOLDER)
     .replace(/<lastmod>[^<]*<\/lastmod>/g, '')
+    // 只改 docs.css 防缓存后缀不算内容更新
+    .replace(/assets\/docs\.css\?v=[^"'\s>]+/g, 'assets/docs.css')
     .trim();
 }
 
@@ -121,6 +123,11 @@ function pageDate(file) {
   return pageDates.get(file);
 }
 
+/** 静态资源防缓存后缀：版本号一致时保留 -<后缀>，否则回到纯版本号 */
+function sameVersionAsset(current) {
+  return current.startsWith(`${targetVersion}-`) ? current : targetVersion;
+}
+
 /** 同步 JSON-LD dateModified 与 <time class="last-updated"> 的日期 */
 function syncGeoDates(text, date = today) {
   return text
@@ -143,7 +150,8 @@ function syncSecondaryPage(text, date) {
       .replace(/releases\/download\/v\d+\.\d+\.\d+/g, `releases/download/${tag}`)
       .replace(/releases\/tag\/v\d+\.\d+\.\d+/g, `releases/tag/${tag}`)
       .replace(/"softwareVersion":\s*"[^"]*"/g, `"softwareVersion": "${targetVersion}"`)
-      .replace(/assets\/docs\.css\?v=[^"'\s>]+/g, `assets/docs.css?v=${targetVersion}`)
+      // 与首页 style.css 相同：同版本内保留 ?v=<版本>-<后缀>（用于强制刷新 7 天缓存），发新版时回到纯版本号
+      .replace(/assets\/docs\.css\?v=([^"'\s>]+)/g, (_, v) => `assets/docs.css?v=${sameVersionAsset(v)}`)
       // llms.txt 中的纯文本版本行
       .replace(/^- Current version: v[0-9.]+ \(last updated: [0-9-]+\)$/m, `- Current version: ${tag} (last updated: ${today})`),
     date
@@ -157,14 +165,29 @@ const geoFiles = [
   path.join(websiteDir, 'about.html'),
   path.join(websiteDir, 'en', 'index.html'),
 ];
-const guidesDir = path.join(websiteDir, 'guides');
-if (fs.existsSync(guidesDir)) {
+for (const guidesDir of [path.join(websiteDir, 'guides'), path.join(websiteDir, 'en', 'guides')]) {
+  if (!fs.existsSync(guidesDir)) continue;
   for (const name of fs.readdirSync(guidesDir)) {
     if (name.endsWith('.html')) geoFiles.push(path.join(guidesDir, name));
   }
 }
 for (const file of geoFiles) {
   if (fs.existsSync(file)) pageDate(file);
+}
+
+// 写入任何文件之前先校验所有页面的 JSON-LD：结构化数据损坏时直接中止，
+// 避免发版时改了一半文件、最后在生成 llms-full.txt 时才失败
+for (const file of [path.join(websiteDir, 'index.html'), ...geoFiles.filter((f) => f.endsWith('.html'))]) {
+  if (!fs.existsSync(file)) continue;
+  const html = fs.readFileSync(file, 'utf8');
+  for (const match of html.matchAll(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/gi)) {
+    try {
+      JSON.parse(match[1]);
+    } catch (error) {
+      console.error(`[sync-website] ${path.relative(repoRoot, file)} 的 JSON-LD 无法解析：${error.message}`);
+      process.exit(1);
+    }
+  }
 }
 
 /** sitemap 中的 <loc> 映射到 website/ 下的文件 */
@@ -272,10 +295,20 @@ if (fs.existsSync(diagHtmlPath)) {
 // 3. 同步 website/version.json
 // ─────────────────────────────────────────────────────────────────────────────
 const versionJsonPath = path.join(repoRoot, 'website', 'version.json');
+// 同一版本重复同步（例如 pre-commit hook 在每次提交时运行）不改发布日期，只有换新版本时才取今天
+let releaseDate = today;
+try {
+  const existing = JSON.parse(fs.readFileSync(versionJsonPath, 'utf8'));
+  if (existing.version === targetVersion && /^\d{4}-\d{2}-\d{2}$/.test(existing.releaseDate || '')) {
+    releaseDate = existing.releaseDate;
+  }
+} catch {
+  // 文件不存在或损坏时按新版本处理
+}
 const versionData = {
   version: targetVersion,
   tag: tag,
-  releaseDate: today,
+  releaseDate,
   setupFileName: `AI-Helper-${tag}-Windows-x64-Setup.exe`,
   zipFileName: `AI-Helper-${tag}-Windows-x64-Standalone.zip`,
   macArm64FileName: `AI-Helper-${tag}-macOS-aarch64.dmg`,
@@ -299,7 +332,7 @@ const versionData = {
 };
 
 fs.writeFileSync(versionJsonPath, JSON.stringify(versionData, null, 2) + '\n', 'utf8');
-console.log(`[sync-website] ✓ website/version.json 已生成 (日期: ${today})`);
+console.log(`[sync-website] ✓ website/version.json 已生成 (发布日期: ${releaseDate})`);
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 4. 同步 website/download-config.json（如果存在）
@@ -370,5 +403,10 @@ if (fs.existsSync(sitemapPath)) {
   fs.writeFileSync(sitemapPath, sitemap, 'utf8');
   console.log(`[sync-website] ✓ website/sitemap.xml 已同步 (lastmod 按页面内容日期)`);
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 6. 由已同步的 llms.txt 与各页面重新生成 website/llms-full.txt
+// ─────────────────────────────────────────────────────────────────────────────
+execFileSync(process.execPath, [path.join(__dirname, 'build-llms-full.js')], { stdio: 'inherit' });
 
 console.log(`[sync-website] 全部官网文件同步完成！`);

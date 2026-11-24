@@ -8,6 +8,9 @@
   <meta name="description"
     content="Claude Code 通过 ~/.claude/settings.json 的 env 字段读取 ANTHROPIC_BASE_URL、ANTHROPIC_AUTH_TOKEN 和 ANTHROPIC_MODEL。本文介绍手动修改方法，以及用 AI Helper 一键切换 API 网关和模型的步骤。">
   <link rel="canonical" href="https://helper.bob-api.com/guides/claude-code-custom-api.html">
+  <link rel="alternate" hreflang="zh-CN" href="https://helper.bob-api.com/guides/claude-code-custom-api.html">
+  <link rel="alternate" hreflang="en" href="https://helper.bob-api.com/en/guides/claude-code-custom-api.html">
+  <link rel="alternate" hreflang="x-default" href="https://helper.bob-api.com/guides/claude-code-custom-api.html">
   <meta name="robots" content="index, follow, max-snippet:-1">
   <meta property="og:type" content="article">
   <meta property="og:site_name" content="Bob AI Helper">
@@ -16,7 +19,7 @@
   <meta property="og:url" content="https://helper.bob-api.com/guides/claude-code-custom-api.html">
   <meta property="og:image" content="https://helper.bob-api.com/assets/app-preview.png">
   <link rel="icon" type="image/x-icon" href="/assets/favicon.ico">
-  <link rel="stylesheet" href="/assets/docs.css?v=1.0.88">
+  <link rel="stylesheet" href="/assets/docs.css?v=1.0.88-1">
   <script type="application/ld+json">
   {
     "@context": "https://schema.org",
@@ -29,15 +32,40 @@
         "description": "修改 ~/.claude/settings.json 中的 ANTHROPIC_BASE_URL、ANTHROPIC_AUTH_TOKEN 和 ANTHROPIC_MODEL，或使用 AI Helper 自动写入。",
         "inLanguage": "zh-CN",
         "datePublished": "2026-11-20",
-        "dateModified": "2026-11-22",
+        "dateModified": "2026-11-24",
         "author": { "@type": "Person", "@id": "https://helper.bob-api.com/about.html#maintainer", "name": "TF49", "url": "https://helper.bob-api.com/about.html", "sameAs": ["https://github.com/TF49"] },
         "publisher": { "@type": "Organization", "@id": "https://helper.bob-api.com/#organization", "name": "Bob AI Helper" },
         "tool": [{ "@type": "HowToTool", "name": "Bob AI Helper" }, { "@type": "HowToTool", "name": "Claude Code" }],
         "step": [
           { "@type": "HowToStep", "name": "打开 Claude Code 面板", "text": "启动 AI Helper，进入 Claude Code 配置面板，AI Helper 会自动探测 claude CLI 的位置。" },
-          { "@type": "HowToStep", "name": "填写 API 地址、Key 与模型", "text": "填写 Anthropic 兼容的 API 地址、API Key，并选择模型，例如 claude-sonnet-5-5。" },
-          { "@type": "HowToStep", "name": "测试并保存", "text": "执行流式连通性测试后，点击「保存并应用 Claude Code 配置」，AI Helper 会把 ANTHROPIC_BASE_URL、ANTHROPIC_AUTH_TOKEN、ANTHROPIC_MODEL 写入 ~/.claude/settings.json。" },
+          { "@type": "HowToStep", "name": "选择节点，填写 Key 与模型", "text": "选择 BobAPI 官方节点（或 TaijiAI 加速节点），填入 API Key，并选择模型，例如 claude-sonnet-5-5。手动填写的 Key 首次用于某个节点时，需点击「确认用于此节点」；从 Bob API 账号选择的 Key 和一键配置只能用于 BobAPI 官方节点。" },
+          { "@type": "HowToStep", "name": "测试并保存", "text": "点击「确认并保存 Claude Code 配置」，流式连通性测试通过后，AI Helper 会把 ANTHROPIC_BASE_URL、ANTHROPIC_AUTH_TOKEN、ANTHROPIC_MODEL 写入 ~/.claude/settings.json。" },
           { "@type": "HowToStep", "name": "重启 Claude Code", "text": "重新打开终端中的 claude 会话，新配置即生效。" }
+        ]
+      },
+      {
+        "@type": "FAQPage",
+        "mainEntity": [
+          {
+            "@type": "Question",
+            "name": "测试时返回 401 怎么办？",
+            "acceptedAnswer": { "@type": "Answer", "text": "说明身份认证失败，请检查 API Key 是否完整复制、是否已过期或被禁用。登录 Bob API 账号后也可以使用一键配置，由 AI Helper 从 CC-Kiro-Max 分组中选取 Key。" }
+          },
+          {
+            "@type": "Question",
+            "name": "改了配置但 Claude Code 仍连旧地址？",
+            "acceptedAnswer": { "@type": "Answer", "text": "检查系统环境变量中是否也设置了 ANTHROPIC_BASE_URL，并确认已经完全退出并重新启动了 claude 会话。" }
+          },
+          {
+            "@type": "Question",
+            "name": "AI Helper 找不到 claude 命令怎么办？",
+            "acceptedAnswer": { "@type": "Answer", "text": "macOS 上的图形应用不会继承终端的环境变量，所以 AI Helper 会主动检查 /opt/homebrew/bin、/usr/local/bin，并遍历 ~/.nvm/versions/node 查找通过 npm 全局安装的 Claude Code。如果仍提示“未找到 Claude CLI 安装路径”，请在 AI Helper 的路径管理中点击「探测」，或手动选择 claude 可执行文件。" }
+          },
+          {
+            "@type": "Question",
+            "name": "settings.json 格式有误时，AI Helper 会直接覆盖吗？",
+            "acceptedAnswer": { "@type": "Answer", "text": "不会。如果现有的 ~/.claude/settings.json 无法解析为 JSON，AI Helper 会停止写入并提示“现有 Claude 配置损坏，已停止写入以免丢失安全规则”。请先修复文件格式，再重新保存。" }
+          }
         ]
       },
       {
@@ -67,32 +95,45 @@
     <p class="breadcrumb"><a href="/">Bob AI Helper</a> / <a href="/guides/">教程</a> / Claude Code 切换 API 地址</p>
     <article>
       <h1>Claude Code 如何切换 API 地址与模型</h1>
-      <p class="doc-meta">适用于 AI Helper <span class="current-version-tag">v1.0.88</span> · Windows 与 macOS · 最后更新 <time class="last-updated" datetime="2026-11-22">2026-11-22</time> · 作者 <a href="/about.html">TF49</a></p>
+      <p class="doc-meta">适用于 AI Helper <span class="current-version-tag">v1.0.88</span> · Windows 与 macOS · 最后更新 <time class="last-updated" datetime="2026-11-24">2026-11-24</time> · 作者 <a href="/about.html">TF49</a></p>
 
       <div class="tldr">
-        <p><strong>简短回答：</strong>Claude Code 从 <code>~/.claude/settings.json</code> 的 <code>env</code> 字段读取 API 配置。把 <code>ANTHROPIC_BASE_URL</code> 设为新的 API 地址、<code>ANTHROPIC_AUTH_TOKEN</code> 设为对应的 API Key、<code>ANTHROPIC_MODEL</code> 设为模型名，然后重新启动 <code>claude</code> 即可切换。AI Helper 可以自动完成这三项写入，并在保存前做一次流式连通性测试。</p>
+        <p><strong>简短回答：</strong>Claude Code 从 <code>~/.claude/settings.json</code> 的 <code>env</code> 字段读取 API 配置：把 <code>ANTHROPIC_BASE_URL</code> 设为新地址、<code>ANTHROPIC_AUTH_TOKEN</code> 设为 API Key、<code>ANTHROPIC_MODEL</code> 设为模型名，重启 <code>claude</code> 即可。MIT 开源、在本机运行的 AI Helper 可以在选择 BobAPI 官方节点（或 TaijiAI 备用节点）并填入 API Key 和模型后，自动写入这三项，写入前先做流式连通性测试。</p>
       </div>
 
       <h2>方法一：手动修改 settings.json</h2>
       <p>打开（或新建）<code>~/.claude/settings.json</code>，Windows 上对应 <code>C:\Users\你的用户名\.claude\settings.json</code>，加入或修改 <code>env</code> 字段：</p>
       <pre><code>{
   "env": {
-    "ANTHROPIC_BASE_URL": "https://你的-api-地址",
+    "ANTHROPIC_BASE_URL": "https://bob-api.com",
     "ANTHROPIC_AUTH_TOKEN": "你的 API Key",
     "ANTHROPIC_MODEL": "claude-sonnet-5-5"
   },
   "model": "claude-sonnet-5-5"
 }</code></pre>
-      <p>保存后退出并重新运行 <code>claude</code>。注意保持文件为合法 JSON，并保留文件中原有的其他字段（例如 <code>permissions</code>）。</p>
+      <p>保存后退出并重新运行 <code>claude</code>。注意保持文件为合法 JSON，并保留文件中原有的其他字段（例如 <code>permissions</code>）。<code>ANTHROPIC_BASE_URL</code> 填服务根地址，不要带 <code>/v1</code>。</p>
 
       <h2>方法二：用 AI Helper 一键切换</h2>
       <ol>
         <li>启动 AI Helper，进入 <strong>Claude Code</strong> 面板。AI Helper 会自动探测 <code>claude</code> CLI 的位置，包括 macOS 上通过 Homebrew 或 NVM 安装的版本。</li>
-        <li>选择预置节点或手动填写 API 地址，输入 API Key。外部地址需要确认目标 Origin，默认要求 HTTPS。</li>
-        <li>从模型列表中选择模型（例如 <code>claude-sonnet-5-5</code>），执行流式连通性测试，确认返回 HTTP 状态与首包时间正常。</li>
-        <li>点击「保存并应用 Claude Code 配置」。AI Helper 只更新 <code>env</code> 中的 <code>ANTHROPIC_BASE_URL</code>、<code>ANTHROPIC_AUTH_TOKEN</code>、<code>ANTHROPIC_MODEL</code> 以及顶层 <code>model</code>，文件中的其他字段保持不变。</li>
+        <li>选择接入节点：「BobAPI 官方节点」（<code>https://bob-api.com/</code>，推荐首选）或「TaijiAI 加速节点」（<code>https://taijiai.online/</code>，备用专线），然后输入 API Key。手动填写的 Key 首次用于某个节点时，需点击「确认用于此节点」；从 Bob API 账号选择的 Key 和一键配置只能用于 BobAPI 官方节点。</li>
+        <li>从模型列表中选择模型（例如 <code>claude-sonnet-5-5</code>），点击「确认并保存 Claude Code 配置」。AI Helper 会先执行流式连通性测试，确认返回 HTTP 状态与首包时间正常后再写入。</li>
+        <li>写入时，AI Helper 只更新 <code>env</code> 中的 <code>ANTHROPIC_BASE_URL</code>、<code>ANTHROPIC_AUTH_TOKEN</code>、<code>ANTHROPIC_MODEL</code> 以及顶层 <code>model</code>，文件中的其他字段保持不变。</li>
         <li>重新打开 <code>claude</code> 会话，新配置即生效。</li>
       </ol>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr><th>字段</th><th>位置</th><th>AI Helper 的处理</th></tr>
+          </thead>
+          <tbody>
+            <tr><td><code>ANTHROPIC_BASE_URL</code></td><td><code>env</code></td><td>写入所选节点的地址</td></tr>
+            <tr><td><code>ANTHROPIC_AUTH_TOKEN</code></td><td><code>env</code></td><td>写入 API Key</td></tr>
+            <tr><td><code>ANTHROPIC_MODEL</code> / <code>model</code></td><td><code>env</code> / 顶层</td><td>填写了模型时写入</td></tr>
+            <tr><td><code>env</code> 中的其他变量、<code>permissions</code>、<code>hooks</code> 等</td><td>任意</td><td>原样保留</td></tr>
+          </tbody>
+        </table>
+      </div>
       <div class="note">登录 Bob API 账号后使用「一键配置」时，Claude Code 会使用「CC-Kiro-Max」分组（Bob API 账号下 Claude Code 专用的令牌分组，<a href="/about.html#groups">分组说明</a>）的 API Key，推荐模型为 <code>claude-sonnet-5-5</code>。</div>
 
       <h2>如何恢复原来的配置</h2>
@@ -100,9 +141,13 @@
 
       <h2>常见问题</h2>
       <h3>测试时返回 401 怎么办？</h3>
-      <p>说明身份认证失败，请检查 <code>ANTHROPIC_AUTH_TOKEN</code>（或 <code>x-api-key</code>）是否与该 API 地址匹配，以及 Key 是否已过期或被禁用。</p>
+      <p>说明身份认证失败，请检查 API Key 是否完整复制、是否已过期或被禁用。登录 Bob API 账号后也可以使用一键配置，由 AI Helper 从 CC-Kiro-Max 分组中选取 Key。</p>
       <h3>改了配置但 Claude Code 仍连旧地址？</h3>
       <p>检查系统环境变量中是否也设置了 <code>ANTHROPIC_BASE_URL</code>，并确认已经完全退出并重新启动了 <code>claude</code> 会话。</p>
+      <h3>AI Helper 找不到 claude 命令怎么办？</h3>
+      <p>macOS 上的图形应用不会继承终端的环境变量，所以 AI Helper 会主动检查 <code>/opt/homebrew/bin</code>、<code>/usr/local/bin</code>，并遍历 <code>~/.nvm/versions/node</code> 查找通过 npm 全局安装的 Claude Code。如果仍提示“未找到 Claude CLI 安装路径”，请在 AI Helper 的路径管理中点击「探测」，或手动选择 <code>claude</code> 可执行文件。</p>
+      <h3>settings.json 格式有误时，AI Helper 会直接覆盖吗？</h3>
+      <p>不会。如果现有的 <code>~/.claude/settings.json</code> 无法解析为 JSON，AI Helper 会停止写入并提示“现有 Claude 配置损坏，已停止写入以免丢失安全规则”。请先修复文件格式，再重新保存。</p>
 
       <h2>参考：Claude Code 官方文档</h2>
       <ul>
@@ -111,7 +156,8 @@
       </ul>
 
       <p><a class="cta" href="/#downloads">下载 AI Helper</a></p>
-      <p>相关教程：<a href="/guides/codex-cli-custom-api.html">Codex CLI 配置自定义 API</a> · <a href="/guides/cursor-custom-model.html">Cursor 配置第三方模型</a></p>
+      <p>相关教程：<a href="/guides/claude-code-401-timeout.html">Claude Code 401/超时排查</a> · <a href="/guides/ai-coding-config-paths.html">AI 编程客户端配置文件路径大全</a> · <a href="/guides/codex-cli-custom-api.html">Codex CLI 配置自定义 API</a> · <a href="/guides/cursor-custom-model.html">Cursor 配置第三方模型</a></p>
+      <p>源码与问题反馈：<a href="https://github.com/TF49/AI-Helper">GitHub 仓库（MIT 开源）</a> · <a href="https://github.com/TF49/AI-Helper/issues">GitHub Issues</a> · <a href="/en/guides/claude-code-custom-api.html" hreflang="en">English version</a></p>
     </article>
   </main>
 

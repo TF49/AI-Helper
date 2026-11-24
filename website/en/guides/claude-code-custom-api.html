@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Change the API Endpoint and Model in Claude Code | Bob AI Helper</title>
+  <meta name="description"
+    content="Claude Code reads ANTHROPIC_BASE_URL, ANTHROPIC_AUTH_TOKEN and ANTHROPIC_MODEL from ~/.claude/settings.json. Edit them by hand, or let AI Helper set them in one step.">
+  <link rel="canonical" href="https://helper.bob-api.com/en/guides/claude-code-custom-api.html">
+  <link rel="alternate" hreflang="en" href="https://helper.bob-api.com/en/guides/claude-code-custom-api.html">
+  <link rel="alternate" hreflang="zh-CN" href="https://helper.bob-api.com/guides/claude-code-custom-api.html">
+  <link rel="alternate" hreflang="x-default" href="https://helper.bob-api.com/guides/claude-code-custom-api.html">
+  <meta name="robots" content="index, follow, max-snippet:-1">
+  <meta property="og:type" content="article">
+  <meta property="og:site_name" content="Bob AI Helper">
+  <meta property="og:locale" content="en_US">
+  <meta property="og:locale:alternate" content="zh_CN">
+  <meta property="og:title" content="How to change the API endpoint and model in Claude Code">
+  <meta property="og:description" content="Edit ~/.claude/settings.json by hand, or let AI Helper point Claude Code at the BobAPI node in one step.">
+  <meta property="og:url" content="https://helper.bob-api.com/en/guides/claude-code-custom-api.html">
+  <meta property="og:image" content="https://helper.bob-api.com/assets/app-preview.png">
+  <link rel="icon" type="image/x-icon" href="/assets/favicon.ico">
+  <link rel="stylesheet" href="/assets/docs.css?v=1.0.88-1">
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@graph": [
+      {
+        "@type": ["TechArticle", "HowTo"],
+        "@id": "https://helper.bob-api.com/en/guides/claude-code-custom-api.html#article",
+        "url": "https://helper.bob-api.com/en/guides/claude-code-custom-api.html",
+        "name": "How to change the API endpoint and model in Claude Code",
+        "headline": "How to change the API endpoint and model in Claude Code",
+        "image": "https://helper.bob-api.com/assets/app-preview.png",
+        "description": "Set ANTHROPIC_BASE_URL, ANTHROPIC_AUTH_TOKEN and ANTHROPIC_MODEL in ~/.claude/settings.json, or let AI Helper write them for you.",
+        "inLanguage": "en",
+        "datePublished": "2026-11-20",
+        "dateModified": "2026-11-24",
+        "translationOfWork": { "@type": "TechArticle", "url": "https://helper.bob-api.com/guides/claude-code-custom-api.html", "inLanguage": "zh-CN" },
+        "author": { "@type": "Person", "@id": "https://helper.bob-api.com/about.html#maintainer", "name": "TF49", "url": "https://helper.bob-api.com/about.html", "sameAs": ["https://github.com/TF49"] },
+        "publisher": { "@type": "Organization", "@id": "https://helper.bob-api.com/#organization", "name": "Bob AI Helper" },
+        "tool": [{ "@type": "HowToTool", "name": "Bob AI Helper" }, { "@type": "HowToTool", "name": "Claude Code" }],
+        "step": [
+          { "@type": "HowToStep", "name": "Open the Claude Code panel", "text": "Launch AI Helper and open the Claude Code panel. AI Helper finds the claude CLI automatically." },
+          { "@type": "HowToStep", "name": "Choose a node, enter the key and model", "text": "Choose the BobAPI official node (https://bob-api.com/, recommended) or the TaijiAI backup node (https://taijiai.online/), enter your API key (or sign in to a Bob API account for one-click setup), then pick a model such as claude-sonnet-5-5. The first time you use a hand-entered key with a node, click Confirm for this node (确认用于此节点). Keys picked from your Bob API account, and one-click setup, only work with the BobAPI official node." },
+          { "@type": "HowToStep", "name": "Test and save", "text": "Click Confirm and save Claude Code config. Once the streaming connection test passes, AI Helper writes ANTHROPIC_BASE_URL, ANTHROPIC_AUTH_TOKEN and ANTHROPIC_MODEL to ~/.claude/settings.json." },
+          { "@type": "HowToStep", "name": "Restart Claude Code", "text": "Start a new claude session in your terminal and the new settings take effect." }
+        ]
+      },
+      {
+        "@type": "FAQPage",
+        "mainEntity": [
+          {
+            "@type": "Question",
+            "name": "The connection test returns 401. What does that mean?",
+            "acceptedAnswer": { "@type": "Answer", "text": "Authentication failed. Check that ANTHROPIC_AUTH_TOKEN (or x-api-key) belongs to that API endpoint, and that the key has not expired or been disabled." }
+          },
+          {
+            "@type": "Question",
+            "name": "I changed the settings but Claude Code still uses the old endpoint. Why?",
+            "acceptedAnswer": { "@type": "Answer", "text": "Check whether ANTHROPIC_BASE_URL is also set as a system environment variable, and make sure you fully exited and restarted the claude session." }
+          },
+          {
+            "@type": "Question",
+            "name": "AI Helper can't find the claude command. What should I do?",
+            "acceptedAnswer": { "@type": "Answer", "text": "GUI apps on macOS don't inherit your terminal's environment variables, so AI Helper checks /opt/homebrew/bin and /usr/local/bin and searches ~/.nvm/versions/node for Claude Code installed globally with npm. If it still says the Claude CLI install path was not found, click Detect in AI Helper's path management, or select the claude executable by hand." }
+          },
+          {
+            "@type": "Question",
+            "name": "Will AI Helper overwrite settings.json if the file is malformed?",
+            "acceptedAnswer": { "@type": "Answer", "text": "No. If the existing ~/.claude/settings.json can't be parsed as JSON, AI Helper stops without writing and warns that the existing Claude configuration is corrupted, so that your security rules are not lost. Fix the file format first, then save again." }
+          }
+        ]
+      },
+      {
+        "@type": "BreadcrumbList",
+        "itemListElement": [
+          { "@type": "ListItem", "position": 1, "name": "Bob AI Helper", "item": "https://helper.bob-api.com/en/" },
+          { "@type": "ListItem", "position": 2, "name": "Guides", "item": "https://helper.bob-api.com/en/guides/" },
+          { "@type": "ListItem", "position": 3, "name": "Custom API for Claude Code", "item": "https://helper.bob-api.com/en/guides/claude-code-custom-api.html" }
+        ]
+      }
+    ]
+  }
+  </script>
+</head>
+
+<body>
+  <header class="doc-nav">
+    <div class="doc-nav-inner">
+      <a class="doc-brand" href="/en/"><img src="/assets/logo.png" alt="Bob AI Helper logo" width="28" height="28">Bob AI Helper</a>
+      <nav class="doc-nav-links" aria-label="Main navigation">
+        <a href="/en/guides/">Guides</a><a href="/en/#downloads">Download</a><a class="hide-sm" href="https://github.com/TF49/AI-Helper">GitHub</a>
+      </nav>
+    </div>
+  </header>
+
+  <main class="doc-main">
+    <p class="breadcrumb"><a href="/en/">Bob AI Helper</a> / <a href="/en/guides/">Guides</a> / Custom API for Claude Code</p>
+    <article>
+      <h1>How to change the API endpoint and model in Claude Code</h1>
+      <p class="doc-meta">For AI Helper <span class="current-version-tag">v1.0.88</span> · Windows &amp; macOS · Last updated <time class="last-updated" datetime="2026-11-24">2026-11-24</time> · By <a href="/about.html">TF49</a></p>
+
+      <div class="tldr">
+        <p><strong>Short answer:</strong> Claude Code reads its API settings from the <code>env</code> block in <code>~/.claude/settings.json</code>: set <code>ANTHROPIC_BASE_URL</code> to the new endpoint, <code>ANTHROPIC_AUTH_TOKEN</code> to your API key and <code>ANTHROPIC_MODEL</code> to the model name, then restart <code>claude</code>. AI Helper — MIT-licensed and running locally — can write all three for you after a streaming test: pick the BobAPI official node, enter your API key and choose a model.</p>
+      </div>
+
+      <h2>Option 1: edit settings.json by hand</h2>
+      <p>Open (or create) <code>~/.claude/settings.json</code> — on Windows that is <code>C:\Users\&lt;your-username&gt;\.claude\settings.json</code> — and add or update the <code>env</code> block:</p>
+      <pre><code>{
+  "env": {
+    "ANTHROPIC_BASE_URL": "https://bob-api.com",
+    "ANTHROPIC_AUTH_TOKEN": "your-api-key",
+    "ANTHROPIC_MODEL": "claude-sonnet-5-5"
+  },
+  "model": "claude-sonnet-5-5"
+}</code></pre>
+      <p>Save the file, then quit and run <code>claude</code> again. Make sure the file is still valid JSON and that you keep any other fields that were already there (such as <code>permissions</code>).</p>
+
+      <h2>Option 2: switch in one step with AI Helper</h2>
+      <ol>
+        <li>Launch AI Helper and open the <strong>Claude Code</strong> panel. AI Helper locates the <code>claude</code> CLI automatically, including installs made through Homebrew or NVM on macOS.</li>
+        <li>Choose a node: the <strong>BobAPI official node</strong> (BobAPI 官方节点, <code>https://bob-api.com/</code>, recommended) or the <strong>TaijiAI accelerated node</strong> (TaijiAI 加速节点, <code>https://taijiai.online/</code>, a backup line). Then enter your API key, or sign in to a Bob API account and use one-click setup. The first time you use a hand-entered key with a node, click <em>Confirm for this node</em> (确认用于此节点). Keys picked from your Bob API account, and one-click setup, only work with the BobAPI official node.</li>
+        <li>Choose a model from the list (for example <code>claude-sonnet-5-5</code>) and click <em>Confirm and save Claude Code config</em> (确认并保存 Claude Code 配置). AI Helper first runs a streaming connection test and only writes once the HTTP status and time to first byte look normal.</li>
+        <li>When it writes, AI Helper only updates <code>ANTHROPIC_BASE_URL</code>, <code>ANTHROPIC_AUTH_TOKEN</code> and <code>ANTHROPIC_MODEL</code> in <code>env</code>, plus the top-level <code>model</code>; every other field in the file stays the same.</li>
+        <li>Start a new <code>claude</code> session and the new settings take effect.</li>
+      </ol>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr><th>Field</th><th>Where</th><th>What AI Helper does</th></tr>
+          </thead>
+          <tbody>
+            <tr><td><code>ANTHROPIC_BASE_URL</code></td><td><code>env</code></td><td>Writes the selected node's URL</td></tr>
+            <tr><td><code>ANTHROPIC_AUTH_TOKEN</code></td><td><code>env</code></td><td>Writes the API key</td></tr>
+            <tr><td><code>ANTHROPIC_MODEL</code> / <code>model</code></td><td><code>env</code> / top level</td><td>Written when you choose a model</td></tr>
+            <tr><td>Other <code>env</code> variables, <code>permissions</code>, <code>hooks</code>, etc.</td><td>Anywhere</td><td>Left untouched</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="note">With one-click setup (which requires signing in to a Bob API account), Claude Code uses the API key from the <code>CC-Kiro-Max</code> group — the key group in a Bob API account reserved for Claude Code (see <a href="/about.html#groups">key groups</a>, in Chinese). The recommended model is <code>claude-sonnet-5-5</code>. With manual setup you type your API key yourself, without signing in or choosing a group.</div>
+
+      <h2>How to restore your original settings</h2>
+      <p>Before AI Helper changes your Claude Code settings for the first time, it saves a snapshot (in <code>~/.ai-helper/reset_state.json</code>). Use one-click restore on the Settings page to go back to exactly how things were before AI Helper touched them.</p>
+
+      <h2>FAQ</h2>
+      <h3>The connection test returns 401. What does that mean?</h3>
+      <p>Authentication failed. Check that <code>ANTHROPIC_AUTH_TOKEN</code> (or <code>x-api-key</code>) belongs to that API endpoint, and that the key has not expired or been disabled.</p>
+      <h3>I changed the settings but Claude Code still uses the old endpoint. Why?</h3>
+      <p>Check whether <code>ANTHROPIC_BASE_URL</code> is also set as a system environment variable, and make sure you fully exited and restarted the <code>claude</code> session.</p>
+      <h3>AI Helper can't find the claude command. What should I do?</h3>
+      <p>GUI apps on macOS don't inherit your terminal's environment variables, so AI Helper checks <code>/opt/homebrew/bin</code> and <code>/usr/local/bin</code> and searches <code>~/.nvm/versions/node</code> for Claude Code installed globally with npm. If it still says the Claude CLI install path was not found, click Detect in AI Helper's path management, or select the <code>claude</code> executable by hand.</p>
+      <h3>Will AI Helper overwrite settings.json if the file is malformed?</h3>
+      <p>No. If the existing <code>~/.claude/settings.json</code> can't be parsed as JSON, AI Helper stops without writing and warns that the existing Claude configuration is corrupted, so that your security rules are not lost. Fix the file format first, then save again.</p>
+
+      <h2>Reference: Claude Code documentation</h2>
+      <ul>
+        <li><a href="https://code.claude.com/docs/en/settings">Settings files and precedence (settings.json and the env block)</a></li>
+        <li><a href="https://code.claude.com/docs/en/llm-gateway">Connecting to an LLM gateway (ANTHROPIC_BASE_URL)</a></li>
+      </ul>
+
+      <p><a class="cta" href="/en/#downloads">Download AI Helper</a></p>
+      <p>Related guides: <a href="/en/guides/codex-cli-custom-api.html">Custom API provider for Codex CLI</a> · <a href="/en/guides/cursor-custom-model.html">Third-party models in Cursor</a></p>
+      <p>Source code and issues: <a href="https://github.com/TF49/AI-Helper">GitHub (MIT)</a> · <a href="https://github.com/TF49/AI-Helper/issues">GitHub Issues</a></p>
+    </article>
+  </main>
+
+  <footer class="doc-footer">
+    <div class="doc-footer-inner">
+      <span><a href="/en/">Home</a><a href="/en/guides/">Guides</a><a href="/guides/claude-code-custom-api.html" hreflang="zh-CN" lang="zh-CN">中文</a><a href="https://github.com/TF49/AI-Helper">GitHub</a></span>
+      <span>© 2026 Bob AI Helper · MIT License</span>
+    </div>
+  </footer>
+</body>
+
+</html>

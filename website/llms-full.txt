@@ -1,0 +1,1777 @@
+# Bob AI Helper — full context (llms-full.txt)
+
+> Bob AI Helper (shown in the app as "AI Helper") is a free, MIT-licensed desktop app for Windows and macOS that configures the API endpoint, API key and model for AI coding clients — Cursor, Claude Code, OpenAI Codex CLI, ChatGPT Desktop, WorkBuddy, Accio Work and DeepSeek Harness — from one place. It detects installed clients, runs a real streaming connection test, writes their local config files once it passes, and restarts the client. Cursor and Accio Work are connected to third-party models through a built-in local bridge; DeepSeek Harness gets one API key split across Claude, GPT and Chinese-model routes by protocol.
+>
+> Bob AI Helper（应用内显示为 AI Helper）是一款 MIT 开源的桌面工具，用于在 Windows 和 macOS 上一键配置 Cursor、Claude Code、OpenAI Codex CLI、ChatGPT Desktop、WorkBuddy、Accio Work 与 DeepSeek Harness 的 API 地址、API Key 和模型。
+
+- Current version: v1.0.88 (last updated: 2026-11-24)
+- Platforms: Windows 10/11 x64 (requires Microsoft Edge WebView2 Runtime); macOS 11+ on Apple Silicon (aarch64) and Intel (x64)
+- License: MIT. The client is free; model usage is billed by Bob API.
+- Source code: https://github.com/TF49/AI-Helper
+- Maintainer: TF49 (https://github.com/TF49); about page: https://helper.bob-api.com/about.html
+- Built with: Tauri 2, Rust, React, TypeScript
+- API service: AI Helper is built for the Bob API service (https://bob-api.com). Every client panel offers two built-in nodes — the BobAPI official node (https://bob-api.com) and the TaijiAI accelerated node (https://taijiai.online, backup line). It does not provide a field for entering other API providers. Everything runs locally on your machine.
+- Not to be confused with other products named "AI Helper" (e.g. the Discourse plugin or browser extensions). Bob AI Helper is the desktop configuration tool published at helper.bob-api.com and github.com/TF49/AI-Helper.
+
+## Supported clients and the files AI Helper writes
+
+| Client | What AI Helper does | Config location |
+| --- | --- | --- |
+| Claude Code | Detect CLI, set `ANTHROPIC_BASE_URL`, `ANTHROPIC_AUTH_TOKEN`, `ANTHROPIC_MODEL`, streaming test, launch/restart | `~/.claude/settings.json` (`env` block) |
+| OpenAI Codex CLI | Detect CLI, set custom `model_provider` base URL, API key and model, streaming test, launch/restart | `~/.codex/config.toml` |
+| Cursor | Custom models via a local Connect-RPC / HTTP2 bridge (default `127.0.0.1:8969`), reversible client patch | `~/.ai-helper/cursor_config.json` |
+| WorkBuddy | Maintain multiple models, put the recommended model first, keep user-added models | `~/.workbuddy/models.json` |
+| Accio Work | Custom models via a local bridge (default `127.0.0.1:8787`), model list injection | `~/.ai-helper/accio_config.json` |
+| DeepSeek Harness (desktop) | Fetch every chat model of a key and write it by protocol to `aihelper-claude` (Anthropic Messages), `aihelper-codex` (OpenAI Responses) or `aihelper-cn` (Chat Completions); multiple keys side by side; launch/restart | `~/.dsh/profiles/desktop/cordis.patch.yml` and `.credentials.yaml` (`refs.AIHELPER_*`); `DSH_HOME` overrides `~/.dsh` |
+| ChatGPT Desktop | Install detection, launch, device management (no API configuration) | system install directory |
+
+## Key facts
+
+- Manual configuration: choose one of the two built-in nodes, enter an API key and pick a model; the model list can be fetched from the node. HTTPS only. Keys taken from a signed-in Bob API account (including every one-click setup) are only ever sent to Bob API domains, so they work with the BobAPI official node but not with the TaijiAI node. A hand-entered key must be confirmed once per node ("确认用于此节点") before it can be tested, used to fetch models or saved.
+- One-click configuration (requires a Bob API account): Claude Code → `claude-sonnet-5-5`; Codex / ChatGPT → `gpt-5.6-sol`; Cursor / WorkBuddy / Accio Work → `glm-5.3`; DeepSeek Harness → all chat models of the 国产Token计划 key, default `deepseek-v4.1-flash`. A missing API key for a group is created automatically.
+- Key groups: a "group" (分组) is the name of an API-key group inside a Bob API account, not a model name. `CC-Kiro-Max` is the key group for Claude Code; `Codex-不降质` is the key group for Codex CLI and ChatGPT Desktop; `国产Token计划` is the key group for Chinese models, used by Cursor, WorkBuddy, Accio Work and DeepSeek Harness. Groups only matter for one-click configuration; for manual configuration you paste a key yourself.
+- Existing settings: only endpoint, key and model fields are changed; other fields in Claude Code, Codex and WorkBuddy configs are preserved. For DeepSeek Harness only `aihelper-*` routes and `AIHELPER_*` key refs are managed; user routes, `records`, comments, `!!js` tags and the official DeepSeek account / API-key routes are kept byte for byte, and only the `desktop` profile is touched. A snapshot is taken before the first change and can be restored from Settings.
+- Credentials: written locally only; session credentials are protected with DPAPI on Windows and Keychain on macOS. Keys are sent only to the selected BobAPI node.
+- Why Cursor needs a bridge: Cursor uses Connect-RPC / HTTP2 and internal message formats, so changing an OpenAI base URL alone cannot connect every third-party model.
+- macOS "app is damaged" warning: run `xattr -cr /Applications/AI\ Helper.app`, or right-click the app in Finder and choose Open.
+- Updates: signed update manifests, SHA-256 checks and rollback protection; sources are the official site, a China mirror and GitHub Releases.
+
+## Download
+
+- [Official download page](https://helper.bob-api.com/#downloads)
+- [GitHub Releases (latest)](https://github.com/TF49/AI-Helper/releases/latest)
+- [Windows x64 installer](https://github.com/TF49/AI-Helper/releases/download/v1.0.88/AI-Helper-v1.0.88-Windows-x64-Setup.exe)
+- [Windows x64 portable ZIP](https://github.com/TF49/AI-Helper/releases/download/v1.0.88/AI-Helper-v1.0.88-Windows-x64-Standalone.zip)
+- [macOS Apple Silicon DMG](https://github.com/TF49/AI-Helper/releases/download/v1.0.88/AI-Helper-v1.0.88-macOS-aarch64.dmg)
+- [macOS Intel DMG](https://github.com/TF49/AI-Helper/releases/download/v1.0.88/AI-Helper-v1.0.88-macOS-x64.dmg)
+
+## Guides (English)
+
+- [Use glm-5.3 and other third-party models in Cursor (local bridge)](https://helper.bob-api.com/en/guides/cursor-custom-model.html)
+- [Change the API endpoint and model in Claude Code (ANTHROPIC_BASE_URL)](https://helper.bob-api.com/en/guides/claude-code-custom-api.html)
+- [Use a custom API endpoint with OpenAI Codex CLI (config.toml model_providers)](https://helper.bob-api.com/en/guides/codex-cli-custom-api.html)
+- [Connect DeepSeek Harness to Claude, GPT and Chinese models](https://helper.bob-api.com/en/guides/deepseek-harness-custom-api.html)
+- [Fix "AI Helper is damaged" on macOS](https://helper.bob-api.com/en/guides/macos-app-damaged.html)
+- [All English guides](https://helper.bob-api.com/en/guides/)
+
+## Guides (Chinese)
+
+- [Configure Cursor to use a third-party model such as glm-5.3](https://helper.bob-api.com/guides/cursor-custom-model.html): 如何给 Cursor 配置 glm-5.3 等第三方模型
+- [Point Claude Code at a custom API endpoint](https://helper.bob-api.com/guides/claude-code-custom-api.html): Claude Code 如何切换 API 地址与模型
+- [Configure OpenAI Codex CLI with a custom provider](https://helper.bob-api.com/guides/codex-cli-custom-api.html): Codex CLI 如何配置自定义 API 地址
+- [Configure WorkBuddy with a custom API and multiple models](https://helper.bob-api.com/guides/workbuddy-custom-api.html): WorkBuddy 如何配置自定义 API 与多个模型（~/.workbuddy/models.json）
+- [Connect Accio Work to third-party models via the local bridge](https://helper.bob-api.com/guides/accio-work-custom-api.html): Accio Work 如何接入第三方模型（本地 Bridge 127.0.0.1:8787）
+- [Connect DeepSeek Harness to Claude, GPT and Chinese models](https://helper.bob-api.com/guides/deepseek-harness-custom-api.html): DeepSeek Harness 怎么接入 Claude、GPT 和国产模型
+- [Config file paths and environment variables of AI coding clients (Windows & macOS)](https://helper.bob-api.com/guides/ai-coding-config-paths.html): AI 编程客户端配置文件路径与环境变量大全
+- [Troubleshoot Cursor custom models that do not work](https://helper.bob-api.com/guides/cursor-custom-model-not-working.html): Cursor 自定义模型不生效 / 第三方模型连不上怎么排查
+- [Troubleshoot Claude Code 401 / timeout with a custom API](https://helper.bob-api.com/guides/claude-code-401-timeout.html): Claude Code 报 401 / 超时 / 连不上自定义 API 怎么办
+- [Troubleshoot Codex CLI config.toml changes not taking effect](https://helper.bob-api.com/guides/codex-config-not-working.html): Codex CLI 修改 config.toml 不生效怎么排查
+- [Fix "app is damaged" on macOS](https://helper.bob-api.com/guides/macos-app-damaged.html): macOS 提示“已损坏”怎么办
+- [All guides](https://helper.bob-api.com/guides/)
+
+## Optional
+
+- [Full text of all guides and FAQ in one file](https://helper.bob-api.com/llms-full.txt)
+- [English overview](https://helper.bob-api.com/en/)
+- [About AI Helper, maintainer and glossary (Chinese)](https://helper.bob-api.com/about.html): 维护者、与 Bob API 的关系、分组名称说明
+- [Chinese product page](https://helper.bob-api.com/)
+- [README](https://github.com/TF49/AI-Helper#readme)
+- [Release notes](https://github.com/TF49/AI-Helper/releases)
+- [Issue tracker](https://github.com/TF49/AI-Helper/issues)
+
+> This file concatenates https://helper.bob-api.com/llms.txt, the homepage FAQ and every guide on https://helper.bob-api.com as plain Markdown. It is generated from the web pages by scripts/build-llms-full.js; the web pages are the source of truth.
+
+## Homepage FAQ (English)
+
+### What is Bob AI Helper?
+
+Bob AI Helper (shown in the app as AI Helper) is a free, MIT-licensed desktop app for Windows and macOS that sets the API endpoint, API key and model for AI coding clients: Cursor, Claude Code, OpenAI Codex CLI, ChatGPT Desktop, WorkBuddy, Accio Work and DeepSeek Harness. It finds the clients installed on your machine, runs a streaming connection test, writes their local config files once it passes, and launches or restarts the client when needed.
+
+### Which AI coding clients are supported, and where does each config go?
+
+Seven clients: Claude Code (~/.claude/settings.json), OpenAI Codex CLI (~/.codex/config.toml), Cursor (~/.ai-helper/cursor_config.json, connected through a local bridge), WorkBuddy (~/.workbuddy/models.json), Accio Work (~/.ai-helper/accio_config.json, connected through a local bridge), DeepSeek Harness desktop (~/.dsh/profiles/desktop/cordis.patch.yml, or under DSH_HOME if it is set), and ChatGPT Desktop (install detection, launch and device management only).
+
+### Which API endpoints can I use?
+
+AI Helper works with the BobAPI service. Every client panel offers two built-in nodes: the BobAPI official node (https://bob-api.com/, recommended) and the TaijiAI accelerated node (https://taijiai.online/, a backup line). Choose a node, then enter your API key and model by hand, or sign in to a Bob API account and use one-click setup. You can also fetch the model list from the selected node. There is no field for other URLs, and HTTPS is required. Keys picked from your Bob API account, and one-click setup, only work with the BobAPI official node. The first time you use a hand-entered key with a node, AI Helper asks you to confirm it for that node (确认用于此节点) before it can test, fetch models or save.
+
+### What does one-click setup configure, and what are the "groups"?
+
+One-click setup requires signing in to a Bob API account (Bob API is the related API service). For each client it picks an API key from the matching key group and a recommended model: Claude Code uses the CC-Kiro-Max group with claude-sonnet-5-5; Codex CLI and ChatGPT use the Codex-不降质 group with gpt-5.6-sol; Cursor, WorkBuddy and Accio Work use the 国产Token计划 (Chinese models) group with glm-5.3; DeepSeek Harness uses the 国产Token计划 key and writes every chat model available to it, with deepseek-v4.1-flash as the default. A group is simply the name of an API-key group inside a Bob API account, not a model name. If a group has no key yet, AI Helper creates one. With manual setup you don't need to sign in: type your API key and model yourself.
+
+### Will AI Helper overwrite my existing configuration?
+
+No. AI Helper only changes the fields it needs: API endpoint, key and model. Other settings in Claude Code, Codex and WorkBuddy are kept, and models you added to WorkBuddy yourself are not removed. For DeepSeek Harness it only writes aihelper-* routes and AIHELPER_* key references; your own routes, comments and official-account routes are kept byte for byte. A snapshot is saved before the first change and can be restored from Settings. Backing up important configs yourself is still a good idea.
+
+### Is my API key uploaded anywhere?
+
+No. All configuration is written locally, and session credentials are protected with DPAPI on Windows and the Keychain on macOS. Your API key is only sent to the BobAPI node you selected, when you run a connection test or when the AI coding client makes model requests.
+
+### Why does Cursor need a local bridge?
+
+Part of Cursor's traffic uses Connect-RPC / HTTP2 and internal message formats, so changing an OpenAI base URL alone cannot fully connect a third-party model. AI Helper runs a bridge on your machine (127.0.0.1:8969 by default) that translates between Cursor's requests and the OpenAI-style API of the BobAPI node, with support for streaming, reasoning output and image input. The patch to the Cursor client can be reverted at any time.
+
+### Does configuring DeepSeek Harness touch my official DeepSeek account?
+
+No. AI Helper only configures the DeepSeek Harness desktop profile (~/.dsh/profiles/desktop/cordis.patch.yml, or under DSH_HOME if it is set) and only writes aihelper-* routes and AIHELPER_* key references. Your official DeepSeek account sign-in, the official API-key route (api.deepseek.com) and your own routes are left as they are, and a default model that points at an official model is kept. Launch DeepSeek Harness once before first use so it can initialize, and restart it after saving to see the new routes.
+
+### Is AI Helper free and open source?
+
+Yes. AI Helper is open source under the MIT license, with its source code on GitHub (TF49/AI-Helper), and free for both individuals and companies. The app itself costs nothing; model usage is billed by your BobAPI account.
+
+### Which macOS build should I download, and what if macOS says the app is damaged?
+
+Download the aarch64 DMG for Apple Silicon Macs (M1 to M5 series, including Pro, Max and Ultra) and the x64 DMG for Intel Macs; macOS 11 or later is required. If macOS says the app is damaged or that the developer cannot be verified, that is Gatekeeper quarantining an app that is not notarized by Apple. Run xattr -cr /Applications/AI\ Helper.app in Terminal, or Control-click the app in Finder and choose Open.
+
+## 首页常见问题（中文）
+
+### Bob AI Helper 是什么？
+
+Bob AI Helper（简称 AI Helper）是一款 MIT 开源的桌面工具，用于在 Windows 和 macOS 上统一配置 AI 编程客户端的 API 地址、API Key 和模型。它支持 Cursor、Claude Code、OpenAI Codex CLI、ChatGPT Desktop、WorkBuddy、Accio Work 和 DeepSeek Harness，会自动探测这些客户端、写入它们的本地配置文件、做流式连通性测试，并在需要时启动或重启客户端。
+
+### AI Helper 支持哪些 AI 编程客户端？各自的配置写到哪里？
+
+目前支持 7 款：Claude Code（~/.claude/settings.json）、OpenAI Codex CLI（~/.codex/config.toml）、Cursor（~/.ai-helper/cursor_config.json，经本地 Bridge 接入）、WorkBuddy（~/.workbuddy/models.json）、Accio Work（~/.ai-helper/accio_config.json，经本地 Bridge 接入）、DeepSeek Harness 桌面版（~/.dsh/profiles/desktop/cordis.patch.yml，设置了 DSH_HOME 时以其为准），以及 ChatGPT Desktop（仅做安装探测、启动和设备管理）。
+
+### 可以连接哪些 API 节点？API Key 从哪里来？
+
+AI Helper 配合 Bob API 服务使用。每个客户端面板都可以选择 BobAPI 官方节点（https://bob-api.com）或 TaijiAI 加速节点（备用线路），然后手动填写 API Key 并选择模型，也可以读取节点的模型列表；登录 Bob API 账号后可以一键配置，自动选用对应分组的 Key。所有请求仅走 HTTPS。从账号获取的 Key 和一键配置只能用于 BobAPI 官方节点；手动填写的 Key 首次用于某个节点时，需要点一次「确认用于此节点」，之后才能测试、获取模型或保存。
+
+### 一键配置会给每个客户端设置什么模型？
+
+一键配置需要登录 Bob API 账号，并按客户端分组写入 API Key 和推荐模型：Claude Code 使用 claude-sonnet-5-5；Codex 与 ChatGPT 使用 gpt-5.6-sol；Cursor、WorkBuddy 与 Accio Work 使用 glm-5.3；DeepSeek Harness 使用「国产Token计划」分组（Bob API 账号下国产模型专用的令牌分组）的 Key，写入该 Key 下全部可对话模型，默认模型为 deepseek-v4.1-flash。如果账号下没有对应分组的 API Key，AI Helper 会自动创建一个。手动配置时可以改用节点上的其他模型。
+
+### 一键配置会覆盖我原有的配置吗？
+
+AI Helper 只修改与接入相关的字段（API 地址、Key、模型），Claude Code、Codex 和 WorkBuddy 的其他配置会被保留；WorkBuddy 中你手动添加的其他模型不会被删除；DeepSeek Harness 只写入 aihelper-* 路由和 AIHELPER_* 密钥引用，你的自建路由、注释和官方账号路由逐字节保留。首次修改前会保存原配置快照，可在设置页一键恢复。重要配置仍建议自行备份。
+
+### API Key 会上传到云端服务器吗？
+
+不会。配置写入全部在本机完成，会话凭据在 Windows 上由 DPAPI、在 macOS 上由钥匙串保护。只有在你执行连通性测试，或 AI 编程客户端发起模型请求时，API Key 才会发送到你配置的那个 API 地址。
+
+### Cursor 为什么需要本地 Bridge？
+
+Cursor 的部分通信使用 Connect-RPC / HTTP2 和内部消息格式，只改一个 OpenAI Base URL 无法完整接入第三方模型。AI Helper 在本机运行一个 Bridge（默认监听 127.0.0.1:8969），负责在 Cursor 请求与 OpenAI 兼容接口之间做协议转换，并支持流式响应、思考内容和图片输入。对 Cursor 客户端的修补可以随时还原。
+
+### 配置 DeepSeek Harness 会影响我的 DeepSeek 官方账号吗？
+
+不会。AI Helper 只配置 DeepSeek Harness 桌面版（~/.dsh/profiles/desktop/cordis.patch.yml，设置了 DSH_HOME 时以其为准），只写入 aihelper-* 路由和 AIHELPER_* 密钥引用。DeepSeek 官方账号登录、官方 API Key 路由（api.deepseek.com）和你自建的路由都原样保留；如果默认模型指向官方模型，保存时也保持不变。首次使用前请先启动一次 DeepSeek Harness 完成初始化，保存后重启 DeepSeek Harness 即可看到新路由。
+
+### 未登录时点击“一键配置”会怎样？
+
+AI Helper 会先弹出登录引导，并记住你刚才要执行的配置操作。登录成功后会自动继续执行，不需要再点一次按钮。
+
+### AI Helper 是免费开源的吗？
+
+是。AI Helper 以 MIT 许可证开源，源码托管在 GitHub（TF49/AI-Helper），个人和企业都可以免费使用。客户端本身不收费，调用模型产生的费用按 Bob API 的用量计费。
+
+### macOS 应该下载哪个 DMG 安装包？
+
+Apple Silicon 芯片（M1 至 M5 系列，含 Pro / Max / Ultra）的 Mac 请下载 aarch64 版 DMG；Intel 处理器的 Mac 请下载 x64 版 DMG。可以在「关于本机」中查看芯片类型。macOS 需要 11 或更高版本。
+
+### macOS 首次打开提示“已损坏”或“无法验证开发者”怎么办？
+
+这是 macOS Gatekeeper 对未经 Apple 公证的应用的默认隔离。在「终端」执行 xattr -cr /Applications/AI\ Helper.app 清除隔离标记即可；也可以在「访达」中右键点击 AI Helper，选择「打开」并确认。详细步骤见 macOS 提示“已损坏”的解决方法。
+
+### AI Helper 能识别 Homebrew 和 NVM 安装的 CLI 吗？
+
+能。macOS 上的图形应用不会继承终端的环境变量，所以 AI Helper 会主动检查 /opt/homebrew/bin、/usr/local/bin，并遍历 ~/.nvm/versions/node 选取最高版本的 Node.js，以找到通过 npm 全局安装的 Claude Code 和 Codex CLI。
+
+---
+
+## How to change the API endpoint and model in Claude Code
+
+Source: https://helper.bob-api.com/en/guides/claude-code-custom-api.html
+
+For AI Helper v1.0.88 · Windows & macOS · Last updated 2026-11-24 · By [TF49](https://helper.bob-api.com/about.html)
+
+**Short answer:** Claude Code reads its API settings from the `env` block in `~/.claude/settings.json`: set `ANTHROPIC_BASE_URL` to the new endpoint, `ANTHROPIC_AUTH_TOKEN` to your API key and `ANTHROPIC_MODEL` to the model name, then restart `claude`. AI Helper — MIT-licensed and running locally — can write all three for you after a streaming test: pick the BobAPI official node, enter your API key and choose a model.
+
+### Option 1: edit settings.json by hand
+
+Open (or create) `~/.claude/settings.json` — on Windows that is `C:\Users\<your-username>\.claude\settings.json` — and add or update the `env` block:
+
+```
+{
+  "env": {
+    "ANTHROPIC_BASE_URL": "https://bob-api.com",
+    "ANTHROPIC_AUTH_TOKEN": "your-api-key",
+    "ANTHROPIC_MODEL": "claude-sonnet-5-5"
+  },
+  "model": "claude-sonnet-5-5"
+}
+```
+
+Save the file, then quit and run `claude` again. Make sure the file is still valid JSON and that you keep any other fields that were already there (such as `permissions`).
+
+### Option 2: switch in one step with AI Helper
+
+1. Launch AI Helper and open the **Claude Code** panel. AI Helper locates the `claude` CLI automatically, including installs made through Homebrew or NVM on macOS.
+2. Choose a node: the **BobAPI official node** (BobAPI 官方节点, `https://bob-api.com/`, recommended) or the **TaijiAI accelerated node** (TaijiAI 加速节点, `https://taijiai.online/`, a backup line). Then enter your API key, or sign in to a Bob API account and use one-click setup. The first time you use a hand-entered key with a node, click *Confirm for this node* (确认用于此节点). Keys picked from your Bob API account, and one-click setup, only work with the BobAPI official node.
+3. Choose a model from the list (for example `claude-sonnet-5-5`) and click *Confirm and save Claude Code config* (确认并保存 Claude Code 配置). AI Helper first runs a streaming connection test and only writes once the HTTP status and time to first byte look normal.
+4. When it writes, AI Helper only updates `ANTHROPIC_BASE_URL`, `ANTHROPIC_AUTH_TOKEN` and `ANTHROPIC_MODEL` in `env`, plus the top-level `model`; every other field in the file stays the same.
+5. Start a new `claude` session and the new settings take effect.
+
+| Field | Where | What AI Helper does |
+| --- | --- | --- |
+| `ANTHROPIC_BASE_URL` | `env` | Writes the selected node's URL |
+| `ANTHROPIC_AUTH_TOKEN` | `env` | Writes the API key |
+| `ANTHROPIC_MODEL` / `model` | `env` / top level | Written when you choose a model |
+| Other `env` variables, `permissions`, `hooks`, etc. | Anywhere | Left untouched |
+
+> With one-click setup (which requires signing in to a Bob API account), Claude Code uses the API key from the `CC-Kiro-Max` group — the key group in a Bob API account reserved for Claude Code (see [key groups](https://helper.bob-api.com/about.html#groups), in Chinese). The recommended model is `claude-sonnet-5-5`. With manual setup you type your API key yourself, without signing in or choosing a group.
+
+### How to restore your original settings
+
+Before AI Helper changes your Claude Code settings for the first time, it saves a snapshot (in `~/.ai-helper/reset_state.json`). Use one-click restore on the Settings page to go back to exactly how things were before AI Helper touched them.
+
+### FAQ
+
+#### The connection test returns 401. What does that mean?
+
+Authentication failed. Check that `ANTHROPIC_AUTH_TOKEN` (or `x-api-key`) belongs to that API endpoint, and that the key has not expired or been disabled.
+
+#### I changed the settings but Claude Code still uses the old endpoint. Why?
+
+Check whether `ANTHROPIC_BASE_URL` is also set as a system environment variable, and make sure you fully exited and restarted the `claude` session.
+
+#### AI Helper can't find the claude command. What should I do?
+
+GUI apps on macOS don't inherit your terminal's environment variables, so AI Helper checks `/opt/homebrew/bin` and `/usr/local/bin` and searches `~/.nvm/versions/node` for Claude Code installed globally with npm. If it still says the Claude CLI install path was not found, click Detect in AI Helper's path management, or select the `claude` executable by hand.
+
+#### Will AI Helper overwrite settings.json if the file is malformed?
+
+No. If the existing `~/.claude/settings.json` can't be parsed as JSON, AI Helper stops without writing and warns that the existing Claude configuration is corrupted, so that your security rules are not lost. Fix the file format first, then save again.
+
+### Reference: Claude Code documentation
+
+- [Settings files and precedence (settings.json and the env block)](https://code.claude.com/docs/en/settings)
+- [Connecting to an LLM gateway (ANTHROPIC_BASE_URL)](https://code.claude.com/docs/en/llm-gateway)
+
+Related guides: [Custom API provider for Codex CLI](https://helper.bob-api.com/en/guides/codex-cli-custom-api.html) · [Third-party models in Cursor](https://helper.bob-api.com/en/guides/cursor-custom-model.html)
+
+Source code and issues: [GitHub (MIT)](https://github.com/TF49/AI-Helper) · [GitHub Issues](https://github.com/TF49/AI-Helper/issues)
+
+---
+
+## How to use a custom API endpoint with OpenAI Codex CLI
+
+Source: https://helper.bob-api.com/en/guides/codex-cli-custom-api.html
+
+For AI Helper v1.0.88 · Windows & macOS · Last updated 2026-11-24 · By [TF49](https://helper.bob-api.com/about.html)
+
+**Short answer:** Declare a `[model_providers.custom]` table in `~/.codex/config.toml` (with a `base_url` and an `env_key`), point the top-level `model_provider` at it, set `model` to the model name, and put your key in `CUSTOM_OPENAI_API_KEY`. AI Helper, an MIT-licensed open-source app, can write these fields on your machine: pick the BobAPI official node, enter your API key and choose a model.
+
+### Option 1: edit config.toml by hand
+
+Open (or create) `~/.codex/config.toml` — on Windows that is `C:\Users\<your-username>\.codex\config.toml`:
+
+```
+model = "gpt-5.6-sol"
+model_provider = "custom"
+
+[model_providers.custom]
+base_url = "https://bob-api.com/v1"
+env_key = "CUSTOM_OPENAI_API_KEY"
+```
+
+Then put your API key in the `CUSTOM_OPENAI_API_KEY` environment variable (on Windows, add a user variable under *System Properties → Environment Variables*; on macOS or Linux, export it from your shell profile). Open a new terminal and run `codex`.
+
+### Option 2: configure it in one step with AI Helper
+
+1. Launch AI Helper and open the **Codex** panel. AI Helper locates the `codex` CLI automatically.
+2. Choose a node: the **BobAPI official node** (BobAPI 官方节点, `https://bob-api.com/`, recommended) or the **TaijiAI accelerated node** (TaijiAI 加速节点, `https://taijiai.online/`, a backup line). Enter your API key (or sign in to a Bob API account for one-click setup) and choose a model (for example `gpt-5.6-sol`). The first time you use a hand-entered key with a node, click *Confirm for this node* (确认用于此节点). Keys picked from your Bob API account, and one-click setup, only work with the BobAPI official node.
+3. Click *Confirm and save Codex config* (确认并保存 Codex 配置); AI Helper writes once the streaming connection test passes. It writes the fields shown in the example above. On Windows it also stores the key in the current user's `CUSTOM_OPENAI_API_KEY` environment variable and tells the system to refresh its environment. On macOS it does not touch your shell profile, so you need to set that variable yourself (see the FAQ below).
+4. Open a new terminal and run `codex`, or launch Codex straight from AI Helper.
+
+| In config.toml | What AI Helper does |
+| --- | --- |
+| `model` | Writes the model you chose |
+| `model_provider` | Sets it to `"custom"` |
+| `base_url` in `[model_providers.custom]` | Writes the selected node's URL, adding `/v1` if it's missing |
+| `env_key` in `[model_providers.custom]` | Always `CUSTOM_OPENAI_API_KEY` |
+| Credential headers in `custom`, such as `experimental_bearer_token` or `Authorization` | Removed — the key is only read from the environment variable |
+| Other providers, profiles, sandbox settings, etc. | Left untouched |
+
+> AI Helper only manages the provider named `custom`. Any other providers, profiles and sandbox settings you have in `config.toml` are kept. With one-click setup (which requires signing in to a Bob API account), Codex uses the key from the `Codex-不降质` group — the key group in a Bob API account reserved for Codex CLI and ChatGPT Desktop (see [key groups](https://helper.bob-api.com/about.html#groups), in Chinese). The recommended model is `gpt-5.6-sol`.
+
+### How to restore your original settings
+
+Before AI Helper changes your Codex settings for the first time, it saves a snapshot that covers both `config.toml` and the related environment variable. Use one-click restore on the Settings page to roll it back.
+
+### FAQ
+
+#### Codex says it cannot find the API key. What's wrong?
+
+Codex reads the key from the environment variable named in `env_key`. Terminals that were already open do not see newly set environment variables, so close them and open a new one.
+
+#### Why do I get model_not_found?
+
+The group your API key belongs to does not offer that model. Pick a model again from the list AI Helper fetched from the selected node.
+
+#### On macOS, why can't codex find the key when I run it in Terminal?
+
+AI Helper only stores the key persistently in the current user's `CUSTOM_OPENAI_API_KEY` environment variable on Windows. On macOS it does not modify your shell profile, so add `export CUSTOM_OPENAI_API_KEY="your-api-key"` to `~/.zshrc` (or your shell's equivalent) yourself, then open a new terminal.
+
+#### Saving fails with "the active Codex profile uses another provider". What does that mean?
+
+The top-level `profile` in `config.toml` points at a profile that uses a different `model_provider`. To avoid showing one configuration in the app while Codex actually runs another, AI Helper stops saving. Switch to a profile that uses `custom`, or remove the top-level `profile` setting, then save again.
+
+### Reference: Codex documentation
+
+- [Advanced configuration: custom model_providers](https://developers.openai.com/codex/config-advanced)
+- [config.toml reference (GitHub repository)](https://github.com/openai/codex/blob/main/docs/config.md)
+
+Related guides: [Point Claude Code at a custom API](https://helper.bob-api.com/en/guides/claude-code-custom-api.html) · [Third-party models in Cursor](https://helper.bob-api.com/en/guides/cursor-custom-model.html)
+
+Source code and issues: [GitHub (MIT)](https://github.com/TF49/AI-Helper) · [GitHub Issues](https://github.com/TF49/AI-Helper/issues)
+
+---
+
+## How to use glm-5.3 and other third-party models in Cursor
+
+Source: https://helper.bob-api.com/en/guides/cursor-custom-model.html
+
+For AI Helper v1.0.88 · Windows & macOS · Last updated 2026-11-24 · By [TF49](https://helper.bob-api.com/about.html)
+
+**Short answer:** Changing the OpenAI base URL isn't enough, because Cursor talks over Connect-RPC / HTTP2. AI Helper, an MIT-licensed open-source app, runs a bridge on your machine (`127.0.0.1:8969` by default) that translates Cursor's requests and forwards them to the BobAPI node with your API key — so Cursor can use glm-5.3 and other models available on BobAPI.
+
+> AI Helper's interface is currently in Chinese. Button names in this guide are translated, with the original label in parentheses.
+
+### Before you start
+
+- Cursor is installed and has been launched at least once.
+- You have a BobAPI API key, or a Bob API account you can sign in to for one-click setup.
+- AI Helper is installed ([download](https://helper.bob-api.com/en/#downloads) — Windows 10/11 or macOS 11+).
+
+### Step by step
+
+1. **Open the Cursor panel.** Launch AI Helper. The home screen detects where Cursor is installed; open the Cursor configuration panel.
+2. **Choose a node and enter your key.** Pick the **BobAPI official node** (BobAPI 官方节点, `https://bob-api.com/`, recommended) or the **TaijiAI accelerated node** (TaijiAI 加速节点, `https://taijiai.online/`, a backup line), then enter your API key — or sign in to a Bob API account and use one-click setup. The first time you use a hand-entered key with a node, click *Confirm for this node* (确认用于此节点). Keys picked from your Bob API account, and one-click setup, only work with the BobAPI official node.
+3. **Pick a model.** AI Helper fetches the model list from the selected node. Choose `glm-5.3` or another model from the list, or type a model name by hand.
+4. **Save the configuration.** Click *Confirm and save Cursor config* (确认并保存 Cursor 配置). Once the connection test passes, AI Helper writes the settings to `~/.ai-helper/cursor_config.json` and starts the local bridge.
+5. **Connect AI Helper.** In the client status area of the panel, click *Connect AI Helper* (接入 AI Helper). This patches the Cursor client so its requests go to the bridge.
+6. **Restart Cursor.** Click *Restart Cursor* (重启 Cursor), then select the model you just configured in Cursor's model picker.
+
+### Changing the base URL vs using the AI Helper bridge
+
+|  | Only changing the OpenAI base URL in Cursor's settings | AI Helper local bridge |
+| --- | --- | --- |
+| Protocol | Agent and other features still use Cursor's Connect-RPC / HTTP2 | The bridge translates Cursor's requests into OpenAI-style requests to the BobAPI node |
+| Models | Third-party models can't be fully connected | `glm-5.3` and other models available on BobAPI, with streaming, reasoning output and image input |
+| What's written locally | Cursor's settings | `~/.ai-helper/cursor_config.json`, plus a reversible patch to the Cursor client (backed up before patching) |
+
+> If you sign in to AI Helper with a Bob API account and use one-click setup, Cursor automatically gets an API key from the `国产Token计划` group — the key group in a Bob API account reserved for Chinese models (see [key groups](https://helper.bob-api.com/about.html#groups), in Chinese). The recommended model is `glm-5.3`. If your account has no key in that group yet, AI Helper creates one.
+
+### What the bridge supports
+
+- Two-way translation between Cursor's requests and OpenAI-style requests, including streaming responses.
+- Text, reasoning output and image input.
+- Serving the list of available models and the default model to Cursor.
+- Letting Cursor Agent read and search files in the current workspace. Writing or deleting files requires you to authorize that workspace in the panel first (authorizations are stored in `~/.ai-helper/agent_workspaces.json`).
+
+When you close the AI Helper main window, the app stays in the system tray and the bridge keeps running. The bridge only stops when you quit AI Helper from the tray — at that point, third-party models in Cursor stop working.
+
+### Security measures
+
+The bridge only listens on the loopback address. For the first request on each connection, it looks up which process opened the connection (by its source port) and only accepts processes running as the same OS user as AI Helper; if the owner cannot be determined, the connection is rejected. It also validates the Host, Origin and Content-Type headers.
+
+### How to switch back to Cursor's official connection
+
+Click *Restore official connection* (恢复官方连接) in the Cursor panel, or use one-click restore on AI Helper's Settings page. The bridge is stopped and the patch to the Cursor client is reverted.
+
+### FAQ
+
+#### Port 8969 is already in use. What should I do?
+
+Change the bridge port in the Cursor panel to another free port, save, and click Restart Cursor. If Cursor is already connected to AI Helper, the client is re-patched for the new port before it restarts.
+
+#### Third-party models stopped working after a Cursor update. Why?
+
+A Cursor update can overwrite the patched files. Open the Cursor panel in AI Helper; if the status shows a direct official connection, click Connect AI Helper to re-apply the patch, then restart Cursor.
+
+#### Can Cursor still use third-party models after I close the AI Helper window?
+
+Yes. Closing the main window leaves AI Helper running in the system tray, and the bridge keeps running. The bridge only stops when you quit AI Helper from the tray; at that point, third-party models in Cursor stop working.
+
+#### Cursor Agent says the workspace is not authorized when it edits files. What should I do?
+
+The bridge only lets Cursor Agent write or delete files in workspaces you have authorized. Open the Cursor panel in AI Helper, click Allow on the pending request, and try again. Authorizations are stored in `~/.ai-helper/agent_workspaces.json` and can be revoked under authorized workspaces.
+
+### Reference: Cursor documentation
+
+- [API keys in Cursor (Cursor's own settings)](https://cursor.com/help/models-and-usage/api-keys)
+
+Related guides: [Change the API endpoint in Claude Code](https://helper.bob-api.com/en/guides/claude-code-custom-api.html) · [Custom API provider for Codex CLI](https://helper.bob-api.com/en/guides/codex-cli-custom-api.html)
+
+Source code and issues: [GitHub (MIT)](https://github.com/TF49/AI-Helper) · [GitHub Issues](https://github.com/TF49/AI-Helper/issues)
+
+---
+
+## How to connect DeepSeek Harness to Claude, GPT and Chinese models
+
+Source: https://helper.bob-api.com/en/guides/deepseek-harness-custom-api.html
+
+For AI Helper v1.0.88 · Windows & macOS · Last updated 2026-11-24 · By [TF49](https://helper.bob-api.com/about.html)
+
+**Short answer:** DeepSeek Harness (DSH) desktop keeps its model routes in `~/.dsh/profiles/desktop/cordis.patch.yml` and its keys in `~/.dsh/.credentials.yaml`. Claude, GPT and Chinese models speak different protocols, so they need three separate routes. AI Helper, an MIT-licensed open-source app running on your machine, takes one BobAPI API key, fetches every chat model it can use and writes each model to the matching `aihelper-*` route by protocol — your own routes and your official DeepSeek account stay exactly as they were.
+
+> AI Helper's interface is currently in Chinese. Menu and button names in this guide are translated, with the original label in parentheses where it helps.
+
+### Why different models go into different routes
+
+Each DeepSeek Harness route speaks exactly one API protocol, but the models behind one API key may use different protocols. So AI Helper sorts them into three routes:
+
+| Route | Name shown in DSH | Protocol | Models |
+| --- | --- | --- | --- |
+| `aihelper-claude` | AI Helper · Claude | Anthropic Messages | Claude family |
+| `aihelper-codex` | AI Helper · Codex | OpenAI Responses | GPT / Codex family |
+| `aihelper-cn` | AI Helper · 国产模型 (Chinese models) | OpenAI Chat Completions | DeepSeek, Qwen, GLM and other Chinese models |
+
+AI Helper works out the protocol for you; all you do is tick the models you want. Models it writes are declared as accepting text and image input by default, and any managed route that ends up with no models after saving is removed automatically.
+
+### Before you start
+
+1. Launch DeepSeek Harness desktop once so it creates the `desktop` profile under `~/.dsh`. If you have set the `DSH_HOME` environment variable, AI Helper reads that directory instead.
+2. In AI Helper, go to **Settings → Path management** (设置 → 路径管理) and click *Detect* (探测) to confirm the DeepSeek Harness install path is found. AI Helper checks running processes, the Windows registry, `%LOCALAPPDATA%\Programs` and `/Applications` on macOS, in that order. You can also pick `DeepSeek Harness.exe` or `DeepSeek Harness.app` by hand.
+
+### Option 1: one-click setup from the dashboard
+
+After signing in to a Bob API account, click one-click setup on the DeepSeek Harness card in the dashboard. AI Helper uses the API key from the `国产Token计划` group — the key group in a Bob API account reserved for Chinese models (see [key groups](https://helper.bob-api.com/about.html#groups), in Chinese) — and creates one if your account doesn't have it yet. It writes every chat model available to that key and sets `deepseek-v4.1-flash` as the default model for new sessions. The batch *Configure all* (一键配置所有) run includes DeepSeek Harness too: it tests each route with its own protocol and writes everything in one go once they all pass.
+
+### Option 2: set it up manually with the wizard
+
+1. Open **Configuration center → DeepSeek Harness** (配置中心 → DeepSeek Harness).
+2. Choose a node: the **BobAPI official node** (BobAPI 官方节点, `https://bob-api.com/`, the default and recommended) or the **TaijiAI accelerated node** (TaijiAI 加速节点, `https://taijiai.online/`, a backup line).
+3. Paste your API key. AI Helper fetches every model available to the key's current group and filters out image, speech, embedding and other models that can't chat. The first time you use a hand-entered key with a node, click *Confirm for this node* (确认用于此节点). Keys picked from your Bob API account, and one-click setup, only work with the BobAPI official node.
+4. Tick the models you want (select all works, and you can add model IDs by hand), then choose the default model for new sessions. The default only applies to new sessions; you can switch models in DeepSeek Harness at any time.
+5. AI Helper runs a connection test for each route and only writes the configuration once every route passes. If any route fails, nothing is written to disk.
+6. After saving, restart DeepSeek Harness (you can do this straight from the test console or the path management card). New routes such as *AI Helper · 国产模型* then appear in the model picker.
+
+### Using keys from several groups at once
+
+Keys from different groups can be saved separately and used side by side — for example a Chinese-model key, a Claude key and a GPT key together:
+
+- **Add a key from another group:** in the overview, click *Add a key from another group* (添加其它分组的 Key). The new key sits alongside the keys you already connected, and only model types that are not connected yet are ticked by default.
+- **Replace a key:** the new key takes over the routes of the key it replaces; routes connected through other keys stay as they are.
+- **Edit a single key:** when you open the wizard from the overview, you only edit the routes that use that key.
+- **Re-check:** after switching a key's group on the bob-api website, you can re-check from the overview whether each route's models are still available.
+
+### What AI Helper changes — and what it doesn't
+
+AI Helper only manages its own `aihelper-*` routes and `AIHELPER_*` key references. Everything else stays as it was:
+
+- It only reads and writes the `desktop` profile; CLI, web and other profiles are never modified.
+- It edits line by line, so your own routes, `records`, comments and `!!js` expressions are preserved byte for byte. Before every write it compares the result with the original file semantically to confirm that only the intended parts changed.
+- It shares a write lock with DeepSeek Harness, so it never writes the file at the same moment DSH does (for example when DSH refreshes your official account token).
+- Your official DeepSeek account sign-in and the official API-key route (`api.deepseek.com`) are never rewritten. If your default model points at an official model, it stays that way when you save.
+
+> AI Helper takes a configuration snapshot before it first takes over. When you reset client configuration on the Settings page, the managed routes and key references go back to the snapshot, and DeepSeek Harness's token binding records are cleaned up as well.
+
+### FAQ
+
+#### I saved, but the new models don't show up in DeepSeek Harness. What now?
+
+DeepSeek Harness reads its configuration at startup, so restart it after saving to load the new routes. You can restart it from the test console or from the client card under Settings → Path management. When AI Helper restarts it, it first sends the main process a graceful shutdown request, so you no longer get a "renderer exited: killed" crash dialog.
+
+#### What does "group unavailable" mean?
+
+The model was configured earlier but is no longer in the group your API key currently belongs to. This usually happens after switching the key's group on the bob-api website, in which case the API returns `model_not_found`. Fetch the available models again, untick the unavailable ones, or move the key back to its original group on the website. Model IDs you added by hand are never unticked automatically.
+
+#### AI Helper says it cannot find the DeepSeek Harness desktop configuration. What should I do?
+
+Launch DeepSeek Harness desktop once to finish its first-run setup. It then creates its configuration profile under `~/.dsh` (or the directory set in `DSH_HOME`), and AI Helper can configure it normally.
+
+#### Does configuring DeepSeek Harness affect my official DeepSeek account?
+
+No. AI Helper only writes `aihelper-*` routes and `AIHELPER_*` key references. Your official DeepSeek account sign-in, the official API-key route and the routes you created yourself are kept exactly as they are, and a default model that points at an official model is left unchanged when you save.
+
+Related guides: [Change the API endpoint in Claude Code](https://helper.bob-api.com/en/guides/claude-code-custom-api.html) · [Custom API provider for Codex CLI](https://helper.bob-api.com/en/guides/codex-cli-custom-api.html) · [Third-party models in Cursor](https://helper.bob-api.com/en/guides/cursor-custom-model.html)
+
+Source code and issues: [GitHub (MIT)](https://github.com/TF49/AI-Helper) · [GitHub Issues](https://github.com/TF49/AI-Helper/issues)
+
+---
+
+## macOS says AI Helper “is damaged and can't be opened” — how to fix it
+
+Source: https://helper.bob-api.com/en/guides/macos-app-damaged.html
+
+For AI Helper v1.0.88 · macOS 11 and later · Apple Silicon & Intel · Last updated 2026-11-24 · By [TF49](https://helper.bob-api.com/about.html)
+
+**Short answer:** The download isn't actually damaged. AI Helper is MIT-licensed open-source software that is not notarized by Apple, so macOS Gatekeeper flags anything downloaded from the internet as quarantined and refuses to open it. Open Terminal, run the command below to clear the flag, then double-click the app again:
+
+```
+xattr -cr /Applications/AI\ Helper.app
+```
+
+### Messages you might see
+
+- “AI Helper” is damaged and can't be opened. You should move it to the Trash.
+- “AI Helper” can't be opened because the developer cannot be verified.
+- Apple could not verify “AI Helper” is free of malware.
+
+### Option 1: clear the quarantine flag in Terminal (recommended)
+
+1. Open the DMG you downloaded and drag **AI Helper** into the Applications folder.
+2. Open Terminal (search for “Terminal” in Launchpad or Spotlight).
+3. Paste and run `xattr -cr /Applications/AI\ Helper.app` — note the backslash and space between `AI` and `Helper`.
+4. Go back to Applications and double-click AI Helper.
+
+`xattr -cr` recursively removes extended attributes from the app bundle, including the `com.apple.quarantine` flag. It does not modify the app's code.
+
+### Option 2: Control-click and choose Open
+
+Find AI Helper in Finder, Control-click it (or right-click), choose **Open**, then click **Open** again in the dialog. If the dialog doesn't offer an Open button, go to **System Settings → Privacy & Security**, scroll to the bottom and click **Open Anyway**.
+
+### Did you download the right build?
+
+Macs with Apple Silicon (M1 to M5 series) need the `aarch64` DMG; Macs with an Intel processor need the `x64` DMG. You can check your chip under **About This Mac**.
+
+> Only download AI Helper from the [official site](https://helper.bob-api.com/en/#downloads) or [GitHub Releases](https://github.com/TF49/AI-Helper/releases), and never run the command above on apps from sources you don't trust. The official site lists a SHA-256 checksum for every package.
+
+### FAQ
+
+#### Why does macOS say AI Helper is damaged?
+
+The download isn't actually damaged. AI Helper is MIT-licensed open-source software that is not notarized by Apple, so macOS Gatekeeper adds a quarantine flag to apps downloaded from the internet and blocks them. Once you clear the flag, the app works normally.
+
+#### Is it safe to run xattr -cr?
+
+`xattr -cr` only recursively removes extended attributes from the app bundle (including the `com.apple.quarantine` flag); it does not modify the app's code. Only run it on packages downloaded from the AI Helper website or GitHub Releases — the official site lists a SHA-256 checksum for every package.
+
+#### Is there a way to do this without Terminal?
+
+In Finder, Control-click (or right-click) AI Helper, choose Open and confirm. If there is no Open button, go to System Settings → Privacy & Security, scroll to the bottom and click Open Anyway.
+
+#### Which DMG should I download for an Apple Silicon or Intel Mac?
+
+Macs with Apple Silicon (M1 to M5 series) need the `aarch64` DMG; Macs with an Intel processor need the `x64` DMG. You can check your chip under About This Mac. AI Helper requires macOS 11 or later.
+
+### Reference: Apple documentation
+
+- [Open apps safely on your Mac (Gatekeeper)](https://support.apple.com/en-us/102445)
+
+Related guides: [Third-party models in Cursor](https://helper.bob-api.com/en/guides/cursor-custom-model.html) · [Change the API endpoint in Claude Code](https://helper.bob-api.com/en/guides/claude-code-custom-api.html)
+
+Source code and issues: [GitHub (MIT)](https://github.com/TF49/AI-Helper) · [GitHub Issues](https://github.com/TF49/AI-Helper/issues)
+
+---
+
+## Accio Work 如何接入第三方模型（本地 Bridge）
+
+Source: https://helper.bob-api.com/guides/accio-work-custom-api.html
+
+适用于 AI Helper v1.0.88 · Windows 与 macOS · 最后更新 2026-11-24 · 作者 [TF49](https://helper.bob-api.com/about.html)
+
+**简短回答：**Accio Work 桌面端通过官方网关和专有的 ADK 接口通信，设置里没有填写第三方 API 的地方。AI Helper 在本机运行一个 Bridge（默认 `127.0.0.1:8787`），启动 Accio Work 时把网关地址指向它，再把模型请求转换成 OpenAI / Anthropic 兼容接口，发到你在面板中选择的 BobAPI 节点。配置保存在 `~/.ai-helper/accio_config.json`。
+
+### 为什么需要本地 Bridge
+
+Accio Work 的模型推理、向量嵌入和模型目录都走官方网关 `https://phoenix-gw.alibaba.com` 上的专有接口（例如 `/api/adk/llm`、`/api/llm/config/v2`），请求和响应格式都不是 OpenAI 格式。因此不能像 Claude Code 或 Codex 那样只改一个 Base URL。AI Helper 的做法是：
+
+1. 在本机回环地址启动 Bridge，默认端口 `8787`。
+2. 启动 Accio Work 时设置环境变量 `GATEWAY_BASE_URL=http://127.0.0.1:<端口>/i/<实例凭据>`，让 Accio Work 把网关请求发给 Bridge。在 Windows 上还会同时设置 `ADK_BASE_URL`、`ADK_MODEL`、`EMBEDDING_BASE_URL` 和 `EMBEDDING_MODEL`。
+3. Bridge 把 Accio Work 的请求转换后发往所选的 BobAPI 节点，再把结果转换回 Accio Work 能识别的流式格式。
+
+### Bridge 接管哪些接口
+
+| Accio Work 请求 | Bridge 的处理 |
+| --- | --- |
+| `/api/llm/config/v2`（模型目录） | 返回当前 API Key 实际可用的模型列表（见下一节） |
+| `/api/adk/llm`（模型推理） | 按模型名选择上游接口：名称含 `claude` 的走 `/v1/messages`；`gpt`、`o1`、`o3`、`o4`、`chatgpt` 开头的走 `/v1/responses`；其他模型（如 GLM、DeepSeek、Qwen）走 `/v1/chat/completions`。上游明确不支持前两种接口（如返回 404 / 501）时改用 `/v1/chat/completions` |
+| `/api/adk/embedding/embed`（向量嵌入） | 转发到所配置地址的 `/v1/embeddings`，模型为 `text-embedding-3-small` |
+| 登录、团队、技能、插件、功能开关等账号与元数据接口 | 透传给官方网关，否则 Accio Work 无法正常登录和运行 |
+| 其他官方接口 | 开启「防官方直连熔断」（默认开启）时一律阻断 |
+
+### 模型列表是怎么注入的
+
+Accio Work 读取模型目录时，Bridge 用所选节点和当前 Key 请求 `/v1/models`，把返回的模型放进一个名为 `AI-Helper (<API 域名>)` 的服务商下，你在面板中选择的模型排在第一位并标为默认。
+
+- 不会注入写死的预设模型，只显示这个 Key 真实可用的模型。
+- 模型列表在内存中缓存 5 分钟，同时写入 `accio_config.json` 的 `cached_models`；更换节点或 Key 后缓存会失效，按新 Key 重新读取。
+- 读取失败且没有缓存时，只注入你选择的那个模型，避免下拉框为空。
+
+### 配置步骤
+
+1. **准备：**安装 Accio Work；准备 Bob API 账号的 API Key（也可以登录账号后一键配置）；安装 AI Helper（[下载地址](https://helper.bob-api.com/#downloads)）。
+2. **打开面板：**启动 AI Helper，进入 **Accio Work** 面板。如果没有检测到安装路径，可以在设置的路径管理中手动指定。
+3. **接入节点与 API Key：**选择「BobAPI 官方节点」（`https://bob-api.com/`，推荐首选）或备用的「TaijiAI 加速节点」（`https://taijiai.online/`），输入 API Key。两个节点均使用 HTTPS。手动填写的 Key 首次用于某个节点时，需点击「确认用于此节点」；从 Bob API 账号选择的 Key 和一键配置只能用于 BobAPI 官方节点。
+4. **选择模型：**从读取到的模型列表中选择默认模型（例如 `glm-5.3`），也可以手动输入。生图模型是可选项，留空时生图功能保持关闭。
+5. **Bridge 网关：**本地网关端口默认 `8787`；「随 AI Helper 自动拉起 Bridge」和「防官方直连熔断」默认开启，建议保持。
+6. **确认并保存：**勾选确认后点击「确认并保存 Accio 配置」。AI Helper 先做流式连通性测试，通过后写入 `~/.ai-helper/accio_config.json`，并启动本地 Bridge。
+7. **启动 Accio Work：**点击面板底部的「启动客户端」（Accio Work 已在运行时显示为「重启客户端」）。必须通过 AI Helper 启动，网关地址才会被注入。然后在 Accio Work 的模型下拉框中选择 `AI-Helper` 服务商下的模型。
+
+> 登录 Bob API 账号后，也可以对 Accio Work 执行「一键配置」：AI Helper 使用「国产Token计划」分组（Bob API 账号下国产模型专用的令牌分组，[分组说明](https://helper.bob-api.com/about.html#groups)）的 API Key，账号下没有时会自动创建，默认模型设为 `glm-5.3`，打开「随 AI Helper 自动拉起 Bridge」并立即启动 Bridge。不登录时，也可以在面板中手动输入 API Key。
+
+### accio_config.json 字段
+
+文件位于 `~/.ai-helper/accio_config.json`（Windows：`C:\Users\<用户名>\.ai-helper\accio_config.json`；macOS：`/Users/<用户名>/.ai-helper/accio_config.json`）。这是 AI Helper 自己的文件，不会修改 Accio Work 安装目录或其用户数据中的任何文件。
+
+| 字段 | 默认值 | 说明 |
+| --- | --- | --- |
+| `base_url` | `https://bob-api.com/` | 上游 API 地址，即面板中所选的节点 |
+| `api_key` | 空 | 上游 API Key |
+| `model` | `glm-5.3` | 默认模型；Accio Work 未指定模型时使用 |
+| `bridge_port` | `8787` | Bridge 首选端口 |
+| `official_gateway` | `https://phoenix-gw.alibaba.com` | 官方网关，只允许这个地址 |
+| `prevent_official_leak` | `true` | 防官方直连熔断：只透传账号与元数据接口 |
+| `fallback_official` | `false` | 面板中的「业务接口透传」开关 |
+| `auto_start_bridge` | `true` | AI Helper 启动时自动拉起 Bridge（需已填写 API Key） |
+| `cached_models` / `cached_models_fingerprint` | 空 | 模型列表缓存及其对应的地址与 Key 指纹 |
+| `image_model` | 空 | 生图模型，留空表示不启用生图 |
+
+### 访问控制与安全
+
+- **只监听本机：**Bridge 只绑定 `127.0.0.1`，局域网其他设备无法访问。
+- **实例凭据：**AI Helper 每次运行时随机生成一个实例凭据，作为路径前缀 `/i/<凭据>` 写进注入给 Accio Work 的网关地址。除 `/health` 外，没有有效凭据的请求一律返回 401。
+- **Host 与 Origin 校验：**Host 只接受 `127.0.0.1`、`localhost`、`tauri.localhost`、`::1`，用于防范 DNS Rebinding；来自外部网页的 Origin 和跨站（`Sec-Fetch-Site: cross-site`）请求返回 403。
+- **频率限制：**模型推理、向量嵌入、MCP 等会产生费用的接口限制为每 60 秒 120 次，生图限制为每 60 秒 6 次，超出返回 429。
+- **官方网关隔离：**开启防官方直连熔断时，模型推理不会发往官方网关；转发到官方网关的目标只允许 `https://phoenix-gw.alibaba.com`。
+- **Key 的去向：**API Key 只保存在本机的 `accio_config.json` 中，只发送到所选的节点。AI Helper 是 MIT 开源项目，以上逻辑都可以在源码中查看。
+
+### 排错
+
+| 现象 | 原因与处理 |
+| --- | --- |
+| Accio Work 仍在使用官方模型 | Accio Work 不是由 AI Helper 启动的，没有拿到网关地址。完全退出 Accio Work，在面板中点击「启动客户端」 |
+| 返回 401「本地实例凭据无效或已过期」 | AI Helper 重启过，Accio Work 还带着旧凭据。点击「重启客户端」 |
+| 返回「API 密钥未配置」 | `accio_config.json` 中没有 API Key，回到面板填写并保存 |
+| 返回 429 | 触发了本地频率限制（每 60 秒 120 次），稍后重试 |
+| Bridge 显示「未启动」 | 在面板底部点击「启动 Bridge」；端口冲突时 Bridge 会自动改用 8788–8807 中的空闲端口 |
+| 想确认 Bridge 是否在运行 | 访问 `http://127.0.0.1:8787/health`（按实际端口），正常会返回 `"ok": true` 和当前模型 |
+
+### 如何恢复 Accio Work 官方连接
+
+不经过 AI Helper、直接启动 Accio Work，它就会使用官方网关。如果要清除 AI Helper 的 Accio 配置，在 **设置 → 客户端配置 → 恢复所有客户端原生配置** 中点击「清除配置」：Bridge 会停止，`~/.ai-helper/accio_config.json` 会被删除。因为这是 AI Helper 自己的文件，不会为它保存快照（避免多存一份明文 Key）。注意这个操作会同时处理所有客户端。
+
+### 常见问题
+
+#### Accio Work 报「本地实例凭据无效或已过期」怎么办？
+
+Bridge 用一个随机生成的实例凭据校验请求，这个凭据在 AI Helper 进程运行期间不变。AI Helper 重启后会生成新凭据，之前启动的 Accio Work 仍带着旧凭据，所以被拒绝。在 AI Helper 的 Accio Work 面板点击「重启客户端」即可。
+
+#### 端口 8787 被占用怎么办？
+
+Bridge 会先重试 8787，仍被占用时依次尝试 8788 到 8807，找到空闲端口后自动写回 accio_config.json，并在下次启动 Accio Work 时使用新端口。如果这 21 个端口都不可用，会提示检查是否有残留进程占用，这时可以在面板中把「本地网关端口」改成其他端口。
+
+#### Accio Work 的模型下拉框里只有一个模型？
+
+Bridge 通过所选节点的 `/v1/models` 接口读取当前 Key 可用的模型。如果请求失败，Bridge 只会注入你在面板中选择的那个模型，避免下拉框为空。请确认 API Key 正确、本机能访问所选节点，必要时切换到另一个节点后重新保存。
+
+#### 直接双击桌面图标启动 Accio Work 可以用第三方模型吗？
+
+不行。本地网关地址是 AI Helper 在启动 Accio Work 时通过环境变量注入的，自己从桌面图标启动的 Accio Work 不会带上这些变量，会连接官方网关。请在 AI Helper 中点击「启动客户端」或「重启客户端」。
+
+#### 关闭 AI Helper 窗口后 Bridge 还在运行吗？
+
+在运行。关闭主窗口后 AI Helper 会留在系统托盘，Bridge 继续工作；从托盘彻底退出 AI Helper 后 Bridge 才会停止。开启「随 AI Helper 自动拉起 Bridge」并已填写 API Key 时，下次启动 AI Helper 会自动启动 Bridge。
+
+### 参考
+
+- [Accio Work 官网](https://www.accio.com/work)
+- [AI 编程客户端配置文件路径与环境变量大全](https://helper.bob-api.com/guides/ai-coding-config-paths.html)
+
+相关教程：[Cursor 配置第三方模型（同样使用本地 Bridge）](https://helper.bob-api.com/guides/cursor-custom-model.html) · [WorkBuddy 配置自定义 API](https://helper.bob-api.com/guides/workbuddy-custom-api.html) · [DeepSeek Harness 接入多种模型](https://helper.bob-api.com/guides/deepseek-harness-custom-api.html)
+
+源码与问题反馈：[GitHub 仓库（MIT 开源）](https://github.com/TF49/AI-Helper) · [GitHub Issues](https://github.com/TF49/AI-Helper/issues)
+
+---
+
+## AI 编程客户端配置文件路径与环境变量大全（Windows & macOS）
+
+Source: https://helper.bob-api.com/guides/ai-coding-config-paths.html
+
+适用于 AI Helper v1.0.88 · Windows 与 macOS · 最后更新 2026-11-24 · 作者 [TF49](https://helper.bob-api.com/about.html)
+
+**简短回答：**Claude Code 读 `~/.claude/settings.json`，Codex CLI 读 `~/.codex/config.toml`，WorkBuddy 读 `~/.workbuddy/models.json`，DeepSeek Harness 读 `~/.dsh/profiles/desktop/cordis.patch.yml` 和 `~/.dsh/.credentials.yaml`。Cursor 和 Accio Work 不能直接填第三方 API，AI Helper 把它们的配置放在 `~/.ai-helper/` 下，并通过本地 Bridge（`127.0.0.1:8969` / `127.0.0.1:8787`）接入。Windows 上 `~` 即 `C:\Users\<用户名>`。
+
+本页按 AI Helper 源码中实际读写的路径整理，适合查找配置文件位置、手动修改或排查问题。AI Helper 是 MIT 开源的本地桌面工具，下表中「AI Helper 修改 / 保留」两列说明它在你保存配置时动哪些字段、不动哪些内容。在 AI Helper 面板中，接入节点可选「BobAPI 官方节点」（`https://bob-api.com/`）或「TaijiAI 加速节点」（`https://taijiai.online/`）。
+
+### 路径约定
+
+| 写法 | Windows | macOS |
+| --- | --- | --- |
+| `~`（用户主目录） | `C:\Users\<用户名>`（`%USERPROFILE%`） | `/Users/<用户名>` |
+| Roaming 应用数据 | `C:\Users\<用户名>\AppData\Roaming`（`%APPDATA%`） | `~/Library/Application Support` |
+| Local 应用数据 | `C:\Users\<用户名>\AppData\Local`（`%LOCALAPPDATA%`） | — |
+
+### 总览：各客户端配置文件位置
+
+| 客户端 | Windows 配置路径 | macOS 配置路径 | 接入方式 |
+| --- | --- | --- | --- |
+| Claude Code | `C:\Users\<用户名>\.claude\settings.json` | `/Users/<用户名>/.claude/settings.json` | 直连，`env` 字段 |
+| OpenAI Codex CLI | `C:\Users\<用户名>\.codex\config.toml` | `/Users/<用户名>/.codex/config.toml` | 直连，自定义 provider + 环境变量 |
+| Cursor | `C:\Users\<用户名>\.ai-helper\cursor_config.json`（AI Helper 专用） | `/Users/<用户名>/.ai-helper/cursor_config.json` | 本地 Bridge `127.0.0.1:8969` + 客户端补丁 |
+| WorkBuddy | `C:\Users\<用户名>\.workbuddy\models.json` | `/Users/<用户名>/.workbuddy/models.json` | 直连，模型数组 |
+| Accio Work | `C:\Users\<用户名>\.ai-helper\accio_config.json`（AI Helper 专用） | `/Users/<用户名>/.ai-helper/accio_config.json` | 本地 Bridge `127.0.0.1:8787` + 启动时注入环境变量 |
+| DeepSeek Harness（桌面版） | `C:\Users\<用户名>\.dsh\profiles\desktop\cordis.patch.yml` `C:\Users\<用户名>\.dsh\.credentials.yaml` | `/Users/<用户名>/.dsh/profiles/desktop/cordis.patch.yml` `/Users/<用户名>/.dsh/.credentials.yaml` | 直连，按协议分三条路由 |
+| ChatGPT Desktop | AI Helper 不写入其配置，只做安装探测与启动 | — |  |
+
+### Claude Code
+
+| 配置文件 | Windows：`C:\Users\<用户名>\.claude\settings.json` macOS：`/Users/<用户名>/.claude/settings.json` |
+| --- | --- |
+| 关键字段 | `env.ANTHROPIC_BASE_URL`（API 地址）、`env.ANTHROPIC_AUTH_TOKEN`（API Key）、`env.ANTHROPIC_MODEL`（模型）、顶层 `model` |
+| AI Helper 修改 | 只写入上面 4 项；模型为空时不写 `ANTHROPIC_MODEL` 和 `model` |
+| AI Helper 保留 | 其他顶层字段（如 `permissions`）和 `env` 中的其他变量。文件不是合法 JSON 对象时停止写入，不覆盖原文件 |
+| 备份 / 快照 | 每次写入前备份为 `settings.json.bak`；首次修改前的快照记录在 `~/.ai-helper/reset_state.json` |
+| CLI 探测位置 | Windows：`C:\Users\<用户名>\AppData\Roaming\npm\claude.cmd`；macOS：`/opt/homebrew/bin`、`/usr/local/bin`、`~/.npm-global/bin`、`~/.local/bin`、`~/.bun/bin`、`~/.nvm/versions/node/*/bin` 等 |
+
+### OpenAI Codex CLI
+
+| 配置文件 | Windows：`C:\Users\<用户名>\.codex\config.toml` macOS：`/Users/<用户名>/.codex/config.toml` |
+| --- | --- |
+| 关键字段 | 顶层 `model`、`model_provider = "custom"`；`[model_providers.custom]` 中的 `base_url`（以 `/v1` 结尾）和 `env_key = "CUSTOM_OPENAI_API_KEY"` |
+| 环境变量 | `CUSTOM_OPENAI_API_KEY`：存放 API Key。Windows 上 AI Helper 写入当前用户环境变量（注册表 `HKEY_CURRENT_USER\Environment`）；macOS 上不写入持久环境变量，需要自行在 shell 配置文件中 `export` |
+| AI Helper 修改 | 上述字段；`custom` provider 缺少 `name` 时补为 `Custom`；移除 `custom` provider 中的 `experimental_bearer_token`、`env_key_instructions`、`auth`、`requires_openai_auth` 以及 `http_headers` / `env_http_headers` 中的鉴权类请求头；当前活动 profile 使用 `custom` 且覆盖了模型时，同步更新该 profile 的 `model` |
+| AI Helper 保留 | 其他 provider、其他 profile、sandbox 与审批设置等全部内容 |
+| 备份 / 快照 | 写入前备份为 `config.toml.bak`；快照同时记录 `config.toml` 和 `CUSTOM_OPENAI_API_KEY` 的原值 |
+| CLI 探测位置 | Windows：`C:\Users\<用户名>\AppData\Roaming\npm\codex.cmd`；macOS：与 Claude Code 相同的目录 |
+
+### Cursor
+
+| AI Helper 配置 | `~/.ai-helper/cursor_config.json`：`base_url`、`api_key`、`model`（默认 `glm-5.3`）、`bridge_port`（默认 `8969`）、`auto_start_bridge`、`custom_models`、`cached_models`、`cursor_path` |
+| --- | --- |
+| Agent 工作区授权 | `~/.ai-helper/agent_workspaces.json` |
+| 本地 Bridge | `127.0.0.1:8969`（Connect-RPC / HTTP2），被占用时依次尝试 8970–8989 |
+| 客户端补丁（安装目录） | Windows 默认安装目录 `C:\Users\<用户名>\AppData\Local\Programs\cursor`，补丁文件位于 `resources\app\out\vs\workbench\workbench.desktop.main.js`（或 `workbench.glass.main.js`）和 `resources\app\product.json`；macOS 为 `/Applications/Cursor.app/Contents/Resources/app/` 下的同名文件。原文件备份在 `resources/app/.ai-helper-backup/` |
+| 状态数据库 | Windows：`C:\Users\<用户名>\AppData\Roaming\Cursor\User\globalStorage\state.vscdb` macOS：`~/Library/Application Support/Cursor/User/globalStorage/state.vscdb` AI Helper 把其中的服务地址指向 `http://127.0.0.1:<端口>`，修改前备份为 `state.vscdb.ai-helper-bak` |
+| 还原 | Cursor 面板「恢复官方连接」，或设置页清除配置：停止 Bridge、还原补丁与状态库，删除 `cursor_config.json` 和 `agent_workspaces.json` |
+
+### WorkBuddy
+
+| 配置文件 | Windows：`C:\Users\<用户名>\.workbuddy\models.json` macOS：`/Users/<用户名>/.workbuddy/models.json` 兼容路径：`~/.workbuddy-ai/models.json`（AI Helper 同时读写两处，按模型 `id` 合并） |
+| --- | --- |
+| 环境变量 | `WORKBUDDY_CONFIG_DIR` 或 `CODEBUDDY_CONFIG_DIR`：设置后 AI Helper 只读写 `<该目录>/models.json` |
+| 格式 | 顶层 JSON 数组，每个元素一个模型；也接受 `{"models": [ ... ]}` 包装对象 |
+| 关键字段 | `id`、`name`、`vendor`（`Custom`）、`url`（以 `/v1` 结尾）、`api`、`apiKey`、`supportsToolCall`、`supportsImages`、`supportsReasoning`、`onlyReasoning`、`useCustomProtocol`、`reasoning`、`maxInputTokens`、`maxOutputTokens` |
+| AI Helper 修改 | 只新增或更新当前保存的那个模型（按 `id`）；同名原位更新，新模型追加到末尾；一键配置把推荐模型移到首位 |
+| AI Helper 保留 | 其他模型；同名模型的 `temperature`、`disabled`、已有的 `api` 值及未知字段；包装对象的其他顶层字段 |
+| 备份 / 快照 | 写入前备份为 `models.json.bak`；多文件写入日志 `~/.ai-helper/workbuddy-transaction.json`（临时）；快照在 `~/.ai-helper/reset_state.json` |
+
+详细说明见 [WorkBuddy 如何配置自定义 API 与多个模型](https://helper.bob-api.com/guides/workbuddy-custom-api.html)。
+
+### Accio Work
+
+| AI Helper 配置 | `~/.ai-helper/accio_config.json`：`base_url`、`api_key`、`model`（默认 `glm-5.3`）、`bridge_port`（默认 `8787`）、`official_gateway`、`prevent_official_leak`（默认 `true`）、`fallback_official`、`auto_start_bridge`、`cached_models`、`image_model` |
+| --- | --- |
+| 本地 Bridge | `127.0.0.1:8787`，被占用时依次尝试 8788–8807；健康检查 `http://127.0.0.1:8787/health` |
+| 启动时注入的环境变量 | Windows：`GATEWAY_BASE_URL`、`ADK_BASE_URL`、`ADK_MODEL`、`EMBEDDING_BASE_URL`、`EMBEDDING_MODEL`；macOS：`GATEWAY_BASE_URL`。网关地址形如 `http://127.0.0.1:<端口>/i/<实例凭据>`，只对由 AI Helper 启动的 Accio Work 进程生效 |
+| AI Helper 修改 | 不修改 Accio Work 安装目录和其用户数据，只读取 `~/.accio/logs/sdk.log` 检查网关是否生效 |
+| 还原 | 不经 AI Helper 直接启动 Accio Work 即使用官方网关；设置页清除配置会停止 Bridge 并删除 `accio_config.json` |
+
+详细说明见 [Accio Work 如何接入第三方模型（本地 Bridge）](https://helper.bob-api.com/guides/accio-work-custom-api.html)。
+
+### DeepSeek Harness（桌面版）
+
+| 配置目录 | 默认 `~/.dsh`（Windows：`C:\Users\<用户名>\.dsh`）；设置了环境变量 `DSH_HOME` 时使用该目录 |
+| --- | --- |
+| 路由文件 | `~/.dsh/profiles/desktop/cordis.patch.yml`：`llm-pi-ai` 条目下的 `aihelper-claude`（Anthropic Messages）、`aihelper-codex`（OpenAI Responses）、`aihelper-cn`（Chat Completions）三条路由，以及默认模型条目 `agent-default-model` |
+| 凭据文件 | `~/.dsh/.credentials.yaml`：`refs.AIHELPER_CLAUDE_API_KEY`、`refs.AIHELPER_CODEX_API_KEY`、`refs.AIHELPER_CN_API_KEY` |
+| AI Helper 修改 | 只管理 `aihelper-*` 路由和 `AIHELPER_*` 引用，只处理 `desktop` 档案 |
+| AI Helper 保留 | 自建路由、`records`、注释、`!!js` 表达式逐字节保留；DeepSeek 官方账号和官方 API Key 路由（`api.deepseek.com`）不改动；与 DSH 共用写锁 |
+| 安装探测 | Windows：`C:\Users\<用户名>\AppData\Local\Programs\DeepSeek Harness\`；macOS：`/Applications/DeepSeek Harness.app` |
+
+详细说明见 [DeepSeek Harness 怎么接入 Claude、GPT 和国产模型](https://helper.bob-api.com/guides/deepseek-harness-custom-api.html)。
+
+### ChatGPT Desktop
+
+| AI Helper 做什么 | 安装探测、启动；不写入 ChatGPT Desktop 的任何配置。AI Helper 中标为「ChatGPT (Codex)」的面板写入的是 Codex 的 `~/.codex/config.toml`，与 Codex CLI 相同 |
+| --- | --- |
+| Windows 安装探测 | Microsoft Store 应用包；`C:\Users\<用户名>\AppData\Local\Programs\ChatGPT\ChatGPT.exe`；`C:\Users\<用户名>\AppData\Local\ChatGPT\ChatGPT.exe`；`C:\Program Files\ChatGPT\ChatGPT.exe` |
+| macOS 安装探测 | `/Applications/ChatGPT.app`、`~/Applications/ChatGPT.app` |
+
+### AI Helper 自身的文件（~/.ai-helper）
+
+Windows：`C:\Users\<用户名>\.ai-helper\`；macOS：`/Users/<用户名>/.ai-helper/`。
+
+| 文件 | 用途 |
+| --- | --- |
+| `reset_state.json` | 各客户端首次被接管前的配置快照，以及 AI Helper 最后一次写入的文件哈希，用于「清除配置」时判断整文件恢复还是只清理受管字段 |
+| `cursor_config.json` | Cursor 的 API 地址、Key、模型与 Bridge 端口 |
+| `agent_workspaces.json` | Cursor Agent 被授权写入、删除的工作区 |
+| `accio_config.json` | Accio Work 的 API 地址、Key、模型与 Bridge 设置 |
+| `app_paths.json` | 在「路径管理」中手动指定的各客户端安装路径 |
+| `auth_session.json` | Bob API 账号登录会话；会话凭据在 Windows 上用 DPAPI 保护，在 macOS 上存入钥匙串 |
+| `managed_keys.json` | API Key 的 SHA-256 摘要，用于限制 Bob API 账号下发的 Key 只发往允许的节点（不含明文 Key） |
+| `workbuddy-transaction.json` | WorkBuddy 多文件写入过程中的临时日志，写入完成后删除 |
+| `image_budget_ledger.json` | Accio Work 生图的本地次数预算记录 |
+
+> `cursor_config.json` 和 `accio_config.json` 中包含明文 API Key，请不要把 `.ai-helper` 目录打包分享。清除配置时这两个文件会被直接删除，不保存快照。
+
+### 环境变量速查
+
+| 变量 | 相关客户端 | 说明 |
+| --- | --- | --- |
+| `ANTHROPIC_BASE_URL` / `ANTHROPIC_AUTH_TOKEN` / `ANTHROPIC_MODEL` | Claude Code | AI Helper 写在 `settings.json` 的 `env` 字段中，不修改系统环境变量 |
+| `CUSTOM_OPENAI_API_KEY` | Codex CLI | `env_key` 指向的 Key 变量；Windows 上写入当前用户环境变量 |
+| `WORKBUDDY_CONFIG_DIR` / `CODEBUDDY_CONFIG_DIR` | WorkBuddy | 设置后 AI Helper 改用该目录下的 `models.json` |
+| `DSH_HOME` | DeepSeek Harness | 覆盖默认配置目录 `~/.dsh` |
+| `GATEWAY_BASE_URL`、`ADK_BASE_URL`、`ADK_MODEL`、`EMBEDDING_BASE_URL`、`EMBEDDING_MODEL` | Accio Work | AI Helper 启动 Accio Work 时注入，指向本地 Bridge（macOS 仅 `GATEWAY_BASE_URL`） |
+
+### 本地 Bridge 端口
+
+| 客户端 | 默认地址 | 端口被占用时 | 配置字段 |
+| --- | --- | --- | --- |
+| Cursor | `127.0.0.1:8969` | 依次尝试 8970–8989 | `cursor_config.json` → `bridge_port` |
+| Accio Work | `127.0.0.1:8787` | 依次尝试 8788–8807，并写回配置 | `accio_config.json` → `bridge_port` |
+
+两个 Bridge 都只监听本机回环地址，并校验请求来源；关闭 AI Helper 主窗口后它们随托盘进程继续运行，彻底退出 AI Helper 后停止。
+
+### 常见问题
+
+#### Windows 上路径里的 ~ 指哪个目录？
+
+`~` 指当前用户的主目录，也就是 `C:\Users\<用户名>`（环境变量 `%USERPROFILE%`）。例如 `~/.claude/settings.json` 在 Windows 上就是 `C:\Users\<用户名>\.claude\settings.json`。这些以点开头的目录可以直接在资源管理器地址栏输入完整路径打开。
+
+#### 哪些客户端需要本地 Bridge？端口是多少？
+
+Cursor 和 Accio Work 需要。Cursor 的 Bridge 默认监听 `127.0.0.1:8969`，Accio Work 的 Bridge 默认监听 `127.0.0.1:8787`。首选端口被占用时，AI Helper 会依次尝试后面 20 个端口，并把实际端口写回配置。Claude Code、Codex CLI、WorkBuddy 和 DeepSeek Harness 直接连接配置文件中写入的 API 地址，不经过 Bridge。
+
+#### macOS 上 Codex 提示找不到 CUSTOM_OPENAI_API_KEY？
+
+在 Windows 上，AI Helper 会把 Key 写入当前用户的 `CUSTOM_OPENAI_API_KEY` 环境变量；在 macOS 上不会写入持久的系统环境变量。请在 shell 配置文件（如 `~/.zshrc`）中加入 `export CUSTOM_OPENAI_API_KEY=你的 Key`，然后重新打开终端。
+
+#### 如何把所有客户端恢复到 AI Helper 修改前的状态？
+
+在 AI Helper 的设置 → 客户端配置 → 恢复所有客户端原生配置中点击「清除配置」。Claude Code、Codex、WorkBuddy 和 DeepSeek Harness 会按 `~/.ai-helper/reset_state.json` 中的快照恢复，文件在接管后被改动过的只清理受管字段；Cursor 和 Accio Work 会停止 Bridge、删除 AI Helper 专用配置，Cursor 的客户端补丁也会被还原。
+
+### 参考：官方文档
+
+- [Claude Code：设置文件和优先级（settings.json 与 env 字段）](https://code.claude.com/docs/zh-CN/settings)
+- [Codex：高级配置与自定义 model_providers](https://developers.openai.com/codex/config-advanced)
+- [Cursor：Bring your own API key](https://cursor.com/help/models-and-usage/api-keys)
+
+相关教程：[Claude Code 切换 API 地址](https://helper.bob-api.com/guides/claude-code-custom-api.html) · [Codex CLI 配置自定义 API](https://helper.bob-api.com/guides/codex-cli-custom-api.html) · [Cursor 配置第三方模型](https://helper.bob-api.com/guides/cursor-custom-model.html) · [WorkBuddy 配置自定义 API](https://helper.bob-api.com/guides/workbuddy-custom-api.html) · [Accio Work 接入第三方模型](https://helper.bob-api.com/guides/accio-work-custom-api.html) · [DeepSeek Harness 接入多种模型](https://helper.bob-api.com/guides/deepseek-harness-custom-api.html)
+
+源码与问题反馈：[GitHub 仓库（MIT 开源）](https://github.com/TF49/AI-Helper) · [GitHub Issues](https://github.com/TF49/AI-Helper/issues)
+
+---
+
+## Claude Code 报 401 / 超时 / 连不上自定义 API 怎么办
+
+Source: https://helper.bob-api.com/guides/claude-code-401-timeout.html
+
+适用于 AI Helper v1.0.88 · Windows 与 macOS · 最后更新 2026-11-24 · 作者 [TF49](https://helper.bob-api.com/about.html)
+
+**简短回答：**先看状态码：401 是 Key 不对或被另一组环境变量覆盖；403 是账号无权访问该模型或被访问管控；404 多半是 `ANTHROPIC_BASE_URL` 多写了 `/v1` 或模型名不对；超时和连接失败是网络或代理问题。Claude Code 的 `ANTHROPIC_BASE_URL` 应填服务根地址（不带 `/v1`），Key 只保留 `ANTHROPIC_AUTH_TOKEN` 或 `ANTHROPIC_API_KEY` 其中一个。用 AI Helper 的连通性测试可以先排除 Key、地址和模型的问题，剩下的就是本机环境变量与网络。
+
+### 症状、原因与处理速查
+
+| 症状 | 常见原因 | 处理方法 |
+| --- | --- | --- |
+| HTTP 401 | Key 填错、过期或被吊销；Key 与该 API 地址不匹配；系统环境变量中另一组 Key 生效；网关只接受某一种认证请求头 | 核对 Key；清理多余的 `ANTHROPIC_API_KEY` / `ANTHROPIC_AUTH_TOKEN`；重新启动 `claude` |
+| HTTP 403 | 账号无权访问该模型，或节点做了访问管控（如 IP 地域限制） | 换有权限的 Key 或模型，在 Bob API 账号中确认 Key 所属分组 |
+| HTTP 404 | `ANTHROPIC_BASE_URL` 末尾多了 `/v1`，请求变成 `/v1/v1/messages`；地址拼错；模型名不存在 | 改成服务根地址，或在 AI Helper 中切换回 BobAPI 官方节点重新保存；核对模型名 |
+| 错误中含 `model_not_found`（常伴随 503） | 模型不在此 Key 当前所属分组中 | 重新拉取可用模型后再选 |
+| HTTP 429 | 触发频控或配额、余额不足 | 稍后重试，检查额度 |
+| HTTP 5xx | 上游或代理节点异常 | 稍后重试，或在 AI Helper 中切换到另一个节点（TaijiAI 加速节点需手动填写 Key，见下方常见问题） |
+| 提示「受管 Key 不得发往未授权目标 …」 | 从 Bob API 账号选择的 Key（含一键配置）或已确认用于 BobAPI 官方节点的 Key 被用在了 TaijiAI 加速节点，这类 Key 只能发往 Bob API 域名 | 切换回 BobAPI 官方节点；要使用 TaijiAI 加速节点，改为手动填写可用于该节点的 Key 并确认 |
+| 提示「此密钥尚未获准用于当前节点，请在密钥输入处确认目标」 | 手动填写的 Key 还没有确认用于当前节点 | 在密钥输入处点击「确认用于此节点」，然后再测试、获取模型或保存 |
+| 请求超时、无法连接 | 网络不通、DNS 解析失败、代理设置不正确 | 检查网络与代理，确认终端里的代理环境变量 |
+| 改了 `settings.json`，Claude Code 仍连旧地址 | 会话没有重启；系统环境变量或其他设置文件里还有同名变量 | 完全退出后重新运行 `claude`，清理重复的变量 |
+
+### 一、先用连通性测试定位问题
+
+AI Helper（MIT 开源、在本机运行）在保存 Claude Code 配置之前会做一次连通性测试：向所选节点的 `/v1/messages` 发送一条 `max_tokens: 16` 的 “Hi” 消息，超时时间 60 秒。测试日志会显示目标端点、测试模型、打码后的 Key、HTTP 状态码、耗时和上游返回的错误详情，并针对状态码给出建议。**测试不通过时，AI Helper 不会修改本地配置。**
+
+判断方法很简单：
+
+- **测试也失败：**问题出在 Key、地址、模型或网络本身，按下面的状态码逐项处理。
+- **测试通过但 Claude Code 失败：**问题通常出在本机——`ANTHROPIC_BASE_URL` 带了 `/v1`、另一组环境变量生效、会话没有重启，或终端的代理设置与 AI Helper 不同。
+
+> AI Helper 的测试用 `x-api-key` 请求头发送 Key，而它写入的 `ANTHROPIC_AUTH_TOKEN` 在 Claude Code 中以 `Authorization: Bearer` 请求头发送。绝大多数 Anthropic 兼容网关两种都接受；如果某个网关只接受其中一种，测试结果就可能与 Claude Code 中的实际表现不一致。
+
+### 二、401、403、404 分别是什么问题
+
+#### 401：身份认证失败
+
+- Key 是否完整复制、是否已过期或被禁用。登录 Bob API 账号后也可以用「一键配置」，由 AI Helper 从对应分组中选取 Key。
+- 是否同时存在两组凭据：`ANTHROPIC_AUTH_TOKEN` 以 `Authorization: Bearer` 发送，`ANTHROPIC_API_KEY` 以 `x-api-key` 发送。AI Helper 只写入 `ANTHROPIC_AUTH_TOKEN`；如果系统环境变量或 `settings.json` 中还留着旧的 `ANTHROPIC_API_KEY`，容易出现认证冲突或用错 Key。建议只保留一个。
+- 系统或终端里是否设置了另一个 `ANTHROPIC_AUTH_TOKEN`，见第四节。
+
+#### 403：访问被拒绝
+
+Key 本身有效，但当前账号没有权限访问该模型，或节点做了访问管控（例如 IP 地域限制）。换一个有权限的模型或 Key，或在 Bob API 账号中确认 Key 所属分组。
+
+#### 404：端点或模型不存在
+
+最常见的原因是 `ANTHROPIC_BASE_URL` 格式不对，见下一节；其次是地址拼错，或模型名在该服务中不存在。
+
+### 三、ANTHROPIC_BASE_URL 的格式：不要带 /v1
+
+Claude Code 会在 `ANTHROPIC_BASE_URL` 后面自己拼接 `/v1/messages`，所以应填写服务的根地址：
+
+```
+正确：https://bob-api.com
+正确：https://bob-api.com/
+错误：https://bob-api.com/v1      → 实际请求 /v1/v1/messages，通常返回 404
+```
+
+这个问题通常出现在手动编辑 `~/.claude/settings.json` 之后。AI Helper 写入的是所选节点的根地址（`https://bob-api.com/` 或 `https://taijiai.online/`），不带 `/v1`。如果你手动改成了带 `/v1` 的地址，去掉末尾的 `/v1`，或在 AI Helper 中切换回 BobAPI 官方节点重新保存即可。另外，配置文件里原有的地址会在面板中显示为「当前自定义」；它带 `/v1` 时，AI Helper 的连通性测试会先去掉末尾的 `/v1`，可能出现“测试通过、Claude Code 报 404”，同样切换到 BobAPI 官方节点重新保存即可。
+
+AI Helper 写入的内容如下，`settings.json` 中的其他字段（例如 `permissions`、`hooks`、`env` 中的其他变量）保持不变：
+
+```
+{
+  "env": {
+    "ANTHROPIC_BASE_URL": "https://bob-api.com/",
+    "ANTHROPIC_AUTH_TOKEN": "你的 API Key",
+    "ANTHROPIC_MODEL": "claude-sonnet-5-5"
+  },
+  "model": "claude-sonnet-5-5"
+}
+```
+
+### 四、改了配置不生效：检查环境变量与会话
+
+- **重新启动会话。**Claude Code 在启动时读取配置，已经打开的 `claude` 会话不会自动切换到新地址，需要完全退出后重新运行。
+- **检查同名的系统环境变量。**如果系统或 shell 配置文件里也设置了 `ANTHROPIC_BASE_URL`、`ANTHROPIC_AUTH_TOKEN`、`ANTHROPIC_API_KEY` 或 `ANTHROPIC_MODEL`，两处取值不一致时很难判断哪一个在起作用。建议只在 `settings.json` 的 `env` 中保留一份。 `# Windows（PowerShell） Get-ChildItem Env: | Where-Object Name -like "ANTHROPIC*" # macOS env | grep ANTHROPIC`
+- **检查其他设置文件。**Claude Code 还会读取项目目录下的 `.claude/settings.json` 和 `.claude/settings.local.json`，同名设置按官方文档中的优先级合并。在某个项目里“不生效”时，检查该项目目录下是否也写了 `env`。
+- **确认文件是合法 JSON。**现有 `settings.json` 无法解析时，AI Helper 会停止写入并提示“现有 Claude 配置损坏，已停止写入以免丢失安全规则”，需要先修复格式。
+
+### 五、超时与连接失败：检查网络、代理与 HTTPS
+
+AI Helper 测试中出现“请求超时 (超过 60 秒未收到响应)”或“网络连接失败: 无法连接至服务节点”时，说明请求没有拿到 HTTP 响应，与 Key 无关：
+
+- 确认本机能访问所选节点，例如在浏览器或 `curl` 中打开 `https://bob-api.com/`；一个节点不通时，可以在 AI Helper 中切换到 TaijiAI 加速节点后重新测试，但该节点只接受手动填写并已确认用于该节点的 Key，从 Bob API 账号选择的 Key 会被拒绝（见下方常见问题）。手动编辑过 `settings.json` 的，还要确认 `ANTHROPIC_BASE_URL` 拼写正确。
+- 如果需要通过代理访问，Claude Code 会读取终端中的 `HTTPS_PROXY` / `HTTP_PROXY` 环境变量。AI Helper 测试通过但 Claude Code 超时，往往是终端里没有设置代理，或代理设置与系统不同。
+- 连接必须使用 HTTPS，两个预置节点都满足。AI Helper 不会把 Key 发往 `http://` 开头的远程地址（例如配置文件中原有的 HTTP 地址），会提示“远程节点仅允许 HTTPS”。
+
+### 常见问题
+
+#### ANTHROPIC_BASE_URL 要不要带 /v1？
+
+不要。Claude Code 会在 `ANTHROPIC_BASE_URL` 后面自己拼接 `/v1/messages`，所以应填写服务根地址，例如 `https://bob-api.com`。手动把 `settings.json` 改成 `https://bob-api.com/v1` 时，实际请求会变成 `/v1/v1/messages`，通常返回 404。去掉末尾的 `/v1`，或在 AI Helper 中切换回 BobAPI 官方节点重新保存即可，AI Helper 写入的是不带 `/v1` 的根地址。
+
+#### ANTHROPIC_AUTH_TOKEN 和 ANTHROPIC_API_KEY 有什么区别？能同时设置吗？
+
+`ANTHROPIC_AUTH_TOKEN` 以 `Authorization: Bearer` 请求头发送，`ANTHROPIC_API_KEY` 以 `x-api-key` 请求头发送。AI Helper 只写入 `ANTHROPIC_AUTH_TOKEN`。如果系统环境变量或 `settings.json` 里还留着另一个服务的 `ANTHROPIC_API_KEY`，两个凭据会同时存在，容易导致认证冲突或用错 Key，建议只保留一个。
+
+#### AI Helper 测试通过，但 Claude Code 里仍然 401 怎么办？
+
+AI Helper 的测试用 `x-api-key` 请求头发送 Key，而 Claude Code 使用 `ANTHROPIC_AUTH_TOKEN` 时发送的是 `Authorization: Bearer` 头。先检查系统环境变量里是否有另一组 `ANTHROPIC_API_KEY` 或 `ANTHROPIC_AUTH_TOKEN`，再确认网关同时接受这两种请求头；最后完全退出并重新启动 `claude`。
+
+#### 一个节点超时或连不上，可以换节点吗？
+
+可以，但 TaijiAI 加速节点需要手动填写的 Key。AI Helper 的 Claude Code 面板提供两个接入节点：BobAPI 官方节点（`https://bob-api.com/`，推荐首选）和 TaijiAI 加速节点（`https://taijiai.online/`，备用专线），都使用 HTTPS。从 Bob API 账号选择的 Key、一键配置使用的 Key，以及已确认用于 BobAPI 官方节点的 Key，都只能发往 BobAPI 官方节点；改用 TaijiAI 加速节点时，需要手动填写 Key，并在密钥输入处点击「确认用于此节点」。切换节点后重新测试并保存，然后重新启动 `claude`。
+
+### 参考：Claude Code 官方文档
+
+- [设置文件和优先级（settings.json 与 env 字段）](https://code.claude.com/docs/zh-CN/settings)
+- [接入其他 LLM 网关（ANTHROPIC_BASE_URL 与认证变量）](https://code.claude.com/docs/zh-CN/llm-gateway)
+
+相关教程：[Claude Code 切换 API 地址](https://helper.bob-api.com/guides/claude-code-custom-api.html) · [Codex config.toml 不生效排查](https://helper.bob-api.com/guides/codex-config-not-working.html) · [Cursor 自定义模型不生效排查](https://helper.bob-api.com/guides/cursor-custom-model-not-working.html)
+
+源码与问题反馈：[GitHub 仓库（MIT 开源）](https://github.com/TF49/AI-Helper) · [GitHub Issues](https://github.com/TF49/AI-Helper/issues)
+
+---
+
+## Claude Code 如何切换 API 地址与模型
+
+Source: https://helper.bob-api.com/guides/claude-code-custom-api.html
+
+适用于 AI Helper v1.0.88 · Windows 与 macOS · 最后更新 2026-11-24 · 作者 [TF49](https://helper.bob-api.com/about.html)
+
+**简短回答：**Claude Code 从 `~/.claude/settings.json` 的 `env` 字段读取 API 配置：把 `ANTHROPIC_BASE_URL` 设为新地址、`ANTHROPIC_AUTH_TOKEN` 设为 API Key、`ANTHROPIC_MODEL` 设为模型名，重启 `claude` 即可。MIT 开源、在本机运行的 AI Helper 可以在选择 BobAPI 官方节点（或 TaijiAI 备用节点）并填入 API Key 和模型后，自动写入这三项，写入前先做流式连通性测试。
+
+### 方法一：手动修改 settings.json
+
+打开（或新建）`~/.claude/settings.json`，Windows 上对应 `C:\Users\你的用户名\.claude\settings.json`，加入或修改 `env` 字段：
+
+```
+{
+  "env": {
+    "ANTHROPIC_BASE_URL": "https://bob-api.com",
+    "ANTHROPIC_AUTH_TOKEN": "你的 API Key",
+    "ANTHROPIC_MODEL": "claude-sonnet-5-5"
+  },
+  "model": "claude-sonnet-5-5"
+}
+```
+
+保存后退出并重新运行 `claude`。注意保持文件为合法 JSON，并保留文件中原有的其他字段（例如 `permissions`）。`ANTHROPIC_BASE_URL` 填服务根地址，不要带 `/v1`。
+
+### 方法二：用 AI Helper 一键切换
+
+1. 启动 AI Helper，进入 **Claude Code** 面板。AI Helper 会自动探测 `claude` CLI 的位置，包括 macOS 上通过 Homebrew 或 NVM 安装的版本。
+2. 选择接入节点：「BobAPI 官方节点」（`https://bob-api.com/`，推荐首选）或「TaijiAI 加速节点」（`https://taijiai.online/`，备用专线），然后输入 API Key。手动填写的 Key 首次用于某个节点时，需点击「确认用于此节点」；从 Bob API 账号选择的 Key 和一键配置只能用于 BobAPI 官方节点。
+3. 从模型列表中选择模型（例如 `claude-sonnet-5-5`），点击「确认并保存 Claude Code 配置」。AI Helper 会先执行流式连通性测试，确认返回 HTTP 状态与首包时间正常后再写入。
+4. 写入时，AI Helper 只更新 `env` 中的 `ANTHROPIC_BASE_URL`、`ANTHROPIC_AUTH_TOKEN`、`ANTHROPIC_MODEL` 以及顶层 `model`，文件中的其他字段保持不变。
+5. 重新打开 `claude` 会话，新配置即生效。
+
+| 字段 | 位置 | AI Helper 的处理 |
+| --- | --- | --- |
+| `ANTHROPIC_BASE_URL` | `env` | 写入所选节点的地址 |
+| `ANTHROPIC_AUTH_TOKEN` | `env` | 写入 API Key |
+| `ANTHROPIC_MODEL` / `model` | `env` / 顶层 | 填写了模型时写入 |
+| `env` 中的其他变量、`permissions`、`hooks` 等 | 任意 | 原样保留 |
+
+> 登录 Bob API 账号后使用「一键配置」时，Claude Code 会使用「CC-Kiro-Max」分组（Bob API 账号下 Claude Code 专用的令牌分组，[分组说明](https://helper.bob-api.com/about.html#groups)）的 API Key，推荐模型为 `claude-sonnet-5-5`。
+
+### 如何恢复原来的配置
+
+AI Helper 首次修改 Claude Code 配置前会保存快照（位于 `~/.ai-helper/reset_state.json`）。在设置页使用一键恢复，即可还原到 AI Helper 修改之前的状态。
+
+### 常见问题
+
+#### 测试时返回 401 怎么办？
+
+说明身份认证失败，请检查 API Key 是否完整复制、是否已过期或被禁用。登录 Bob API 账号后也可以使用一键配置，由 AI Helper 从 CC-Kiro-Max 分组中选取 Key。
+
+#### 改了配置但 Claude Code 仍连旧地址？
+
+检查系统环境变量中是否也设置了 `ANTHROPIC_BASE_URL`，并确认已经完全退出并重新启动了 `claude` 会话。
+
+#### AI Helper 找不到 claude 命令怎么办？
+
+macOS 上的图形应用不会继承终端的环境变量，所以 AI Helper 会主动检查 `/opt/homebrew/bin`、`/usr/local/bin`，并遍历 `~/.nvm/versions/node` 查找通过 npm 全局安装的 Claude Code。如果仍提示“未找到 Claude CLI 安装路径”，请在 AI Helper 的路径管理中点击「探测」，或手动选择 `claude` 可执行文件。
+
+#### settings.json 格式有误时，AI Helper 会直接覆盖吗？
+
+不会。如果现有的 `~/.claude/settings.json` 无法解析为 JSON，AI Helper 会停止写入并提示“现有 Claude 配置损坏，已停止写入以免丢失安全规则”。请先修复文件格式，再重新保存。
+
+### 参考：Claude Code 官方文档
+
+- [设置文件和优先级（settings.json 与 env 字段）](https://code.claude.com/docs/zh-CN/settings)
+- [接入其他 LLM 网关（ANTHROPIC_BASE_URL）](https://code.claude.com/docs/zh-CN/llm-gateway)
+
+相关教程：[Claude Code 401/超时排查](https://helper.bob-api.com/guides/claude-code-401-timeout.html) · [AI 编程客户端配置文件路径大全](https://helper.bob-api.com/guides/ai-coding-config-paths.html) · [Codex CLI 配置自定义 API](https://helper.bob-api.com/guides/codex-cli-custom-api.html) · [Cursor 配置第三方模型](https://helper.bob-api.com/guides/cursor-custom-model.html)
+
+源码与问题反馈：[GitHub 仓库（MIT 开源）](https://github.com/TF49/AI-Helper) · [GitHub Issues](https://github.com/TF49/AI-Helper/issues) · [English version](https://helper.bob-api.com/en/guides/claude-code-custom-api.html)
+
+---
+
+## OpenAI Codex CLI 如何配置自定义 API 地址
+
+Source: https://helper.bob-api.com/guides/codex-cli-custom-api.html
+
+适用于 AI Helper v1.0.88 · Windows 与 macOS · 最后更新 2026-11-24 · 作者 [TF49](https://helper.bob-api.com/about.html)
+
+**简短回答：**在 `~/.codex/config.toml` 中声明 `[model_providers.custom]`（写入 `base_url` 和 `env_key`），把顶层 `model_provider` 指向它、`model` 设为模型名，Key 放进 `CUSTOM_OPENAI_API_KEY`。MIT 开源的 AI Helper 可以在选择 BobAPI 官方节点（或 TaijiAI 备用节点）并填入 API Key 和模型后，在本机自动写入这些字段。
+
+### 方法一：手动修改 config.toml
+
+打开（或新建）`~/.codex/config.toml`，Windows 上对应 `C:\Users\你的用户名\.codex\config.toml`：
+
+```
+model = "gpt-5.6-sol"
+model_provider = "custom"
+
+[model_providers.custom]
+base_url = "https://bob-api.com/v1"
+env_key = "CUSTOM_OPENAI_API_KEY"
+```
+
+然后把 API Key 设到环境变量 `CUSTOM_OPENAI_API_KEY` 中（Windows 可在「系统属性 → 环境变量」中添加用户变量；macOS / Linux 可写入 shell 配置文件），重新打开终端后运行 `codex`。
+
+### 方法二：用 AI Helper 一键配置
+
+1. 启动 AI Helper，进入 **Codex** 面板，AI Helper 会自动探测 `codex` CLI 的位置。
+2. 选择接入节点：「BobAPI 官方节点」（`https://bob-api.com/`，推荐首选）或「TaijiAI 加速节点」（`https://taijiai.online/`，备用专线），输入 API Key，选择模型（例如 `gpt-5.6-sol`）。手动填写的 Key 首次用于某个节点时，需点击「确认用于此节点」；从 Bob API 账号选择的 Key 和一键配置只能用于 BobAPI 官方节点。
+3. 点击「确认并保存 Codex 配置」，流式连通性测试通过后写入。AI Helper 会写入上面示例中的字段；在 Windows 上，它还会把 Key 写入当前用户的 `CUSTOM_OPENAI_API_KEY` 环境变量并通知系统刷新。macOS 上不会修改 shell 配置文件，需要自行设置该环境变量（见下方常见问题）。
+4. 重新打开终端并运行 `codex`，或直接在 AI Helper 中启动 Codex。
+
+| config.toml 中的内容 | AI Helper 的处理 |
+| --- | --- |
+| `model` | 写入所选模型 |
+| `model_provider` | 设为 `"custom"` |
+| `[model_providers.custom]` 的 `base_url` | 写入所选节点的地址，自动补上 `/v1` |
+| `[model_providers.custom]` 的 `env_key` | 固定为 `CUSTOM_OPENAI_API_KEY` |
+| `custom` 中的 `experimental_bearer_token`、`Authorization` 等凭据请求头 | 移除，Key 只从环境变量读取 |
+| 其他 provider、profile、sandbox 等设置 | 原样保留 |
+
+> AI Helper 只管理名为 `custom` 的 provider。你在 `config.toml` 中定义的其他 provider、profile、sandbox 设置都会保留。登录 Bob API 账号使用「一键配置」时，Codex 会使用「Codex-不降质」分组（Bob API 账号下 Codex 专用的令牌分组，[分组说明](https://helper.bob-api.com/about.html#groups)）的 Key，推荐模型为 `gpt-5.6-sol`。
+
+### 如何恢复原来的配置
+
+AI Helper 首次修改 Codex 配置前会保存快照，包括 `config.toml` 和相关环境变量。在设置页使用一键恢复即可还原。
+
+### 常见问题
+
+#### Codex 提示找不到 API Key？
+
+Codex 从 `env_key` 指定的环境变量读取 Key。已打开的终端不会自动获得新设置的环境变量，请关闭后重新打开终端。
+
+#### 返回 model_not_found？
+
+说明当前 API Key 所在的分组不提供该模型。请从 AI Helper 读取到的模型列表中重新选择模型。
+
+#### macOS 上在终端运行 codex，为什么读不到 Key？
+
+只有在 Windows 上，AI Helper 才会把 Key 持久写入当前用户的 `CUSTOM_OPENAI_API_KEY` 环境变量。macOS 上 AI Helper 不会修改你的 shell 配置文件，请自行在 `~/.zshrc` 等文件中加入 `export CUSTOM_OPENAI_API_KEY="你的 API Key"`，然后重新打开终端。
+
+#### 保存时提示“Codex 活动 profile 使用其他 provider”？
+
+说明 `config.toml` 顶层的 `profile` 指向了一个使用其他 `model_provider` 的 profile。为避免界面显示的配置与 Codex 实际运行的目标不一致，AI Helper 会停止保存。请先切换到使用 `custom` 的 profile，或移除顶层 `profile` 设置后再保存。
+
+### 参考：Codex 官方文档
+
+- [高级配置：自定义 model_providers](https://developers.openai.com/codex/config-advanced)
+- [config.toml 配置说明（GitHub 仓库）](https://github.com/openai/codex/blob/main/docs/config.md)
+
+相关教程：[Codex config.toml 不生效排查](https://helper.bob-api.com/guides/codex-config-not-working.html) · [AI 编程客户端配置文件路径大全](https://helper.bob-api.com/guides/ai-coding-config-paths.html) · [Claude Code 切换 API 地址](https://helper.bob-api.com/guides/claude-code-custom-api.html) · [Cursor 配置第三方模型](https://helper.bob-api.com/guides/cursor-custom-model.html)
+
+源码与问题反馈：[GitHub 仓库（MIT 开源）](https://github.com/TF49/AI-Helper) · [GitHub Issues](https://github.com/TF49/AI-Helper/issues) · [English version](https://helper.bob-api.com/en/guides/codex-cli-custom-api.html)
+
+---
+
+## Codex CLI 修改 config.toml 不生效怎么排查
+
+Source: https://helper.bob-api.com/guides/codex-config-not-working.html
+
+适用于 AI Helper v1.0.88 · Windows 与 macOS · 最后更新 2026-11-24 · 作者 [TF49](https://helper.bob-api.com/about.html)
+
+**简短回答：**Codex 只在启动时读取 `~/.codex/config.toml`。改了不生效时依次检查：文件是否就是 Codex 实际读取的那一份（Windows 为 `%USERPROFILE%\.codex\config.toml`，设置了 `CODEX_HOME` 时以它为准）；顶层 `model_provider` 是否指向你在 `[model_providers.xxx]` 中定义的 provider；`base_url` 是否以 `/v1` 结尾；`env_key` 指定的环境变量在当前终端里是否有值；是否有 profile 覆盖了顶层设置；TOML 语法是否正确。最后关闭并重新打开终端，再运行 `codex`。
+
+### 症状、原因与处理速查
+
+| 症状 | 常见原因 | 处理方法 |
+| --- | --- | --- |
+| 改了 `[model_providers.custom]`，Codex 仍连官方或旧地址 | 顶层没有 `model_provider = "custom"`，或该行写在了某个 `[表]` 下面 | 把 `model_provider` 放在文件开头、所有表头之前 |
+| 提示缺少环境变量 / 找不到 API Key | `env_key` 指定的变量在当前终端中没有值 | 设置变量后重新打开终端；macOS 需自行写入 shell 配置文件 |
+| HTTP 404 | `base_url` 少了或多了 `/v1`；服务不支持 Codex 使用的接口 | `base_url` 写成 `https://bob-api.com/v1`，或在 AI Helper 中选择节点重新保存 |
+| HTTP 401 | Key 错误或被吊销，或环境变量里是另一服务的 Key | 核对 `env_key` 对应变量的值 |
+| 模型不对或 `model_not_found` | 活动 profile 覆盖了 `model`；模型不在该 Key 可用范围内 | 检查 `profile` 与 `[profiles.xxx]`；从可用模型中重新选择 |
+| Codex 启动时报配置解析错误 | TOML 语法错误：中文引号、重复的表、Windows 路径反斜杠未转义 | 按第五节修正语法 |
+| 改的文件没有被读取 | 设置了 `CODEX_HOME`，或改的不是当前用户目录下的文件 | 确认 Codex 实际使用的配置目录 |
+| AI Helper 提示“现有 Codex 配置损坏，已停止写入以免丢失安全规则” | 现有 `config.toml` 不是合法 TOML | 先修复语法，再重新保存 |
+| AI Helper 提示“Codex 活动 profile 使用其他 provider” | 当前 profile 选择的不是 `custom` | 切换 profile 或修改其 `model_provider` 后再保存 |
+
+### 一、确认改的是 Codex 实际读取的文件
+
+- macOS / Linux：`~/.codex/config.toml`。
+- Windows：`C:\Users\你的用户名\.codex\config.toml`（即 `%USERPROFILE%\.codex\config.toml`）。注意文件扩展名必须是 `.toml`，资源管理器隐藏扩展名时容易存成 `config.toml.txt`。
+- 如果设置了环境变量 `CODEX_HOME`，Codex 会从该目录读取配置。AI Helper 始终写入用户目录下的 `~/.codex/config.toml`，因此使用 `CODEX_HOME` 时，AI Helper 写入的配置不会被 Codex 读取。
+
+```
+# Windows（PowerShell）：查看是否设置了 CODEX_HOME
+echo $env:CODEX_HOME
+
+# macOS
+echo $CODEX_HOME
+```
+
+### 二、model_provider 与 model_providers 不要混淆
+
+这是最常见的“不生效”原因。两者作用不同：
+
+- `[model_providers.custom]`（复数，表）：定义一个名为 `custom` 的 provider 的连接参数，如 `base_url`、`env_key`。
+- `model_provider = "custom"`（单数，顶层字符串）：选择当前使用哪个 provider。
+
+只定义 provider 而不选择它，Codex 仍会使用默认 provider。另外 TOML 中写在某个 `[表头]` 之后的键都属于这张表，所以顶层的 `model` 和 `model_provider` 必须写在文件开头、第一个表头之前：
+
+```
+model = "gpt-5.6-sol"
+model_provider = "custom"          # 必须在所有 [表头] 之前
+
+[model_providers.custom]
+name = "Custom"
+base_url = "https://bob-api.com/v1"
+env_key = "CUSTOM_OPENAI_API_KEY"
+```
+
+### 三、base_url 与 wire_api
+
+Codex 会直接在 `base_url` 后面拼接接口路径，因此 `base_url` 需要以 `/v1` 结尾，手动编辑时容易漏掉。AI Helper 保存时会写入所选节点的地址并自动补上 `/v1`，例如选择 BobAPI 官方节点时写入 `https://bob-api.com/v1`。
+
+`wire_api` 用于指定 Codex 以哪种协议（Responses 或 Chat Completions）请求该 provider，可选值与默认值会随 Codex 版本变化，请以官方配置文档为准。AI Helper 不写入 `wire_api`；它的连通性测试向 `/v1/responses` 发送请求，测试通过说明所选节点和模型可以通过 OpenAI Responses API 调用。测试返回 404 时，请从读取到的模型列表中重新选择模型，或切换到另一个节点重试。
+
+### 四、env_key：Key 放在环境变量里
+
+Codex 从 `env_key` 指定名称的环境变量中读取 API Key，而不是从 `config.toml` 中读取。AI Helper 使用的变量名是 `CUSTOM_OPENAI_API_KEY`，并会移除 `custom` provider 中的 `experimental_bearer_token`、带凭据的请求头等字段，让 Key 只来自环境变量。
+
+- **Windows：**AI Helper 把 Key 写入当前用户的环境变量 `CUSTOM_OPENAI_API_KEY`，并通知系统刷新。已经打开的终端不会获得新值，请关闭后重新打开；在 VS Code、Cursor 等编辑器的内置终端中运行 Codex 时，需要重启编辑器。
+- **macOS：**AI Helper 不会修改 shell 配置文件，需要自己在 `~/.zshrc`（或你使用的 shell 配置文件）中加入 `export CUSTOM_OPENAI_API_KEY="你的 API Key"`，然后重新打开终端。
+
+```
+# 检查当前终端里是否有值
+# Windows（PowerShell）
+if ($env:CUSTOM_OPENAI_API_KEY) { "已设置" } else { "未设置" }
+
+# macOS
+[ -n "$CUSTOM_OPENAI_API_KEY" ] && echo 已设置 || echo 未设置
+```
+
+> 如果你手动把 `custom` provider 的 `env_key` 改成了其他变量名，AI Helper 会提示“Codex env_key 无效，请先修复配置”并停止保存，以免 Key 与地址对不上。
+
+### 五、TOML 语法错误
+
+- **中文引号：**用中文输入法输入的 `“ ”` 不是合法的 TOML 引号，字符串必须使用英文 `"` 或 `'`。
+- **重复的表：**同一个 `[model_providers.custom]` 写了两次会导致解析失败，请合并为一处。
+- **Windows 路径：**双引号字符串中的 `\` 是转义符，`"C:\Users\..."` 会报错。改用单引号 `'C:\Users\...'` 或写成 `"C:\\Users\\..."`。
+- **文件编码：**请保存为 UTF-8。现有文件不是 UTF-8 时，AI Helper 会提示“现有 Codex 配置不是 UTF-8，已停止写入”。
+
+可以用 Python 3.11 及以上版本快速检查语法，出错时会指出行号：
+
+```
+python -c "import tomllib, pathlib; tomllib.loads((pathlib.Path.home()/'.codex'/'config.toml').read_text(encoding='utf-8')); print('OK')"
+```
+
+### 六、profile 覆盖了顶层设置
+
+顶层的 `profile = "名称"` 或启动时的 `codex --profile 名称` 会启用 `[profiles.名称]` 中的设置，其中的 `model`、`model_provider` 会覆盖顶层同名字段。改了顶层却不生效时，先看是否有活动 profile。
+
+AI Helper 会读取当前活动 profile：如果它选择的是其他 provider，会拒绝保存并提示“Codex 活动 profile 使用其他 provider；请先切换到 custom profile 再保存，避免配置显示与实际运行目标不一致”；如果它选择的就是 `custom` 并单独设置了 `model`，AI Helper 会同步更新该 profile 的 `model`，其他 profile 和设置保持不变。
+
+### 七、AI Helper 写入了什么
+
+AI Helper（MIT 开源、在本机运行）在连通性测试通过后才会写入，测试失败时不修改本地配置。它只管理名为 `custom` 的 provider：
+
+| 位置 | AI Helper 的处理 |
+| --- | --- |
+| 顶层 `model` | 写入所选模型 |
+| 顶层 `model_provider` | 设为 `"custom"` |
+| `[model_providers.custom]` 的 `base_url` | 写入所选节点的地址，自动补齐 `/v1` |
+| `[model_providers.custom]` 的 `env_key` | 设为 `"CUSTOM_OPENAI_API_KEY"` |
+| `[model_providers.custom]` 的 `name`、`api` | 缺少时补上 `name = "Custom"`、`api = "openai-responses"`，已有值不改 |
+| `custom` 中的 `experimental_bearer_token`、`requires_openai_auth` 及带凭据的请求头 | 移除 |
+| 其他 provider、profile、sandbox 等设置 | 保持不变 |
+
+写入前，原文件会备份为同目录下的 `config.toml.bak`；首次修改前 AI Helper 还会保存快照（包括 `config.toml` 和 `CUSTOM_OPENAI_API_KEY` 环境变量），可在设置页通过「恢复所有客户端原生配置」还原。切换到不同域名的节点时，如果 `custom` 中仍有自定义的 `query_params`，AI Helper 会提示先清理，避免把旧节点的参数发到新节点。
+
+### 常见问题
+
+#### model_provider 和 model_providers 有什么区别？
+
+`model_providers`（复数）是一组表，用来定义各个 provider 的 `base_url`、`env_key` 等连接参数，例如 `[model_providers.custom]`；`model_provider`（单数）是顶层的一个字符串，用来选择当前使用哪个 provider，例如 `model_provider = "custom"`。只定义了 `[model_providers.custom]` 而没有把 `model_provider` 指向它，Codex 仍会使用默认 provider。
+
+#### base_url 要不要带 /v1？
+
+需要带。Codex 会直接在 `base_url` 后面拼接接口路径（如 `/responses`），所以手动编辑时 `base_url` 一般写成 `https://bob-api.com/v1`。用 AI Helper 保存时，它会写入所选节点的地址并自动补上 `/v1`，无需手动处理。
+
+#### Codex 提示缺少环境变量或找不到 API Key 怎么办？
+
+Codex 从 `env_key` 指定的环境变量读取 Key，AI Helper 使用的变量名是 `CUSTOM_OPENAI_API_KEY`。Windows 上 AI Helper 会把它写入当前用户的环境变量，但已经打开的终端不会自动获得新值，需要重新打开终端（在编辑器内置终端中使用时要重启编辑器）。macOS 上 AI Helper 不会修改 shell 配置文件，需要自己在 `~/.zshrc` 等文件中 `export CUSTOM_OPENAI_API_KEY`。
+
+#### 设置了 profile 后为什么顶层配置不生效？
+
+当前生效的 profile 中的 `model`、`model_provider` 会覆盖顶层同名字段。如果活动 profile 选择的是其他 provider，AI Helper 会拒绝保存并提示“Codex 活动 profile 使用其他 provider；请先切换到 custom profile 再保存，避免配置显示与实际运行目标不一致”。请切换或修改 profile 后再保存。
+
+#### AI Helper 会覆盖我的 config.toml 吗？
+
+不会整体覆盖。AI Helper 只修改顶层 `model`、`model_provider` 和 `[model_providers.custom]` 中与连接相关的字段，其他 provider、profile、sandbox 等设置保持不变；写入前会把原文件备份为 `config.toml.bak`，并在首次修改前保存快照，可在设置页一键恢复。现有文件无法解析时，它会停止写入而不是覆盖。
+
+### 参考：Codex 官方文档
+
+- [高级配置：自定义 model_providers 与 profiles](https://developers.openai.com/codex/config-advanced)
+- [config.toml 配置说明（GitHub 仓库）](https://github.com/openai/codex/blob/main/docs/config.md)
+
+相关教程：[Codex CLI 配置自定义 API](https://helper.bob-api.com/guides/codex-cli-custom-api.html) · [Claude Code 401/超时排查](https://helper.bob-api.com/guides/claude-code-401-timeout.html) · [Cursor 自定义模型不生效排查](https://helper.bob-api.com/guides/cursor-custom-model-not-working.html)
+
+源码与问题反馈：[GitHub 仓库（MIT 开源）](https://github.com/TF49/AI-Helper) · [GitHub Issues](https://github.com/TF49/AI-Helper/issues)
+
+---
+
+## Cursor 自定义模型不生效 / 第三方模型连不上怎么排查
+
+Source: https://helper.bob-api.com/guides/cursor-custom-model-not-working.html
+
+适用于 AI Helper v1.0.88 · Windows 与 macOS · 最后更新 2026-11-24 · 作者 [TF49](https://helper.bob-api.com/about.html)
+
+**简短回答：**Cursor 的 Agent 等功能走 Cursor 自己的 Connect-RPC 接口，只改 OpenAI Base URL 接不全第三方模型。使用 AI Helper 的本地 Bridge 时，按顺序检查四件事：Bridge 是否在 `127.0.0.1:8969`（或自动切换后的端口）运行；Cursor 面板是否显示「已挂接 Bridge」且端口一致；Cursor 是否已重启；所选模型是否支持工具调用、API Key 与所选节点是否通过连通性测试。Cursor 升级后补丁会被覆盖，需要重新「接入 AI Helper」。
+
+### 症状、原因与处理速查
+
+| 症状 | 常见原因 | 处理方法 |
+| --- | --- | --- |
+| 只在 Cursor 设置里改了 OpenAI Base URL，Agent 仍不用自定义模型 | Agent 等功能走 Connect-RPC 和内部消息格式，Base URL 覆盖不到 | 用本地 Bridge 做协议转换（见下文第一节） |
+| Cursor 面板显示「原生官方直连」，模型选择器里没有配置的模型 | 客户端补丁未应用，或 Cursor 更新后补丁被覆盖 | 在 Cursor 面板点击「接入 AI Helper」，再重启 Cursor |
+| Cursor 中请求一直失败、反复连接 | Bridge 没在运行（例如已从托盘退出 AI Helper），或 Cursor 指向的端口与 Bridge 实际端口不一致 | 启动 Bridge，然后用面板里的「重启 Cursor」（端口不一致时会自动重新修补） |
+| 提示“无法在端口 8969..=8989 建立 Cursor Bridge，请检查本机端口占用” | 首选端口及其后 20 个端口都被其他程序占用 | 释放端口，或在「Bridge 网关端口」中换一个空闲端口 |
+| 连通性测试提示“连接成功，但未验证工具调用能力” | 所选模型不支持 Function Calling / Tool Use | 换用支持工具调用的模型；测试不通过时配置不会被保存 |
+| 测试返回 HTTP 401 / 403 / 404 / 429 | Key 错误或被吊销 / 无权访问该模型 / 端点或模型名不对 / 频控或余额不足 | 按测试日志中的“建议”逐项检查（见第五节） |
+| 提示“Cursor 进程清理超时（5秒），请手动关闭所有 Cursor 窗口后重试” | 修补或还原前 Cursor 没有完全退出 | 手动关闭所有 Cursor 窗口后重试 |
+| 提示“原始备份不完整或版本不匹配，拒绝覆盖已修补文件” | 当前已修补的文件与备份不属于同一个 Cursor 版本 | 先「恢复官方连接」，或重新安装当前版本 Cursor 后再接入 |
+
+### 一、为什么只改 OpenAI Base URL 不够
+
+Cursor 设置里的 OpenAI API Key 与 Base URL 覆盖是 Cursor 官方的“自带 Key”方式，但 Agent 等功能通过 Cursor 自己的 Connect-RPC 接口和内部消息格式与后端通信，并不是直接调用 OpenAI 兼容接口，所以只改 Base URL 无法让这些功能完整改用第三方模型。
+
+AI Helper（MIT 开源、在本机运行）采用的做法是：在本机启动一个 Bridge，修补 Cursor 客户端让请求发往这个 Bridge，再由 Bridge 把请求转换成 OpenAI 兼容或 Anthropic 兼容请求，转发到你在面板中选择的节点（BobAPI 官方节点或 TaijiAI 加速节点）。所以“Cursor 用不了第三方模型”通常要从 Bridge、补丁、模型、Key 四个环节逐一排查。完整的配置步骤见 [Cursor 配置第三方模型](https://helper.bob-api.com/guides/cursor-custom-model.html)。
+
+### 二、确认 Bridge 正在运行
+
+Bridge 默认监听 `127.0.0.1:8969`，只接受本机回环地址的连接。可以在终端里访问它的健康检查地址：
+
+```
+# Windows（PowerShell 中请使用 curl.exe）
+curl.exe http://127.0.0.1:8969/health
+
+# macOS
+curl http://127.0.0.1:8969/health
+```
+
+Bridge 正常时会返回 `{"status":"ok","service":"ai-helper-cursor-bridge"}`。连接被拒绝说明 Bridge 没有运行，常见原因：
+
+- **AI Helper 已从托盘彻底退出。**关闭主窗口时 AI Helper 会留在系统托盘，Bridge 继续运行；从托盘退出后 Bridge 才会停止。
+- **未开启自动拉起。**Cursor 面板中的「随 AI Helper 自动拉起 Bridge (后台常驻)」开启且已填写 API Key 时，AI Helper 启动后会自动拉起 Bridge；关闭该选项后需要在面板中手动启动。
+- **端口被其他程序占用。**见下一小节。
+
+#### 端口 8969 被占用
+
+Bridge 启动时如果首选端口被占用，会先短暂重试，然后依次尝试其后的 20 个端口（8970 到 8989），成功后把实际端口写回 `~/.ai-helper/cursor_config.json`。AI Helper 只会避让，不会结束占用端口的未知程序。可以这样查看端口被谁占用：
+
+```
+# Windows
+netstat -ano | findstr :8969
+
+# macOS
+lsof -nP -iTCP:8969 -sTCP:LISTEN
+```
+
+> 端口自动切换后，Cursor 仍可能指向原来的端口。此时在 AI Helper 的 Cursor 面板点击「重启 Cursor」即可：它会先确认 Bridge 在线，发现 Cursor 指向的地址与实际端口不一致时重新修补，再重启 Cursor。直接从系统里重新打开 Cursor 不会触发这一步。
+
+### 三、确认客户端补丁已应用
+
+打开 AI Helper 的 Cursor 面板，查看接入状态：「已挂接 Bridge」表示补丁有效，「原生官方直连」表示 Cursor 仍在使用官方连接，需要点击「接入 AI Helper」。接入时 AI Helper 会做以下修改（都会先备份）：
+
+- 把 Cursor 安装目录 `resources/app` 中 `workbench.desktop.main.js`（以及新架构下的 `workbench.glass.main.js`）里的 Cursor 后端地址替换为 `http://127.0.0.1:端口`，并同步更新 `product.json` 中的校验和。原文件备份在同目录的 `.ai-helper-backup` 中。
+- 更新 Cursor 本地状态库 `state.vscdb` 中保存的后端地址（备份为 `state.vscdb.ai-helper-bak`）。
+- 在 Cursor 用户设置 `settings.json` 中设置 `"cursor.general.disableHttp2": true` 和 `"http.proxySupport": "on"`（原值备份为 `settings.ai-helper-bak`，还原时恢复）。
+
+接入和还原都需要先关闭 Cursor，AI Helper 会自动结束正在运行的 Cursor 进程；如果 5 秒内没有退出，会提示“Cursor 进程清理超时（5秒），请手动关闭所有 Cursor 窗口后重试”。
+
+#### Cursor 升级后失效
+
+Cursor 更新会用新版本文件替换被修补的文件，面板状态会变回「原生官方直连」，这是第三方模型突然“消失”最常见的原因。重新点击「接入 AI Helper」即可，AI Helper 会校验新版本文件后重新建立备份。
+
+如果提示“原始备份不完整或版本不匹配，拒绝覆盖已修补文件”，说明当前文件仍带有补丁，但备份属于另一个 Cursor 版本。AI Helper 会拒绝覆盖以免丢失原始文件，此时请先尝试「恢复官方连接」，不行再重新安装当前版本的 Cursor，然后重新接入。
+
+### 四、重启 Cursor 并检查模型名
+
+修补和配置都要在 Cursor 重新启动后才生效。建议使用面板中的「重启 Cursor」而不是手动重开，原因见上文端口一节。
+
+Cursor 模型选择器中的列表由 Bridge 提供：Bridge 会用你的 API Key 读取所选节点的 `/v1/models`；读取失败时，只显示你在 AI Helper 中配置的模型。Bridge 按模型名选择上游接口：
+
+- 名称包含 `claude`、`sonnet`、`anthropic` 的模型使用 Anthropic Messages（`/v1/messages`）；
+- `gpt-5`、`gpt-6`、`o1`、`o3`、`o4` 开头或包含 `codex` 的模型使用 OpenAI Responses（`/v1/responses`）；
+- 其他模型（如 `glm-5.3`、DeepSeek、Qwen 等）使用 Chat Completions（`/v1/chat/completions`）。
+
+上游没有对应的 Messages 或 Responses 端点（返回 404、405、501 等）时，Bridge 会改用 Chat Completions。模型名必须与节点模型列表中的名称完全一致，否则上游会返回模型不存在之类的错误。
+
+### 五、用连通性测试检查 API Key、节点与模型
+
+在 Cursor 面板点击「确认并保存 Cursor 配置」时，AI Helper 会先做一次连通性测试，**测试不通过就不会修改本地配置**。Cursor 的测试不只是发一句“Hi”，而是要求模型调用一个只读的探测函数，用来确认模型支持 Cursor Agent 需要的工具调用。测试日志会显示目标端点、HTTP 状态码、耗时和错误详情（Key 会被打码）：
+
+| 测试结果 | 含义 |
+| --- | --- |
+| 连接成功，且已验证工具调用能力 | 节点、Key、模型均可用 |
+| 连接成功，但未验证工具调用能力 | 能连通，但模型没有返回工具调用；Cursor 将无法使用项目文件与 Agent 工具，请换用支持 Function Calling / Tool Use 的模型 |
+| HTTP 401 | 身份认证失败，检查 API Key 是否填错或已被吊销 |
+| HTTP 403 | 当前账号可能无权访问该模型，或存在 IP 地域限制 |
+| HTTP 404 | 上游不提供所测协议的端点，或模型名不对 |
+| HTTP 429 | 触发频控，或余额不足 |
+| HTTP 5xx | 上游服务异常，稍后重试，或在面板中切换到另一个节点（TaijiAI 加速节点需手动填写 Key，见下文） |
+| 错误中含 `model_not_found` | 该模型不在此 API Key 当前所属分组中，重新拉取可用模型后再选 |
+| 受管 Key 不得发往未授权目标 … | 从 Bob API 账号选择的 Key（含一键配置）或已确认用于 BobAPI 官方节点的 Key 被用在了 TaijiAI 加速节点；切换回 BobAPI 官方节点，或手动填写可用于该节点的 Key |
+| 此密钥尚未获准用于当前节点，请在密钥输入处确认目标 | 手动填写的 Key 还没有确认用于当前节点，在密钥输入处点击「确认用于此节点」后再测试 |
+| 请求超时 (超过 60 秒未收到响应) | 网络不通或代理设置有问题 |
+
+面板中的两个节点是「BobAPI 官方节点」（`https://bob-api.com/`，推荐首选）和「TaijiAI 加速节点」（`https://taijiai.online/`，备用专线），都使用 HTTPS。Bridge 和测试会先去掉地址末尾的 `/v1` 再拼接具体路径。一个节点超时或频繁返回 5xx 时，可以切换到另一个节点后重新测试保存，但要注意 Key 的来源：从 Bob API 账号选择的 Key、一键配置使用的 Key，以及已确认用于 BobAPI 官方节点的 Key，都只能发往 BobAPI 官方节点；改用 TaijiAI 加速节点时，需要手动填写 Key，并在密钥输入处点击「确认用于此节点」。
+
+### 六、如何还原为 Cursor 官方连接
+
+- **只还原 Cursor：**在 Cursor 面板点击「恢复官方连接」。AI Helper 会关闭 Cursor，从备份还原 `workbench` 文件和 `product.json`、`state.vscdb` 中的路由以及 Cursor 用户设置。
+- **还原所有客户端：**在 AI Helper 设置页使用「恢复所有客户端原生配置」，Cursor 部分还会停止 Bridge，并删除 `~/.ai-helper/cursor_config.json` 等 AI Helper 专用配置。
+
+如果提示“Cursor Glass 仍包含 AI Helper 补丁，但缺少原始备份，无法安全恢复”，说明备份文件已丢失，重新安装 Cursor 即可恢复为官方文件。
+
+### 常见问题
+
+#### 只在 Cursor 设置里填 OpenAI Base URL 为什么不够？
+
+Cursor 的 Agent 等功能通过 Cursor 自己的 Connect-RPC 接口和内部消息格式与后端通信，并不是直接调用 OpenAI 兼容接口，所以只覆盖 OpenAI Base URL 无法让这些功能完整改用第三方模型。AI Helper 的做法是在本机运行 Bridge，把 Cursor 的请求转换成 OpenAI 兼容或 Anthropic 兼容请求后再转发到你选择的 BobAPI 节点。
+
+#### 端口 8969 被占用会怎样？
+
+Bridge 启动时如果首选端口被占用，会自动尝试其后的 20 个端口，并把实际端口写回 `~/.ai-helper/cursor_config.json`。此时请在 AI Helper 的 Cursor 面板点击「重启 Cursor」，它会在 Cursor 指向的端口与实际端口不一致时重新修补。如果 21 个端口都被占用，会提示“无法在端口 8969..=8989 建立 Cursor Bridge，请检查本机端口占用”，需要先释放端口或改用其他端口。
+
+#### Cursor 升级后第三方模型失效了怎么办？
+
+Cursor 更新会用新版本文件替换被修补的文件，Cursor 面板的状态会变回「原生官方直连」。在 Cursor 面板点击「接入 AI Helper」重新修补即可，AI Helper 会为新版本重新建立备份。
+
+#### 连通性测试提示“连接成功，但未验证工具调用能力”是什么意思？
+
+说明所选节点和 API Key 可用，但该模型没有按要求返回工具调用。Cursor 读取、搜索项目文件等 Agent 能力依赖 Function Calling / Tool Use，因此 AI Helper 不会保存这次配置。请从模型列表中换用支持工具调用的模型。
+
+#### 如何彻底还原 Cursor 官方连接？
+
+在 Cursor 面板点击「恢复官方连接」，或在 AI Helper 设置页使用「恢复所有客户端原生配置」。AI Helper 会关闭正在运行的 Cursor，从备份还原被修补的文件、`state.vscdb` 中的路由和 Cursor 用户设置；设置页的恢复还会删除 `~/.ai-helper/cursor_config.json`。
+
+### 参考：Cursor 官方文档
+
+- [Bring your own API key（Cursor 官方的自带 Key 方式）](https://cursor.com/help/models-and-usage/api-keys)
+
+相关教程：[Cursor 配置第三方模型](https://helper.bob-api.com/guides/cursor-custom-model.html) · [Claude Code 401/超时排查](https://helper.bob-api.com/guides/claude-code-401-timeout.html) · [Codex config.toml 不生效排查](https://helper.bob-api.com/guides/codex-config-not-working.html)
+
+源码与问题反馈：[GitHub 仓库（MIT 开源）](https://github.com/TF49/AI-Helper) · [GitHub Issues](https://github.com/TF49/AI-Helper/issues)
+
+---
+
+## 如何给 Cursor 配置 glm-5.3 等第三方模型
+
+Source: https://helper.bob-api.com/guides/cursor-custom-model.html
+
+适用于 AI Helper v1.0.88 · Windows 与 macOS · 最后更新 2026-11-24 · 作者 [TF49](https://helper.bob-api.com/about.html)
+
+**简短回答：**只改 OpenAI Base URL 不够，因为 Cursor 使用 Connect-RPC / HTTP2 通信。MIT 开源的 AI Helper 在本机运行 Bridge（默认 `127.0.0.1:8969`），把 Cursor 请求转换后转发到你在面板中选择的 BobAPI 节点，填入 API Key 和模型后即可使用 BobAPI 上的 glm-5.3 等模型。
+
+### 准备工作
+
+- 已安装 Cursor，并至少启动过一次。
+- Bob API 账号的 API Key（也可以在 AI Helper 中登录账号后一键配置）。
+- 已安装 AI Helper（[下载地址](https://helper.bob-api.com/#downloads)，Windows 10/11 或 macOS 11+）。
+
+### 配置步骤
+
+1. **打开 Cursor 面板。**启动 AI Helper，首页会自动检测 Cursor 的安装路径；进入 Cursor 配置面板。
+2. **选择节点并填写 API Key。**接入节点可选「BobAPI 官方节点」（`https://bob-api.com/`，推荐首选）或「TaijiAI 加速节点」（`https://taijiai.online/`，备用专线），然后输入 API Key。手动填写的 Key 首次用于某个节点时，需点击「确认用于此节点」；从 Bob API 账号选择的 Key 和一键配置只能用于 BobAPI 官方节点。
+3. **选择模型。**AI Helper 会从所选节点读取模型列表，选择 `glm-5.3` 或其他模型；也可以手动输入模型名。
+4. **保存配置。**点击「确认并保存 Cursor 配置」，连通性测试通过后，AI Helper 会把配置写入 `~/.ai-helper/cursor_config.json` 并启动本地 Bridge。
+5. **接入 AI Helper。**在面板的客户端状态区点击「接入 AI Helper」，修补 Cursor 客户端，使其请求发往 Bridge。
+6. **重启 Cursor。**点击「重启 Cursor」，然后在 Cursor 的模型选择器中选择刚才配置的模型。
+
+### 只改 Base URL 与使用 AI Helper Bridge 的区别
+
+| 项目 | 只在 Cursor 设置里改 OpenAI Base URL | AI Helper 本地 Bridge |
+| --- | --- | --- |
+| 通信协议 | Agent 等功能仍走 Cursor 的 Connect-RPC / HTTP2 | Bridge 把 Cursor 请求转换为 OpenAI 兼容请求 |
+| 可用模型 | 无法完整接入第三方模型 | BobAPI 节点上的模型，例如 `glm-5.3`；支持流式响应、思考内容和图片输入 |
+| 本机写入内容 | Cursor 设置 | `~/.ai-helper/cursor_config.json`，以及可还原的 Cursor 客户端补丁（修补前自动备份） |
+
+> 如果你使用 Bob API 账号登录 AI Helper 并执行「一键配置」，Cursor 会自动使用「国产Token计划」分组（Bob API 账号下国产模型专用的令牌分组，[分组说明](https://helper.bob-api.com/about.html#groups)）的 API Key，推荐模型为 `glm-5.3`；账号下没有该分组的 Key 时会自动创建。
+
+### Bridge 支持哪些能力
+
+- Cursor 请求与 OpenAI 兼容请求之间的双向转换，支持流式响应。
+- 文本、思考内容（reasoning）和图片输入。
+- 向 Cursor 提供可用模型列表与默认模型。
+- 让 Cursor Agent 在当前工作区读取、搜索文件；写入、删除等操作需要先在面板中授权该工作区（授权记录在 `~/.ai-helper/agent_workspaces.json`）。
+
+关闭 AI Helper 主窗口后，它会留在系统托盘中，Bridge 继续运行；从托盘彻底退出后 Bridge 才会停止，此时 Cursor 中的第三方模型将不可用。
+
+### 安全措施
+
+Bridge 只监听本机回环地址。每条连接的第一个请求会根据对端端口找到发起连接的进程，只接受与 AI Helper 属于同一系统用户的进程，无法确认时一律拒绝；同时校验 Host、Origin 和 Content-Type。
+
+### 如何还原为 Cursor 官方连接
+
+在 Cursor 面板中点击「恢复官方连接」，或在 AI Helper 设置页使用一键恢复：Bridge 会停止，Cursor 客户端补丁会被还原。
+
+### 常见问题
+
+#### 端口 8969 被占用怎么办？
+
+在 Cursor 面板的「Bridge 网关端口」中改成其他空闲端口并保存，然后点击「重启 Cursor」。如果 Cursor 已接入 AI Helper，重启前会按新端口重新修补客户端。
+
+#### Cursor 升级后第三方模型失效了？
+
+Cursor 更新可能覆盖被修补的文件。打开 AI Helper 的 Cursor 面板，如果状态显示为官方直连，点击「接入 AI Helper」重新修补，再重启 Cursor。
+
+#### 关闭 AI Helper 窗口后，Cursor 还能用第三方模型吗？
+
+能。关闭主窗口后 AI Helper 会留在系统托盘中，Bridge 继续运行；只有从托盘彻底退出 AI Helper，Bridge 才会停止，此时 Cursor 中的第三方模型将不可用。
+
+#### Cursor Agent 修改文件时提示“该工作区尚未授权”怎么办？
+
+Bridge 只允许 Cursor Agent 在已授权的工作区内写入或删除文件。打开 AI Helper 的 Cursor 面板，在「待授权请求」中点击「允许」后重试即可；授权记录保存在 `~/.ai-helper/agent_workspaces.json`，可在「已授权工作区」中撤销。
+
+### 参考：Cursor 官方文档
+
+- [Bring your own API key（Cursor 官方的自带 Key 方式）](https://cursor.com/help/models-and-usage/api-keys)
+
+相关教程：[Cursor 自定义模型不生效排查](https://helper.bob-api.com/guides/cursor-custom-model-not-working.html) · [Accio Work 接入第三方模型](https://helper.bob-api.com/guides/accio-work-custom-api.html) · [AI 编程客户端配置文件路径大全](https://helper.bob-api.com/guides/ai-coding-config-paths.html) · [Claude Code 切换 API 地址](https://helper.bob-api.com/guides/claude-code-custom-api.html) · [Codex CLI 配置自定义 API](https://helper.bob-api.com/guides/codex-cli-custom-api.html)
+
+源码与问题反馈：[GitHub 仓库（MIT 开源）](https://github.com/TF49/AI-Helper) · [GitHub Issues](https://github.com/TF49/AI-Helper/issues) · [English version](https://helper.bob-api.com/en/guides/cursor-custom-model.html)
+
+---
+
+## DeepSeek Harness 怎么接入 Claude、GPT 和国产模型
+
+Source: https://helper.bob-api.com/guides/deepseek-harness-custom-api.html
+
+适用于 AI Helper v1.0.88 · Windows 与 macOS · 最后更新 2026-11-24 · 作者 [TF49](https://helper.bob-api.com/about.html)
+
+**简短回答：**DeepSeek Harness（DSH）桌面版的模型路由写在 `~/.dsh/profiles/desktop/cordis.patch.yml`，Key 写在 `~/.dsh/.credentials.yaml`。Claude、GPT 和国产模型协议不同，需分三条路由。MIT 开源的 AI Helper 在本机用一个 Bob API 的 API Key 拉取全部可对话模型，按协议写入 `aihelper-*` 路由，自建路由和官方账号原样保留。
+
+### 为什么不同模型要写进不同路由
+
+DeepSeek Harness 的每条路由只对应一种接口协议。同一个 API Key 下的模型，协议可能各不相同，所以 AI Helper 会按协议把模型分到下面三条路由：
+
+| 路由 | DSH 中的显示名称 | 协议 | 适用模型 |
+| --- | --- | --- | --- |
+| `aihelper-claude` | AI Helper · Claude | Anthropic Messages | Claude 系列 |
+| `aihelper-codex` | AI Helper · Codex | OpenAI Responses | GPT / Codex 系列 |
+| `aihelper-cn` | AI Helper · 国产模型 | OpenAI Chat Completions | DeepSeek、Qwen、GLM 等国产模型 |
+
+协议由 AI Helper 自动判定，你只需要勾选模型。写入的模型默认声明支持文本和图片输入；保存后没有模型的托管路由会被自动移除。
+
+### 使用前的准备
+
+1. 先启动一次 DeepSeek Harness 桌面版，让它在 `~/.dsh` 下生成 `desktop` 档案。如果你设置了 `DSH_HOME` 环境变量，AI Helper 会优先读取该目录。
+2. 在 AI Helper 的 **设置 → 路径管理** 中点击「探测」，确认 DeepSeek Harness 的安装路径已就绪。AI Helper 会依次检查运行中的进程、Windows 注册表、`%LOCALAPPDATA%\Programs` 和 macOS 的 `/Applications`；也可以手动选择 `DeepSeek Harness.exe` 或 `DeepSeek Harness.app`。
+
+### 方法一：工作台一键配置
+
+登录 Bob API 账号后，在工作台大厅点击 DeepSeek Harness 卡片的一键配置。AI Helper 会使用「国产Token计划」分组（Bob API 账号下国产模型专用的令牌分组，[分组说明](https://helper.bob-api.com/about.html#groups)）的 API Key（账号下没有时自动创建），写入该 Key 下全部可对话模型，并把新会话的默认模型设为 `deepseek-v4.1-flash`。「一键配置所有」的批量终端同样包含 DeepSeek Harness，会按协议逐条测试各路由，全部通过后一次写入。
+
+### 方法二：配置向导手动接入
+
+1. 打开 **配置中心 → DeepSeek Harness**。
+2. 选择接入节点：「BobAPI 官方节点」（`https://bob-api.com/`，推荐首选）或「TaijiAI 加速节点」（`https://taijiai.online/`，备用专线）。
+3. 填入 API Key。AI Helper 会拉取这个 Key 当前分组下的全部可用模型，并自动过滤图像、语音、向量等无法对话的模型。手动填写的 Key 首次用于某个节点时，需点击「确认用于此节点」；从 Bob API 账号选择的 Key 和一键配置只能用于 BobAPI 官方节点。
+4. 勾选要接入的模型，支持全选，也可以手动添加模型 ID；然后选择新会话的默认模型。默认模型只影响新会话，在 DeepSeek Harness 里随时可以切换。
+5. AI Helper 对每条路由做连通性测试，全部通过后才统一写入；任一路由失败都不会落盘。
+6. 保存后重启 DeepSeek Harness（可以在测试终端或路径管理卡片里直接点击重启），在模型选择器中就能看到「AI Helper · 国产模型」等新路由。
+
+### 同时使用多个分组的 Key
+
+不同分组的 Key 可以分别保存、同时生效，例如国产分组 Key、Claude 分组 Key 和 GPT 分组 Key 并存：
+
+- **添加其它分组的 Key：**在配置概览中点击「添加其它分组的 Key」，新 Key 与已接入的 Key 并存，默认只勾选尚未接入的模型类型。
+- **更换 Key：**新 Key 接管被替换 Key 的路由，其它 Key 已接入的路由保持不变。
+- **编辑单个 Key：**从概览进入向导时，只编辑使用该 Key 的路由。
+- **重新核对：**在 bob-api 网页切换分组后，可以在概览中一键重新查询各路由的模型是否仍然可用。
+
+### AI Helper 会改动哪些内容
+
+AI Helper 只管理自己的 `aihelper-*` 路由和 `AIHELPER_*` 密钥引用，其它内容保持原样：
+
+- 只读写 `desktop` 档案，CLI、Web 等其它档案不会被修改。
+- 按行编辑，你的自建路由、`records`、注释和 `!!js` 表达式逐字节保留；每次写入前都会和原文件做语义比对，确认只改了该改的部分。
+- 与 DeepSeek Harness 共用写锁，避免和 DSH 自身（例如刷新官方账号 Token）同时写文件。
+- DeepSeek 官方账号登录和官方 API Key 路由（`api.deepseek.com`）不会被改写；如果你的默认模型指向官方模型，保存时也保持不变。
+
+> AI Helper 首次接管前会保存配置快照。在设置页重置客户端配置时，托管路由和密钥引用会恢复到快照状态，DeepSeek Harness 的令牌绑定记录也会一并清理。
+
+### 常见问题
+
+#### 保存后在 DeepSeek Harness 里看不到新模型？
+
+DeepSeek Harness 在启动时读取配置，保存后需要重启客户端才能加载新路由，可以在测试终端或「设置 → 路径管理」的客户端卡片里点击重启。AI Helper 重启时会先向主进程发送优雅退出请求，不会再弹出 “renderer exited: killed” 崩溃框。
+
+#### 提示“分组不可用”是什么意思？
+
+说明该模型此前配置过，但已不在这个 Key 当前所属的分组中，常见于在 bob-api 网页切换了分组，节点会返回 `model_not_found`。请重新拉取可用模型、取消勾选不可用的模型，或在网页上把 Key 切回原分组。你手动添加的模型 ID 不会被自动取消勾选。
+
+#### 提示“未找到 DeepSeek Harness 桌面版配置”？
+
+请先启动一次 DeepSeek Harness 桌面版完成初始化，它会在 `~/.dsh`（或 `DSH_HOME` 指定的目录）下生成配置档案，之后回到 AI Helper 即可正常配置。
+
+#### 会影响我的 DeepSeek 官方账号吗？
+
+不会。官方账号登录、官方 API Key 路由以及你自建的路由都原样保留，AI Helper 只写入它自己托管的 `aihelper-*` 路由和 `AIHELPER_*` 密钥引用；如果默认模型指向官方模型，保存时也保持不变。
+
+相关教程：[Claude Code 切换 API 地址](https://helper.bob-api.com/guides/claude-code-custom-api.html) · [Codex CLI 配置自定义 API](https://helper.bob-api.com/guides/codex-cli-custom-api.html) · [Cursor 配置第三方模型](https://helper.bob-api.com/guides/cursor-custom-model.html) · [WorkBuddy 配置自定义 API](https://helper.bob-api.com/guides/workbuddy-custom-api.html) · [AI 编程客户端配置文件路径大全](https://helper.bob-api.com/guides/ai-coding-config-paths.html)
+
+源码与问题反馈：[GitHub 仓库（MIT 开源）](https://github.com/TF49/AI-Helper) · [GitHub Issues](https://github.com/TF49/AI-Helper/issues) · [English version](https://helper.bob-api.com/en/guides/deepseek-harness-custom-api.html)
+
+---
+
+## macOS 打开 AI Helper 提示“已损坏，无法打开”怎么办
+
+Source: https://helper.bob-api.com/guides/macos-app-damaged.html
+
+适用于 macOS 11 及以上 · Apple Silicon 与 Intel · 最后更新 2026-11-24 · 作者 [TF49](https://helper.bob-api.com/about.html)
+
+**简短回答：**安装包本身没有损坏。AI Helper 是 MIT 开源软件，没有经过 Apple 公证，macOS Gatekeeper 会给从网上下载的文件加上隔离标记并阻止打开。打开「终端」执行下面这条命令清除标记，再双击打开即可：
+
+```
+xattr -cr /Applications/AI\ Helper.app
+```
+
+### 你可能看到的提示
+
+- “AI Helper”已损坏，无法打开。你应该将它移到废纸篓。
+- 无法打开“AI Helper”，因为无法验证开发者。
+- Apple 无法检查其是否包含恶意软件。
+
+### 方法一：用终端清除隔离标记（推荐）
+
+1. 打开下载的 DMG，把 **AI Helper** 拖入「应用程序」文件夹。
+2. 打开「终端」（在启动台或 Spotlight 中搜索“终端”）。
+3. 粘贴并执行：`xattr -cr /Applications/AI\ Helper.app`（注意 `AI` 和 `Helper` 之间的反斜杠和空格）。
+4. 回到「应用程序」，双击 AI Helper 打开。
+
+`xattr -cr` 会递归删除应用包上的扩展属性，其中包括 `com.apple.quarantine` 隔离标记，不会修改应用本身的代码。
+
+### 方法二：右键打开
+
+在「访达」中找到 AI Helper，按住 Control 键点击（或右键点击），选择「打开」，在弹出的对话框中再次点击「打开」。如果系统没有提供「打开」按钮，请到「系统设置 → 隐私与安全性」页面底部，点击「仍要打开」。
+
+### 下载的是正确的版本吗？
+
+Apple Silicon 芯片（M1 至 M5 系列）的 Mac 请下载 `aarch64` 版 DMG；Intel 处理器的 Mac 请下载 `x64` 版 DMG。可以在「关于本机」中查看芯片类型。
+
+> 请只从 [AI Helper 官网](https://helper.bob-api.com/#downloads) 或 [GitHub Releases](https://github.com/TF49/AI-Helper/releases) 下载安装包，不要对来源不明的应用执行上面的命令。官网提供每个安装包的 SHA-256 校验值。
+
+### 常见问题
+
+#### 为什么 macOS 会提示 AI Helper“已损坏”？
+
+安装包本身没有损坏。AI Helper 是 MIT 开源软件，没有经过 Apple 公证，macOS Gatekeeper 会给从网上下载的应用加上隔离标记并阻止打开。清除隔离标记后即可正常使用。
+
+#### 执行 xattr -cr 命令安全吗？
+
+`xattr -cr` 只会递归删除应用包上的扩展属性（包括 `com.apple.quarantine` 隔离标记），不会修改应用本身的代码。请只对从 AI Helper 官网或 GitHub Releases 下载的安装包执行该命令，官网提供每个安装包的 SHA-256 校验值。
+
+#### 不想用终端，还有别的办法吗？
+
+在「访达」中按住 Control 键点击（或右键点击）AI Helper，选择「打开」并再次确认。如果没有「打开」按钮，到「系统设置 → 隐私与安全性」页面底部点击「仍要打开」。
+
+#### Apple Silicon 和 Intel Mac 分别下载哪个 DMG？
+
+Apple Silicon 芯片（M1 至 M5 系列）的 Mac 请下载 `aarch64` 版 DMG，Intel 处理器的 Mac 请下载 `x64` 版 DMG，可以在「关于本机」中查看芯片类型。AI Helper 需要 macOS 11 或更高版本。
+
+### 参考：Apple 官方说明
+
+- [在 Mac 上安全地打开 App（Gatekeeper）](https://support.apple.com/zh-cn/102445)
+
+相关教程：[Cursor 配置第三方模型](https://helper.bob-api.com/guides/cursor-custom-model.html) · [Claude Code 切换 API 地址](https://helper.bob-api.com/guides/claude-code-custom-api.html) · [AI 编程客户端配置文件路径大全](https://helper.bob-api.com/guides/ai-coding-config-paths.html)
+
+源码与问题反馈：[GitHub 仓库（MIT 开源）](https://github.com/TF49/AI-Helper) · [GitHub Issues](https://github.com/TF49/AI-Helper/issues) · [English version](https://helper.bob-api.com/en/guides/macos-app-damaged.html)
+
+---
+
+## WorkBuddy 如何配置自定义 API 与多个模型
+
+Source: https://helper.bob-api.com/guides/workbuddy-custom-api.html
+
+适用于 AI Helper v1.0.88 · Windows 与 macOS · 最后更新 2026-11-24 · 作者 [TF49](https://helper.bob-api.com/about.html)
+
+**简短回答：**WorkBuddy 的自定义模型保存在 `~/.workbuddy/models.json`，文件是一个 JSON 数组，每个元素就是一个模型（`id`、`url`、`apiKey` 等字段）。往数组里追加记录即可同时使用多个模型。AI Helper 可以写入这些字段，并保留你已有的其他模型。
+
+### 配置文件在哪里
+
+| 情况 | 路径 |
+| --- | --- |
+| 默认路径 | `~/.workbuddy/models.json` |
+| Windows | `C:\Users\<用户名>\.workbuddy\models.json` |
+| macOS | `/Users/<用户名>/.workbuddy/models.json` |
+| 兼容路径（部分版本） | `~/.workbuddy-ai/models.json` |
+| 设置了环境变量 `WORKBUDDY_CONFIG_DIR` 或 `CODEBUDDY_CONFIG_DIR` | `<该目录>/models.json`（AI Helper 此时只读写这个文件） |
+
+没有设置上述环境变量时，AI Helper 会同时读取默认路径和兼容路径，按模型 `id` 合并成一个列表，保存时把同一份列表写回两个文件。
+
+### models.json 的格式与字段
+
+文件顶层是一个 JSON 数组。AI Helper 也能读取 `{"models": [ ... ]}` 形式的包装对象，此时只替换 `models` 数组，包装对象中的其他顶层字段保持不变。每个模型记录常用的字段如下：
+
+| 字段 | 含义 | AI Helper 写入的值 |
+| --- | --- | --- |
+| `id` / `name` | 模型 ID 与显示名称，`id` 也是请求时使用的模型名 | 两者都写为你选择的模型名，例如 `glm-5.3` |
+| `vendor` | 服务商类型 | `Custom` |
+| `url` | API 地址 | 所选节点地址加 `/v1`，例如 `https://bob-api.com/v1`；开启 `useCustomProtocol` 时不补 `/v1` |
+| `api` | 接口类型 | 新建模型时写 `openai-responses`；模型原本已有该字段时保留原值 |
+| `apiKey` | 该模型使用的 API Key | 你填写的 Key，每个模型可以不同 |
+| `supportsToolCall` / `supportsImages` / `supportsReasoning` | 是否支持工具调用、图片输入、思考模式 | 默认都为 `true` |
+| `onlyReasoning` | 仅思考模式 | 只在开启时写入 `true` |
+| `useCustomProtocol` | 是否原样请求 `url` | 默认 `false` |
+| `reasoning` | 思考强度设置：`supportedEfforts`、`defaultEffort`、`canDisableThinking` | 手动配置默认 `{"supportedEfforts": ["medium"]}`；`canDisableThinking` 只在关闭时写入 `false` |
+| `maxInputTokens` / `maxOutputTokens` | 输入 / 输出 Token 上限 | 手动配置默认 `262144` / `32768` |
+| `temperature`、`disabled` 及其他字段 | WorkBuddy 或你自己设置的其他参数 | 不写入；更新同名模型时原样保留 |
+
+### 方法一：手动编辑 models.json
+
+下面的示例配置了两个模型，每个模型可以使用不同的 API Key（例如不同分组的 Key）：
+
+```
+[
+  {
+    "id": "glm-5.3",
+    "name": "glm-5.3",
+    "vendor": "Custom",
+    "url": "https://bob-api.com/v1",
+    "api": "openai-responses",
+    "apiKey": "你的 API Key",
+    "supportsToolCall": true,
+    "supportsImages": true,
+    "supportsReasoning": true,
+    "useCustomProtocol": false,
+    "reasoning": {
+      "supportedEfforts": ["medium"]
+    },
+    "maxInputTokens": 262144,
+    "maxOutputTokens": 32768
+  },
+  {
+    "id": "deepseek-v4.1-flash",
+    "name": "deepseek-v4.1-flash",
+    "vendor": "Custom",
+    "url": "https://bob-api.com/v1",
+    "apiKey": "另一个分组的 API Key",
+    "supportsToolCall": true,
+    "supportsImages": false,
+    "supportsReasoning": true,
+    "useCustomProtocol": false
+  }
+]
+```
+
+注意事项：
+
+- 每个模型的 `id` 要唯一。AI Helper 按 `id` 识别模型，同名记录会被视为同一个模型。
+- 保存后文件必须仍是合法 JSON（不能有注释和结尾多余的逗号）。文件损坏时 AI Helper 会报错并停止写入，不会覆盖原文件。
+- 如果同时存在 `~/.workbuddy-ai/models.json`，建议两处保持一致，或者直接用 AI Helper 同步。
+
+### 多个模型如何排序
+
+AI Helper 把列表中第一个 `vendor` 为 `Custom` 的模型当作默认模型，面板概览中显示的「当前操作模型」就是它。建议把最常用的模型放在数组第一位，其余模型依次排在后面。
+
+- **普通保存：**如果模型 `id` 已存在，就在原位置更新；如果是新模型，就追加到数组末尾，不改变已有顺序。
+- **一键配置：**会把推荐模型移动到数组第一位，其他模型保留并顺延。
+- **移除模型：**在 WorkBuddy 面板的「已配置模型列表」中点击某个模型的移除按钮，只删除这一条。
+
+### 方法二：用 AI Helper 配置
+
+1. 启动 AI Helper，进入 **WorkBuddy** 面板。AI Helper 会读取已有的 models.json，并在「已配置模型列表」中显示所有模型。
+2. **接入节点：**选择「BobAPI 官方节点」（`https://bob-api.com/`，推荐首选）或「TaijiAI 加速节点」（`https://taijiai.online/`，备用专线）。
+3. **API Key：**输入 Bob API 账号中的 API Key。手动填写的 Key 首次用于某个节点时，需点击「确认用于此节点」；从 Bob API 账号选择的 Key 和一键配置只能用于 BobAPI 官方节点。
+4. **配置模型：**从读取到的模型列表中选择，或直接输入模型名。输入已存在的模型名会更新该模型，输入新名字则新增一个模型。
+5. **高级参数：**工具调用、图片输入、思考模式、思考强度和 Token 上限都已有默认值，不确定可以保持默认。
+6. **确认配置：**勾选确认后点击「确认并保存」或「确认并新增」。AI Helper 会先做一次流式连通性测试，通过后再写入 models.json。
+
+写入时，AI Helper 会先把原文件备份为同目录下的 `models.json.bak`。默认路径和兼容路径两个文件作为一次整体写入：任一文件写入失败，会把两个文件都恢复到写入前的状态（写入过程的记录临时保存在 `~/.ai-helper/workbuddy-transaction.json`）。
+
+### 一键配置（国产Token计划 分组）
+
+登录 Bob API 账号后，可以在工作台对 WorkBuddy 执行「一键配置」。AI Helper 会使用「国产Token计划」分组（Bob API 账号下国产模型专用的令牌分组，[分组说明](https://helper.bob-api.com/about.html#groups)）的 API Key，账号下没有该分组的 Key 时会自动创建。推荐模型 `glm-5.3` 会被写入并移动到列表第一位，参数为：开启工具调用、图片输入和思考模式，`maxInputTokens` 为 `262144`，`reasoning.canDisableThinking` 为 `false`。你已有的其他模型都会保留。
+
+> 一键配置只是方便登录 Bob API 账号的用户。不登录也可以在 WorkBuddy 面板选择节点，手动填入 API Key 和模型。AI Helper 是 MIT 开源的本地桌面工具，Key 只写入本机的 models.json，只会发送到所选的节点。
+
+### 如何恢复原来的配置
+
+AI Helper 首次修改 WorkBuddy 配置前，会把原始的 models.json（以及兼容路径下的文件）保存为快照，记录在 `~/.ai-helper/reset_state.json`。在 **设置 → 客户端配置 → 恢复所有客户端原生配置** 中点击「清除配置」，确认框会先列出每个文件的处理方式：
+
+- 如果文件在 AI Helper 最后一次写入后没有被改动，整个文件恢复为首次接管前的快照。
+- 如果文件之后又被你或 WorkBuddy 修改过，只清理 AI Helper 受管的模型（`vendor` 为 `Custom` 且 `url` 指向 bob-api.com 相关地址的记录），其他内容保留。
+
+注意这个操作会同时处理所有客户端（Claude Code、Codex、Cursor 等），不是只恢复 WorkBuddy。
+
+### 常见问题
+
+#### 保存后 WorkBuddy 里看不到新模型？
+
+AI Helper 保存后会提示 WorkBuddy 通过热重载读取新模型。如果模型列表没有刷新，请重启 WorkBuddy；同时确认 models.json 仍是合法 JSON，并且没有通过 `WORKBUDDY_CONFIG_DIR` 或 `CODEBUDDY_CONFIG_DIR` 指向了其他目录。
+
+#### AI Helper 会删除我手动添加的模型吗？
+
+不会。保存时只新增或更新当前填写的那个模型 id，其余模型原样保留；只有在 WorkBuddy 面板中点击某个模型的移除按钮，才会删除该模型。
+
+#### 为什么 ~/.workbuddy-ai/models.json 也被修改了？
+
+部分 WorkBuddy 版本使用 `~/.workbuddy-ai` 目录。AI Helper 会同时读取 `~/.workbuddy` 和 `~/.workbuddy-ai` 两处的 models.json，按模型 id 合并后，把同一份模型列表写回两个文件，避免两处配置不一致。
+
+#### url 要不要带 /v1？
+
+需要。手动编辑 models.json 时，`url` 一般写到 `/v1`（例如 `https://bob-api.com/v1`），并保持 `useCustomProtocol` 为 `false`。用 AI Helper 保存时，它会写入所选节点的地址并自动补齐结尾的 `/v1`；只有在面板中开启 `useCustomProtocol` 时，才按节点地址原样写入 `url`、不补 `/v1`。
+
+### 参考
+
+- [WorkBuddy 官网](https://www.workbuddy.cn)
+- [AI 编程客户端配置文件路径与环境变量大全](https://helper.bob-api.com/guides/ai-coding-config-paths.html)
+
+相关教程：[Accio Work 接入第三方模型](https://helper.bob-api.com/guides/accio-work-custom-api.html) · [Cursor 配置第三方模型](https://helper.bob-api.com/guides/cursor-custom-model.html) · [Claude Code 切换 API 地址](https://helper.bob-api.com/guides/claude-code-custom-api.html)
+
+源码与问题反馈：[GitHub 仓库（MIT 开源）](https://github.com/TF49/AI-Helper) · [GitHub Issues](https://github.com/TF49/AI-Helper/issues)

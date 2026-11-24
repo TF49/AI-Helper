@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Codex CLI Custom API Provider (config.toml) | Bob AI Helper</title>
+  <meta name="description"
+    content="Set model_provider and model_providers in ~/.codex/config.toml to point OpenAI Codex CLI at another API. A hand-written example, and how AI Helper writes it for you.">
+  <link rel="canonical" href="https://helper.bob-api.com/en/guides/codex-cli-custom-api.html">
+  <link rel="alternate" hreflang="en" href="https://helper.bob-api.com/en/guides/codex-cli-custom-api.html">
+  <link rel="alternate" hreflang="zh-CN" href="https://helper.bob-api.com/guides/codex-cli-custom-api.html">
+  <link rel="alternate" hreflang="x-default" href="https://helper.bob-api.com/guides/codex-cli-custom-api.html">
+  <meta name="robots" content="index, follow, max-snippet:-1">
+  <meta property="og:type" content="article">
+  <meta property="og:site_name" content="Bob AI Helper">
+  <meta property="og:locale" content="en_US">
+  <meta property="og:locale:alternate" content="zh_CN">
+  <meta property="og:title" content="How to use a custom API endpoint with OpenAI Codex CLI">
+  <meta property="og:description" content="Edit ~/.codex/config.toml by hand, or let AI Helper point Codex CLI at the BobAPI node and set the key and model in one step.">
+  <meta property="og:url" content="https://helper.bob-api.com/en/guides/codex-cli-custom-api.html">
+  <meta property="og:image" content="https://helper.bob-api.com/assets/app-preview.png">
+  <link rel="icon" type="image/x-icon" href="/assets/favicon.ico">
+  <link rel="stylesheet" href="/assets/docs.css?v=1.0.88-1">
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@graph": [
+      {
+        "@type": ["TechArticle", "HowTo"],
+        "@id": "https://helper.bob-api.com/en/guides/codex-cli-custom-api.html#article",
+        "url": "https://helper.bob-api.com/en/guides/codex-cli-custom-api.html",
+        "name": "How to use a custom API endpoint with OpenAI Codex CLI",
+        "headline": "How to use a custom API endpoint with OpenAI Codex CLI",
+        "image": "https://helper.bob-api.com/assets/app-preview.png",
+        "description": "Declare a custom model_provider in ~/.codex/config.toml, or let AI Helper write it for you.",
+        "inLanguage": "en",
+        "datePublished": "2026-11-20",
+        "dateModified": "2026-11-24",
+        "translationOfWork": { "@type": "TechArticle", "url": "https://helper.bob-api.com/guides/codex-cli-custom-api.html", "inLanguage": "zh-CN" },
+        "author": { "@type": "Person", "@id": "https://helper.bob-api.com/about.html#maintainer", "name": "TF49", "url": "https://helper.bob-api.com/about.html", "sameAs": ["https://github.com/TF49"] },
+        "publisher": { "@type": "Organization", "@id": "https://helper.bob-api.com/#organization", "name": "Bob AI Helper" },
+        "tool": [{ "@type": "HowToTool", "name": "Bob AI Helper" }, { "@type": "HowToTool", "name": "OpenAI Codex CLI" }],
+        "step": [
+          { "@type": "HowToStep", "name": "Open the Codex panel", "text": "Launch AI Helper and open the Codex panel." },
+          { "@type": "HowToStep", "name": "Choose a node, enter the key and model", "text": "Choose the BobAPI official node (https://bob-api.com/, recommended) or the TaijiAI backup node (https://taijiai.online/), enter your API key (or sign in to a Bob API account for one-click setup), then pick a model such as gpt-5.6-sol. The first time you use a hand-entered key with a node, click Confirm for this node (确认用于此节点). Keys picked from your Bob API account, and one-click setup, only work with the BobAPI official node." },
+          { "@type": "HowToStep", "name": "Test and save", "text": "Click Confirm and save Codex config. Once the streaming connection test passes, AI Helper writes model, model_provider = \"custom\" and a [model_providers.custom] table to ~/.codex/config.toml." },
+          { "@type": "HowToStep", "name": "Restart Codex", "text": "Open a new terminal and run codex so the new environment variable and settings are picked up." }
+        ]
+      },
+      {
+        "@type": "FAQPage",
+        "mainEntity": [
+          {
+            "@type": "Question",
+            "name": "Codex says it cannot find the API key. What's wrong?",
+            "acceptedAnswer": { "@type": "Answer", "text": "Codex reads the key from the environment variable named in env_key. Terminals that were already open do not see newly set environment variables, so close them and open a new one." }
+          },
+          {
+            "@type": "Question",
+            "name": "Why do I get model_not_found?",
+            "acceptedAnswer": { "@type": "Answer", "text": "The group your API key belongs to does not offer that model. Pick a model again from the list AI Helper fetched from the selected node." }
+          },
+          {
+            "@type": "Question",
+            "name": "On macOS, why can't codex find the key when I run it in Terminal?",
+            "acceptedAnswer": { "@type": "Answer", "text": "AI Helper only stores the key persistently in the current user's CUSTOM_OPENAI_API_KEY environment variable on Windows. On macOS it does not modify your shell profile, so add export CUSTOM_OPENAI_API_KEY=\"your-api-key\" to ~/.zshrc (or your shell's equivalent) yourself, then open a new terminal." }
+          },
+          {
+            "@type": "Question",
+            "name": "Saving fails with \"the active Codex profile uses another provider\". What does that mean?",
+            "acceptedAnswer": { "@type": "Answer", "text": "The top-level profile in config.toml points at a profile that uses a different model_provider. To avoid showing one configuration in the app while Codex actually runs another, AI Helper stops saving. Switch to a profile that uses custom, or remove the top-level profile setting, then save again." }
+          }
+        ]
+      },
+      {
+        "@type": "BreadcrumbList",
+        "itemListElement": [
+          { "@type": "ListItem", "position": 1, "name": "Bob AI Helper", "item": "https://helper.bob-api.com/en/" },
+          { "@type": "ListItem", "position": 2, "name": "Guides", "item": "https://helper.bob-api.com/en/guides/" },
+          { "@type": "ListItem", "position": 3, "name": "Custom API for Codex CLI", "item": "https://helper.bob-api.com/en/guides/codex-cli-custom-api.html" }
+        ]
+      }
+    ]
+  }
+  </script>
+</head>
+
+<body>
+  <header class="doc-nav">
+    <div class="doc-nav-inner">
+      <a class="doc-brand" href="/en/"><img src="/assets/logo.png" alt="Bob AI Helper logo" width="28" height="28">Bob AI Helper</a>
+      <nav class="doc-nav-links" aria-label="Main navigation">
+        <a href="/en/guides/">Guides</a><a href="/en/#downloads">Download</a><a class="hide-sm" href="https://github.com/TF49/AI-Helper">GitHub</a>
+      </nav>
+    </div>
+  </header>
+
+  <main class="doc-main">
+    <p class="breadcrumb"><a href="/en/">Bob AI Helper</a> / <a href="/en/guides/">Guides</a> / Custom API for Codex CLI</p>
+    <article>
+      <h1>How to use a custom API endpoint with OpenAI Codex CLI</h1>
+      <p class="doc-meta">For AI Helper <span class="current-version-tag">v1.0.88</span> · Windows &amp; macOS · Last updated <time class="last-updated" datetime="2026-11-24">2026-11-24</time> · By <a href="/about.html">TF49</a></p>
+
+      <div class="tldr">
+        <p><strong>Short answer:</strong> Declare a <code>[model_providers.custom]</code> table in <code>~/.codex/config.toml</code> (with a <code>base_url</code> and an <code>env_key</code>), point the top-level <code>model_provider</code> at it, set <code>model</code> to the model name, and put your key in <code>CUSTOM_OPENAI_API_KEY</code>. AI Helper, an MIT-licensed open-source app, can write these fields on your machine: pick the BobAPI official node, enter your API key and choose a model.</p>
+      </div>
+
+      <h2>Option 1: edit config.toml by hand</h2>
+      <p>Open (or create) <code>~/.codex/config.toml</code> — on Windows that is <code>C:\Users\&lt;your-username&gt;\.codex\config.toml</code>:</p>
+      <pre><code>model = "gpt-5.6-sol"
+model_provider = "custom"
+
+[model_providers.custom]
+base_url = "https://bob-api.com/v1"
+env_key = "CUSTOM_OPENAI_API_KEY"</code></pre>
+      <p>Then put your API key in the <code>CUSTOM_OPENAI_API_KEY</code> environment variable (on Windows, add a user variable under <em>System Properties → Environment Variables</em>; on macOS or Linux, export it from your shell profile). Open a new terminal and run <code>codex</code>.</p>
+
+      <h2>Option 2: configure it in one step with AI Helper</h2>
+      <ol>
+        <li>Launch AI Helper and open the <strong>Codex</strong> panel. AI Helper locates the <code>codex</code> CLI automatically.</li>
+        <li>Choose a node: the <strong>BobAPI official node</strong> (BobAPI 官方节点, <code>https://bob-api.com/</code>, recommended) or the <strong>TaijiAI accelerated node</strong> (TaijiAI 加速节点, <code>https://taijiai.online/</code>, a backup line). Enter your API key (or sign in to a Bob API account for one-click setup) and choose a model (for example <code>gpt-5.6-sol</code>). The first time you use a hand-entered key with a node, click <em>Confirm for this node</em> (确认用于此节点). Keys picked from your Bob API account, and one-click setup, only work with the BobAPI official node.</li>
+        <li>Click <em>Confirm and save Codex config</em> (确认并保存 Codex 配置); AI Helper writes once the streaming connection test passes. It writes the fields shown in the example above. On Windows it also stores the key in the current user's <code>CUSTOM_OPENAI_API_KEY</code> environment variable and tells the system to refresh its environment. On macOS it does not touch your shell profile, so you need to set that variable yourself (see the FAQ below).</li>
+        <li>Open a new terminal and run <code>codex</code>, or launch Codex straight from AI Helper.</li>
+      </ol>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr><th>In config.toml</th><th>What AI Helper does</th></tr>
+          </thead>
+          <tbody>
+            <tr><td><code>model</code></td><td>Writes the model you chose</td></tr>
+            <tr><td><code>model_provider</code></td><td>Sets it to <code>"custom"</code></td></tr>
+            <tr><td><code>base_url</code> in <code>[model_providers.custom]</code></td><td>Writes the selected node's URL, adding <code>/v1</code> if it's missing</td></tr>
+            <tr><td><code>env_key</code> in <code>[model_providers.custom]</code></td><td>Always <code>CUSTOM_OPENAI_API_KEY</code></td></tr>
+            <tr><td>Credential headers in <code>custom</code>, such as <code>experimental_bearer_token</code> or <code>Authorization</code></td><td>Removed — the key is only read from the environment variable</td></tr>
+            <tr><td>Other providers, profiles, sandbox settings, etc.</td><td>Left untouched</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="note">AI Helper only manages the provider named <code>custom</code>. Any other providers, profiles and sandbox settings you have in <code>config.toml</code> are kept. With one-click setup (which requires signing in to a Bob API account), Codex uses the key from the <code>Codex-不降质</code> group — the key group in a Bob API account reserved for Codex CLI and ChatGPT Desktop (see <a href="/about.html#groups">key groups</a>, in Chinese). The recommended model is <code>gpt-5.6-sol</code>.</div>
+
+      <h2>How to restore your original settings</h2>
+      <p>Before AI Helper changes your Codex settings for the first time, it saves a snapshot that covers both <code>config.toml</code> and the related environment variable. Use one-click restore on the Settings page to roll it back.</p>
+
+      <h2>FAQ</h2>
+      <h3>Codex says it cannot find the API key. What's wrong?</h3>
+      <p>Codex reads the key from the environment variable named in <code>env_key</code>. Terminals that were already open do not see newly set environment variables, so close them and open a new one.</p>
+      <h3>Why do I get model_not_found?</h3>
+      <p>The group your API key belongs to does not offer that model. Pick a model again from the list AI Helper fetched from the selected node.</p>
+      <h3>On macOS, why can't codex find the key when I run it in Terminal?</h3>
+      <p>AI Helper only stores the key persistently in the current user's <code>CUSTOM_OPENAI_API_KEY</code> environment variable on Windows. On macOS it does not modify your shell profile, so add <code>export CUSTOM_OPENAI_API_KEY="your-api-key"</code> to <code>~/.zshrc</code> (or your shell's equivalent) yourself, then open a new terminal.</p>
+      <h3>Saving fails with "the active Codex profile uses another provider". What does that mean?</h3>
+      <p>The top-level <code>profile</code> in <code>config.toml</code> points at a profile that uses a different <code>model_provider</code>. To avoid showing one configuration in the app while Codex actually runs another, AI Helper stops saving. Switch to a profile that uses <code>custom</code>, or remove the top-level <code>profile</code> setting, then save again.</p>
+
+      <h2>Reference: Codex documentation</h2>
+      <ul>
+        <li><a href="https://developers.openai.com/codex/config-advanced">Advanced configuration: custom model_providers</a></li>
+        <li><a href="https://github.com/openai/codex/blob/main/docs/config.md">config.toml reference (GitHub repository)</a></li>
+      </ul>
+
+      <p><a class="cta" href="/en/#downloads">Download AI Helper</a></p>
+      <p>Related guides: <a href="/en/guides/claude-code-custom-api.html">Point Claude Code at a custom API</a> · <a href="/en/guides/cursor-custom-model.html">Third-party models in Cursor</a></p>
+      <p>Source code and issues: <a href="https://github.com/TF49/AI-Helper">GitHub (MIT)</a> · <a href="https://github.com/TF49/AI-Helper/issues">GitHub Issues</a></p>
+    </article>
+  </main>
+
+  <footer class="doc-footer">
+    <div class="doc-footer-inner">
+      <span><a href="/en/">Home</a><a href="/en/guides/">Guides</a><a href="/guides/codex-cli-custom-api.html" hreflang="zh-CN" lang="zh-CN">中文</a><a href="https://github.com/TF49/AI-Helper">GitHub</a></span>
+      <span>© 2026 Bob AI Helper · MIT License</span>
+    </div>
+  </footer>
+</body>
+
+</html>

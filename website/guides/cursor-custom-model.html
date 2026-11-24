@@ -6,17 +6,20 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>如何给 Cursor 配置 glm-5.3 等第三方模型（本地 Bridge 方案）| Bob AI Helper 教程</title>
   <meta name="description"
-    content="Cursor 只改 OpenAI Base URL 无法完整接入第三方模型。本文介绍用 AI Helper 的本地 Bridge（默认 127.0.0.1:8969）让 Cursor 使用 glm-5.3 或任意 OpenAI 兼容模型的步骤，以及如何还原。">
+    content="Cursor 只改 OpenAI Base URL 无法完整接入第三方模型。本文介绍用 AI Helper 的本地 Bridge（默认 127.0.0.1:8969）让 Cursor 使用 BobAPI 上的 glm-5.3 等模型的步骤，以及如何还原。">
   <link rel="canonical" href="https://helper.bob-api.com/guides/cursor-custom-model.html">
+  <link rel="alternate" hreflang="zh-CN" href="https://helper.bob-api.com/guides/cursor-custom-model.html">
+  <link rel="alternate" hreflang="en" href="https://helper.bob-api.com/en/guides/cursor-custom-model.html">
+  <link rel="alternate" hreflang="x-default" href="https://helper.bob-api.com/guides/cursor-custom-model.html">
   <meta name="robots" content="index, follow, max-snippet:-1">
   <meta property="og:type" content="article">
   <meta property="og:site_name" content="Bob AI Helper">
   <meta property="og:title" content="如何给 Cursor 配置 glm-5.3 等第三方模型">
-  <meta property="og:description" content="用 AI Helper 本地 Bridge 让 Cursor 使用任意 OpenAI 兼容模型。">
+  <meta property="og:description" content="用 AI Helper 本地 Bridge 让 Cursor 接入 BobAPI 上的 glm-5.3 等模型。">
   <meta property="og:url" content="https://helper.bob-api.com/guides/cursor-custom-model.html">
   <meta property="og:image" content="https://helper.bob-api.com/assets/app-preview.png">
   <link rel="icon" type="image/x-icon" href="/assets/favicon.ico">
-  <link rel="stylesheet" href="/assets/docs.css?v=1.0.88">
+  <link rel="stylesheet" href="/assets/docs.css?v=1.0.88-1">
   <script type="application/ld+json">
   {
     "@context": "https://schema.org",
@@ -29,15 +32,41 @@
         "description": "使用 AI Helper 的本地 Bridge，让 Cursor 通过 OpenAI 兼容接口使用第三方模型。",
         "inLanguage": "zh-CN",
         "datePublished": "2026-11-20",
-        "dateModified": "2026-11-22",
+        "dateModified": "2026-11-24",
         "author": { "@type": "Person", "@id": "https://helper.bob-api.com/about.html#maintainer", "name": "TF49", "url": "https://helper.bob-api.com/about.html", "sameAs": ["https://github.com/TF49"] },
         "publisher": { "@type": "Organization", "@id": "https://helper.bob-api.com/#organization", "name": "Bob AI Helper" },
         "tool": [{ "@type": "HowToTool", "name": "Bob AI Helper" }, { "@type": "HowToTool", "name": "Cursor" }],
         "step": [
           { "@type": "HowToStep", "name": "安装 AI Helper", "text": "从 helper.bob-api.com 或 GitHub Releases 下载并安装 AI Helper。" },
-          { "@type": "HowToStep", "name": "填写 API 地址、Key 与模型", "text": "在 Cursor 面板中填写 OpenAI 兼容的 API 地址、API Key，并选择模型，例如 glm-5.3。" },
-          { "@type": "HowToStep", "name": "保存并应用", "text": "点击「保存并应用 Cursor 配置」，AI Helper 会启动本地 Bridge（默认 127.0.0.1:8969）并修补 Cursor 客户端。" },
+          { "@type": "HowToStep", "name": "选择节点，填写 Key 与模型", "text": "在 Cursor 面板中选择 BobAPI 官方节点（或 TaijiAI 加速节点），填入 API Key，并选择模型，例如 glm-5.3。手动填写的 Key 首次用于某个节点时，需点击「确认用于此节点」；从 Bob API 账号选择的 Key 和一键配置只能用于 BobAPI 官方节点。" },
+          { "@type": "HowToStep", "name": "保存配置", "text": "点击「确认并保存 Cursor 配置」，连通性测试通过后 AI Helper 会写入 ~/.ai-helper/cursor_config.json 并启动本地 Bridge（默认 127.0.0.1:8969）。" },
+          { "@type": "HowToStep", "name": "接入 AI Helper", "text": "在 Cursor 面板的客户端状态区点击「接入 AI Helper」，修补 Cursor 客户端，使其请求发往本地 Bridge。" },
           { "@type": "HowToStep", "name": "重启 Cursor", "text": "点击「重启 Cursor」，在 Cursor 的模型列表中选择刚配置的模型。" }
+        ]
+      },
+      {
+        "@type": "FAQPage",
+        "mainEntity": [
+          {
+            "@type": "Question",
+            "name": "端口 8969 被占用怎么办？",
+            "acceptedAnswer": { "@type": "Answer", "text": "在 Cursor 面板的「Bridge 网关端口」中改成其他空闲端口并保存，然后点击「重启 Cursor」。如果 Cursor 已接入 AI Helper，重启前会按新端口重新修补客户端。" }
+          },
+          {
+            "@type": "Question",
+            "name": "Cursor 升级后第三方模型失效了？",
+            "acceptedAnswer": { "@type": "Answer", "text": "Cursor 更新可能覆盖被修补的文件。打开 AI Helper 的 Cursor 面板，如果状态显示为官方直连，点击「接入 AI Helper」重新修补，再重启 Cursor。" }
+          },
+          {
+            "@type": "Question",
+            "name": "关闭 AI Helper 窗口后，Cursor 还能用第三方模型吗？",
+            "acceptedAnswer": { "@type": "Answer", "text": "能。关闭主窗口后 AI Helper 会留在系统托盘中，Bridge 继续运行；只有从托盘彻底退出 AI Helper，Bridge 才会停止，此时 Cursor 中的第三方模型将不可用。" }
+          },
+          {
+            "@type": "Question",
+            "name": "Cursor Agent 修改文件时提示“该工作区尚未授权”怎么办？",
+            "acceptedAnswer": { "@type": "Answer", "text": "Bridge 只允许 Cursor Agent 在已授权的工作区内写入或删除文件。打开 AI Helper 的 Cursor 面板，在「待授权请求」中点击「允许」后重试即可；授权记录保存在 ~/.ai-helper/agent_workspaces.json，可在「已授权工作区」中撤销。" }
+          }
         ]
       },
       {
@@ -67,27 +96,42 @@
     <p class="breadcrumb"><a href="/">Bob AI Helper</a> / <a href="/guides/">教程</a> / Cursor 配置第三方模型</p>
     <article>
       <h1>如何给 Cursor 配置 glm-5.3 等第三方模型</h1>
-      <p class="doc-meta">适用于 AI Helper <span class="current-version-tag">v1.0.88</span> · Windows 与 macOS · 最后更新 <time class="last-updated" datetime="2026-11-22">2026-11-22</time> · 作者 <a href="/about.html">TF49</a></p>
+      <p class="doc-meta">适用于 AI Helper <span class="current-version-tag">v1.0.88</span> · Windows 与 macOS · 最后更新 <time class="last-updated" datetime="2026-11-24">2026-11-24</time> · 作者 <a href="/about.html">TF49</a></p>
 
       <div class="tldr">
-        <p><strong>简短回答：</strong>Cursor 的 Agent 和 Composer 使用 Connect-RPC / HTTP2 和内部消息格式通信，只在设置里改 OpenAI Base URL 无法完整接入第三方模型。AI Helper 会在本机运行一个 Bridge（默认监听 <code>127.0.0.1:8969</code>），把 Cursor 的请求转换成 OpenAI 兼容接口请求，再转发到你指定的 API 地址，因此可以让 Cursor 使用 glm-5.3 或任意 OpenAI 兼容模型。</p>
+        <p><strong>简短回答：</strong>只改 OpenAI Base URL 不够，因为 Cursor 使用 Connect-RPC / HTTP2 通信。MIT 开源的 AI Helper 在本机运行 Bridge（默认 <code>127.0.0.1:8969</code>），把 Cursor 请求转换后转发到你在面板中选择的 BobAPI 节点，填入 API Key 和模型后即可使用 BobAPI 上的 glm-5.3 等模型。</p>
       </div>
 
       <h2>准备工作</h2>
       <ul>
         <li>已安装 Cursor，并至少启动过一次。</li>
-        <li>一个 OpenAI 兼容的 API 地址和 API Key（例如以 <code>/v1</code> 结尾的地址）。</li>
+        <li>Bob API 账号的 API Key（也可以在 AI Helper 中登录账号后一键配置）。</li>
         <li>已安装 AI Helper（<a href="/#downloads">下载地址</a>，Windows 10/11 或 macOS 11+）。</li>
       </ul>
 
       <h2>配置步骤</h2>
       <ol>
         <li><strong>打开 Cursor 面板。</strong>启动 AI Helper，首页会自动检测 Cursor 的安装路径；进入 Cursor 配置面板。</li>
-        <li><strong>填写 API 地址和 API Key。</strong>可以选择预置节点，也可以手动填写外部 API 地址。对于不在白名单内的地址，AI Helper 会显示目标 Origin 并要求确认，默认要求 HTTPS。</li>
-        <li><strong>选择模型。</strong>AI Helper 会从该地址读取模型列表，选择 <code>glm-5.3</code> 或其他模型；也可以手动输入模型名。</li>
-        <li><strong>保存并应用。</strong>点击「保存并应用 Cursor 配置」。AI Helper 会把配置写入 <code>~/.ai-helper/cursor_config.json</code>，启动本地 Bridge，并修补 Cursor 客户端，使其请求发往 Bridge。</li>
+        <li><strong>选择节点并填写 API Key。</strong>接入节点可选「BobAPI 官方节点」（<code>https://bob-api.com/</code>，推荐首选）或「TaijiAI 加速节点」（<code>https://taijiai.online/</code>，备用专线），然后输入 API Key。手动填写的 Key 首次用于某个节点时，需点击「确认用于此节点」；从 Bob API 账号选择的 Key 和一键配置只能用于 BobAPI 官方节点。</li>
+        <li><strong>选择模型。</strong>AI Helper 会从所选节点读取模型列表，选择 <code>glm-5.3</code> 或其他模型；也可以手动输入模型名。</li>
+        <li><strong>保存配置。</strong>点击「确认并保存 Cursor 配置」，连通性测试通过后，AI Helper 会把配置写入 <code>~/.ai-helper/cursor_config.json</code> 并启动本地 Bridge。</li>
+        <li><strong>接入 AI Helper。</strong>在面板的客户端状态区点击「接入 AI Helper」，修补 Cursor 客户端，使其请求发往 Bridge。</li>
         <li><strong>重启 Cursor。</strong>点击「重启 Cursor」，然后在 Cursor 的模型选择器中选择刚才配置的模型。</li>
       </ol>
+
+      <h2>只改 Base URL 与使用 AI Helper Bridge 的区别</h2>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr><th>项目</th><th>只在 Cursor 设置里改 OpenAI Base URL</th><th>AI Helper 本地 Bridge</th></tr>
+          </thead>
+          <tbody>
+            <tr><td>通信协议</td><td>Agent 等功能仍走 Cursor 的 Connect-RPC / HTTP2</td><td>Bridge 把 Cursor 请求转换为 OpenAI 兼容请求</td></tr>
+            <tr><td>可用模型</td><td>无法完整接入第三方模型</td><td>BobAPI 节点上的模型，例如 <code>glm-5.3</code>；支持流式响应、思考内容和图片输入</td></tr>
+            <tr><td>本机写入内容</td><td>Cursor 设置</td><td><code>~/.ai-helper/cursor_config.json</code>，以及可还原的 Cursor 客户端补丁（修补前自动备份）</td></tr>
+          </tbody>
+        </table>
+      </div>
 
       <div class="note">如果你使用 Bob API 账号登录 AI Helper 并执行「一键配置」，Cursor 会自动使用「国产Token计划」分组（Bob API 账号下国产模型专用的令牌分组，<a href="/about.html#groups">分组说明</a>）的 API Key，推荐模型为 <code>glm-5.3</code>；账号下没有该分组的 Key 时会自动创建。</div>
 
@@ -108,9 +152,13 @@
 
       <h2>常见问题</h2>
       <h3>端口 8969 被占用怎么办？</h3>
-      <p>在 Cursor 面板的「Bridge 网关端口」中改成其他空闲端口，保存后重新应用即可。</p>
+      <p>在 Cursor 面板的「Bridge 网关端口」中改成其他空闲端口并保存，然后点击「重启 Cursor」。如果 Cursor 已接入 AI Helper，重启前会按新端口重新修补客户端。</p>
       <h3>Cursor 升级后第三方模型失效了？</h3>
-      <p>Cursor 更新可能覆盖被修补的文件。重新打开 AI Helper 的 Cursor 面板，再执行一次「保存并应用 Cursor 配置」。</p>
+      <p>Cursor 更新可能覆盖被修补的文件。打开 AI Helper 的 Cursor 面板，如果状态显示为官方直连，点击「接入 AI Helper」重新修补，再重启 Cursor。</p>
+      <h3>关闭 AI Helper 窗口后，Cursor 还能用第三方模型吗？</h3>
+      <p>能。关闭主窗口后 AI Helper 会留在系统托盘中，Bridge 继续运行；只有从托盘彻底退出 AI Helper，Bridge 才会停止，此时 Cursor 中的第三方模型将不可用。</p>
+      <h3>Cursor Agent 修改文件时提示“该工作区尚未授权”怎么办？</h3>
+      <p>Bridge 只允许 Cursor Agent 在已授权的工作区内写入或删除文件。打开 AI Helper 的 Cursor 面板，在「待授权请求」中点击「允许」后重试即可；授权记录保存在 <code>~/.ai-helper/agent_workspaces.json</code>，可在「已授权工作区」中撤销。</p>
 
       <h2>参考：Cursor 官方文档</h2>
       <ul>
@@ -118,7 +166,8 @@
       </ul>
 
       <p><a class="cta" href="/#downloads">下载 AI Helper</a></p>
-      <p>相关教程：<a href="/guides/claude-code-custom-api.html">Claude Code 切换 API 地址</a> · <a href="/guides/codex-cli-custom-api.html">Codex CLI 配置自定义 API</a></p>
+      <p>相关教程：<a href="/guides/cursor-custom-model-not-working.html">Cursor 自定义模型不生效排查</a> · <a href="/guides/accio-work-custom-api.html">Accio Work 接入第三方模型</a> · <a href="/guides/ai-coding-config-paths.html">AI 编程客户端配置文件路径大全</a> · <a href="/guides/claude-code-custom-api.html">Claude Code 切换 API 地址</a> · <a href="/guides/codex-cli-custom-api.html">Codex CLI 配置自定义 API</a></p>
+      <p>源码与问题反馈：<a href="https://github.com/TF49/AI-Helper">GitHub 仓库（MIT 开源）</a> · <a href="https://github.com/TF49/AI-Helper/issues">GitHub Issues</a> · <a href="/en/guides/cursor-custom-model.html" hreflang="en">English version</a></p>
     </article>
   </main>
 

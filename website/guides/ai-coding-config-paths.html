@@ -1,0 +1,321 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AI 编程客户端配置文件路径与环境变量大全（Windows &amp; macOS）| Bob AI Helper</title>
+  <meta name="description"
+    content="Claude Code、Codex CLI、Cursor、WorkBuddy、Accio Work、DeepSeek Harness、ChatGPT Desktop 的配置文件路径、关键字段与环境变量速查表，包含 Windows（C:\Users\&lt;用户名&gt;\…）与 macOS 路径、AI Helper 修改和保留的内容，以及本地 Bridge 端口。">
+  <link rel="canonical" href="https://helper.bob-api.com/guides/ai-coding-config-paths.html">
+  <link rel="alternate" hreflang="zh-CN" href="https://helper.bob-api.com/guides/ai-coding-config-paths.html">
+  <meta name="robots" content="index, follow, max-snippet:-1">
+  <meta property="og:type" content="article">
+  <meta property="og:site_name" content="Bob AI Helper">
+  <meta property="og:title" content="AI 编程客户端配置文件路径与环境变量大全（Windows &amp; macOS）">
+  <meta property="og:description" content="Claude Code、Codex CLI、Cursor、WorkBuddy、Accio Work、DeepSeek Harness 等客户端的配置路径、字段与环境变量速查表。">
+  <meta property="og:url" content="https://helper.bob-api.com/guides/ai-coding-config-paths.html">
+  <meta property="og:image" content="https://helper.bob-api.com/assets/app-preview.png">
+  <link rel="icon" type="image/x-icon" href="/assets/favicon.ico">
+  <link rel="stylesheet" href="/assets/docs.css?v=1.0.88-1">
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@graph": [
+      {
+        "@type": "TechArticle",
+        "name": "AI 编程客户端配置文件路径与环境变量大全（Windows & macOS）",
+        "headline": "AI 编程客户端配置文件路径与环境变量大全（Windows & macOS）",
+        "image": "https://helper.bob-api.com/assets/app-preview.png",
+        "description": "Claude Code、Codex CLI、Cursor、WorkBuddy、Accio Work、DeepSeek Harness、ChatGPT Desktop 以及 AI Helper 自身的配置文件路径、关键字段、环境变量和本地 Bridge 端口速查表。",
+        "inLanguage": "zh-CN",
+        "datePublished": "2026-11-24",
+        "dateModified": "2026-11-24",
+        "author": { "@type": "Person", "@id": "https://helper.bob-api.com/about.html#maintainer", "name": "TF49", "url": "https://helper.bob-api.com/about.html", "sameAs": ["https://github.com/TF49"] },
+        "publisher": { "@type": "Organization", "@id": "https://helper.bob-api.com/#organization", "name": "Bob AI Helper" },
+        "about": [
+          { "@type": "SoftwareApplication", "name": "Claude Code" },
+          { "@type": "SoftwareApplication", "name": "OpenAI Codex CLI" },
+          { "@type": "SoftwareApplication", "name": "Cursor" },
+          { "@type": "SoftwareApplication", "name": "WorkBuddy" },
+          { "@type": "SoftwareApplication", "name": "Accio Work" },
+          { "@type": "SoftwareApplication", "name": "DeepSeek Harness" },
+          { "@type": "SoftwareApplication", "name": "ChatGPT Desktop" }
+        ]
+      },
+      {
+        "@type": "BreadcrumbList",
+        "itemListElement": [
+          { "@type": "ListItem", "position": 1, "name": "Bob AI Helper", "item": "https://helper.bob-api.com/" },
+          { "@type": "ListItem", "position": 2, "name": "教程", "item": "https://helper.bob-api.com/guides/" },
+          { "@type": "ListItem", "position": 3, "name": "配置文件路径与环境变量大全", "item": "https://helper.bob-api.com/guides/ai-coding-config-paths.html" }
+        ]
+      },
+      {
+        "@type": "FAQPage",
+        "@id": "https://helper.bob-api.com/guides/ai-coding-config-paths.html#faq",
+        "mainEntity": [
+          {
+            "@type": "Question",
+            "name": "Windows 上路径里的 ~ 指哪个目录？",
+            "acceptedAnswer": { "@type": "Answer", "text": "~ 指当前用户的主目录，也就是 C:\\Users\\<用户名>（环境变量 %USERPROFILE%）。例如 ~/.claude/settings.json 在 Windows 上就是 C:\\Users\\<用户名>\\.claude\\settings.json。这些以点开头的目录可以直接在资源管理器地址栏输入完整路径打开。" }
+          },
+          {
+            "@type": "Question",
+            "name": "哪些客户端需要本地 Bridge？端口是多少？",
+            "acceptedAnswer": { "@type": "Answer", "text": "Cursor 和 Accio Work 需要。Cursor 的 Bridge 默认监听 127.0.0.1:8969，Accio Work 的 Bridge 默认监听 127.0.0.1:8787。首选端口被占用时，AI Helper 会依次尝试后面 20 个端口，并把实际端口写回配置。Claude Code、Codex CLI、WorkBuddy 和 DeepSeek Harness 直接连接配置文件中写入的 API 地址，不经过 Bridge。" }
+          },
+          {
+            "@type": "Question",
+            "name": "macOS 上 Codex 提示找不到 CUSTOM_OPENAI_API_KEY？",
+            "acceptedAnswer": { "@type": "Answer", "text": "在 Windows 上，AI Helper 会把 Key 写入当前用户的 CUSTOM_OPENAI_API_KEY 环境变量；在 macOS 上不会写入持久的系统环境变量。请在 shell 配置文件（如 ~/.zshrc）中加入 export CUSTOM_OPENAI_API_KEY=你的 Key，然后重新打开终端。" }
+          },
+          {
+            "@type": "Question",
+            "name": "如何把所有客户端恢复到 AI Helper 修改前的状态？",
+            "acceptedAnswer": { "@type": "Answer", "text": "在 AI Helper 的设置 → 客户端配置 → 恢复所有客户端原生配置中点击「清除配置」。Claude Code、Codex、WorkBuddy 和 DeepSeek Harness 会按 ~/.ai-helper/reset_state.json 中的快照恢复，文件在接管后被改动过的只清理受管字段；Cursor 和 Accio Work 会停止 Bridge、删除 AI Helper 专用配置，Cursor 的客户端补丁也会被还原。" }
+          }
+        ]
+      }
+    ]
+  }
+  </script>
+</head>
+
+<body>
+  <header class="doc-nav">
+    <div class="doc-nav-inner">
+      <a class="doc-brand" href="/"><img src="/assets/logo.png" alt="Bob AI Helper Logo" width="28" height="28">Bob AI Helper</a>
+      <nav class="doc-nav-links" aria-label="主导航">
+        <a href="/guides/">教程</a><a href="/#downloads">下载</a><a class="hide-sm" href="https://github.com/TF49/AI-Helper">GitHub</a>
+      </nav>
+    </div>
+  </header>
+
+  <main class="doc-main">
+    <p class="breadcrumb"><a href="/">Bob AI Helper</a> / <a href="/guides/">教程</a> / 配置文件路径与环境变量大全</p>
+    <article>
+      <h1>AI 编程客户端配置文件路径与环境变量大全（Windows &amp; macOS）</h1>
+      <p class="doc-meta">适用于 AI Helper <span class="current-version-tag">v1.0.88</span> · Windows 与 macOS · 最后更新 <time class="last-updated" datetime="2026-11-24">2026-11-24</time> · 作者 <a href="/about.html">TF49</a></p>
+
+      <div class="tldr">
+        <p><strong>简短回答：</strong>Claude Code 读 <code>~/.claude/settings.json</code>，Codex CLI 读 <code>~/.codex/config.toml</code>，WorkBuddy 读 <code>~/.workbuddy/models.json</code>，DeepSeek Harness 读 <code>~/.dsh/profiles/desktop/cordis.patch.yml</code> 和 <code>~/.dsh/.credentials.yaml</code>。Cursor 和 Accio Work 不能直接填第三方 API，AI Helper 把它们的配置放在 <code>~/.ai-helper/</code> 下，并通过本地 Bridge（<code>127.0.0.1:8969</code> / <code>127.0.0.1:8787</code>）接入。Windows 上 <code>~</code> 即 <code>C:\Users\&lt;用户名&gt;</code>。</p>
+      </div>
+
+      <p>本页按 AI Helper 源码中实际读写的路径整理，适合查找配置文件位置、手动修改或排查问题。AI Helper 是 MIT 开源的本地桌面工具，下表中「AI Helper 修改 / 保留」两列说明它在你保存配置时动哪些字段、不动哪些内容。在 AI Helper 面板中，接入节点可选「BobAPI 官方节点」（<code>https://bob-api.com/</code>）或「TaijiAI 加速节点」（<code>https://taijiai.online/</code>）。</p>
+
+      <h2>路径约定</h2>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr><th>写法</th><th>Windows</th><th>macOS</th></tr>
+          </thead>
+          <tbody>
+            <tr><td><code>~</code>（用户主目录）</td><td><code>C:\Users\&lt;用户名&gt;</code>（<code>%USERPROFILE%</code>）</td><td><code>/Users/&lt;用户名&gt;</code></td></tr>
+            <tr><td>Roaming 应用数据</td><td><code>C:\Users\&lt;用户名&gt;\AppData\Roaming</code>（<code>%APPDATA%</code>）</td><td><code>~/Library/Application Support</code></td></tr>
+            <tr><td>Local 应用数据</td><td><code>C:\Users\&lt;用户名&gt;\AppData\Local</code>（<code>%LOCALAPPDATA%</code>）</td><td>—</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h2>总览：各客户端配置文件位置</h2>
+      <div class="table-wrap">
+        <table style="min-width: 760px">
+          <thead>
+            <tr><th>客户端</th><th>Windows 配置路径</th><th>macOS 配置路径</th><th>接入方式</th></tr>
+          </thead>
+          <tbody>
+            <tr><td>Claude Code</td><td><code>C:\Users\&lt;用户名&gt;\.claude\settings.json</code></td><td><code>/Users/&lt;用户名&gt;/.claude/settings.json</code></td><td>直连，<code>env</code> 字段</td></tr>
+            <tr><td>OpenAI Codex CLI</td><td><code>C:\Users\&lt;用户名&gt;\.codex\config.toml</code></td><td><code>/Users/&lt;用户名&gt;/.codex/config.toml</code></td><td>直连，自定义 provider + 环境变量</td></tr>
+            <tr><td>Cursor</td><td><code>C:\Users\&lt;用户名&gt;\.ai-helper\cursor_config.json</code>（AI Helper 专用）</td><td><code>/Users/&lt;用户名&gt;/.ai-helper/cursor_config.json</code></td><td>本地 Bridge <code>127.0.0.1:8969</code> + 客户端补丁</td></tr>
+            <tr><td>WorkBuddy</td><td><code>C:\Users\&lt;用户名&gt;\.workbuddy\models.json</code></td><td><code>/Users/&lt;用户名&gt;/.workbuddy/models.json</code></td><td>直连，模型数组</td></tr>
+            <tr><td>Accio Work</td><td><code>C:\Users\&lt;用户名&gt;\.ai-helper\accio_config.json</code>（AI Helper 专用）</td><td><code>/Users/&lt;用户名&gt;/.ai-helper/accio_config.json</code></td><td>本地 Bridge <code>127.0.0.1:8787</code> + 启动时注入环境变量</td></tr>
+            <tr><td>DeepSeek Harness（桌面版）</td><td><code>C:\Users\&lt;用户名&gt;\.dsh\profiles\desktop\cordis.patch.yml</code><br><code>C:\Users\&lt;用户名&gt;\.dsh\.credentials.yaml</code></td><td><code>/Users/&lt;用户名&gt;/.dsh/profiles/desktop/cordis.patch.yml</code><br><code>/Users/&lt;用户名&gt;/.dsh/.credentials.yaml</code></td><td>直连，按协议分三条路由</td></tr>
+            <tr><td>ChatGPT Desktop</td><td colspan="2">AI Helper 不写入其配置，只做安装探测与启动</td><td>—</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h2 id="claude-code">Claude Code</h2>
+      <div class="table-wrap">
+        <table style="min-width: 640px">
+          <tbody>
+            <tr><th>配置文件</th><td>Windows：<code>C:\Users\&lt;用户名&gt;\.claude\settings.json</code><br>macOS：<code>/Users/&lt;用户名&gt;/.claude/settings.json</code></td></tr>
+            <tr><th>关键字段</th><td><code>env.ANTHROPIC_BASE_URL</code>（API 地址）、<code>env.ANTHROPIC_AUTH_TOKEN</code>（API Key）、<code>env.ANTHROPIC_MODEL</code>（模型）、顶层 <code>model</code></td></tr>
+            <tr><th>AI Helper 修改</th><td>只写入上面 4 项；模型为空时不写 <code>ANTHROPIC_MODEL</code> 和 <code>model</code></td></tr>
+            <tr><th>AI Helper 保留</th><td>其他顶层字段（如 <code>permissions</code>）和 <code>env</code> 中的其他变量。文件不是合法 JSON 对象时停止写入，不覆盖原文件</td></tr>
+            <tr><th>备份 / 快照</th><td>每次写入前备份为 <code>settings.json.bak</code>；首次修改前的快照记录在 <code>~/.ai-helper/reset_state.json</code></td></tr>
+            <tr><th>CLI 探测位置</th><td>Windows：<code>C:\Users\&lt;用户名&gt;\AppData\Roaming\npm\claude.cmd</code>；macOS：<code>/opt/homebrew/bin</code>、<code>/usr/local/bin</code>、<code>~/.npm-global/bin</code>、<code>~/.local/bin</code>、<code>~/.bun/bin</code>、<code>~/.nvm/versions/node/*/bin</code> 等</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h2 id="codex">OpenAI Codex CLI</h2>
+      <div class="table-wrap">
+        <table style="min-width: 640px">
+          <tbody>
+            <tr><th>配置文件</th><td>Windows：<code>C:\Users\&lt;用户名&gt;\.codex\config.toml</code><br>macOS：<code>/Users/&lt;用户名&gt;/.codex/config.toml</code></td></tr>
+            <tr><th>关键字段</th><td>顶层 <code>model</code>、<code>model_provider = "custom"</code>；<code>[model_providers.custom]</code> 中的 <code>base_url</code>（以 <code>/v1</code> 结尾）和 <code>env_key = "CUSTOM_OPENAI_API_KEY"</code></td></tr>
+            <tr><th>环境变量</th><td><code>CUSTOM_OPENAI_API_KEY</code>：存放 API Key。Windows 上 AI Helper 写入当前用户环境变量（注册表 <code>HKEY_CURRENT_USER\Environment</code>）；macOS 上不写入持久环境变量，需要自行在 shell 配置文件中 <code>export</code></td></tr>
+            <tr><th>AI Helper 修改</th><td>上述字段；<code>custom</code> provider 缺少 <code>name</code> 时补为 <code>Custom</code>；移除 <code>custom</code> provider 中的 <code>experimental_bearer_token</code>、<code>env_key_instructions</code>、<code>auth</code>、<code>requires_openai_auth</code> 以及 <code>http_headers</code> / <code>env_http_headers</code> 中的鉴权类请求头；当前活动 profile 使用 <code>custom</code> 且覆盖了模型时，同步更新该 profile 的 <code>model</code></td></tr>
+            <tr><th>AI Helper 保留</th><td>其他 provider、其他 profile、sandbox 与审批设置等全部内容</td></tr>
+            <tr><th>备份 / 快照</th><td>写入前备份为 <code>config.toml.bak</code>；快照同时记录 <code>config.toml</code> 和 <code>CUSTOM_OPENAI_API_KEY</code> 的原值</td></tr>
+            <tr><th>CLI 探测位置</th><td>Windows：<code>C:\Users\&lt;用户名&gt;\AppData\Roaming\npm\codex.cmd</code>；macOS：与 Claude Code 相同的目录</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h2 id="cursor">Cursor</h2>
+      <div class="table-wrap">
+        <table style="min-width: 640px">
+          <tbody>
+            <tr><th>AI Helper 配置</th><td><code>~/.ai-helper/cursor_config.json</code>：<code>base_url</code>、<code>api_key</code>、<code>model</code>（默认 <code>glm-5.3</code>）、<code>bridge_port</code>（默认 <code>8969</code>）、<code>auto_start_bridge</code>、<code>custom_models</code>、<code>cached_models</code>、<code>cursor_path</code></td></tr>
+            <tr><th>Agent 工作区授权</th><td><code>~/.ai-helper/agent_workspaces.json</code></td></tr>
+            <tr><th>本地 Bridge</th><td><code>127.0.0.1:8969</code>（Connect-RPC / HTTP2），被占用时依次尝试 8970–8989</td></tr>
+            <tr><th>客户端补丁（安装目录）</th><td>Windows 默认安装目录 <code>C:\Users\&lt;用户名&gt;\AppData\Local\Programs\cursor</code>，补丁文件位于 <code>resources\app\out\vs\workbench\workbench.desktop.main.js</code>（或 <code>workbench.glass.main.js</code>）和 <code>resources\app\product.json</code>；macOS 为 <code>/Applications/Cursor.app/Contents/Resources/app/</code> 下的同名文件。原文件备份在 <code>resources/app/.ai-helper-backup/</code></td></tr>
+            <tr><th>状态数据库</th><td>Windows：<code>C:\Users\&lt;用户名&gt;\AppData\Roaming\Cursor\User\globalStorage\state.vscdb</code><br>macOS：<code>~/Library/Application Support/Cursor/User/globalStorage/state.vscdb</code><br>AI Helper 把其中的服务地址指向 <code>http://127.0.0.1:&lt;端口&gt;</code>，修改前备份为 <code>state.vscdb.ai-helper-bak</code></td></tr>
+            <tr><th>还原</th><td>Cursor 面板「恢复官方连接」，或设置页清除配置：停止 Bridge、还原补丁与状态库，删除 <code>cursor_config.json</code> 和 <code>agent_workspaces.json</code></td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h2 id="workbuddy">WorkBuddy</h2>
+      <div class="table-wrap">
+        <table style="min-width: 640px">
+          <tbody>
+            <tr><th>配置文件</th><td>Windows：<code>C:\Users\&lt;用户名&gt;\.workbuddy\models.json</code><br>macOS：<code>/Users/&lt;用户名&gt;/.workbuddy/models.json</code><br>兼容路径：<code>~/.workbuddy-ai/models.json</code>（AI Helper 同时读写两处，按模型 <code>id</code> 合并）</td></tr>
+            <tr><th>环境变量</th><td><code>WORKBUDDY_CONFIG_DIR</code> 或 <code>CODEBUDDY_CONFIG_DIR</code>：设置后 AI Helper 只读写 <code>&lt;该目录&gt;/models.json</code></td></tr>
+            <tr><th>格式</th><td>顶层 JSON 数组，每个元素一个模型；也接受 <code>{"models": [ ... ]}</code> 包装对象</td></tr>
+            <tr><th>关键字段</th><td><code>id</code>、<code>name</code>、<code>vendor</code>（<code>Custom</code>）、<code>url</code>（以 <code>/v1</code> 结尾）、<code>api</code>、<code>apiKey</code>、<code>supportsToolCall</code>、<code>supportsImages</code>、<code>supportsReasoning</code>、<code>onlyReasoning</code>、<code>useCustomProtocol</code>、<code>reasoning</code>、<code>maxInputTokens</code>、<code>maxOutputTokens</code></td></tr>
+            <tr><th>AI Helper 修改</th><td>只新增或更新当前保存的那个模型（按 <code>id</code>）；同名原位更新，新模型追加到末尾；一键配置把推荐模型移到首位</td></tr>
+            <tr><th>AI Helper 保留</th><td>其他模型；同名模型的 <code>temperature</code>、<code>disabled</code>、已有的 <code>api</code> 值及未知字段；包装对象的其他顶层字段</td></tr>
+            <tr><th>备份 / 快照</th><td>写入前备份为 <code>models.json.bak</code>；多文件写入日志 <code>~/.ai-helper/workbuddy-transaction.json</code>（临时）；快照在 <code>~/.ai-helper/reset_state.json</code></td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>详细说明见 <a href="/guides/workbuddy-custom-api.html">WorkBuddy 如何配置自定义 API 与多个模型</a>。</p>
+
+      <h2 id="accio-work">Accio Work</h2>
+      <div class="table-wrap">
+        <table style="min-width: 640px">
+          <tbody>
+            <tr><th>AI Helper 配置</th><td><code>~/.ai-helper/accio_config.json</code>：<code>base_url</code>、<code>api_key</code>、<code>model</code>（默认 <code>glm-5.3</code>）、<code>bridge_port</code>（默认 <code>8787</code>）、<code>official_gateway</code>、<code>prevent_official_leak</code>（默认 <code>true</code>）、<code>fallback_official</code>、<code>auto_start_bridge</code>、<code>cached_models</code>、<code>image_model</code></td></tr>
+            <tr><th>本地 Bridge</th><td><code>127.0.0.1:8787</code>，被占用时依次尝试 8788–8807；健康检查 <code>http://127.0.0.1:8787/health</code></td></tr>
+            <tr><th>启动时注入的环境变量</th><td>Windows：<code>GATEWAY_BASE_URL</code>、<code>ADK_BASE_URL</code>、<code>ADK_MODEL</code>、<code>EMBEDDING_BASE_URL</code>、<code>EMBEDDING_MODEL</code>；macOS：<code>GATEWAY_BASE_URL</code>。网关地址形如 <code>http://127.0.0.1:&lt;端口&gt;/i/&lt;实例凭据&gt;</code>，只对由 AI Helper 启动的 Accio Work 进程生效</td></tr>
+            <tr><th>AI Helper 修改</th><td>不修改 Accio Work 安装目录和其用户数据，只读取 <code>~/.accio/logs/sdk.log</code> 检查网关是否生效</td></tr>
+            <tr><th>还原</th><td>不经 AI Helper 直接启动 Accio Work 即使用官方网关；设置页清除配置会停止 Bridge 并删除 <code>accio_config.json</code></td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>详细说明见 <a href="/guides/accio-work-custom-api.html">Accio Work 如何接入第三方模型（本地 Bridge）</a>。</p>
+
+      <h2 id="deepseek-harness">DeepSeek Harness（桌面版）</h2>
+      <div class="table-wrap">
+        <table style="min-width: 640px">
+          <tbody>
+            <tr><th>配置目录</th><td>默认 <code>~/.dsh</code>（Windows：<code>C:\Users\&lt;用户名&gt;\.dsh</code>）；设置了环境变量 <code>DSH_HOME</code> 时使用该目录</td></tr>
+            <tr><th>路由文件</th><td><code>~/.dsh/profiles/desktop/cordis.patch.yml</code>：<code>llm-pi-ai</code> 条目下的 <code>aihelper-claude</code>（Anthropic Messages）、<code>aihelper-codex</code>（OpenAI Responses）、<code>aihelper-cn</code>（Chat Completions）三条路由，以及默认模型条目 <code>agent-default-model</code></td></tr>
+            <tr><th>凭据文件</th><td><code>~/.dsh/.credentials.yaml</code>：<code>refs.AIHELPER_CLAUDE_API_KEY</code>、<code>refs.AIHELPER_CODEX_API_KEY</code>、<code>refs.AIHELPER_CN_API_KEY</code></td></tr>
+            <tr><th>AI Helper 修改</th><td>只管理 <code>aihelper-*</code> 路由和 <code>AIHELPER_*</code> 引用，只处理 <code>desktop</code> 档案</td></tr>
+            <tr><th>AI Helper 保留</th><td>自建路由、<code>records</code>、注释、<code>!!js</code> 表达式逐字节保留；DeepSeek 官方账号和官方 API Key 路由（<code>api.deepseek.com</code>）不改动；与 DSH 共用写锁</td></tr>
+            <tr><th>安装探测</th><td>Windows：<code>C:\Users\&lt;用户名&gt;\AppData\Local\Programs\DeepSeek Harness\</code>；macOS：<code>/Applications/DeepSeek Harness.app</code></td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>详细说明见 <a href="/guides/deepseek-harness-custom-api.html">DeepSeek Harness 怎么接入 Claude、GPT 和国产模型</a>。</p>
+
+      <h2 id="chatgpt-desktop">ChatGPT Desktop</h2>
+      <div class="table-wrap">
+        <table style="min-width: 640px">
+          <tbody>
+            <tr><th>AI Helper 做什么</th><td>安装探测、启动；不写入 ChatGPT Desktop 的任何配置。AI Helper 中标为「ChatGPT (Codex)」的面板写入的是 Codex 的 <code>~/.codex/config.toml</code>，与 Codex CLI 相同</td></tr>
+            <tr><th>Windows 安装探测</th><td>Microsoft Store 应用包；<code>C:\Users\&lt;用户名&gt;\AppData\Local\Programs\ChatGPT\ChatGPT.exe</code>；<code>C:\Users\&lt;用户名&gt;\AppData\Local\ChatGPT\ChatGPT.exe</code>；<code>C:\Program Files\ChatGPT\ChatGPT.exe</code></td></tr>
+            <tr><th>macOS 安装探测</th><td><code>/Applications/ChatGPT.app</code>、<code>~/Applications/ChatGPT.app</code></td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h2 id="ai-helper-files">AI Helper 自身的文件（~/.ai-helper）</h2>
+      <p>Windows：<code>C:\Users\&lt;用户名&gt;\.ai-helper\</code>；macOS：<code>/Users/&lt;用户名&gt;/.ai-helper/</code>。</p>
+      <div class="table-wrap">
+        <table style="min-width: 640px">
+          <thead>
+            <tr><th>文件</th><th>用途</th></tr>
+          </thead>
+          <tbody>
+            <tr><td><code>reset_state.json</code></td><td>各客户端首次被接管前的配置快照，以及 AI Helper 最后一次写入的文件哈希，用于「清除配置」时判断整文件恢复还是只清理受管字段</td></tr>
+            <tr><td><code>cursor_config.json</code></td><td>Cursor 的 API 地址、Key、模型与 Bridge 端口</td></tr>
+            <tr><td><code>agent_workspaces.json</code></td><td>Cursor Agent 被授权写入、删除的工作区</td></tr>
+            <tr><td><code>accio_config.json</code></td><td>Accio Work 的 API 地址、Key、模型与 Bridge 设置</td></tr>
+            <tr><td><code>app_paths.json</code></td><td>在「路径管理」中手动指定的各客户端安装路径</td></tr>
+            <tr><td><code>auth_session.json</code></td><td>Bob API 账号登录会话；会话凭据在 Windows 上用 DPAPI 保护，在 macOS 上存入钥匙串</td></tr>
+            <tr><td><code>managed_keys.json</code></td><td>API Key 的 SHA-256 摘要，用于限制 Bob API 账号下发的 Key 只发往允许的节点（不含明文 Key）</td></tr>
+            <tr><td><code>workbuddy-transaction.json</code></td><td>WorkBuddy 多文件写入过程中的临时日志，写入完成后删除</td></tr>
+            <tr><td><code>image_budget_ledger.json</code></td><td>Accio Work 生图的本地次数预算记录</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="note"><code>cursor_config.json</code> 和 <code>accio_config.json</code> 中包含明文 API Key，请不要把 <code>.ai-helper</code> 目录打包分享。清除配置时这两个文件会被直接删除，不保存快照。</div>
+
+      <h2 id="env-vars">环境变量速查</h2>
+      <div class="table-wrap">
+        <table style="min-width: 640px">
+          <thead>
+            <tr><th>变量</th><th>相关客户端</th><th>说明</th></tr>
+          </thead>
+          <tbody>
+            <tr><td><code>ANTHROPIC_BASE_URL</code> / <code>ANTHROPIC_AUTH_TOKEN</code> / <code>ANTHROPIC_MODEL</code></td><td>Claude Code</td><td>AI Helper 写在 <code>settings.json</code> 的 <code>env</code> 字段中，不修改系统环境变量</td></tr>
+            <tr><td><code>CUSTOM_OPENAI_API_KEY</code></td><td>Codex CLI</td><td><code>env_key</code> 指向的 Key 变量；Windows 上写入当前用户环境变量</td></tr>
+            <tr><td><code>WORKBUDDY_CONFIG_DIR</code> / <code>CODEBUDDY_CONFIG_DIR</code></td><td>WorkBuddy</td><td>设置后 AI Helper 改用该目录下的 <code>models.json</code></td></tr>
+            <tr><td><code>DSH_HOME</code></td><td>DeepSeek Harness</td><td>覆盖默认配置目录 <code>~/.dsh</code></td></tr>
+            <tr><td><code>GATEWAY_BASE_URL</code>、<code>ADK_BASE_URL</code>、<code>ADK_MODEL</code>、<code>EMBEDDING_BASE_URL</code>、<code>EMBEDDING_MODEL</code></td><td>Accio Work</td><td>AI Helper 启动 Accio Work 时注入，指向本地 Bridge（macOS 仅 <code>GATEWAY_BASE_URL</code>）</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h2 id="ports">本地 Bridge 端口</h2>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr><th>客户端</th><th>默认地址</th><th>端口被占用时</th><th>配置字段</th></tr>
+          </thead>
+          <tbody>
+            <tr><td>Cursor</td><td><code>127.0.0.1:8969</code></td><td>依次尝试 8970–8989</td><td><code>cursor_config.json</code> → <code>bridge_port</code></td></tr>
+            <tr><td>Accio Work</td><td><code>127.0.0.1:8787</code></td><td>依次尝试 8788–8807，并写回配置</td><td><code>accio_config.json</code> → <code>bridge_port</code></td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>两个 Bridge 都只监听本机回环地址，并校验请求来源；关闭 AI Helper 主窗口后它们随托盘进程继续运行，彻底退出 AI Helper 后停止。</p>
+
+      <h2 id="faq">常见问题</h2>
+      <h3>Windows 上路径里的 ~ 指哪个目录？</h3>
+      <p><code>~</code> 指当前用户的主目录，也就是 <code>C:\Users\&lt;用户名&gt;</code>（环境变量 <code>%USERPROFILE%</code>）。例如 <code>~/.claude/settings.json</code> 在 Windows 上就是 <code>C:\Users\&lt;用户名&gt;\.claude\settings.json</code>。这些以点开头的目录可以直接在资源管理器地址栏输入完整路径打开。</p>
+      <h3>哪些客户端需要本地 Bridge？端口是多少？</h3>
+      <p>Cursor 和 Accio Work 需要。Cursor 的 Bridge 默认监听 <code>127.0.0.1:8969</code>，Accio Work 的 Bridge 默认监听 <code>127.0.0.1:8787</code>。首选端口被占用时，AI Helper 会依次尝试后面 20 个端口，并把实际端口写回配置。Claude Code、Codex CLI、WorkBuddy 和 DeepSeek Harness 直接连接配置文件中写入的 API 地址，不经过 Bridge。</p>
+      <h3>macOS 上 Codex 提示找不到 CUSTOM_OPENAI_API_KEY？</h3>
+      <p>在 Windows 上，AI Helper 会把 Key 写入当前用户的 <code>CUSTOM_OPENAI_API_KEY</code> 环境变量；在 macOS 上不会写入持久的系统环境变量。请在 shell 配置文件（如 <code>~/.zshrc</code>）中加入 <code>export CUSTOM_OPENAI_API_KEY=你的 Key</code>，然后重新打开终端。</p>
+      <h3>如何把所有客户端恢复到 AI Helper 修改前的状态？</h3>
+      <p>在 AI Helper 的设置 → 客户端配置 → 恢复所有客户端原生配置中点击「清除配置」。Claude Code、Codex、WorkBuddy 和 DeepSeek Harness 会按 <code>~/.ai-helper/reset_state.json</code> 中的快照恢复，文件在接管后被改动过的只清理受管字段；Cursor 和 Accio Work 会停止 Bridge、删除 AI Helper 专用配置，Cursor 的客户端补丁也会被还原。</p>
+
+      <h2>参考：官方文档</h2>
+      <ul>
+        <li><a href="https://code.claude.com/docs/zh-CN/settings">Claude Code：设置文件和优先级（settings.json 与 env 字段）</a></li>
+        <li><a href="https://developers.openai.com/codex/config-advanced">Codex：高级配置与自定义 model_providers</a></li>
+        <li><a href="https://cursor.com/help/models-and-usage/api-keys">Cursor：Bring your own API key</a></li>
+      </ul>
+
+      <p><a class="cta" href="/#downloads">下载 AI Helper</a></p>
+      <p>相关教程：<a href="/guides/claude-code-custom-api.html">Claude Code 切换 API 地址</a> · <a href="/guides/codex-cli-custom-api.html">Codex CLI 配置自定义 API</a> · <a href="/guides/cursor-custom-model.html">Cursor 配置第三方模型</a> · <a href="/guides/workbuddy-custom-api.html">WorkBuddy 配置自定义 API</a> · <a href="/guides/accio-work-custom-api.html">Accio Work 接入第三方模型</a> · <a href="/guides/deepseek-harness-custom-api.html">DeepSeek Harness 接入多种模型</a></p>
+      <p>源码与问题反馈：<a href="https://github.com/TF49/AI-Helper">GitHub 仓库（MIT 开源）</a> · <a href="https://github.com/TF49/AI-Helper/issues">GitHub Issues</a></p>
+    </article>
+  </main>
+
+  <footer class="doc-footer">
+    <div class="doc-footer-inner">
+      <span><a href="/">首页</a><a href="/guides/">教程</a><a href="/about.html">关于</a><a href="/en/">English</a><a href="https://github.com/TF49/AI-Helper">GitHub</a></span>
+      <span>© 2026 Bob AI Helper · MIT License</span>
+    </div>
+  </footer>
+</body>
+
+</html>

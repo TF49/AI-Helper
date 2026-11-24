@@ -18,6 +18,7 @@
     "bump": "powershell -ExecutionPolicy Bypass -File scripts/bump-version.ps1",
     "release": "powershell -ExecutionPolicy Bypass -File scripts/release.ps1",
     "sync:web": "node scripts/sync-website.js",
+    "build:llms": "node scripts/build-llms-full.js",
     "preview:web": "powershell -Command \"Start-Process 'website/index.html'\"",
     "serve:web": "python -m http.server 3000 --directory website"
   },

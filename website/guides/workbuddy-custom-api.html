@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>WorkBuddy 如何配置自定义 API 与多个模型（models.json）| Bob AI Helper 教程</title>
+  <meta name="description"
+    content="WorkBuddy 的自定义模型写在 ~/.workbuddy/models.json，每个模型是一条包含 id、url、apiKey 的记录。本文说明字段含义、多模型排序、手动编辑示例，以及用 AI Helper 写入模型并保留已有模型的方法。">
+  <link rel="canonical" href="https://helper.bob-api.com/guides/workbuddy-custom-api.html">
+  <link rel="alternate" hreflang="zh-CN" href="https://helper.bob-api.com/guides/workbuddy-custom-api.html">
+  <meta name="robots" content="index, follow, max-snippet:-1">
+  <meta property="og:type" content="article">
+  <meta property="og:site_name" content="Bob AI Helper">
+  <meta property="og:title" content="WorkBuddy 如何配置自定义 API 与多个模型">
+  <meta property="og:description" content="手动编辑 ~/.workbuddy/models.json，或用 AI Helper 为 WorkBuddy 添加多个自定义模型。">
+  <meta property="og:url" content="https://helper.bob-api.com/guides/workbuddy-custom-api.html">
+  <meta property="og:image" content="https://helper.bob-api.com/assets/app-preview.png">
+  <link rel="icon" type="image/x-icon" href="/assets/favicon.ico">
+  <link rel="stylesheet" href="/assets/docs.css?v=1.0.88-1">
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@graph": [
+      {
+        "@type": ["TechArticle", "HowTo"],
+        "name": "WorkBuddy 如何配置自定义 API 与多个模型",
+        "headline": "WorkBuddy 如何配置自定义 API 与多个模型",
+        "image": "https://helper.bob-api.com/assets/app-preview.png",
+        "description": "在 ~/.workbuddy/models.json 中为 WorkBuddy 添加多个自定义模型（id、url、apiKey 等字段），或使用 AI Helper 写入并保留已有模型。",
+        "inLanguage": "zh-CN",
+        "datePublished": "2026-11-24",
+        "dateModified": "2026-11-24",
+        "author": { "@type": "Person", "@id": "https://helper.bob-api.com/about.html#maintainer", "name": "TF49", "url": "https://helper.bob-api.com/about.html", "sameAs": ["https://github.com/TF49"] },
+        "publisher": { "@type": "Organization", "@id": "https://helper.bob-api.com/#organization", "name": "Bob AI Helper" },
+        "tool": [{ "@type": "HowToTool", "name": "Bob AI Helper" }, { "@type": "HowToTool", "name": "WorkBuddy" }],
+        "step": [
+          { "@type": "HowToStep", "name": "打开 WorkBuddy 面板", "text": "启动 AI Helper，进入 WorkBuddy 配置面板，AI Helper 会读取 ~/.workbuddy/models.json 中已有的模型。" },
+          { "@type": "HowToStep", "name": "选择接入节点并填写 API Key", "text": "选择 BobAPI 官方节点（或 TaijiAI 加速节点），输入 API Key。手动填写的 Key 首次用于某个节点时，需点击「确认用于此节点」；从 Bob API 账号选择的 Key 和一键配置只能用于 BobAPI 官方节点。" },
+          { "@type": "HowToStep", "name": "选择模型与高级参数", "text": "从模型列表中选择或输入模型名，按需调整工具调用、图片输入、思考模式和 Token 上限，默认值可以直接使用。" },
+          { "@type": "HowToStep", "name": "确认、测试并保存", "text": "勾选确认后点击保存，AI Helper 先做流式连通性测试，通过后把模型写入 models.json：同名模型原位更新，新模型追加到末尾，其他模型保持不变。" }
+        ]
+      },
+      {
+        "@type": "BreadcrumbList",
+        "itemListElement": [
+          { "@type": "ListItem", "position": 1, "name": "Bob AI Helper", "item": "https://helper.bob-api.com/" },
+          { "@type": "ListItem", "position": 2, "name": "教程", "item": "https://helper.bob-api.com/guides/" },
+          { "@type": "ListItem", "position": 3, "name": "WorkBuddy 配置自定义 API", "item": "https://helper.bob-api.com/guides/workbuddy-custom-api.html" }
+        ]
+      },
+      {
+        "@type": "FAQPage",
+        "@id": "https://helper.bob-api.com/guides/workbuddy-custom-api.html#faq",
+        "mainEntity": [
+          {
+            "@type": "Question",
+            "name": "保存后 WorkBuddy 里看不到新模型？",
+            "acceptedAnswer": { "@type": "Answer", "text": "AI Helper 保存后会提示 WorkBuddy 通过热重载读取新模型。如果模型列表没有刷新，请重启 WorkBuddy；同时确认 models.json 仍是合法 JSON，并且没有通过 WORKBUDDY_CONFIG_DIR 或 CODEBUDDY_CONFIG_DIR 指向了其他目录。" }
+          },
+          {
+            "@type": "Question",
+            "name": "AI Helper 会删除我手动添加的模型吗？",
+            "acceptedAnswer": { "@type": "Answer", "text": "不会。保存时只新增或更新当前填写的那个模型 id，其余模型原样保留；只有在 WorkBuddy 面板中点击某个模型的移除按钮，才会删除该模型。" }
+          },
+          {
+            "@type": "Question",
+            "name": "为什么 ~/.workbuddy-ai/models.json 也被修改了？",
+            "acceptedAnswer": { "@type": "Answer", "text": "部分 WorkBuddy 版本使用 ~/.workbuddy-ai 目录。AI Helper 会同时读取 ~/.workbuddy 和 ~/.workbuddy-ai 两处的 models.json，按模型 id 合并后，把同一份模型列表写回两个文件，避免两处配置不一致。" }
+          },
+          {
+            "@type": "Question",
+            "name": "url 要不要带 /v1？",
+            "acceptedAnswer": { "@type": "Answer", "text": "需要。手动编辑 models.json 时，url 一般写到 /v1（例如 https://bob-api.com/v1），并保持 useCustomProtocol 为 false。用 AI Helper 保存时，它会写入所选节点的地址并自动补齐结尾的 /v1；只有在面板中开启 useCustomProtocol 时，才按节点地址原样写入 url、不补 /v1。" }
+          }
+        ]
+      }
+    ]
+  }
+  </script>
+</head>
+
+<body>
+  <header class="doc-nav">
+    <div class="doc-nav-inner">
+      <a class="doc-brand" href="/"><img src="/assets/logo.png" alt="Bob AI Helper Logo" width="28" height="28">Bob AI Helper</a>
+      <nav class="doc-nav-links" aria-label="主导航">
+        <a href="/guides/">教程</a><a href="/#downloads">下载</a><a class="hide-sm" href="https://github.com/TF49/AI-Helper">GitHub</a>
+      </nav>
+    </div>
+  </header>
+
+  <main class="doc-main">
+    <p class="breadcrumb"><a href="/">Bob AI Helper</a> / <a href="/guides/">教程</a> / WorkBuddy 配置自定义 API</p>
+    <article>
+      <h1>WorkBuddy 如何配置自定义 API 与多个模型</h1>
+      <p class="doc-meta">适用于 AI Helper <span class="current-version-tag">v1.0.88</span> · Windows 与 macOS · 最后更新 <time class="last-updated" datetime="2026-11-24">2026-11-24</time> · 作者 <a href="/about.html">TF49</a></p>
+
+      <div class="tldr">
+        <p><strong>简短回答：</strong>WorkBuddy 的自定义模型保存在 <code>~/.workbuddy/models.json</code>，文件是一个 JSON 数组，每个元素就是一个模型（<code>id</code>、<code>url</code>、<code>apiKey</code> 等字段）。往数组里追加记录即可同时使用多个模型。AI Helper 可以写入这些字段，并保留你已有的其他模型。</p>
+      </div>
+
+      <h2>配置文件在哪里</h2>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr><th>情况</th><th>路径</th></tr>
+          </thead>
+          <tbody>
+            <tr><td>默认路径</td><td><code>~/.workbuddy/models.json</code></td></tr>
+            <tr><td>Windows</td><td><code>C:\Users\&lt;用户名&gt;\.workbuddy\models.json</code></td></tr>
+            <tr><td>macOS</td><td><code>/Users/&lt;用户名&gt;/.workbuddy/models.json</code></td></tr>
+            <tr><td>兼容路径（部分版本）</td><td><code>~/.workbuddy-ai/models.json</code></td></tr>
+            <tr><td>设置了环境变量 <code>WORKBUDDY_CONFIG_DIR</code> 或 <code>CODEBUDDY_CONFIG_DIR</code></td><td><code>&lt;该目录&gt;/models.json</code>（AI Helper 此时只读写这个文件）</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>没有设置上述环境变量时，AI Helper 会同时读取默认路径和兼容路径，按模型 <code>id</code> 合并成一个列表，保存时把同一份列表写回两个文件。</p>
+
+      <h2>models.json 的格式与字段</h2>
+      <p>文件顶层是一个 JSON 数组。AI Helper 也能读取 <code>{"models": [ ... ]}</code> 形式的包装对象，此时只替换 <code>models</code> 数组，包装对象中的其他顶层字段保持不变。每个模型记录常用的字段如下：</p>
+      <div class="table-wrap">
+        <table style="min-width: 640px">
+          <thead>
+            <tr><th>字段</th><th>含义</th><th>AI Helper 写入的值</th></tr>
+          </thead>
+          <tbody>
+            <tr><td><code>id</code> / <code>name</code></td><td>模型 ID 与显示名称，<code>id</code> 也是请求时使用的模型名</td><td>两者都写为你选择的模型名，例如 <code>glm-5.3</code></td></tr>
+            <tr><td><code>vendor</code></td><td>服务商类型</td><td><code>Custom</code></td></tr>
+            <tr><td><code>url</code></td><td>API 地址</td><td>所选节点地址加 <code>/v1</code>，例如 <code>https://bob-api.com/v1</code>；开启 <code>useCustomProtocol</code> 时不补 <code>/v1</code></td></tr>
+            <tr><td><code>api</code></td><td>接口类型</td><td>新建模型时写 <code>openai-responses</code>；模型原本已有该字段时保留原值</td></tr>
+            <tr><td><code>apiKey</code></td><td>该模型使用的 API Key</td><td>你填写的 Key，每个模型可以不同</td></tr>
+            <tr><td><code>supportsToolCall</code> / <code>supportsImages</code> / <code>supportsReasoning</code></td><td>是否支持工具调用、图片输入、思考模式</td><td>默认都为 <code>true</code></td></tr>
+            <tr><td><code>onlyReasoning</code></td><td>仅思考模式</td><td>只在开启时写入 <code>true</code></td></tr>
+            <tr><td><code>useCustomProtocol</code></td><td>是否原样请求 <code>url</code></td><td>默认 <code>false</code></td></tr>
+            <tr><td><code>reasoning</code></td><td>思考强度设置：<code>supportedEfforts</code>、<code>defaultEffort</code>、<code>canDisableThinking</code></td><td>手动配置默认 <code>{"supportedEfforts": ["medium"]}</code>；<code>canDisableThinking</code> 只在关闭时写入 <code>false</code></td></tr>
+            <tr><td><code>maxInputTokens</code> / <code>maxOutputTokens</code></td><td>输入 / 输出 Token 上限</td><td>手动配置默认 <code>262144</code> / <code>32768</code></td></tr>
+            <tr><td><code>temperature</code>、<code>disabled</code> 及其他字段</td><td>WorkBuddy 或你自己设置的其他参数</td><td>不写入；更新同名模型时原样保留</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h2>方法一：手动编辑 models.json</h2>
+      <p>下面的示例配置了两个模型，每个模型可以使用不同的 API Key（例如不同分组的 Key）：</p>
+      <pre><code>[
+  {
+    "id": "glm-5.3",
+    "name": "glm-5.3",
+    "vendor": "Custom",
+    "url": "https://bob-api.com/v1",
+    "api": "openai-responses",
+    "apiKey": "你的 API Key",
+    "supportsToolCall": true,
+    "supportsImages": true,
+    "supportsReasoning": true,
+    "useCustomProtocol": false,
+    "reasoning": {
+      "supportedEfforts": ["medium"]
+    },
+    "maxInputTokens": 262144,
+    "maxOutputTokens": 32768
+  },
+  {
+    "id": "deepseek-v4.1-flash",
+    "name": "deepseek-v4.1-flash",
+    "vendor": "Custom",
+    "url": "https://bob-api.com/v1",
+    "apiKey": "另一个分组的 API Key",
+    "supportsToolCall": true,
+    "supportsImages": false,
+    "supportsReasoning": true,
+    "useCustomProtocol": false
+  }
+]</code></pre>
+      <p>注意事项：</p>
+      <ul>
+        <li>每个模型的 <code>id</code> 要唯一。AI Helper 按 <code>id</code> 识别模型，同名记录会被视为同一个模型。</li>
+        <li>保存后文件必须仍是合法 JSON（不能有注释和结尾多余的逗号）。文件损坏时 AI Helper 会报错并停止写入，不会覆盖原文件。</li>
+        <li>如果同时存在 <code>~/.workbuddy-ai/models.json</code>，建议两处保持一致，或者直接用 AI Helper 同步。</li>
+      </ul>
+
+      <h2>多个模型如何排序</h2>
+      <p>AI Helper 把列表中第一个 <code>vendor</code> 为 <code>Custom</code> 的模型当作默认模型，面板概览中显示的「当前操作模型」就是它。建议把最常用的模型放在数组第一位，其余模型依次排在后面。</p>
+      <ul>
+        <li><strong>普通保存：</strong>如果模型 <code>id</code> 已存在，就在原位置更新；如果是新模型，就追加到数组末尾，不改变已有顺序。</li>
+        <li><strong>一键配置：</strong>会把推荐模型移动到数组第一位，其他模型保留并顺延。</li>
+        <li><strong>移除模型：</strong>在 WorkBuddy 面板的「已配置模型列表」中点击某个模型的移除按钮，只删除这一条。</li>
+      </ul>
+
+      <h2>方法二：用 AI Helper 配置</h2>
+      <ol>
+        <li>启动 AI Helper，进入 <strong>WorkBuddy</strong> 面板。AI Helper 会读取已有的 models.json，并在「已配置模型列表」中显示所有模型。</li>
+        <li><strong>接入节点：</strong>选择「BobAPI 官方节点」（<code>https://bob-api.com/</code>，推荐首选）或「TaijiAI 加速节点」（<code>https://taijiai.online/</code>，备用专线）。</li>
+        <li><strong>API Key：</strong>输入 Bob API 账号中的 API Key。手动填写的 Key 首次用于某个节点时，需点击「确认用于此节点」；从 Bob API 账号选择的 Key 和一键配置只能用于 BobAPI 官方节点。</li>
+        <li><strong>配置模型：</strong>从读取到的模型列表中选择，或直接输入模型名。输入已存在的模型名会更新该模型，输入新名字则新增一个模型。</li>
+        <li><strong>高级参数：</strong>工具调用、图片输入、思考模式、思考强度和 Token 上限都已有默认值，不确定可以保持默认。</li>
+        <li><strong>确认配置：</strong>勾选确认后点击「确认并保存」或「确认并新增」。AI Helper 会先做一次流式连通性测试，通过后再写入 models.json。</li>
+      </ol>
+      <p>写入时，AI Helper 会先把原文件备份为同目录下的 <code>models.json.bak</code>。默认路径和兼容路径两个文件作为一次整体写入：任一文件写入失败，会把两个文件都恢复到写入前的状态（写入过程的记录临时保存在 <code>~/.ai-helper/workbuddy-transaction.json</code>）。</p>
+
+      <h2>一键配置（国产Token计划 分组）</h2>
+      <p>登录 Bob API 账号后，可以在工作台对 WorkBuddy 执行「一键配置」。AI Helper 会使用「国产Token计划」分组（Bob API 账号下国产模型专用的令牌分组，<a href="/about.html#groups">分组说明</a>）的 API Key，账号下没有该分组的 Key 时会自动创建。推荐模型 <code>glm-5.3</code> 会被写入并移动到列表第一位，参数为：开启工具调用、图片输入和思考模式，<code>maxInputTokens</code> 为 <code>262144</code>，<code>reasoning.canDisableThinking</code> 为 <code>false</code>。你已有的其他模型都会保留。</p>
+      <div class="note">一键配置只是方便登录 Bob API 账号的用户。不登录也可以在 WorkBuddy 面板选择节点，手动填入 API Key 和模型。AI Helper 是 MIT 开源的本地桌面工具，Key 只写入本机的 models.json，只会发送到所选的节点。</div>
+
+      <h2>如何恢复原来的配置</h2>
+      <p>AI Helper 首次修改 WorkBuddy 配置前，会把原始的 models.json（以及兼容路径下的文件）保存为快照，记录在 <code>~/.ai-helper/reset_state.json</code>。在 <strong>设置 → 客户端配置 → 恢复所有客户端原生配置</strong> 中点击「清除配置」，确认框会先列出每个文件的处理方式：</p>
+      <ul>
+        <li>如果文件在 AI Helper 最后一次写入后没有被改动，整个文件恢复为首次接管前的快照。</li>
+        <li>如果文件之后又被你或 WorkBuddy 修改过，只清理 AI Helper 受管的模型（<code>vendor</code> 为 <code>Custom</code> 且 <code>url</code> 指向 bob-api.com 相关地址的记录），其他内容保留。</li>
+      </ul>
+      <p>注意这个操作会同时处理所有客户端（Claude Code、Codex、Cursor 等），不是只恢复 WorkBuddy。</p>
+
+      <h2 id="faq">常见问题</h2>
+      <h3>保存后 WorkBuddy 里看不到新模型？</h3>
+      <p>AI Helper 保存后会提示 WorkBuddy 通过热重载读取新模型。如果模型列表没有刷新，请重启 WorkBuddy；同时确认 models.json 仍是合法 JSON，并且没有通过 <code>WORKBUDDY_CONFIG_DIR</code> 或 <code>CODEBUDDY_CONFIG_DIR</code> 指向了其他目录。</p>
+      <h3>AI Helper 会删除我手动添加的模型吗？</h3>
+      <p>不会。保存时只新增或更新当前填写的那个模型 id，其余模型原样保留；只有在 WorkBuddy 面板中点击某个模型的移除按钮，才会删除该模型。</p>
+      <h3>为什么 ~/.workbuddy-ai/models.json 也被修改了？</h3>
+      <p>部分 WorkBuddy 版本使用 <code>~/.workbuddy-ai</code> 目录。AI Helper 会同时读取 <code>~/.workbuddy</code> 和 <code>~/.workbuddy-ai</code> 两处的 models.json，按模型 id 合并后，把同一份模型列表写回两个文件，避免两处配置不一致。</p>
+      <h3>url 要不要带 /v1？</h3>
+      <p>需要。手动编辑 models.json 时，<code>url</code> 一般写到 <code>/v1</code>（例如 <code>https://bob-api.com/v1</code>），并保持 <code>useCustomProtocol</code> 为 <code>false</code>。用 AI Helper 保存时，它会写入所选节点的地址并自动补齐结尾的 <code>/v1</code>；只有在面板中开启 <code>useCustomProtocol</code> 时，才按节点地址原样写入 <code>url</code>、不补 <code>/v1</code>。</p>
+
+      <h2>参考</h2>
+      <ul>
+        <li><a href="https://www.workbuddy.cn">WorkBuddy 官网</a></li>
+        <li><a href="/guides/ai-coding-config-paths.html">AI 编程客户端配置文件路径与环境变量大全</a></li>
+      </ul>
+
+      <p><a class="cta" href="/#downloads">下载 AI Helper</a></p>
+      <p>相关教程：<a href="/guides/accio-work-custom-api.html">Accio Work 接入第三方模型</a> · <a href="/guides/cursor-custom-model.html">Cursor 配置第三方模型</a> · <a href="/guides/claude-code-custom-api.html">Claude Code 切换 API 地址</a></p>
+      <p>源码与问题反馈：<a href="https://github.com/TF49/AI-Helper">GitHub 仓库（MIT 开源）</a> · <a href="https://github.com/TF49/AI-Helper/issues">GitHub Issues</a></p>
+    </article>
+  </main>
+
+  <footer class="doc-footer">
+    <div class="doc-footer-inner">
+      <span><a href="/">首页</a><a href="/guides/">教程</a><a href="/about.html">关于</a><a href="/en/">English</a><a href="https://github.com/TF49/AI-Helper">GitHub</a></span>
+      <span>© 2026 Bob AI Helper · MIT License</span>
+    </div>
+  </footer>
+</body>
+
+</html>

@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Accio Work 如何接入第三方模型（本地 Bridge 127.0.0.1:8787）| Bob AI Helper 教程</title>
+  <meta name="description"
+    content="Accio Work 桌面端不能直接填写第三方 API。AI Helper 在本机 127.0.0.1:8787 运行 Bridge，把 Accio 的请求转换成 OpenAI / Anthropic 兼容接口，并注入当前 Key 可用的模型列表。本文介绍原理、配置步骤、访问控制与排错。">
+  <link rel="canonical" href="https://helper.bob-api.com/guides/accio-work-custom-api.html">
+  <link rel="alternate" hreflang="zh-CN" href="https://helper.bob-api.com/guides/accio-work-custom-api.html">
+  <meta name="robots" content="index, follow, max-snippet:-1">
+  <meta property="og:type" content="article">
+  <meta property="og:site_name" content="Bob AI Helper">
+  <meta property="og:title" content="Accio Work 如何接入第三方模型（本地 Bridge）">
+  <meta property="og:description" content="用 AI Helper 的本地 Bridge（默认 127.0.0.1:8787）让 Accio Work 使用 BobAPI 上的 glm-5.3 等模型。">
+  <meta property="og:url" content="https://helper.bob-api.com/guides/accio-work-custom-api.html">
+  <meta property="og:image" content="https://helper.bob-api.com/assets/app-preview.png">
+  <link rel="icon" type="image/x-icon" href="/assets/favicon.ico">
+  <link rel="stylesheet" href="/assets/docs.css?v=1.0.88-1">
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@graph": [
+      {
+        "@type": ["TechArticle", "HowTo"],
+        "name": "Accio Work 如何接入第三方模型（本地 Bridge）",
+        "headline": "Accio Work 如何接入第三方模型（本地 Bridge）",
+        "image": "https://helper.bob-api.com/assets/app-preview.png",
+        "description": "AI Helper 在本机运行 Bridge（默认 127.0.0.1:8787），把 Accio Work 的模型请求转换为 OpenAI / Anthropic 兼容接口，配置保存在 ~/.ai-helper/accio_config.json。",
+        "inLanguage": "zh-CN",
+        "datePublished": "2026-11-24",
+        "dateModified": "2026-11-24",
+        "author": { "@type": "Person", "@id": "https://helper.bob-api.com/about.html#maintainer", "name": "TF49", "url": "https://helper.bob-api.com/about.html", "sameAs": ["https://github.com/TF49"] },
+        "publisher": { "@type": "Organization", "@id": "https://helper.bob-api.com/#organization", "name": "Bob AI Helper" },
+        "tool": [{ "@type": "HowToTool", "name": "Bob AI Helper" }, { "@type": "HowToTool", "name": "Accio Work" }],
+        "step": [
+          { "@type": "HowToStep", "name": "打开 Accio Work 面板", "text": "启动 AI Helper，进入 Accio Work 配置面板，确认已检测到 Accio Work 的安装路径。" },
+          { "@type": "HowToStep", "name": "填写接入节点、API Key 与模型", "text": "选择 BobAPI 官方节点（或 TaijiAI 加速节点），输入 API Key，从读取到的模型列表中选择默认模型，例如 glm-5.3。手动填写的 Key 首次用于某个节点时，需点击「确认用于此节点」；从 Bob API 账号选择的 Key 和一键配置只能用于 BobAPI 官方节点。" },
+          { "@type": "HowToStep", "name": "设置 Bridge 网关", "text": "保持默认端口 8787，按需开启随 AI Helper 自动拉起 Bridge 和防官方直连熔断。" },
+          { "@type": "HowToStep", "name": "确认、测试并保存", "text": "勾选确认后点击「确认并保存 Accio 配置」，连通性测试通过后 AI Helper 写入 ~/.ai-helper/accio_config.json 并启动本地 Bridge。" },
+          { "@type": "HowToStep", "name": "通过 AI Helper 启动 Accio Work", "text": "点击「启动客户端」或「重启客户端」，AI Helper 会在启动 Accio Work 时注入本地网关地址，然后在 Accio Work 的模型下拉框中选择模型。" }
+        ]
+      },
+      {
+        "@type": "BreadcrumbList",
+        "itemListElement": [
+          { "@type": "ListItem", "position": 1, "name": "Bob AI Helper", "item": "https://helper.bob-api.com/" },
+          { "@type": "ListItem", "position": 2, "name": "教程", "item": "https://helper.bob-api.com/guides/" },
+          { "@type": "ListItem", "position": 3, "name": "Accio Work 接入第三方模型", "item": "https://helper.bob-api.com/guides/accio-work-custom-api.html" }
+        ]
+      },
+      {
+        "@type": "FAQPage",
+        "@id": "https://helper.bob-api.com/guides/accio-work-custom-api.html#faq",
+        "mainEntity": [
+          {
+            "@type": "Question",
+            "name": "Accio Work 报「本地实例凭据无效或已过期」怎么办？",
+            "acceptedAnswer": { "@type": "Answer", "text": "Bridge 用一个随机生成的实例凭据校验请求，这个凭据在 AI Helper 进程运行期间不变。AI Helper 重启后会生成新凭据，之前启动的 Accio Work 仍带着旧凭据，所以被拒绝。在 AI Helper 的 Accio Work 面板点击「重启客户端」即可。" }
+          },
+          {
+            "@type": "Question",
+            "name": "端口 8787 被占用怎么办？",
+            "acceptedAnswer": { "@type": "Answer", "text": "Bridge 会先重试 8787，仍被占用时依次尝试 8788 到 8807，找到空闲端口后自动写回 accio_config.json，并在下次启动 Accio Work 时使用新端口。如果这 21 个端口都不可用，会提示检查是否有残留进程占用，这时可以在面板中把「本地网关端口」改成其他端口。" }
+          },
+          {
+            "@type": "Question",
+            "name": "Accio Work 的模型下拉框里只有一个模型？",
+            "acceptedAnswer": { "@type": "Answer", "text": "Bridge 通过所选节点的 /v1/models 接口读取当前 Key 可用的模型。如果请求失败，Bridge 只会注入你在面板中选择的那个模型，避免下拉框为空。请确认 API Key 正确、本机能访问所选节点，必要时切换到另一个节点后重新保存。" }
+          },
+          {
+            "@type": "Question",
+            "name": "直接双击桌面图标启动 Accio Work 可以用第三方模型吗？",
+            "acceptedAnswer": { "@type": "Answer", "text": "不行。本地网关地址是 AI Helper 在启动 Accio Work 时通过环境变量注入的，自己从桌面图标启动的 Accio Work 不会带上这些变量，会连接官方网关。请在 AI Helper 中点击「启动客户端」或「重启客户端」。" }
+          },
+          {
+            "@type": "Question",
+            "name": "关闭 AI Helper 窗口后 Bridge 还在运行吗？",
+            "acceptedAnswer": { "@type": "Answer", "text": "在运行。关闭主窗口后 AI Helper 会留在系统托盘，Bridge 继续工作；从托盘彻底退出 AI Helper 后 Bridge 才会停止。开启「随 AI Helper 自动拉起 Bridge」并已填写 API Key 时，下次启动 AI Helper 会自动启动 Bridge。" }
+          }
+        ]
+      }
+    ]
+  }
+  </script>
+</head>
+
+<body>
+  <header class="doc-nav">
+    <div class="doc-nav-inner">
+      <a class="doc-brand" href="/"><img src="/assets/logo.png" alt="Bob AI Helper Logo" width="28" height="28">Bob AI Helper</a>
+      <nav class="doc-nav-links" aria-label="主导航">
+        <a href="/guides/">教程</a><a href="/#downloads">下载</a><a class="hide-sm" href="https://github.com/TF49/AI-Helper">GitHub</a>
+      </nav>
+    </div>
+  </header>
+
+  <main class="doc-main">
+    <p class="breadcrumb"><a href="/">Bob AI Helper</a> / <a href="/guides/">教程</a> / Accio Work 接入第三方模型</p>
+    <article>
+      <h1>Accio Work 如何接入第三方模型（本地 Bridge）</h1>
+      <p class="doc-meta">适用于 AI Helper <span class="current-version-tag">v1.0.88</span> · Windows 与 macOS · 最后更新 <time class="last-updated" datetime="2026-11-24">2026-11-24</time> · 作者 <a href="/about.html">TF49</a></p>
+
+      <div class="tldr">
+        <p><strong>简短回答：</strong>Accio Work 桌面端通过官方网关和专有的 ADK 接口通信，设置里没有填写第三方 API 的地方。AI Helper 在本机运行一个 Bridge（默认 <code>127.0.0.1:8787</code>），启动 Accio Work 时把网关地址指向它，再把模型请求转换成 OpenAI / Anthropic 兼容接口，发到你在面板中选择的 BobAPI 节点。配置保存在 <code>~/.ai-helper/accio_config.json</code>。</p>
+      </div>
+
+      <h2>为什么需要本地 Bridge</h2>
+      <p>Accio Work 的模型推理、向量嵌入和模型目录都走官方网关 <code>https://phoenix-gw.alibaba.com</code> 上的专有接口（例如 <code>/api/adk/llm</code>、<code>/api/llm/config/v2</code>），请求和响应格式都不是 OpenAI 格式。因此不能像 Claude Code 或 Codex 那样只改一个 Base URL。AI Helper 的做法是：</p>
+      <ol>
+        <li>在本机回环地址启动 Bridge，默认端口 <code>8787</code>。</li>
+        <li>启动 Accio Work 时设置环境变量 <code>GATEWAY_BASE_URL=http://127.0.0.1:&lt;端口&gt;/i/&lt;实例凭据&gt;</code>，让 Accio Work 把网关请求发给 Bridge。在 Windows 上还会同时设置 <code>ADK_BASE_URL</code>、<code>ADK_MODEL</code>、<code>EMBEDDING_BASE_URL</code> 和 <code>EMBEDDING_MODEL</code>。</li>
+        <li>Bridge 把 Accio Work 的请求转换后发往所选的 BobAPI 节点，再把结果转换回 Accio Work 能识别的流式格式。</li>
+      </ol>
+
+      <h2>Bridge 接管哪些接口</h2>
+      <div class="table-wrap">
+        <table style="min-width: 640px">
+          <thead>
+            <tr><th>Accio Work 请求</th><th>Bridge 的处理</th></tr>
+          </thead>
+          <tbody>
+            <tr><td><code>/api/llm/config/v2</code>（模型目录）</td><td>返回当前 API Key 实际可用的模型列表（见下一节）</td></tr>
+            <tr><td><code>/api/adk/llm</code>（模型推理）</td><td>按模型名选择上游接口：名称含 <code>claude</code> 的走 <code>/v1/messages</code>；<code>gpt</code>、<code>o1</code>、<code>o3</code>、<code>o4</code>、<code>chatgpt</code> 开头的走 <code>/v1/responses</code>；其他模型（如 GLM、DeepSeek、Qwen）走 <code>/v1/chat/completions</code>。上游明确不支持前两种接口（如返回 404 / 501）时改用 <code>/v1/chat/completions</code></td></tr>
+            <tr><td><code>/api/adk/embedding/embed</code>（向量嵌入）</td><td>转发到所配置地址的 <code>/v1/embeddings</code>，模型为 <code>text-embedding-3-small</code></td></tr>
+            <tr><td>登录、团队、技能、插件、功能开关等账号与元数据接口</td><td>透传给官方网关，否则 Accio Work 无法正常登录和运行</td></tr>
+            <tr><td>其他官方接口</td><td>开启「防官方直连熔断」（默认开启）时一律阻断</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h2>模型列表是怎么注入的</h2>
+      <p>Accio Work 读取模型目录时，Bridge 用所选节点和当前 Key 请求 <code>/v1/models</code>，把返回的模型放进一个名为 <code>AI-Helper (&lt;API 域名&gt;)</code> 的服务商下，你在面板中选择的模型排在第一位并标为默认。</p>
+      <ul>
+        <li>不会注入写死的预设模型，只显示这个 Key 真实可用的模型。</li>
+        <li>模型列表在内存中缓存 5 分钟，同时写入 <code>accio_config.json</code> 的 <code>cached_models</code>；更换节点或 Key 后缓存会失效，按新 Key 重新读取。</li>
+        <li>读取失败且没有缓存时，只注入你选择的那个模型，避免下拉框为空。</li>
+      </ul>
+
+      <h2>配置步骤</h2>
+      <ol>
+        <li><strong>准备：</strong>安装 Accio Work；准备 Bob API 账号的 API Key（也可以登录账号后一键配置）；安装 AI Helper（<a href="/#downloads">下载地址</a>）。</li>
+        <li><strong>打开面板：</strong>启动 AI Helper，进入 <strong>Accio Work</strong> 面板。如果没有检测到安装路径，可以在设置的路径管理中手动指定。</li>
+        <li><strong>接入节点与 API Key：</strong>选择「BobAPI 官方节点」（<code>https://bob-api.com/</code>，推荐首选）或备用的「TaijiAI 加速节点」（<code>https://taijiai.online/</code>），输入 API Key。两个节点均使用 HTTPS。手动填写的 Key 首次用于某个节点时，需点击「确认用于此节点」；从 Bob API 账号选择的 Key 和一键配置只能用于 BobAPI 官方节点。</li>
+        <li><strong>选择模型：</strong>从读取到的模型列表中选择默认模型（例如 <code>glm-5.3</code>），也可以手动输入。生图模型是可选项，留空时生图功能保持关闭。</li>
+        <li><strong>Bridge 网关：</strong>本地网关端口默认 <code>8787</code>；「随 AI Helper 自动拉起 Bridge」和「防官方直连熔断」默认开启，建议保持。</li>
+        <li><strong>确认并保存：</strong>勾选确认后点击「确认并保存 Accio 配置」。AI Helper 先做流式连通性测试，通过后写入 <code>~/.ai-helper/accio_config.json</code>，并启动本地 Bridge。</li>
+        <li><strong>启动 Accio Work：</strong>点击面板底部的「启动客户端」（Accio Work 已在运行时显示为「重启客户端」）。必须通过 AI Helper 启动，网关地址才会被注入。然后在 Accio Work 的模型下拉框中选择 <code>AI-Helper</code> 服务商下的模型。</li>
+      </ol>
+      <div class="note">登录 Bob API 账号后，也可以对 Accio Work 执行「一键配置」：AI Helper 使用「国产Token计划」分组（Bob API 账号下国产模型专用的令牌分组，<a href="/about.html#groups">分组说明</a>）的 API Key，账号下没有时会自动创建，默认模型设为 <code>glm-5.3</code>，打开「随 AI Helper 自动拉起 Bridge」并立即启动 Bridge。不登录时，也可以在面板中手动输入 API Key。</div>
+
+      <h2>accio_config.json 字段</h2>
+      <p>文件位于 <code>~/.ai-helper/accio_config.json</code>（Windows：<code>C:\Users\&lt;用户名&gt;\.ai-helper\accio_config.json</code>；macOS：<code>/Users/&lt;用户名&gt;/.ai-helper/accio_config.json</code>）。这是 AI Helper 自己的文件，不会修改 Accio Work 安装目录或其用户数据中的任何文件。</p>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr><th>字段</th><th>默认值</th><th>说明</th></tr>
+          </thead>
+          <tbody>
+            <tr><td><code>base_url</code></td><td><code>https://bob-api.com/</code></td><td>上游 API 地址，即面板中所选的节点</td></tr>
+            <tr><td><code>api_key</code></td><td>空</td><td>上游 API Key</td></tr>
+            <tr><td><code>model</code></td><td><code>glm-5.3</code></td><td>默认模型；Accio Work 未指定模型时使用</td></tr>
+            <tr><td><code>bridge_port</code></td><td><code>8787</code></td><td>Bridge 首选端口</td></tr>
+            <tr><td><code>official_gateway</code></td><td><code>https://phoenix-gw.alibaba.com</code></td><td>官方网关，只允许这个地址</td></tr>
+            <tr><td><code>prevent_official_leak</code></td><td><code>true</code></td><td>防官方直连熔断：只透传账号与元数据接口</td></tr>
+            <tr><td><code>fallback_official</code></td><td><code>false</code></td><td>面板中的「业务接口透传」开关</td></tr>
+            <tr><td><code>auto_start_bridge</code></td><td><code>true</code></td><td>AI Helper 启动时自动拉起 Bridge（需已填写 API Key）</td></tr>
+            <tr><td><code>cached_models</code> / <code>cached_models_fingerprint</code></td><td>空</td><td>模型列表缓存及其对应的地址与 Key 指纹</td></tr>
+            <tr><td><code>image_model</code></td><td>空</td><td>生图模型，留空表示不启用生图</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h2>访问控制与安全</h2>
+      <ul>
+        <li><strong>只监听本机：</strong>Bridge 只绑定 <code>127.0.0.1</code>，局域网其他设备无法访问。</li>
+        <li><strong>实例凭据：</strong>AI Helper 每次运行时随机生成一个实例凭据，作为路径前缀 <code>/i/&lt;凭据&gt;</code> 写进注入给 Accio Work 的网关地址。除 <code>/health</code> 外，没有有效凭据的请求一律返回 401。</li>
+        <li><strong>Host 与 Origin 校验：</strong>Host 只接受 <code>127.0.0.1</code>、<code>localhost</code>、<code>tauri.localhost</code>、<code>::1</code>，用于防范 DNS Rebinding；来自外部网页的 Origin 和跨站（<code>Sec-Fetch-Site: cross-site</code>）请求返回 403。</li>
+        <li><strong>频率限制：</strong>模型推理、向量嵌入、MCP 等会产生费用的接口限制为每 60 秒 120 次，生图限制为每 60 秒 6 次，超出返回 429。</li>
+        <li><strong>官方网关隔离：</strong>开启防官方直连熔断时，模型推理不会发往官方网关；转发到官方网关的目标只允许 <code>https://phoenix-gw.alibaba.com</code>。</li>
+        <li><strong>Key 的去向：</strong>API Key 只保存在本机的 <code>accio_config.json</code> 中，只发送到所选的节点。AI Helper 是 MIT 开源项目，以上逻辑都可以在源码中查看。</li>
+      </ul>
+
+      <h2>排错</h2>
+      <div class="table-wrap">
+        <table style="min-width: 640px">
+          <thead>
+            <tr><th>现象</th><th>原因与处理</th></tr>
+          </thead>
+          <tbody>
+            <tr><td>Accio Work 仍在使用官方模型</td><td>Accio Work 不是由 AI Helper 启动的，没有拿到网关地址。完全退出 Accio Work，在面板中点击「启动客户端」</td></tr>
+            <tr><td>返回 401「本地实例凭据无效或已过期」</td><td>AI Helper 重启过，Accio Work 还带着旧凭据。点击「重启客户端」</td></tr>
+            <tr><td>返回「API 密钥未配置」</td><td><code>accio_config.json</code> 中没有 API Key，回到面板填写并保存</td></tr>
+            <tr><td>返回 429</td><td>触发了本地频率限制（每 60 秒 120 次），稍后重试</td></tr>
+            <tr><td>Bridge 显示「未启动」</td><td>在面板底部点击「启动 Bridge」；端口冲突时 Bridge 会自动改用 8788–8807 中的空闲端口</td></tr>
+            <tr><td>想确认 Bridge 是否在运行</td><td>访问 <code>http://127.0.0.1:8787/health</code>（按实际端口），正常会返回 <code>"ok": true</code> 和当前模型</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h2>如何恢复 Accio Work 官方连接</h2>
+      <p>不经过 AI Helper、直接启动 Accio Work，它就会使用官方网关。如果要清除 AI Helper 的 Accio 配置，在 <strong>设置 → 客户端配置 → 恢复所有客户端原生配置</strong> 中点击「清除配置」：Bridge 会停止，<code>~/.ai-helper/accio_config.json</code> 会被删除。因为这是 AI Helper 自己的文件，不会为它保存快照（避免多存一份明文 Key）。注意这个操作会同时处理所有客户端。</p>
+
+      <h2 id="faq">常见问题</h2>
+      <h3>Accio Work 报「本地实例凭据无效或已过期」怎么办？</h3>
+      <p>Bridge 用一个随机生成的实例凭据校验请求，这个凭据在 AI Helper 进程运行期间不变。AI Helper 重启后会生成新凭据，之前启动的 Accio Work 仍带着旧凭据，所以被拒绝。在 AI Helper 的 Accio Work 面板点击「重启客户端」即可。</p>
+      <h3>端口 8787 被占用怎么办？</h3>
+      <p>Bridge 会先重试 8787，仍被占用时依次尝试 8788 到 8807，找到空闲端口后自动写回 accio_config.json，并在下次启动 Accio Work 时使用新端口。如果这 21 个端口都不可用，会提示检查是否有残留进程占用，这时可以在面板中把「本地网关端口」改成其他端口。</p>
+      <h3>Accio Work 的模型下拉框里只有一个模型？</h3>
+      <p>Bridge 通过所选节点的 <code>/v1/models</code> 接口读取当前 Key 可用的模型。如果请求失败，Bridge 只会注入你在面板中选择的那个模型，避免下拉框为空。请确认 API Key 正确、本机能访问所选节点，必要时切换到另一个节点后重新保存。</p>
+      <h3>直接双击桌面图标启动 Accio Work 可以用第三方模型吗？</h3>
+      <p>不行。本地网关地址是 AI Helper 在启动 Accio Work 时通过环境变量注入的，自己从桌面图标启动的 Accio Work 不会带上这些变量，会连接官方网关。请在 AI Helper 中点击「启动客户端」或「重启客户端」。</p>
+      <h3>关闭 AI Helper 窗口后 Bridge 还在运行吗？</h3>
+      <p>在运行。关闭主窗口后 AI Helper 会留在系统托盘，Bridge 继续工作；从托盘彻底退出 AI Helper 后 Bridge 才会停止。开启「随 AI Helper 自动拉起 Bridge」并已填写 API Key 时，下次启动 AI Helper 会自动启动 Bridge。</p>
+
+      <h2>参考</h2>
+      <ul>
+        <li><a href="https://www.accio.com/work">Accio Work 官网</a></li>
+        <li><a href="/guides/ai-coding-config-paths.html">AI 编程客户端配置文件路径与环境变量大全</a></li>
+      </ul>
+
+      <p><a class="cta" href="/#downloads">下载 AI Helper</a></p>
+      <p>相关教程：<a href="/guides/cursor-custom-model.html">Cursor 配置第三方模型（同样使用本地 Bridge）</a> · <a href="/guides/workbuddy-custom-api.html">WorkBuddy 配置自定义 API</a> · <a href="/guides/deepseek-harness-custom-api.html">DeepSeek Harness 接入多种模型</a></p>
+      <p>源码与问题反馈：<a href="https://github.com/TF49/AI-Helper">GitHub 仓库（MIT 开源）</a> · <a href="https://github.com/TF49/AI-Helper/issues">GitHub Issues</a></p>
+    </article>
+  </main>
+
+  <footer class="doc-footer">
+    <div class="doc-footer-inner">
+      <span><a href="/">首页</a><a href="/guides/">教程</a><a href="/about.html">关于</a><a href="/en/">English</a><a href="https://github.com/TF49/AI-Helper">GitHub</a></span>
+      <span>© 2026 Bob AI Helper · MIT License</span>
+    </div>
+  </footer>
+</body>
+
+</html>
