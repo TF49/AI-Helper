@@ -52,23 +52,25 @@ Write-Host "Regenerating Cargo.lock..."
 cargo update --manifest-path $cargoPath --package ai-helper
 if ($LASTEXITCODE -ne 0) { throw "cargo update failed" }
 
-# Sync README.md with the new version
-$readmePath = Join-Path $repoRoot 'README.md'
-if (Test-Path -LiteralPath $readmePath) {
+# Sync README.md (English) and README_ZH.md (Chinese) with the new version
+# Use Beijing time, the same as sync-website.js, so README dates match llms.txt / version.json
+$releaseDate = [TimeZoneInfo]::ConvertTimeBySystemTimeZoneId([DateTime]::UtcNow, 'China Standard Time').ToString('yyyy-MM-dd')
+foreach ($readmeName in @('README.md', 'README_ZH.md')) {
+    $readmePath = Join-Path $repoRoot $readmeName
+    if (-not (Test-Path -LiteralPath $readmePath)) { continue }
     $readmeContent = Get-Content -LiteralPath $readmePath -Encoding UTF8 -Raw
     # Replace any explicit static version badge if present
     $readmeContent = $readmeContent -replace 'version-(\d+\.\d+\.\d+)-', "version-$NewVersion-"
     # Current version / date markers: <!--ver-->v1.2.3<!--/ver-->, <!--date-->2026-01-01<!--/date-->
-    $releaseDate = (Get-Date).ToString('yyyy-MM-dd')
     $readmeContent = $readmeContent -replace '<!--ver-->v?\d+\.\d+\.\d+<!--/ver-->', "<!--ver-->v$NewVersion<!--/ver-->"
     $readmeContent = $readmeContent -replace '<!--date-->\d{4}-\d{2}-\d{2}<!--/date-->', "<!--date-->$releaseDate<!--/date-->"
     # Download links: release asset file names and GitHub release download paths
     $readmeContent = $readmeContent -replace 'AI-Helper-v\d+\.\d+\.\d+-', "AI-Helper-v$NewVersion-"
     $readmeContent = $readmeContent -replace 'releases/download/v\d+\.\d+\.\d+/', "releases/download/v$NewVersion/"
-    Write-Host "Note: add a row for v$NewVersion to the README 'Recent updates' table manually."
     [System.IO.File]::WriteAllText($readmePath, $readmeContent, $utf8NoBom)
-    Write-Host "Synced version $NewVersion into README.md"
+    Write-Host "Synced version $NewVersion into $readmeName"
 }
+Write-Host "Note: add a row for v$NewVersion to the 'Recent updates' table in README.md and README_ZH.md manually (README.md keeps only the latest 3 rows; in README_ZH.md move the oldest visible row into the folded <details> table)."
 
 # Check/create release notes file template if not existing
 $relNotesPath = Join-Path $repoRoot "docs/releases/v$NewVersion.md"
@@ -93,4 +95,4 @@ if (Test-Path -LiteralPath $syncScript) {
     if ($LASTEXITCODE -ne 0) { throw "sync-website.js failed" }
 }
 
-Write-Host "Version successfully bumped to $NewVersion across package.json, tauri.conf.json, Cargo.toml, and website!"
+Write-Host "Version successfully bumped to $NewVersion across package.json, tauri.conf.json, Cargo.toml, README.md, README_ZH.md, and website!"
