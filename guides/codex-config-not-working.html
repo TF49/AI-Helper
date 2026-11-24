@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Codex CLI 修改 config.toml 不生效怎么排查 | Bob AI Helper 教程</title>
+  <meta name="description"
+    content="改了 ~/.codex/config.toml 但 Codex CLI 仍连旧地址、提示缺少 API Key 或报 404？逐项检查 model_provider 与 model_providers、base_url 的 /v1、env_key 环境变量、profile 覆盖、TOML 语法、Windows 路径与 CODEX_HOME，以及 AI Helper 实际写入的字段。">
+  <link rel="canonical" href="https://helper.bob-api.com/guides/codex-config-not-working.html">
+  <link rel="alternate" hreflang="zh-CN" href="https://helper.bob-api.com/guides/codex-config-not-working.html">
+  <meta name="robots" content="index, follow, max-snippet:-1">
+  <meta property="og:type" content="article">
+  <meta property="og:site_name" content="Bob AI Helper">
+  <meta property="og:title" content="Codex CLI 修改 config.toml 不生效怎么排查">
+  <meta property="og:description" content="逐项检查 model_provider、base_url、env_key、profile、TOML 语法与配置路径，解决 Codex CLI 配置不生效。">
+  <meta property="og:url" content="https://helper.bob-api.com/guides/codex-config-not-working.html">
+  <meta property="og:image" content="https://helper.bob-api.com/assets/app-preview.png">
+  <link rel="icon" type="image/x-icon" href="/assets/favicon.ico">
+  <link rel="stylesheet" href="/assets/docs.css?v=1.0.88-1">
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@graph": [
+      {
+        "@type": "TechArticle",
+        "name": "Codex CLI 修改 config.toml 不生效怎么排查",
+        "headline": "Codex CLI 修改 config.toml 不生效怎么排查",
+        "image": "https://helper.bob-api.com/assets/app-preview.png",
+        "description": "排查 Codex CLI 的 config.toml 修改不生效：model_provider 与 model_providers、base_url、wire_api、env_key 环境变量、profile 覆盖、TOML 语法错误、Windows 路径与 CODEX_HOME，以及 AI Helper 写入的字段。",
+        "inLanguage": "zh-CN",
+        "datePublished": "2026-11-24",
+        "dateModified": "2026-11-24",
+        "author": { "@type": "Person", "@id": "https://helper.bob-api.com/about.html#maintainer", "name": "TF49", "url": "https://helper.bob-api.com/about.html", "sameAs": ["https://github.com/TF49"] },
+        "publisher": { "@type": "Organization", "@id": "https://helper.bob-api.com/#organization", "name": "Bob AI Helper" },
+        "about": [{ "@type": "SoftwareApplication", "name": "OpenAI Codex CLI" }, { "@type": "SoftwareApplication", "name": "Bob AI Helper" }]
+      },
+      {
+        "@type": "FAQPage",
+        "mainEntity": [
+          {
+            "@type": "Question",
+            "name": "model_provider 和 model_providers 有什么区别？",
+            "acceptedAnswer": { "@type": "Answer", "text": "model_providers（复数）是一组表，用来定义各个 provider 的 base_url、env_key 等连接参数，例如 [model_providers.custom]；model_provider（单数）是顶层的一个字符串，用来选择当前使用哪个 provider，例如 model_provider = \"custom\"。只定义了 [model_providers.custom] 而没有把 model_provider 指向它，Codex 仍会使用默认 provider。" }
+          },
+          {
+            "@type": "Question",
+            "name": "base_url 要不要带 /v1？",
+            "acceptedAnswer": { "@type": "Answer", "text": "需要带。Codex 会直接在 base_url 后面拼接接口路径（如 /responses），所以手动编辑时 base_url 一般写成 https://bob-api.com/v1。用 AI Helper 保存时，它会写入所选节点的地址并自动补上 /v1，无需手动处理。" }
+          },
+          {
+            "@type": "Question",
+            "name": "Codex 提示缺少环境变量或找不到 API Key 怎么办？",
+            "acceptedAnswer": { "@type": "Answer", "text": "Codex 从 env_key 指定的环境变量读取 Key，AI Helper 使用的变量名是 CUSTOM_OPENAI_API_KEY。Windows 上 AI Helper 会把它写入当前用户的环境变量，但已经打开的终端不会自动获得新值，需要重新打开终端（在编辑器内置终端中使用时要重启编辑器）。macOS 上 AI Helper 不会修改 shell 配置文件，需要自己在 ~/.zshrc 等文件中 export CUSTOM_OPENAI_API_KEY。" }
+          },
+          {
+            "@type": "Question",
+            "name": "设置了 profile 后为什么顶层配置不生效？",
+            "acceptedAnswer": { "@type": "Answer", "text": "当前生效的 profile 中的 model、model_provider 会覆盖顶层同名字段。如果活动 profile 选择的是其他 provider，AI Helper 会拒绝保存并提示“Codex 活动 profile 使用其他 provider；请先切换到 custom profile 再保存，避免配置显示与实际运行目标不一致”。请切换或修改 profile 后再保存。" }
+          },
+          {
+            "@type": "Question",
+            "name": "AI Helper 会覆盖我的 config.toml 吗？",
+            "acceptedAnswer": { "@type": "Answer", "text": "不会整体覆盖。AI Helper 只修改顶层 model、model_provider 和 [model_providers.custom] 中与连接相关的字段，其他 provider、profile、sandbox 等设置保持不变；写入前会把原文件备份为 config.toml.bak，并在首次修改前保存快照，可在设置页一键恢复。现有文件无法解析时，它会停止写入而不是覆盖。" }
+          }
+        ]
+      },
+      {
+        "@type": "BreadcrumbList",
+        "itemListElement": [
+          { "@type": "ListItem", "position": 1, "name": "Bob AI Helper", "item": "https://helper.bob-api.com/" },
+          { "@type": "ListItem", "position": 2, "name": "教程", "item": "https://helper.bob-api.com/guides/" },
+          { "@type": "ListItem", "position": 3, "name": "Codex config.toml 不生效排查", "item": "https://helper.bob-api.com/guides/codex-config-not-working.html" }
+        ]
+      }
+    ]
+  }
+  </script>
+</head>
+
+<body>
+  <header class="doc-nav">
+    <div class="doc-nav-inner">
+      <a class="doc-brand" href="/"><img src="/assets/logo.png" alt="Bob AI Helper Logo" width="28" height="28">Bob AI Helper</a>
+      <nav class="doc-nav-links" aria-label="主导航">
+        <a href="/guides/">教程</a><a href="/#downloads">下载</a><a class="hide-sm" href="https://github.com/TF49/AI-Helper">GitHub</a>
+      </nav>
+    </div>
+  </header>
+
+  <main class="doc-main">
+    <p class="breadcrumb"><a href="/">Bob AI Helper</a> / <a href="/guides/">教程</a> / Codex config.toml 不生效排查</p>
+    <article>
+      <h1>Codex CLI 修改 config.toml 不生效怎么排查</h1>
+      <p class="doc-meta">适用于 AI Helper <span class="current-version-tag">v1.0.88</span> · Windows 与 macOS · 最后更新 <time class="last-updated" datetime="2026-11-24">2026-11-24</time> · 作者 <a href="/about.html">TF49</a></p>
+
+      <div class="tldr">
+        <p><strong>简短回答：</strong>Codex 只在启动时读取 <code>~/.codex/config.toml</code>。改了不生效时依次检查：文件是否就是 Codex 实际读取的那一份（Windows 为 <code>%USERPROFILE%\.codex\config.toml</code>，设置了 <code>CODEX_HOME</code> 时以它为准）；顶层 <code>model_provider</code> 是否指向你在 <code>[model_providers.xxx]</code> 中定义的 provider；<code>base_url</code> 是否以 <code>/v1</code> 结尾；<code>env_key</code> 指定的环境变量在当前终端里是否有值；是否有 profile 覆盖了顶层设置；TOML 语法是否正确。最后关闭并重新打开终端，再运行 <code>codex</code>。</p>
+      </div>
+
+      <h2>症状、原因与处理速查</h2>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr><th>症状</th><th>常见原因</th><th>处理方法</th></tr>
+          </thead>
+          <tbody>
+            <tr><td>改了 <code>[model_providers.custom]</code>，Codex 仍连官方或旧地址</td><td>顶层没有 <code>model_provider = "custom"</code>，或该行写在了某个 <code>[表]</code> 下面</td><td>把 <code>model_provider</code> 放在文件开头、所有表头之前</td></tr>
+            <tr><td>提示缺少环境变量 / 找不到 API Key</td><td><code>env_key</code> 指定的变量在当前终端中没有值</td><td>设置变量后重新打开终端；macOS 需自行写入 shell 配置文件</td></tr>
+            <tr><td>HTTP 404</td><td><code>base_url</code> 少了或多了 <code>/v1</code>；服务不支持 Codex 使用的接口</td><td><code>base_url</code> 写成 <code>https://bob-api.com/v1</code>，或在 AI Helper 中选择节点重新保存</td></tr>
+            <tr><td>HTTP 401</td><td>Key 错误或被吊销，或环境变量里是另一服务的 Key</td><td>核对 <code>env_key</code> 对应变量的值</td></tr>
+            <tr><td>模型不对或 <code>model_not_found</code></td><td>活动 profile 覆盖了 <code>model</code>；模型不在该 Key 可用范围内</td><td>检查 <code>profile</code> 与 <code>[profiles.xxx]</code>；从可用模型中重新选择</td></tr>
+            <tr><td>Codex 启动时报配置解析错误</td><td>TOML 语法错误：中文引号、重复的表、Windows 路径反斜杠未转义</td><td>按第五节修正语法</td></tr>
+            <tr><td>改的文件没有被读取</td><td>设置了 <code>CODEX_HOME</code>，或改的不是当前用户目录下的文件</td><td>确认 Codex 实际使用的配置目录</td></tr>
+            <tr><td>AI Helper 提示“现有 Codex 配置损坏，已停止写入以免丢失安全规则”</td><td>现有 <code>config.toml</code> 不是合法 TOML</td><td>先修复语法，再重新保存</td></tr>
+            <tr><td>AI Helper 提示“Codex 活动 profile 使用其他 provider”</td><td>当前 profile 选择的不是 <code>custom</code></td><td>切换 profile 或修改其 <code>model_provider</code> 后再保存</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h2>一、确认改的是 Codex 实际读取的文件</h2>
+      <ul>
+        <li>macOS / Linux：<code>~/.codex/config.toml</code>。</li>
+        <li>Windows：<code>C:\Users\你的用户名\.codex\config.toml</code>（即 <code>%USERPROFILE%\.codex\config.toml</code>）。注意文件扩展名必须是 <code>.toml</code>，资源管理器隐藏扩展名时容易存成 <code>config.toml.txt</code>。</li>
+        <li>如果设置了环境变量 <code>CODEX_HOME</code>，Codex 会从该目录读取配置。AI Helper 始终写入用户目录下的 <code>~/.codex/config.toml</code>，因此使用 <code>CODEX_HOME</code> 时，AI Helper 写入的配置不会被 Codex 读取。</li>
+      </ul>
+      <pre><code># Windows（PowerShell）：查看是否设置了 CODEX_HOME
+echo $env:CODEX_HOME
+
+# macOS
+echo $CODEX_HOME</code></pre>
+
+      <h2>二、model_provider 与 model_providers 不要混淆</h2>
+      <p>这是最常见的“不生效”原因。两者作用不同：</p>
+      <ul>
+        <li><code>[model_providers.custom]</code>（复数，表）：定义一个名为 <code>custom</code> 的 provider 的连接参数，如 <code>base_url</code>、<code>env_key</code>。</li>
+        <li><code>model_provider = "custom"</code>（单数，顶层字符串）：选择当前使用哪个 provider。</li>
+      </ul>
+      <p>只定义 provider 而不选择它，Codex 仍会使用默认 provider。另外 TOML 中写在某个 <code>[表头]</code> 之后的键都属于这张表，所以顶层的 <code>model</code> 和 <code>model_provider</code> 必须写在文件开头、第一个表头之前：</p>
+      <pre><code>model = "gpt-5.6-sol"
+model_provider = "custom"          # 必须在所有 [表头] 之前
+
+[model_providers.custom]
+name = "Custom"
+base_url = "https://bob-api.com/v1"
+env_key = "CUSTOM_OPENAI_API_KEY"</code></pre>
+
+      <h2>三、base_url 与 wire_api</h2>
+      <p>Codex 会直接在 <code>base_url</code> 后面拼接接口路径，因此 <code>base_url</code> 需要以 <code>/v1</code> 结尾，手动编辑时容易漏掉。AI Helper 保存时会写入所选节点的地址并自动补上 <code>/v1</code>，例如选择 BobAPI 官方节点时写入 <code>https://bob-api.com/v1</code>。</p>
+      <p><code>wire_api</code> 用于指定 Codex 以哪种协议（Responses 或 Chat Completions）请求该 provider，可选值与默认值会随 Codex 版本变化，请以官方配置文档为准。AI Helper 不写入 <code>wire_api</code>；它的连通性测试向 <code>/v1/responses</code> 发送请求，测试通过说明所选节点和模型可以通过 OpenAI Responses API 调用。测试返回 404 时，请从读取到的模型列表中重新选择模型，或切换到另一个节点重试。</p>
+
+      <h2>四、env_key：Key 放在环境变量里</h2>
+      <p>Codex 从 <code>env_key</code> 指定名称的环境变量中读取 API Key，而不是从 <code>config.toml</code> 中读取。AI Helper 使用的变量名是 <code>CUSTOM_OPENAI_API_KEY</code>，并会移除 <code>custom</code> provider 中的 <code>experimental_bearer_token</code>、带凭据的请求头等字段，让 Key 只来自环境变量。</p>
+      <ul>
+        <li><strong>Windows：</strong>AI Helper 把 Key 写入当前用户的环境变量 <code>CUSTOM_OPENAI_API_KEY</code>，并通知系统刷新。已经打开的终端不会获得新值，请关闭后重新打开；在 VS Code、Cursor 等编辑器的内置终端中运行 Codex 时，需要重启编辑器。</li>
+        <li><strong>macOS：</strong>AI Helper 不会修改 shell 配置文件，需要自己在 <code>~/.zshrc</code>（或你使用的 shell 配置文件）中加入 <code>export CUSTOM_OPENAI_API_KEY="你的 API Key"</code>，然后重新打开终端。</li>
+      </ul>
+      <pre><code># 检查当前终端里是否有值
+# Windows（PowerShell）
+if ($env:CUSTOM_OPENAI_API_KEY) { "已设置" } else { "未设置" }
+
+# macOS
+[ -n "$CUSTOM_OPENAI_API_KEY" ] &amp;&amp; echo 已设置 || echo 未设置</code></pre>
+      <div class="note">如果你手动把 <code>custom</code> provider 的 <code>env_key</code> 改成了其他变量名，AI Helper 会提示“Codex env_key 无效，请先修复配置”并停止保存，以免 Key 与地址对不上。</div>
+
+      <h2>五、TOML 语法错误</h2>
+      <ul>
+        <li><strong>中文引号：</strong>用中文输入法输入的 <code>“ ”</code> 不是合法的 TOML 引号，字符串必须使用英文 <code>"</code> 或 <code>'</code>。</li>
+        <li><strong>重复的表：</strong>同一个 <code>[model_providers.custom]</code> 写了两次会导致解析失败，请合并为一处。</li>
+        <li><strong>Windows 路径：</strong>双引号字符串中的 <code>\</code> 是转义符，<code>"C:\Users\..."</code> 会报错。改用单引号 <code>'C:\Users\...'</code> 或写成 <code>"C:\\Users\\..."</code>。</li>
+        <li><strong>文件编码：</strong>请保存为 UTF-8。现有文件不是 UTF-8 时，AI Helper 会提示“现有 Codex 配置不是 UTF-8，已停止写入”。</li>
+      </ul>
+      <p>可以用 Python 3.11 及以上版本快速检查语法，出错时会指出行号：</p>
+      <pre><code>python -c "import tomllib, pathlib; tomllib.loads((pathlib.Path.home()/'.codex'/'config.toml').read_text(encoding='utf-8')); print('OK')"</code></pre>
+
+      <h2>六、profile 覆盖了顶层设置</h2>
+      <p>顶层的 <code>profile = "名称"</code> 或启动时的 <code>codex --profile 名称</code> 会启用 <code>[profiles.名称]</code> 中的设置，其中的 <code>model</code>、<code>model_provider</code> 会覆盖顶层同名字段。改了顶层却不生效时，先看是否有活动 profile。</p>
+      <p>AI Helper 会读取当前活动 profile：如果它选择的是其他 provider，会拒绝保存并提示“Codex 活动 profile 使用其他 provider；请先切换到 custom profile 再保存，避免配置显示与实际运行目标不一致”；如果它选择的就是 <code>custom</code> 并单独设置了 <code>model</code>，AI Helper 会同步更新该 profile 的 <code>model</code>，其他 profile 和设置保持不变。</p>
+
+      <h2>七、AI Helper 写入了什么</h2>
+      <p>AI Helper（MIT 开源、在本机运行）在连通性测试通过后才会写入，测试失败时不修改本地配置。它只管理名为 <code>custom</code> 的 provider：</p>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr><th>位置</th><th>AI Helper 的处理</th></tr>
+          </thead>
+          <tbody>
+            <tr><td>顶层 <code>model</code></td><td>写入所选模型</td></tr>
+            <tr><td>顶层 <code>model_provider</code></td><td>设为 <code>"custom"</code></td></tr>
+            <tr><td><code>[model_providers.custom]</code> 的 <code>base_url</code></td><td>写入所选节点的地址，自动补齐 <code>/v1</code></td></tr>
+            <tr><td><code>[model_providers.custom]</code> 的 <code>env_key</code></td><td>设为 <code>"CUSTOM_OPENAI_API_KEY"</code></td></tr>
+            <tr><td><code>[model_providers.custom]</code> 的 <code>name</code>、<code>api</code></td><td>缺少时补上 <code>name = "Custom"</code>、<code>api = "openai-responses"</code>，已有值不改</td></tr>
+            <tr><td><code>custom</code> 中的 <code>experimental_bearer_token</code>、<code>requires_openai_auth</code> 及带凭据的请求头</td><td>移除</td></tr>
+            <tr><td>其他 provider、profile、sandbox 等设置</td><td>保持不变</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>写入前，原文件会备份为同目录下的 <code>config.toml.bak</code>；首次修改前 AI Helper 还会保存快照（包括 <code>config.toml</code> 和 <code>CUSTOM_OPENAI_API_KEY</code> 环境变量），可在设置页通过「恢复所有客户端原生配置」还原。切换到不同域名的节点时，如果 <code>custom</code> 中仍有自定义的 <code>query_params</code>，AI Helper 会提示先清理，避免把旧节点的参数发到新节点。</p>
+
+      <h2>常见问题</h2>
+      <h3>model_provider 和 model_providers 有什么区别？</h3>
+      <p><code>model_providers</code>（复数）是一组表，用来定义各个 provider 的 <code>base_url</code>、<code>env_key</code> 等连接参数，例如 <code>[model_providers.custom]</code>；<code>model_provider</code>（单数）是顶层的一个字符串，用来选择当前使用哪个 provider，例如 <code>model_provider = "custom"</code>。只定义了 <code>[model_providers.custom]</code> 而没有把 <code>model_provider</code> 指向它，Codex 仍会使用默认 provider。</p>
+      <h3>base_url 要不要带 /v1？</h3>
+      <p>需要带。Codex 会直接在 <code>base_url</code> 后面拼接接口路径（如 <code>/responses</code>），所以手动编辑时 <code>base_url</code> 一般写成 <code>https://bob-api.com/v1</code>。用 AI Helper 保存时，它会写入所选节点的地址并自动补上 <code>/v1</code>，无需手动处理。</p>
+      <h3>Codex 提示缺少环境变量或找不到 API Key 怎么办？</h3>
+      <p>Codex 从 <code>env_key</code> 指定的环境变量读取 Key，AI Helper 使用的变量名是 <code>CUSTOM_OPENAI_API_KEY</code>。Windows 上 AI Helper 会把它写入当前用户的环境变量，但已经打开的终端不会自动获得新值，需要重新打开终端（在编辑器内置终端中使用时要重启编辑器）。macOS 上 AI Helper 不会修改 shell 配置文件，需要自己在 <code>~/.zshrc</code> 等文件中 <code>export CUSTOM_OPENAI_API_KEY</code>。</p>
+      <h3>设置了 profile 后为什么顶层配置不生效？</h3>
+      <p>当前生效的 profile 中的 <code>model</code>、<code>model_provider</code> 会覆盖顶层同名字段。如果活动 profile 选择的是其他 provider，AI Helper 会拒绝保存并提示“Codex 活动 profile 使用其他 provider；请先切换到 custom profile 再保存，避免配置显示与实际运行目标不一致”。请切换或修改 profile 后再保存。</p>
+      <h3>AI Helper 会覆盖我的 config.toml 吗？</h3>
+      <p>不会整体覆盖。AI Helper 只修改顶层 <code>model</code>、<code>model_provider</code> 和 <code>[model_providers.custom]</code> 中与连接相关的字段，其他 provider、profile、sandbox 等设置保持不变；写入前会把原文件备份为 <code>config.toml.bak</code>，并在首次修改前保存快照，可在设置页一键恢复。现有文件无法解析时，它会停止写入而不是覆盖。</p>
+
+      <h2>参考：Codex 官方文档</h2>
+      <ul>
+        <li><a href="https://developers.openai.com/codex/config-advanced">高级配置：自定义 model_providers 与 profiles</a></li>
+        <li><a href="https://github.com/openai/codex/blob/main/docs/config.md">config.toml 配置说明（GitHub 仓库）</a></li>
+      </ul>
+
+      <p><a class="cta" href="/#downloads">下载 AI Helper</a></p>
+      <p>相关教程：<a href="/guides/codex-cli-custom-api.html">Codex CLI 配置自定义 API</a> · <a href="/guides/claude-code-401-timeout.html">Claude Code 401/超时排查</a> · <a href="/guides/cursor-custom-model-not-working.html">Cursor 自定义模型不生效排查</a></p>
+      <p>源码与问题反馈：<a href="https://github.com/TF49/AI-Helper">GitHub 仓库（MIT 开源）</a> · <a href="https://github.com/TF49/AI-Helper/issues">GitHub Issues</a></p>
+    </article>
+  </main>
+
+  <footer class="doc-footer">
+    <div class="doc-footer-inner">
+      <span><a href="/">首页</a><a href="/guides/">教程</a><a href="/about.html">关于</a><a href="/en/">English</a><a href="https://github.com/TF49/AI-Helper">GitHub</a></span>
+      <span>© 2026 Bob AI Helper · MIT License</span>
+    </div>
+  </footer>
+</body>
+
+</html>

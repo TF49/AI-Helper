@@ -8,6 +8,9 @@
   <meta name="description"
     content="DeepSeek Harness（DSH）桌面版的模型路由写在 ~/.dsh/profiles/desktop/cordis.patch.yml。本文介绍如何用 AI Helper 把一个 API Key 下的 Claude、GPT 与 DeepSeek、Qwen、GLM 等国产模型按协议自动写入三条路由，并保留自建路由和 DeepSeek 官方账号。">
   <link rel="canonical" href="https://helper.bob-api.com/guides/deepseek-harness-custom-api.html">
+  <link rel="alternate" hreflang="zh-CN" href="https://helper.bob-api.com/guides/deepseek-harness-custom-api.html">
+  <link rel="alternate" hreflang="en" href="https://helper.bob-api.com/en/guides/deepseek-harness-custom-api.html">
+  <link rel="alternate" hreflang="x-default" href="https://helper.bob-api.com/guides/deepseek-harness-custom-api.html">
   <meta name="robots" content="index, follow, max-snippet:-1">
   <meta property="og:type" content="article">
   <meta property="og:site_name" content="Bob AI Helper">
@@ -16,7 +19,7 @@
   <meta property="og:url" content="https://helper.bob-api.com/guides/deepseek-harness-custom-api.html">
   <meta property="og:image" content="https://helper.bob-api.com/assets/app-preview.png">
   <link rel="icon" type="image/x-icon" href="/assets/favicon.ico">
-  <link rel="stylesheet" href="/assets/docs.css?v=1.0.88">
+  <link rel="stylesheet" href="/assets/docs.css?v=1.0.88-1">
   <script type="application/ld+json">
   {
     "@context": "https://schema.org",
@@ -29,14 +32,14 @@
         "description": "用 AI Helper 为 DeepSeek Harness 桌面版写入 API 节点、API Key 和模型，模型按协议自动分到 aihelper-claude、aihelper-codex、aihelper-cn 三条路由。",
         "inLanguage": "zh-CN",
         "datePublished": "2026-11-21",
-        "dateModified": "2026-11-22",
+        "dateModified": "2026-11-24",
         "author": { "@type": "Person", "@id": "https://helper.bob-api.com/about.html#maintainer", "name": "TF49", "url": "https://helper.bob-api.com/about.html", "sameAs": ["https://github.com/TF49"] },
         "publisher": { "@type": "Organization", "@id": "https://helper.bob-api.com/#organization", "name": "Bob AI Helper" },
         "tool": [{ "@type": "HowToTool", "name": "Bob AI Helper" }, { "@type": "HowToTool", "name": "DeepSeek Harness" }],
         "step": [
           { "@type": "HowToStep", "name": "初始化 DeepSeek Harness", "text": "先启动一次 DeepSeek Harness 桌面版，让它在 ~/.dsh（或 DSH_HOME 指定的目录）下生成 desktop 档案。" },
           { "@type": "HowToStep", "name": "确认安装路径", "text": "在 AI Helper 的「设置 → 路径管理」中点击「探测」，确认 DeepSeek Harness 的安装路径已就绪。" },
-          { "@type": "HowToStep", "name": "填写节点与 API Key", "text": "打开配置中心的 DeepSeek Harness 面板，填写接入节点（默认 https://bob-api.com/）和 API Key，AI Helper 会拉取该 Key 当前分组下的全部可用模型。" },
+          { "@type": "HowToStep", "name": "选择节点并填写 API Key", "text": "打开配置中心的 DeepSeek Harness 面板，选择接入节点（BobAPI 官方节点，或备用的 TaijiAI 加速节点），填入 API Key，AI Helper 会拉取该 Key 当前分组下的全部可用模型。手动填写的 Key 首次用于某个节点时，需点击「确认用于此节点」；从 Bob API 账号选择的 Key 和一键配置只能用于 BobAPI 官方节点。" },
           { "@type": "HowToStep", "name": "勾选模型并选择默认模型", "text": "勾选要接入的模型，并选择新会话的默认模型。图像、语音、向量等无法对话的模型已被自动过滤。" },
           { "@type": "HowToStep", "name": "测试并写入", "text": "AI Helper 按协议逐条测试各路由，全部通过后统一写入；任一路由失败都不会落盘。" },
           { "@type": "HowToStep", "name": "重启 DeepSeek Harness", "text": "重启 DeepSeek Harness 后，在模型选择器中即可看到「AI Helper · 国产模型」等新路由。" }
@@ -47,23 +50,23 @@
         "mainEntity": [
           {
             "@type": "Question",
-            "name": "配置 DeepSeek Harness 会影响我的 DeepSeek 官方账号吗？",
-            "acceptedAnswer": { "@type": "Answer", "text": "不会。AI Helper 只写入 aihelper-* 路由和 AIHELPER_* 密钥引用，DeepSeek 官方账号登录、官方 API Key 路由以及你自建的路由都原样保留；如果默认模型指向官方模型，保存时也保持不变。" }
-          },
-          {
-            "@type": "Question",
-            "name": "保存后在 DeepSeek Harness 里看不到新模型怎么办？",
-            "acceptedAnswer": { "@type": "Answer", "text": "DeepSeek Harness 在启动时读取配置，保存后需要重启客户端才能加载新路由。可以在测试终端或「设置 → 路径管理」的客户端卡片里点击重启。" }
+            "name": "保存后在 DeepSeek Harness 里看不到新模型？",
+            "acceptedAnswer": { "@type": "Answer", "text": "DeepSeek Harness 在启动时读取配置，保存后需要重启客户端才能加载新路由，可以在测试终端或「设置 → 路径管理」的客户端卡片里点击重启。AI Helper 重启时会先向主进程发送优雅退出请求，不会再弹出 “renderer exited: killed” 崩溃框。" }
           },
           {
             "@type": "Question",
             "name": "提示“分组不可用”是什么意思？",
-            "acceptedAnswer": { "@type": "Answer", "text": "说明该模型此前配置过，但已不在这个 API Key 当前所属的分组中，常见于在 bob-api 网页切换了分组。请重新拉取可用模型、取消勾选不可用的模型，或把 Key 切回原分组。" }
+            "acceptedAnswer": { "@type": "Answer", "text": "说明该模型此前配置过，但已不在这个 Key 当前所属的分组中，常见于在 bob-api 网页切换了分组，节点会返回 model_not_found。请重新拉取可用模型、取消勾选不可用的模型，或在网页上把 Key 切回原分组。你手动添加的模型 ID 不会被自动取消勾选。" }
           },
           {
             "@type": "Question",
-            "name": "提示“未找到 DeepSeek Harness 桌面版配置”怎么办？",
+            "name": "提示“未找到 DeepSeek Harness 桌面版配置”？",
             "acceptedAnswer": { "@type": "Answer", "text": "请先启动一次 DeepSeek Harness 桌面版完成初始化，它会在 ~/.dsh（或 DSH_HOME 指定的目录）下生成配置档案，之后回到 AI Helper 即可正常配置。" }
+          },
+          {
+            "@type": "Question",
+            "name": "会影响我的 DeepSeek 官方账号吗？",
+            "acceptedAnswer": { "@type": "Answer", "text": "不会。官方账号登录、官方 API Key 路由以及你自建的路由都原样保留，AI Helper 只写入它自己托管的 aihelper-* 路由和 AIHELPER_* 密钥引用；如果默认模型指向官方模型，保存时也保持不变。" }
           }
         ]
       },
@@ -94,10 +97,10 @@
     <p class="breadcrumb"><a href="/">Bob AI Helper</a> / <a href="/guides/">教程</a> / DeepSeek Harness 接入自定义 API</p>
     <article>
       <h1>DeepSeek Harness 怎么接入 Claude、GPT 和国产模型</h1>
-      <p class="doc-meta">适用于 AI Helper <span class="current-version-tag">v1.0.88</span> · Windows 与 macOS · 最后更新 <time class="last-updated" datetime="2026-11-22">2026-11-22</time> · 作者 <a href="/about.html">TF49</a></p>
+      <p class="doc-meta">适用于 AI Helper <span class="current-version-tag">v1.0.88</span> · Windows 与 macOS · 最后更新 <time class="last-updated" datetime="2026-11-24">2026-11-24</time> · 作者 <a href="/about.html">TF49</a></p>
 
       <div class="tldr">
-        <p><strong>简短回答：</strong>DeepSeek Harness（DSH）桌面版的模型路由写在 <code>~/.dsh/profiles/desktop/cordis.patch.yml</code>，对应的 API Key 写在同目录体系下的 <code>.credentials.yaml</code>。Claude、GPT 和国产模型使用三种不同的协议，需要分别配置路由。AI Helper 可以用一个 API Key 拉取全部可用模型，按协议自动写入 <code>aihelper-claude</code>、<code>aihelper-codex</code>、<code>aihelper-cn</code> 三条路由，并保留你的自建路由、注释和 DeepSeek 官方账号。</p>
+        <p><strong>简短回答：</strong>DeepSeek Harness（DSH）桌面版的模型路由写在 <code>~/.dsh/profiles/desktop/cordis.patch.yml</code>，Key 写在 <code>~/.dsh/.credentials.yaml</code>。Claude、GPT 和国产模型协议不同，需分三条路由。MIT 开源的 AI Helper 在本机用一个 Bob API 的 API Key 拉取全部可对话模型，按协议写入 <code>aihelper-*</code> 路由，自建路由和官方账号原样保留。</p>
       </div>
 
       <h2>为什么不同模型要写进不同路由</h2>
@@ -128,8 +131,8 @@
       <h2>方法二：配置向导手动接入</h2>
       <ol>
         <li>打开 <strong>配置中心 → DeepSeek Harness</strong>。</li>
-        <li>填写接入节点。默认是 <code>https://bob-api.com/</code>，也可以填写你自己的服务网关节点。</li>
-        <li>填入 API Key。AI Helper 会拉取这个 Key 当前分组下的全部可用模型，并自动过滤图像、语音、向量等无法对话的模型。</li>
+        <li>选择接入节点：「BobAPI 官方节点」（<code>https://bob-api.com/</code>，推荐首选）或「TaijiAI 加速节点」（<code>https://taijiai.online/</code>，备用专线）。</li>
+        <li>填入 API Key。AI Helper 会拉取这个 Key 当前分组下的全部可用模型，并自动过滤图像、语音、向量等无法对话的模型。手动填写的 Key 首次用于某个节点时，需点击「确认用于此节点」；从 Bob API 账号选择的 Key 和一键配置只能用于 BobAPI 官方节点。</li>
         <li>勾选要接入的模型，支持全选，也可以手动添加模型 ID；然后选择新会话的默认模型。默认模型只影响新会话，在 DeepSeek Harness 里随时可以切换。</li>
         <li>AI Helper 对每条路由做连通性测试，全部通过后才统一写入；任一路由失败都不会落盘。</li>
         <li>保存后重启 DeepSeek Harness（可以在测试终端或路径管理卡片里直接点击重启），在模型选择器中就能看到「AI Helper · 国产模型」等新路由。</li>
@@ -156,16 +159,17 @@
 
       <h2>常见问题</h2>
       <h3>保存后在 DeepSeek Harness 里看不到新模型？</h3>
-      <p>DeepSeek Harness 在启动时读取配置，保存后需要重启客户端才能加载新路由。AI Helper 重启时会先向主进程发送优雅退出请求，不会再弹出 “renderer exited: killed” 崩溃框。</p>
+      <p>DeepSeek Harness 在启动时读取配置，保存后需要重启客户端才能加载新路由，可以在测试终端或「设置 → 路径管理」的客户端卡片里点击重启。AI Helper 重启时会先向主进程发送优雅退出请求，不会再弹出 “renderer exited: killed” 崩溃框。</p>
       <h3>提示“分组不可用”是什么意思？</h3>
-      <p>说明该模型此前配置过，但已不在这个 Key 当前所属的分组中，常见于在 bob-api 网页切换了分组，中转站会返回 <code>model_not_found</code>。请重新拉取可用模型、取消勾选不可用的模型，或在网页上把 Key 切回原分组。你手动添加的模型 ID 不会被自动取消勾选。</p>
+      <p>说明该模型此前配置过，但已不在这个 Key 当前所属的分组中，常见于在 bob-api 网页切换了分组，节点会返回 <code>model_not_found</code>。请重新拉取可用模型、取消勾选不可用的模型，或在网页上把 Key 切回原分组。你手动添加的模型 ID 不会被自动取消勾选。</p>
       <h3>提示“未找到 DeepSeek Harness 桌面版配置”？</h3>
       <p>请先启动一次 DeepSeek Harness 桌面版完成初始化，它会在 <code>~/.dsh</code>（或 <code>DSH_HOME</code> 指定的目录）下生成配置档案，之后回到 AI Helper 即可正常配置。</p>
       <h3>会影响我的 DeepSeek 官方账号吗？</h3>
-      <p>不会。官方账号登录、官方 API Key 路由以及你自建的路由都原样保留，AI Helper 只写入它自己托管的 <code>aihelper-*</code> 路由。</p>
+      <p>不会。官方账号登录、官方 API Key 路由以及你自建的路由都原样保留，AI Helper 只写入它自己托管的 <code>aihelper-*</code> 路由和 <code>AIHELPER_*</code> 密钥引用；如果默认模型指向官方模型，保存时也保持不变。</p>
 
       <p><a class="cta" href="/#downloads">下载 AI Helper</a></p>
-      <p>相关教程：<a href="/guides/claude-code-custom-api.html">Claude Code 切换 API 地址</a> · <a href="/guides/codex-cli-custom-api.html">Codex CLI 配置自定义 API</a> · <a href="/guides/cursor-custom-model.html">Cursor 配置第三方模型</a></p>
+      <p>相关教程：<a href="/guides/claude-code-custom-api.html">Claude Code 切换 API 地址</a> · <a href="/guides/codex-cli-custom-api.html">Codex CLI 配置自定义 API</a> · <a href="/guides/cursor-custom-model.html">Cursor 配置第三方模型</a> · <a href="/guides/workbuddy-custom-api.html">WorkBuddy 配置自定义 API</a> · <a href="/guides/ai-coding-config-paths.html">AI 编程客户端配置文件路径大全</a></p>
+      <p>源码与问题反馈：<a href="https://github.com/TF49/AI-Helper">GitHub 仓库（MIT 开源）</a> · <a href="https://github.com/TF49/AI-Helper/issues">GitHub Issues</a> · <a href="/en/guides/deepseek-harness-custom-api.html" hreflang="en">English version</a></p>
     </article>
   </main>
 

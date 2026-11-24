@@ -10,7 +10,7 @@
   <meta name="theme-color" content="#f8faff">
   <title>Bob AI Helper：一键配置 Cursor、Claude Code、Codex 的 API 与模型 | 开源桌面工具 (Windows &amp; macOS)</title>
   <meta name="description"
-    content="Bob AI Helper（简称 AI Helper）是一款 MIT 开源的桌面工具，用于在 Windows 和 macOS 上一键配置 Cursor、Claude Code、OpenAI Codex CLI、ChatGPT Desktop、WorkBuddy、Accio Work 与 DeepSeek Harness 的 API 地址、API Key 和模型，并提供流式连通性测试与 Cursor 本地 Bridge。">
+    content="Bob AI Helper（简称 AI Helper）是一款 MIT 开源、本地运行的桌面工具，在 Windows 和 macOS 上一键为 Cursor、Claude Code、OpenAI Codex CLI、WorkBuddy、Accio Work 与 DeepSeek Harness 配置 BobAPI 节点、API Key 和模型。只改 API 相关字段并保留原有设置，保存前做流式连通性测试，Cursor 通过本地 Bridge 接入 glm-5.3 等第三方模型。">
   <link rel="icon" type="image/x-icon" href="assets/favicon.ico">
   <link rel="alternate" hreflang="zh-CN" href="https://helper.bob-api.com/">
   <link rel="alternate" hreflang="en" href="https://helper.bob-api.com/en/">
@@ -79,7 +79,7 @@
         "about": {
           "@id": "https://helper.bob-api.com/#software"
         },
-        "dateModified": "2026-11-22"
+        "dateModified": "2026-11-24"
       },
       {
         "@type": "SoftwareApplication",
@@ -90,14 +90,14 @@
           "AI Helper 桌面客户端",
           "AI Helper for Cursor / Claude Code / Codex"
         ],
-        "description": "Bob AI Helper（简称 AI Helper）是一款 MIT 开源的桌面工具，用于在 Windows 和 macOS 上统一配置 Cursor、Claude Code、OpenAI Codex CLI、ChatGPT Desktop、WorkBuddy、Accio Work 与 DeepSeek Harness 的 API 地址、API Key 和模型，并提供流式连通性测试、Cursor / Accio Work 本地协议 Bridge、DeepSeek Harness 按协议自动分流路由与客户端启动管理。",
+        "description": "Bob AI Helper（简称 AI Helper）是一款 MIT 开源、本地运行的桌面工具，用于在 Windows 和 macOS 上统一配置 Cursor、Claude Code、OpenAI Codex CLI、ChatGPT Desktop、WorkBuddy、Accio Work 与 DeepSeek Harness 的 API 地址、API Key 和模型，并提供流式连通性测试、Cursor / Accio Work 本地协议 Bridge、DeepSeek Harness 按协议自动分流路由与客户端启动管理。",
         "applicationCategory": "DeveloperApplication",
         "applicationSubCategory": "AI 编程客户端配置管理",
         "operatingSystem": "Windows 10, Windows 11, macOS 11+",
         "processorRequirements": "x64 (Windows); Apple Silicon (aarch64) 或 Intel x64 (macOS)",
         "softwareRequirements": "Windows 需要 Microsoft Edge WebView2 Runtime",
         "softwareVersion": "1.0.88",
-        "dateModified": "2026-11-22",
+        "dateModified": "2026-11-24",
         "license": "https://opensource.org/licenses/MIT",
         "isAccessibleForFree": true,
         "downloadUrl": "https://github.com/TF49/AI-Helper/releases/latest",
@@ -109,6 +109,7 @@
         "featureList": [
           "自动探测 Claude Code、OpenAI Codex CLI、ChatGPT Desktop、Cursor、WorkBuddy、Accio Work、DeepSeek Harness",
           "写入各客户端的 API 地址、API Key 与模型配置",
+          "内置 BobAPI 官方节点与 TaijiAI 备用节点，手动填写 API Key 或登录 Bob API 账号一键配置",
           "保存前执行真实流式连通性测试",
           "Cursor 本地 Connect-RPC / HTTP2 Bridge（默认 127.0.0.1:8969）",
           "Accio Work 本地 Bridge（默认 127.0.0.1:8787）",
@@ -178,10 +179,10 @@
           },
           {
             "@type": "Question",
-            "name": "可以使用自定义 API 地址和自己的 API Key 吗？",
+            "name": "可以连接哪些 API 节点？API Key 从哪里来？",
             "acceptedAnswer": {
               "@type": "Answer",
-              "text": "可以。每个客户端的配置面板都支持手动填写 API 地址、API Key 和模型，并可读取该地址的模型列表。对于不在白名单内的地址，AI Helper 会显示目标 Origin 并要求你确认，默认要求 HTTPS，避免 Key 被误发到未授权的站点。"
+              "text": "AI Helper 配合 Bob API 服务使用。每个客户端面板都可以选择 BobAPI 官方节点（https://bob-api.com）或 TaijiAI 加速节点（备用线路），然后手动填写 API Key 并选择模型，也可以读取节点的模型列表；登录 Bob API 账号后可以一键配置，自动选用对应分组的 Key。所有请求仅走 HTTPS。从账号获取的 Key 和一键配置只能用于 BobAPI 官方节点；手动填写的 Key 首次用于某个节点时，需要点一次「确认用于此节点」，之后才能测试、获取模型或保存。"
             }
           },
           {
@@ -189,7 +190,7 @@
             "name": "一键配置会给每个客户端设置什么模型？",
             "acceptedAnswer": {
               "@type": "Answer",
-              "text": "一键配置需要登录 Bob API 账号，并按客户端分组写入 API Key 和推荐模型：Claude Code 使用 claude-sonnet-5-5；Codex 与 ChatGPT 使用 gpt-5.6-sol；Cursor、WorkBuddy 与 Accio Work 使用 glm-5.3；DeepSeek Harness 使用「国产Token计划」分组（Bob API 账号下国产模型专用的令牌分组）的 Key，写入该 Key 下全部可对话模型，默认模型为 deepseek-v4.1-flash。如果账号下没有对应分组的 API Key，AI Helper 会自动创建一个。手动配置时可以改用任意模型。"
+              "text": "一键配置需要登录 Bob API 账号，并按客户端分组写入 API Key 和推荐模型：Claude Code 使用 claude-sonnet-5-5；Codex 与 ChatGPT 使用 gpt-5.6-sol；Cursor、WorkBuddy 与 Accio Work 使用 glm-5.3；DeepSeek Harness 使用「国产Token计划」分组（Bob API 账号下国产模型专用的令牌分组）的 Key，写入该 Key 下全部可对话模型，默认模型为 deepseek-v4.1-flash。如果账号下没有对应分组的 API Key，AI Helper 会自动创建一个。手动配置时可以改用节点上的其他模型。"
             }
           },
           {
@@ -237,7 +238,7 @@
             "name": "AI Helper 是免费开源的吗？",
             "acceptedAnswer": {
               "@type": "Answer",
-              "text": "是。AI Helper 以 MIT 许可证开源，源码托管在 GitHub（TF49/AI-Helper），个人和企业都可以免费使用。客户端本身不收费，调用模型产生的费用由你所使用的 API 服务商计费。"
+              "text": "是。AI Helper 以 MIT 许可证开源，源码托管在 GitHub（TF49/AI-Helper），个人和企业都可以免费使用。客户端本身不收费，调用模型产生的费用按 Bob API 的用量计费。"
             }
           },
           {
@@ -387,6 +388,7 @@
         <a href="#downloads" data-nav-section="downloads">下载</a>
         <a href="#faq" data-nav-section="faq">问答</a>
         <a href="/guides/">教程</a>
+        <a href="/en/" hreflang="en" lang="en">English</a>
       </nav>
       <div class="nav-actions">
         <a class="nav-github" href="https://github.com/TF49/AI-Helper" target="_blank" rel="noopener noreferrer"
@@ -452,8 +454,8 @@
           <span class="hero-line hero-line-gradient"><span>AI 编程客户端的 API 与模型，</span></span>
           <span class="hero-line hero-line-gradient"><span>在一个桌面工具里配好。</span></span>
         </h1>
-        <p class="hero-lead"><strong>Bob AI Helper</strong>（简称 AI Helper）是一款 MIT 开源的桌面工具，用于在 Windows 和 macOS 上一键配置 <strong>Cursor</strong>、<strong>Claude Code</strong>、<strong>OpenAI Codex CLI</strong>、<strong>ChatGPT Desktop</strong>、<strong>WorkBuddy</strong>、<strong>Accio Work</strong> 与 <strong>DeepSeek Harness</strong> 的 API 地址、API Key 和模型。它会自动找到本机已安装的客户端，写入配置后做一次流式连通性测试，再帮你重启客户端；Cursor 和 Accio Work 通过内置的本地 Bridge 接入第三方模型，DeepSeek Harness 用一个 Key 按协议自动分流到 Claude、GPT 与国产模型路由。</p>
-        <p class="hero-updated">当前版本 <span class="current-version-tag">v1.0.88</span> · 最后更新 <time class="last-updated" datetime="2026-11-22">2026-11-22</time></p>
+        <p class="hero-lead"><strong>Bob AI Helper</strong>（简称 AI Helper）是一款 MIT 开源的桌面工具，用于在 Windows 和 macOS 上一键配置 <strong>Cursor</strong>、<strong>Claude Code</strong>、<strong>OpenAI Codex CLI</strong>、<strong>ChatGPT Desktop</strong>、<strong>WorkBuddy</strong>、<strong>Accio Work</strong> 与 <strong>DeepSeek Harness</strong> 的 API 地址、API Key 和模型。它会自动找到本机已安装的客户端，先做一次流式连通性测试，通过后写入配置，再帮你重启客户端；Cursor 和 Accio Work 通过内置的本地 Bridge 接入第三方模型，DeepSeek Harness 用一个 Key 按协议自动分流到 Claude、GPT 与国产模型路由。配置只写在本机，只修改 API 地址、Key 和模型字段，其余设置原样保留。</p>
+        <p class="hero-updated">当前版本 <span class="current-version-tag">v1.0.88</span> · 最后更新 <time class="last-updated" datetime="2026-11-24">2026-11-24</time></p>
 
         <div class="hero-actions">
           <a id="btn-hero-download" class="button button-primary magnetic-target"
@@ -1238,7 +1240,7 @@
         <header class="section-heading">
           <span class="section-kicker">OFFICIAL DOWNLOADS</span>
           <h2 id="downloads-title">现在开始，把配置工作交出去。</h2>
-          <p>当前官方版本 <strong class="current-version-tag" style="color: var(--accent-blue);">v1.0.88</strong> · 支持 7 款 AI 编程客户端 · Windows 10/11 与 macOS 11+ · MIT 开源 · 最后更新 <time class="last-updated" datetime="2026-11-22">2026-11-22</time></p>
+          <p>当前官方版本 <strong class="current-version-tag" style="color: var(--accent-blue);">v1.0.88</strong> · 支持 7 款 AI 编程客户端 · Windows 10/11 与 macOS 11+ · MIT 开源 · 最后更新 <time class="last-updated" datetime="2026-11-24">2026-11-24</time></p>
         </header>
 
         <!-- 平台切换器 -->
@@ -1535,11 +1537,11 @@
             </div>
           </article>
           <article class="faq-item">
-            <h3><button class="faq-trigger" type="button" aria-expanded="false"><span>可以使用自定义 API 地址和自己的 API Key 吗？</span><i
+            <h3><button class="faq-trigger" type="button" aria-expanded="false"><span>可以连接哪些 API 节点？API Key 从哪里来？</span><i
                   aria-hidden="true"></i></button></h3>
             <div class="faq-panel">
               <div>
-                <p>可以。每个客户端的配置面板都支持手动填写 API 地址、API Key 和模型，并可读取该地址的模型列表。对于不在白名单内的地址，AI Helper 会显示目标 Origin 并要求你确认，默认要求 HTTPS，避免 Key 被误发到未授权的站点。</p>
+                <p>AI Helper 配合 Bob API 服务使用。每个客户端面板都可以选择 BobAPI 官方节点（https://bob-api.com）或 TaijiAI 加速节点（备用线路），然后手动填写 API Key 并选择模型，也可以读取节点的模型列表；登录 Bob API 账号后可以一键配置，自动选用对应分组的 Key。所有请求仅走 HTTPS。从账号获取的 Key 和一键配置只能用于 BobAPI 官方节点；手动填写的 Key 首次用于某个节点时，需要点一次「确认用于此节点」，之后才能测试、获取模型或保存。</p>
               </div>
             </div>
           </article>
@@ -1548,7 +1550,7 @@
                   aria-hidden="true"></i></button></h3>
             <div class="faq-panel">
               <div>
-                <p>一键配置需要登录 Bob API 账号，并按客户端分组写入 API Key 和推荐模型：Claude Code 使用 <code>claude-sonnet-5-5</code>；Codex 与 ChatGPT 使用 <code>gpt-5.6-sol</code>；Cursor、WorkBuddy 与 Accio Work 使用 <code>glm-5.3</code>；DeepSeek Harness 使用「国产Token计划」分组（Bob API 账号下国产模型专用的令牌分组）的 Key，写入该 Key 下全部可对话模型，默认模型为 <code>deepseek-v4.1-flash</code>。如果账号下没有对应分组的 API Key，AI Helper 会自动创建一个。手动配置时可以改用任意模型。</p>
+                <p>一键配置需要登录 Bob API 账号，并按客户端分组写入 API Key 和推荐模型：Claude Code 使用 <code>claude-sonnet-5-5</code>；Codex 与 ChatGPT 使用 <code>gpt-5.6-sol</code>；Cursor、WorkBuddy 与 Accio Work 使用 <code>glm-5.3</code>；DeepSeek Harness 使用「国产Token计划」分组（Bob API 账号下国产模型专用的令牌分组）的 Key，写入该 Key 下全部可对话模型，默认模型为 <code>deepseek-v4.1-flash</code>。如果账号下没有对应分组的 API Key，AI Helper 会自动创建一个。手动配置时可以改用节点上的其他模型。</p>
               </div>
             </div>
           </article>
@@ -1602,7 +1604,7 @@
                   aria-hidden="true"></i></button></h3>
             <div class="faq-panel">
               <div>
-                <p>是。AI Helper 以 MIT 许可证开源，源码托管在 GitHub（<a href="https://github.com/TF49/AI-Helper">TF49/AI-Helper</a>），个人和企业都可以免费使用。客户端本身不收费，调用模型产生的费用由你所使用的 API 服务商计费。</p>
+                <p>是。AI Helper 以 MIT 许可证开源，源码托管在 GitHub（<a href="https://github.com/TF49/AI-Helper">TF49/AI-Helper</a>），个人和企业都可以免费使用。客户端本身不收费，调用模型产生的费用按 Bob API 的用量计费。</p>
               </div>
             </div>
           </article>

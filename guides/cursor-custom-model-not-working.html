@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Cursor 自定义模型不生效 / 第三方模型连不上怎么排查 | Bob AI Helper 教程</title>
+  <meta name="description"
+    content="Cursor 改了 OpenAI Base URL 仍用不了第三方模型、模型列表不显示、一直连接失败？按 Bridge 是否运行（127.0.0.1:8969）、端口占用、客户端补丁是否被 Cursor 更新覆盖、模型工具调用能力、API Key 与接入节点逐项排查，并说明如何还原官方连接。">
+  <link rel="canonical" href="https://helper.bob-api.com/guides/cursor-custom-model-not-working.html">
+  <link rel="alternate" hreflang="zh-CN" href="https://helper.bob-api.com/guides/cursor-custom-model-not-working.html">
+  <meta name="robots" content="index, follow, max-snippet:-1">
+  <meta property="og:type" content="article">
+  <meta property="og:site_name" content="Bob AI Helper">
+  <meta property="og:title" content="Cursor 自定义模型不生效 / 第三方模型连不上怎么排查">
+  <meta property="og:description" content="按 Bridge、端口、客户端补丁、模型与 API Key 逐项排查 Cursor 第三方模型连不上的问题。">
+  <meta property="og:url" content="https://helper.bob-api.com/guides/cursor-custom-model-not-working.html">
+  <meta property="og:image" content="https://helper.bob-api.com/assets/app-preview.png">
+  <link rel="icon" type="image/x-icon" href="/assets/favicon.ico">
+  <link rel="stylesheet" href="/assets/docs.css?v=1.0.88-1">
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@graph": [
+      {
+        "@type": "TechArticle",
+        "name": "Cursor 自定义模型不生效 / 第三方模型连不上怎么排查",
+        "headline": "Cursor 自定义模型不生效 / 第三方模型连不上怎么排查",
+        "image": "https://helper.bob-api.com/assets/app-preview.png",
+        "description": "排查 Cursor 使用第三方模型失败的常见原因：只改 OpenAI Base URL、本地 Bridge 未运行或端口不一致、客户端补丁被 Cursor 更新覆盖、模型不支持工具调用、API Key 错误或节点不通，以及如何还原官方连接。",
+        "inLanguage": "zh-CN",
+        "datePublished": "2026-11-24",
+        "dateModified": "2026-11-24",
+        "author": { "@type": "Person", "@id": "https://helper.bob-api.com/about.html#maintainer", "name": "TF49", "url": "https://helper.bob-api.com/about.html", "sameAs": ["https://github.com/TF49"] },
+        "publisher": { "@type": "Organization", "@id": "https://helper.bob-api.com/#organization", "name": "Bob AI Helper" },
+        "about": [{ "@type": "SoftwareApplication", "name": "Cursor" }, { "@type": "SoftwareApplication", "name": "Bob AI Helper" }]
+      },
+      {
+        "@type": "FAQPage",
+        "mainEntity": [
+          {
+            "@type": "Question",
+            "name": "只在 Cursor 设置里填 OpenAI Base URL 为什么不够？",
+            "acceptedAnswer": { "@type": "Answer", "text": "Cursor 的 Agent 等功能通过 Cursor 自己的 Connect-RPC 接口和内部消息格式与后端通信，并不是直接调用 OpenAI 兼容接口，所以只覆盖 OpenAI Base URL 无法让这些功能完整改用第三方模型。AI Helper 的做法是在本机运行 Bridge，把 Cursor 的请求转换成 OpenAI 兼容或 Anthropic 兼容请求后再转发到你选择的 BobAPI 节点。" }
+          },
+          {
+            "@type": "Question",
+            "name": "端口 8969 被占用会怎样？",
+            "acceptedAnswer": { "@type": "Answer", "text": "Bridge 启动时如果首选端口被占用，会自动尝试其后的 20 个端口，并把实际端口写回 ~/.ai-helper/cursor_config.json。此时请在 AI Helper 的 Cursor 面板点击「重启 Cursor」，它会在 Cursor 指向的端口与实际端口不一致时重新修补。如果 21 个端口都被占用，会提示“无法在端口 8969..=8989 建立 Cursor Bridge，请检查本机端口占用”，需要先释放端口或改用其他端口。" }
+          },
+          {
+            "@type": "Question",
+            "name": "Cursor 升级后第三方模型失效了怎么办？",
+            "acceptedAnswer": { "@type": "Answer", "text": "Cursor 更新会用新版本文件替换被修补的文件，Cursor 面板的状态会变回「原生官方直连」。在 Cursor 面板点击「接入 AI Helper」重新修补即可，AI Helper 会为新版本重新建立备份。" }
+          },
+          {
+            "@type": "Question",
+            "name": "连通性测试提示“连接成功，但未验证工具调用能力”是什么意思？",
+            "acceptedAnswer": { "@type": "Answer", "text": "说明所选节点和 API Key 可用，但该模型没有按要求返回工具调用。Cursor 读取、搜索项目文件等 Agent 能力依赖 Function Calling / Tool Use，因此 AI Helper 不会保存这次配置。请从模型列表中换用支持工具调用的模型。" }
+          },
+          {
+            "@type": "Question",
+            "name": "如何彻底还原 Cursor 官方连接？",
+            "acceptedAnswer": { "@type": "Answer", "text": "在 Cursor 面板点击「恢复官方连接」，或在 AI Helper 设置页使用「恢复所有客户端原生配置」。AI Helper 会关闭正在运行的 Cursor，从备份还原被修补的文件、state.vscdb 中的路由和 Cursor 用户设置；设置页的恢复还会删除 ~/.ai-helper/cursor_config.json。" }
+          }
+        ]
+      },
+      {
+        "@type": "BreadcrumbList",
+        "itemListElement": [
+          { "@type": "ListItem", "position": 1, "name": "Bob AI Helper", "item": "https://helper.bob-api.com/" },
+          { "@type": "ListItem", "position": 2, "name": "教程", "item": "https://helper.bob-api.com/guides/" },
+          { "@type": "ListItem", "position": 3, "name": "Cursor 自定义模型不生效排查", "item": "https://helper.bob-api.com/guides/cursor-custom-model-not-working.html" }
+        ]
+      }
+    ]
+  }
+  </script>
+</head>
+
+<body>
+  <header class="doc-nav">
+    <div class="doc-nav-inner">
+      <a class="doc-brand" href="/"><img src="/assets/logo.png" alt="Bob AI Helper Logo" width="28" height="28">Bob AI Helper</a>
+      <nav class="doc-nav-links" aria-label="主导航">
+        <a href="/guides/">教程</a><a href="/#downloads">下载</a><a class="hide-sm" href="https://github.com/TF49/AI-Helper">GitHub</a>
+      </nav>
+    </div>
+  </header>
+
+  <main class="doc-main">
+    <p class="breadcrumb"><a href="/">Bob AI Helper</a> / <a href="/guides/">教程</a> / Cursor 自定义模型不生效排查</p>
+    <article>
+      <h1>Cursor 自定义模型不生效 / 第三方模型连不上怎么排查</h1>
+      <p class="doc-meta">适用于 AI Helper <span class="current-version-tag">v1.0.88</span> · Windows 与 macOS · 最后更新 <time class="last-updated" datetime="2026-11-24">2026-11-24</time> · 作者 <a href="/about.html">TF49</a></p>
+
+      <div class="tldr">
+        <p><strong>简短回答：</strong>Cursor 的 Agent 等功能走 Cursor 自己的 Connect-RPC 接口，只改 OpenAI Base URL 接不全第三方模型。使用 AI Helper 的本地 Bridge 时，按顺序检查四件事：Bridge 是否在 <code>127.0.0.1:8969</code>（或自动切换后的端口）运行；Cursor 面板是否显示「已挂接 Bridge」且端口一致；Cursor 是否已重启；所选模型是否支持工具调用、API Key 与所选节点是否通过连通性测试。Cursor 升级后补丁会被覆盖，需要重新「接入 AI Helper」。</p>
+      </div>
+
+      <h2>症状、原因与处理速查</h2>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr><th>症状</th><th>常见原因</th><th>处理方法</th></tr>
+          </thead>
+          <tbody>
+            <tr><td>只在 Cursor 设置里改了 OpenAI Base URL，Agent 仍不用自定义模型</td><td>Agent 等功能走 Connect-RPC 和内部消息格式，Base URL 覆盖不到</td><td>用本地 Bridge 做协议转换（见下文第一节）</td></tr>
+            <tr><td>Cursor 面板显示「原生官方直连」，模型选择器里没有配置的模型</td><td>客户端补丁未应用，或 Cursor 更新后补丁被覆盖</td><td>在 Cursor 面板点击「接入 AI Helper」，再重启 Cursor</td></tr>
+            <tr><td>Cursor 中请求一直失败、反复连接</td><td>Bridge 没在运行（例如已从托盘退出 AI Helper），或 Cursor 指向的端口与 Bridge 实际端口不一致</td><td>启动 Bridge，然后用面板里的「重启 Cursor」（端口不一致时会自动重新修补）</td></tr>
+            <tr><td>提示“无法在端口 8969..=8989 建立 Cursor Bridge，请检查本机端口占用”</td><td>首选端口及其后 20 个端口都被其他程序占用</td><td>释放端口，或在「Bridge 网关端口」中换一个空闲端口</td></tr>
+            <tr><td>连通性测试提示“连接成功，但未验证工具调用能力”</td><td>所选模型不支持 Function Calling / Tool Use</td><td>换用支持工具调用的模型；测试不通过时配置不会被保存</td></tr>
+            <tr><td>测试返回 HTTP 401 / 403 / 404 / 429</td><td>Key 错误或被吊销 / 无权访问该模型 / 端点或模型名不对 / 频控或余额不足</td><td>按测试日志中的“建议”逐项检查（见第五节）</td></tr>
+            <tr><td>提示“Cursor 进程清理超时（5秒），请手动关闭所有 Cursor 窗口后重试”</td><td>修补或还原前 Cursor 没有完全退出</td><td>手动关闭所有 Cursor 窗口后重试</td></tr>
+            <tr><td>提示“原始备份不完整或版本不匹配，拒绝覆盖已修补文件”</td><td>当前已修补的文件与备份不属于同一个 Cursor 版本</td><td>先「恢复官方连接」，或重新安装当前版本 Cursor 后再接入</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h2>一、为什么只改 OpenAI Base URL 不够</h2>
+      <p>Cursor 设置里的 OpenAI API Key 与 Base URL 覆盖是 Cursor 官方的“自带 Key”方式，但 Agent 等功能通过 Cursor 自己的 Connect-RPC 接口和内部消息格式与后端通信，并不是直接调用 OpenAI 兼容接口，所以只改 Base URL 无法让这些功能完整改用第三方模型。</p>
+      <p>AI Helper（MIT 开源、在本机运行）采用的做法是：在本机启动一个 Bridge，修补 Cursor 客户端让请求发往这个 Bridge，再由 Bridge 把请求转换成 OpenAI 兼容或 Anthropic 兼容请求，转发到你在面板中选择的节点（BobAPI 官方节点或 TaijiAI 加速节点）。所以“Cursor 用不了第三方模型”通常要从 Bridge、补丁、模型、Key 四个环节逐一排查。完整的配置步骤见 <a href="/guides/cursor-custom-model.html">Cursor 配置第三方模型</a>。</p>
+
+      <h2>二、确认 Bridge 正在运行</h2>
+      <p>Bridge 默认监听 <code>127.0.0.1:8969</code>，只接受本机回环地址的连接。可以在终端里访问它的健康检查地址：</p>
+      <pre><code># Windows（PowerShell 中请使用 curl.exe）
+curl.exe http://127.0.0.1:8969/health
+
+# macOS
+curl http://127.0.0.1:8969/health</code></pre>
+      <p>Bridge 正常时会返回 <code>{"status":"ok","service":"ai-helper-cursor-bridge"}</code>。连接被拒绝说明 Bridge 没有运行，常见原因：</p>
+      <ul>
+        <li><strong>AI Helper 已从托盘彻底退出。</strong>关闭主窗口时 AI Helper 会留在系统托盘，Bridge 继续运行；从托盘退出后 Bridge 才会停止。</li>
+        <li><strong>未开启自动拉起。</strong>Cursor 面板中的「随 AI Helper 自动拉起 Bridge (后台常驻)」开启且已填写 API Key 时，AI Helper 启动后会自动拉起 Bridge；关闭该选项后需要在面板中手动启动。</li>
+        <li><strong>端口被其他程序占用。</strong>见下一小节。</li>
+      </ul>
+
+      <h3>端口 8969 被占用</h3>
+      <p>Bridge 启动时如果首选端口被占用，会先短暂重试，然后依次尝试其后的 20 个端口（8970 到 8989），成功后把实际端口写回 <code>~/.ai-helper/cursor_config.json</code>。AI Helper 只会避让，不会结束占用端口的未知程序。可以这样查看端口被谁占用：</p>
+      <pre><code># Windows
+netstat -ano | findstr :8969
+
+# macOS
+lsof -nP -iTCP:8969 -sTCP:LISTEN</code></pre>
+      <div class="note">端口自动切换后，Cursor 仍可能指向原来的端口。此时在 AI Helper 的 Cursor 面板点击「重启 Cursor」即可：它会先确认 Bridge 在线，发现 Cursor 指向的地址与实际端口不一致时重新修补，再重启 Cursor。直接从系统里重新打开 Cursor 不会触发这一步。</div>
+
+      <h2>三、确认客户端补丁已应用</h2>
+      <p>打开 AI Helper 的 Cursor 面板，查看接入状态：「已挂接 Bridge」表示补丁有效，「原生官方直连」表示 Cursor 仍在使用官方连接，需要点击「接入 AI Helper」。接入时 AI Helper 会做以下修改（都会先备份）：</p>
+      <ul>
+        <li>把 Cursor 安装目录 <code>resources/app</code> 中 <code>workbench.desktop.main.js</code>（以及新架构下的 <code>workbench.glass.main.js</code>）里的 Cursor 后端地址替换为 <code>http://127.0.0.1:端口</code>，并同步更新 <code>product.json</code> 中的校验和。原文件备份在同目录的 <code>.ai-helper-backup</code> 中。</li>
+        <li>更新 Cursor 本地状态库 <code>state.vscdb</code> 中保存的后端地址（备份为 <code>state.vscdb.ai-helper-bak</code>）。</li>
+        <li>在 Cursor 用户设置 <code>settings.json</code> 中设置 <code>"cursor.general.disableHttp2": true</code> 和 <code>"http.proxySupport": "on"</code>（原值备份为 <code>settings.ai-helper-bak</code>，还原时恢复）。</li>
+      </ul>
+      <p>接入和还原都需要先关闭 Cursor，AI Helper 会自动结束正在运行的 Cursor 进程；如果 5 秒内没有退出，会提示“Cursor 进程清理超时（5秒），请手动关闭所有 Cursor 窗口后重试”。</p>
+
+      <h3>Cursor 升级后失效</h3>
+      <p>Cursor 更新会用新版本文件替换被修补的文件，面板状态会变回「原生官方直连」，这是第三方模型突然“消失”最常见的原因。重新点击「接入 AI Helper」即可，AI Helper 会校验新版本文件后重新建立备份。</p>
+      <p>如果提示“原始备份不完整或版本不匹配，拒绝覆盖已修补文件”，说明当前文件仍带有补丁，但备份属于另一个 Cursor 版本。AI Helper 会拒绝覆盖以免丢失原始文件，此时请先尝试「恢复官方连接」，不行再重新安装当前版本的 Cursor，然后重新接入。</p>
+
+      <h2>四、重启 Cursor 并检查模型名</h2>
+      <p>修补和配置都要在 Cursor 重新启动后才生效。建议使用面板中的「重启 Cursor」而不是手动重开，原因见上文端口一节。</p>
+      <p>Cursor 模型选择器中的列表由 Bridge 提供：Bridge 会用你的 API Key 读取所选节点的 <code>/v1/models</code>；读取失败时，只显示你在 AI Helper 中配置的模型。Bridge 按模型名选择上游接口：</p>
+      <ul>
+        <li>名称包含 <code>claude</code>、<code>sonnet</code>、<code>anthropic</code> 的模型使用 Anthropic Messages（<code>/v1/messages</code>）；</li>
+        <li><code>gpt-5</code>、<code>gpt-6</code>、<code>o1</code>、<code>o3</code>、<code>o4</code> 开头或包含 <code>codex</code> 的模型使用 OpenAI Responses（<code>/v1/responses</code>）；</li>
+        <li>其他模型（如 <code>glm-5.3</code>、DeepSeek、Qwen 等）使用 Chat Completions（<code>/v1/chat/completions</code>）。</li>
+      </ul>
+      <p>上游没有对应的 Messages 或 Responses 端点（返回 404、405、501 等）时，Bridge 会改用 Chat Completions。模型名必须与节点模型列表中的名称完全一致，否则上游会返回模型不存在之类的错误。</p>
+
+      <h2>五、用连通性测试检查 API Key、节点与模型</h2>
+      <p>在 Cursor 面板点击「确认并保存 Cursor 配置」时，AI Helper 会先做一次连通性测试，<strong>测试不通过就不会修改本地配置</strong>。Cursor 的测试不只是发一句“Hi”，而是要求模型调用一个只读的探测函数，用来确认模型支持 Cursor Agent 需要的工具调用。测试日志会显示目标端点、HTTP 状态码、耗时和错误详情（Key 会被打码）：</p>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr><th>测试结果</th><th>含义</th></tr>
+          </thead>
+          <tbody>
+            <tr><td>连接成功，且已验证工具调用能力</td><td>节点、Key、模型均可用</td></tr>
+            <tr><td>连接成功，但未验证工具调用能力</td><td>能连通，但模型没有返回工具调用；Cursor 将无法使用项目文件与 Agent 工具，请换用支持 Function Calling / Tool Use 的模型</td></tr>
+            <tr><td>HTTP 401</td><td>身份认证失败，检查 API Key 是否填错或已被吊销</td></tr>
+            <tr><td>HTTP 403</td><td>当前账号可能无权访问该模型，或存在 IP 地域限制</td></tr>
+            <tr><td>HTTP 404</td><td>上游不提供所测协议的端点，或模型名不对</td></tr>
+            <tr><td>HTTP 429</td><td>触发频控，或余额不足</td></tr>
+            <tr><td>HTTP 5xx</td><td>上游服务异常，稍后重试，或在面板中切换到另一个节点（TaijiAI 加速节点需手动填写 Key，见下文）</td></tr>
+            <tr><td>错误中含 <code>model_not_found</code></td><td>该模型不在此 API Key 当前所属分组中，重新拉取可用模型后再选</td></tr>
+            <tr><td>受管 Key 不得发往未授权目标 …</td><td>从 Bob API 账号选择的 Key（含一键配置）或已确认用于 BobAPI 官方节点的 Key 被用在了 TaijiAI 加速节点；切换回 BobAPI 官方节点，或手动填写可用于该节点的 Key</td></tr>
+            <tr><td>此密钥尚未获准用于当前节点，请在密钥输入处确认目标</td><td>手动填写的 Key 还没有确认用于当前节点，在密钥输入处点击「确认用于此节点」后再测试</td></tr>
+            <tr><td>请求超时 (超过 60 秒未收到响应)</td><td>网络不通或代理设置有问题</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>面板中的两个节点是「BobAPI 官方节点」（<code>https://bob-api.com/</code>，推荐首选）和「TaijiAI 加速节点」（<code>https://taijiai.online/</code>，备用专线），都使用 HTTPS。Bridge 和测试会先去掉地址末尾的 <code>/v1</code> 再拼接具体路径。一个节点超时或频繁返回 5xx 时，可以切换到另一个节点后重新测试保存，但要注意 Key 的来源：从 Bob API 账号选择的 Key、一键配置使用的 Key，以及已确认用于 BobAPI 官方节点的 Key，都只能发往 BobAPI 官方节点；改用 TaijiAI 加速节点时，需要手动填写 Key，并在密钥输入处点击「确认用于此节点」。</p>
+
+      <h2>六、如何还原为 Cursor 官方连接</h2>
+      <ul>
+        <li><strong>只还原 Cursor：</strong>在 Cursor 面板点击「恢复官方连接」。AI Helper 会关闭 Cursor，从备份还原 <code>workbench</code> 文件和 <code>product.json</code>、<code>state.vscdb</code> 中的路由以及 Cursor 用户设置。</li>
+        <li><strong>还原所有客户端：</strong>在 AI Helper 设置页使用「恢复所有客户端原生配置」，Cursor 部分还会停止 Bridge，并删除 <code>~/.ai-helper/cursor_config.json</code> 等 AI Helper 专用配置。</li>
+      </ul>
+      <p>如果提示“Cursor Glass 仍包含 AI Helper 补丁，但缺少原始备份，无法安全恢复”，说明备份文件已丢失，重新安装 Cursor 即可恢复为官方文件。</p>
+
+      <h2>常见问题</h2>
+      <h3>只在 Cursor 设置里填 OpenAI Base URL 为什么不够？</h3>
+      <p>Cursor 的 Agent 等功能通过 Cursor 自己的 Connect-RPC 接口和内部消息格式与后端通信，并不是直接调用 OpenAI 兼容接口，所以只覆盖 OpenAI Base URL 无法让这些功能完整改用第三方模型。AI Helper 的做法是在本机运行 Bridge，把 Cursor 的请求转换成 OpenAI 兼容或 Anthropic 兼容请求后再转发到你选择的 BobAPI 节点。</p>
+      <h3>端口 8969 被占用会怎样？</h3>
+      <p>Bridge 启动时如果首选端口被占用，会自动尝试其后的 20 个端口，并把实际端口写回 <code>~/.ai-helper/cursor_config.json</code>。此时请在 AI Helper 的 Cursor 面板点击「重启 Cursor」，它会在 Cursor 指向的端口与实际端口不一致时重新修补。如果 21 个端口都被占用，会提示“无法在端口 8969..=8989 建立 Cursor Bridge，请检查本机端口占用”，需要先释放端口或改用其他端口。</p>
+      <h3>Cursor 升级后第三方模型失效了怎么办？</h3>
+      <p>Cursor 更新会用新版本文件替换被修补的文件，Cursor 面板的状态会变回「原生官方直连」。在 Cursor 面板点击「接入 AI Helper」重新修补即可，AI Helper 会为新版本重新建立备份。</p>
+      <h3>连通性测试提示“连接成功，但未验证工具调用能力”是什么意思？</h3>
+      <p>说明所选节点和 API Key 可用，但该模型没有按要求返回工具调用。Cursor 读取、搜索项目文件等 Agent 能力依赖 Function Calling / Tool Use，因此 AI Helper 不会保存这次配置。请从模型列表中换用支持工具调用的模型。</p>
+      <h3>如何彻底还原 Cursor 官方连接？</h3>
+      <p>在 Cursor 面板点击「恢复官方连接」，或在 AI Helper 设置页使用「恢复所有客户端原生配置」。AI Helper 会关闭正在运行的 Cursor，从备份还原被修补的文件、<code>state.vscdb</code> 中的路由和 Cursor 用户设置；设置页的恢复还会删除 <code>~/.ai-helper/cursor_config.json</code>。</p>
+
+      <h2>参考：Cursor 官方文档</h2>
+      <ul>
+        <li><a href="https://cursor.com/help/models-and-usage/api-keys">Bring your own API key（Cursor 官方的自带 Key 方式）</a></li>
+      </ul>
+
+      <p><a class="cta" href="/#downloads">下载 AI Helper</a></p>
+      <p>相关教程：<a href="/guides/cursor-custom-model.html">Cursor 配置第三方模型</a> · <a href="/guides/claude-code-401-timeout.html">Claude Code 401/超时排查</a> · <a href="/guides/codex-config-not-working.html">Codex config.toml 不生效排查</a></p>
+      <p>源码与问题反馈：<a href="https://github.com/TF49/AI-Helper">GitHub 仓库（MIT 开源）</a> · <a href="https://github.com/TF49/AI-Helper/issues">GitHub Issues</a></p>
+    </article>
+  </main>
+
+  <footer class="doc-footer">
+    <div class="doc-footer-inner">
+      <span><a href="/">首页</a><a href="/guides/">教程</a><a href="/about.html">关于</a><a href="/en/">English</a><a href="https://github.com/TF49/AI-Helper">GitHub</a></span>
+      <span>© 2026 Bob AI Helper · MIT License</span>
+    </div>
+  </footer>
+</body>
+
+</html>

@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Use glm-5.3 and Other Models in Cursor (Local Bridge) | Bob AI Helper</title>
+  <meta name="description"
+    content="Changing Cursor's OpenAI base URL is not enough for third-party models. AI Helper's local bridge (127.0.0.1:8969) lets Cursor use glm-5.3 and other BobAPI models.">
+  <link rel="canonical" href="https://helper.bob-api.com/en/guides/cursor-custom-model.html">
+  <link rel="alternate" hreflang="en" href="https://helper.bob-api.com/en/guides/cursor-custom-model.html">
+  <link rel="alternate" hreflang="zh-CN" href="https://helper.bob-api.com/guides/cursor-custom-model.html">
+  <link rel="alternate" hreflang="x-default" href="https://helper.bob-api.com/guides/cursor-custom-model.html">
+  <meta name="robots" content="index, follow, max-snippet:-1">
+  <meta property="og:type" content="article">
+  <meta property="og:site_name" content="Bob AI Helper">
+  <meta property="og:locale" content="en_US">
+  <meta property="og:locale:alternate" content="zh_CN">
+  <meta property="og:title" content="How to use glm-5.3 and other third-party models in Cursor">
+  <meta property="og:description" content="Use AI Helper's local bridge to connect Cursor to glm-5.3 and other models available on BobAPI.">
+  <meta property="og:url" content="https://helper.bob-api.com/en/guides/cursor-custom-model.html">
+  <meta property="og:image" content="https://helper.bob-api.com/assets/app-preview.png">
+  <link rel="icon" type="image/x-icon" href="/assets/favicon.ico">
+  <link rel="stylesheet" href="/assets/docs.css?v=1.0.88-1">
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@graph": [
+      {
+        "@type": ["TechArticle", "HowTo"],
+        "@id": "https://helper.bob-api.com/en/guides/cursor-custom-model.html#article",
+        "url": "https://helper.bob-api.com/en/guides/cursor-custom-model.html",
+        "name": "How to use glm-5.3 and other third-party models in Cursor",
+        "headline": "How to use glm-5.3 and other third-party models in Cursor",
+        "image": "https://helper.bob-api.com/assets/app-preview.png",
+        "description": "Use AI Helper's local bridge so Cursor can talk to glm-5.3 and other models available on BobAPI.",
+        "inLanguage": "en",
+        "datePublished": "2026-11-20",
+        "dateModified": "2026-11-24",
+        "translationOfWork": { "@type": "TechArticle", "url": "https://helper.bob-api.com/guides/cursor-custom-model.html", "inLanguage": "zh-CN" },
+        "author": { "@type": "Person", "@id": "https://helper.bob-api.com/about.html#maintainer", "name": "TF49", "url": "https://helper.bob-api.com/about.html", "sameAs": ["https://github.com/TF49"] },
+        "publisher": { "@type": "Organization", "@id": "https://helper.bob-api.com/#organization", "name": "Bob AI Helper" },
+        "tool": [{ "@type": "HowToTool", "name": "Bob AI Helper" }, { "@type": "HowToTool", "name": "Cursor" }],
+        "step": [
+          { "@type": "HowToStep", "name": "Install AI Helper", "text": "Download and install AI Helper from helper.bob-api.com or GitHub Releases." },
+          { "@type": "HowToStep", "name": "Choose a node, enter the key and model", "text": "In the Cursor panel, choose the BobAPI official node (https://bob-api.com/, recommended) or the TaijiAI backup node (https://taijiai.online/), enter your API key (or sign in to a Bob API account for one-click setup), then pick a model such as glm-5.3. The first time you use a hand-entered key with a node, click Confirm for this node (确认用于此节点). Keys picked from your Bob API account, and one-click setup, only work with the BobAPI official node." },
+          { "@type": "HowToStep", "name": "Save the configuration", "text": "Click Confirm and save Cursor config. Once the connection test passes, AI Helper writes ~/.ai-helper/cursor_config.json and starts the local bridge (127.0.0.1:8969 by default)." },
+          { "@type": "HowToStep", "name": "Connect AI Helper", "text": "In the client status area of the Cursor panel, click Connect AI Helper to patch the Cursor client so its requests go to the local bridge." },
+          { "@type": "HowToStep", "name": "Restart Cursor", "text": "Click Restart Cursor, then choose the model you just configured in Cursor's model picker." }
+        ]
+      },
+      {
+        "@type": "FAQPage",
+        "mainEntity": [
+          {
+            "@type": "Question",
+            "name": "Port 8969 is already in use. What should I do?",
+            "acceptedAnswer": { "@type": "Answer", "text": "Change the bridge port in the Cursor panel to another free port, save, and click Restart Cursor. If Cursor is already connected to AI Helper, the client is re-patched for the new port before it restarts." }
+          },
+          {
+            "@type": "Question",
+            "name": "Third-party models stopped working after a Cursor update. Why?",
+            "acceptedAnswer": { "@type": "Answer", "text": "A Cursor update can overwrite the patched files. Open the Cursor panel in AI Helper; if the status shows a direct official connection, click Connect AI Helper to re-apply the patch, then restart Cursor." }
+          },
+          {
+            "@type": "Question",
+            "name": "Can Cursor still use third-party models after I close the AI Helper window?",
+            "acceptedAnswer": { "@type": "Answer", "text": "Yes. Closing the main window leaves AI Helper running in the system tray, and the bridge keeps running. The bridge only stops when you quit AI Helper from the tray; at that point, third-party models in Cursor stop working." }
+          },
+          {
+            "@type": "Question",
+            "name": "Cursor Agent says the workspace is not authorized when it edits files. What should I do?",
+            "acceptedAnswer": { "@type": "Answer", "text": "The bridge only lets Cursor Agent write or delete files in workspaces you have authorized. Open the Cursor panel in AI Helper, click Allow on the pending request, and try again. Authorizations are stored in ~/.ai-helper/agent_workspaces.json and can be revoked under authorized workspaces." }
+          }
+        ]
+      },
+      {
+        "@type": "BreadcrumbList",
+        "itemListElement": [
+          { "@type": "ListItem", "position": 1, "name": "Bob AI Helper", "item": "https://helper.bob-api.com/en/" },
+          { "@type": "ListItem", "position": 2, "name": "Guides", "item": "https://helper.bob-api.com/en/guides/" },
+          { "@type": "ListItem", "position": 3, "name": "Third-party models in Cursor", "item": "https://helper.bob-api.com/en/guides/cursor-custom-model.html" }
+        ]
+      }
+    ]
+  }
+  </script>
+</head>
+
+<body>
+  <header class="doc-nav">
+    <div class="doc-nav-inner">
+      <a class="doc-brand" href="/en/"><img src="/assets/logo.png" alt="Bob AI Helper logo" width="28" height="28">Bob AI Helper</a>
+      <nav class="doc-nav-links" aria-label="Main navigation">
+        <a href="/en/guides/">Guides</a><a href="/en/#downloads">Download</a><a class="hide-sm" href="https://github.com/TF49/AI-Helper">GitHub</a>
+      </nav>
+    </div>
+  </header>
+
+  <main class="doc-main">
+    <p class="breadcrumb"><a href="/en/">Bob AI Helper</a> / <a href="/en/guides/">Guides</a> / Third-party models in Cursor</p>
+    <article>
+      <h1>How to use glm-5.3 and other third-party models in Cursor</h1>
+      <p class="doc-meta">For AI Helper <span class="current-version-tag">v1.0.88</span> · Windows &amp; macOS · Last updated <time class="last-updated" datetime="2026-11-24">2026-11-24</time> · By <a href="/about.html">TF49</a></p>
+
+      <div class="tldr">
+        <p><strong>Short answer:</strong> Changing the OpenAI base URL isn't enough, because Cursor talks over Connect-RPC / HTTP2. AI Helper, an MIT-licensed open-source app, runs a bridge on your machine (<code>127.0.0.1:8969</code> by default) that translates Cursor's requests and forwards them to the BobAPI node with your API key — so Cursor can use glm-5.3 and other models available on BobAPI.</p>
+      </div>
+
+      <div class="note">AI Helper's interface is currently in Chinese. Button names in this guide are translated, with the original label in parentheses.</div>
+
+      <h2>Before you start</h2>
+      <ul>
+        <li>Cursor is installed and has been launched at least once.</li>
+        <li>You have a BobAPI API key, or a Bob API account you can sign in to for one-click setup.</li>
+        <li>AI Helper is installed (<a href="/en/#downloads">download</a> — Windows 10/11 or macOS 11+).</li>
+      </ul>
+
+      <h2>Step by step</h2>
+      <ol>
+        <li><strong>Open the Cursor panel.</strong> Launch AI Helper. The home screen detects where Cursor is installed; open the Cursor configuration panel.</li>
+        <li><strong>Choose a node and enter your key.</strong> Pick the <strong>BobAPI official node</strong> (BobAPI 官方节点, <code>https://bob-api.com/</code>, recommended) or the <strong>TaijiAI accelerated node</strong> (TaijiAI 加速节点, <code>https://taijiai.online/</code>, a backup line), then enter your API key — or sign in to a Bob API account and use one-click setup. The first time you use a hand-entered key with a node, click <em>Confirm for this node</em> (确认用于此节点). Keys picked from your Bob API account, and one-click setup, only work with the BobAPI official node.</li>
+        <li><strong>Pick a model.</strong> AI Helper fetches the model list from the selected node. Choose <code>glm-5.3</code> or another model from the list, or type a model name by hand.</li>
+        <li><strong>Save the configuration.</strong> Click <em>Confirm and save Cursor config</em> (确认并保存 Cursor 配置). Once the connection test passes, AI Helper writes the settings to <code>~/.ai-helper/cursor_config.json</code> and starts the local bridge.</li>
+        <li><strong>Connect AI Helper.</strong> In the client status area of the panel, click <em>Connect AI Helper</em> (接入 AI Helper). This patches the Cursor client so its requests go to the bridge.</li>
+        <li><strong>Restart Cursor.</strong> Click <em>Restart Cursor</em> (重启 Cursor), then select the model you just configured in Cursor's model picker.</li>
+      </ol>
+
+      <h2>Changing the base URL vs using the AI Helper bridge</h2>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr><th></th><th>Only changing the OpenAI base URL in Cursor's settings</th><th>AI Helper local bridge</th></tr>
+          </thead>
+          <tbody>
+            <tr><td>Protocol</td><td>Agent and other features still use Cursor's Connect-RPC / HTTP2</td><td>The bridge translates Cursor's requests into OpenAI-style requests to the BobAPI node</td></tr>
+            <tr><td>Models</td><td>Third-party models can't be fully connected</td><td><code>glm-5.3</code> and other models available on BobAPI, with streaming, reasoning output and image input</td></tr>
+            <tr><td>What's written locally</td><td>Cursor's settings</td><td><code>~/.ai-helper/cursor_config.json</code>, plus a reversible patch to the Cursor client (backed up before patching)</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="note">If you sign in to AI Helper with a Bob API account and use one-click setup, Cursor automatically gets an API key from the <code>国产Token计划</code> group — the key group in a Bob API account reserved for Chinese models (see <a href="/about.html#groups">key groups</a>, in Chinese). The recommended model is <code>glm-5.3</code>. If your account has no key in that group yet, AI Helper creates one.</div>
+
+      <h2>What the bridge supports</h2>
+      <ul>
+        <li>Two-way translation between Cursor's requests and OpenAI-style requests, including streaming responses.</li>
+        <li>Text, reasoning output and image input.</li>
+        <li>Serving the list of available models and the default model to Cursor.</li>
+        <li>Letting Cursor Agent read and search files in the current workspace. Writing or deleting files requires you to authorize that workspace in the panel first (authorizations are stored in <code>~/.ai-helper/agent_workspaces.json</code>).</li>
+      </ul>
+      <p>When you close the AI Helper main window, the app stays in the system tray and the bridge keeps running. The bridge only stops when you quit AI Helper from the tray — at that point, third-party models in Cursor stop working.</p>
+
+      <h2>Security measures</h2>
+      <p>The bridge only listens on the loopback address. For the first request on each connection, it looks up which process opened the connection (by its source port) and only accepts processes running as the same OS user as AI Helper; if the owner cannot be determined, the connection is rejected. It also validates the Host, Origin and Content-Type headers.</p>
+
+      <h2>How to switch back to Cursor's official connection</h2>
+      <p>Click <em>Restore official connection</em> (恢复官方连接) in the Cursor panel, or use one-click restore on AI Helper's Settings page. The bridge is stopped and the patch to the Cursor client is reverted.</p>
+
+      <h2>FAQ</h2>
+      <h3>Port 8969 is already in use. What should I do?</h3>
+      <p>Change the bridge port in the Cursor panel to another free port, save, and click Restart Cursor. If Cursor is already connected to AI Helper, the client is re-patched for the new port before it restarts.</p>
+      <h3>Third-party models stopped working after a Cursor update. Why?</h3>
+      <p>A Cursor update can overwrite the patched files. Open the Cursor panel in AI Helper; if the status shows a direct official connection, click Connect AI Helper to re-apply the patch, then restart Cursor.</p>
+      <h3>Can Cursor still use third-party models after I close the AI Helper window?</h3>
+      <p>Yes. Closing the main window leaves AI Helper running in the system tray, and the bridge keeps running. The bridge only stops when you quit AI Helper from the tray; at that point, third-party models in Cursor stop working.</p>
+      <h3>Cursor Agent says the workspace is not authorized when it edits files. What should I do?</h3>
+      <p>The bridge only lets Cursor Agent write or delete files in workspaces you have authorized. Open the Cursor panel in AI Helper, click Allow on the pending request, and try again. Authorizations are stored in <code>~/.ai-helper/agent_workspaces.json</code> and can be revoked under authorized workspaces.</p>
+
+      <h2>Reference: Cursor documentation</h2>
+      <ul>
+        <li><a href="https://cursor.com/help/models-and-usage/api-keys">API keys in Cursor (Cursor's own settings)</a></li>
+      </ul>
+
+      <p><a class="cta" href="/en/#downloads">Download AI Helper</a></p>
+      <p>Related guides: <a href="/en/guides/claude-code-custom-api.html">Change the API endpoint in Claude Code</a> · <a href="/en/guides/codex-cli-custom-api.html">Custom API provider for Codex CLI</a></p>
+      <p>Source code and issues: <a href="https://github.com/TF49/AI-Helper">GitHub (MIT)</a> · <a href="https://github.com/TF49/AI-Helper/issues">GitHub Issues</a></p>
+    </article>
+  </main>
+
+  <footer class="doc-footer">
+    <div class="doc-footer-inner">
+      <span><a href="/en/">Home</a><a href="/en/guides/">Guides</a><a href="/guides/cursor-custom-model.html" hreflang="zh-CN" lang="zh-CN">中文</a><a href="https://github.com/TF49/AI-Helper">GitHub</a></span>
+      <span>© 2026 Bob AI Helper · MIT License</span>
+    </div>
+  </footer>
+</body>
+
+</html>

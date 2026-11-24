@@ -4,9 +4,9 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Bob AI Helper: Configure API Endpoints and Models for Cursor, Claude Code and Codex | Open-Source Desktop App</title>
+  <title>Bob AI Helper: API &amp; Model Setup for Cursor, Claude Code, Codex</title>
   <meta name="description"
-    content="Bob AI Helper (shown in the app as AI Helper) is a free, MIT-licensed desktop app for Windows and macOS that configures the API endpoint, API key and model for Cursor, Claude Code, OpenAI Codex CLI, ChatGPT Desktop, WorkBuddy, Accio Work and DeepSeek Harness from one place.">
+    content="Free, open-source desktop app for Windows and macOS that sets the API endpoint, key and model for Cursor, Claude Code, Codex CLI, WorkBuddy, Accio Work and DeepSeek Harness.">
   <link rel="canonical" href="https://helper.bob-api.com/en/">
   <link rel="alternate" hreflang="zh-CN" href="https://helper.bob-api.com/">
   <link rel="alternate" hreflang="en" href="https://helper.bob-api.com/en/">
@@ -17,12 +17,12 @@
   <meta property="og:locale" content="en_US">
   <meta property="og:locale:alternate" content="zh_CN">
   <meta property="og:title" content="Bob AI Helper: Configure Cursor, Claude Code and Codex in one place">
-  <meta property="og:description" content="Free, open-source (MIT) desktop app for Windows and macOS that sets the API endpoint, key and model for seven AI coding clients.">
+  <meta property="og:description" content="Free, open-source (MIT) desktop app for Windows and macOS that sets the API endpoint, key and model for seven AI coding clients. Pick the BobAPI official node, enter your API key and model, and AI Helper writes the config.">
   <meta property="og:url" content="https://helper.bob-api.com/en/">
   <meta property="og:image" content="https://helper.bob-api.com/assets/app-preview.png">
   <meta name="twitter:card" content="summary_large_image">
   <link rel="icon" type="image/x-icon" href="/assets/favicon.ico">
-  <link rel="stylesheet" href="/assets/docs.css?v=1.0.88">
+  <link rel="stylesheet" href="/assets/docs.css?v=1.0.88-1">
   <script type="application/ld+json">
   {
     "@context": "https://schema.org",
@@ -33,9 +33,11 @@
         "url": "https://helper.bob-api.com/en/",
         "name": "Bob AI Helper: Configure API Endpoints and Models for Cursor, Claude Code and Codex",
         "inLanguage": "en",
-        "dateModified": "2026-11-22",
+        "dateModified": "2026-11-24",
         "isPartOf": { "@id": "https://helper.bob-api.com/#website" },
-        "about": { "@id": "https://helper.bob-api.com/#software" }
+        "about": { "@id": "https://helper.bob-api.com/#software" },
+        "primaryImageOfPage": "https://helper.bob-api.com/assets/app-preview.png",
+        "translationOfWork": { "@id": "https://helper.bob-api.com/" }
       },
       {
         "@type": "SoftwareApplication",
@@ -50,42 +52,89 @@
         "isAccessibleForFree": true,
         "downloadUrl": "https://github.com/TF49/AI-Helper/releases/latest",
         "codeRepository": "https://github.com/TF49/AI-Helper",
+        "screenshot": "https://helper.bob-api.com/assets/app-preview.png",
+        "featureList": [
+          "Detects Claude Code, OpenAI Codex CLI, ChatGPT Desktop, Cursor, WorkBuddy, Accio Work and DeepSeek Harness",
+          "Writes the API endpoint, API key and model to each client's local config file",
+          "Built-in BobAPI official node (https://bob-api.com/) and TaijiAI backup node (https://taijiai.online/); enter an API key or sign in for one-click setup",
+          "Real streaming connection test before saving",
+          "Local Connect-RPC / HTTP2 bridge for Cursor (default 127.0.0.1:8969)",
+          "Local bridge for Accio Work (default 127.0.0.1:8787)",
+          "Splits one API key across DeepSeek Harness routes by protocol: aihelper-claude, aihelper-codex, aihelper-cn",
+          "Snapshot before the first change, with one-click restore",
+          "Session credentials protected with DPAPI on Windows and Keychain on macOS",
+          "Signed update manifests with SHA-256 checks and rollback protection"
+        ],
         "author": { "@type": "Person", "@id": "https://helper.bob-api.com/about.html#maintainer", "name": "TF49", "url": "https://helper.bob-api.com/about.html", "sameAs": ["https://github.com/TF49"] },
         "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" }
       },
       {
         "@type": "FAQPage",
+        "@id": "https://helper.bob-api.com/en/#faq",
+        "inLanguage": "en",
         "mainEntity": [
           {
             "@type": "Question",
             "name": "What is Bob AI Helper?",
-            "acceptedAnswer": { "@type": "Answer", "text": "Bob AI Helper (shown in the app as AI Helper) is a free, MIT-licensed desktop app for Windows and macOS that configures the API endpoint, API key and model for AI coding clients: Cursor, Claude Code, OpenAI Codex CLI, ChatGPT Desktop, WorkBuddy, Accio Work and DeepSeek Harness. It detects installed clients, writes their local config files, runs a streaming connection test and restarts the client." }
+            "acceptedAnswer": { "@type": "Answer", "text": "Bob AI Helper (shown in the app as AI Helper) is a free, MIT-licensed desktop app for Windows and macOS that sets the API endpoint, API key and model for AI coding clients: Cursor, Claude Code, OpenAI Codex CLI, ChatGPT Desktop, WorkBuddy, Accio Work and DeepSeek Harness. It finds the clients installed on your machine, runs a streaming connection test, writes their local config files once it passes, and launches or restarts the client when needed." }
           },
           {
             "@type": "Question",
-            "name": "Can I use my own API endpoint and API key?",
-            "acceptedAnswer": { "@type": "Answer", "text": "Yes. Every client panel accepts a custom API base URL, API key and model, and can fetch the model list from that endpoint. Unknown origins must be confirmed and HTTPS is required by default." }
+            "name": "Which AI coding clients are supported, and where does each config go?",
+            "acceptedAnswer": { "@type": "Answer", "text": "Seven clients: Claude Code (~/.claude/settings.json), OpenAI Codex CLI (~/.codex/config.toml), Cursor (~/.ai-helper/cursor_config.json, connected through a local bridge), WorkBuddy (~/.workbuddy/models.json), Accio Work (~/.ai-helper/accio_config.json, connected through a local bridge), DeepSeek Harness desktop (~/.dsh/profiles/desktop/cordis.patch.yml, or under DSH_HOME if it is set), and ChatGPT Desktop (install detection, launch and device management only)." }
           },
           {
             "@type": "Question",
-            "name": "Why does Cursor need a local bridge?",
-            "acceptedAnswer": { "@type": "Answer", "text": "Cursor uses Connect-RPC / HTTP2 and internal message formats, so changing the OpenAI base URL alone cannot connect every third-party model. AI Helper runs a local bridge (default 127.0.0.1:8969) that translates Cursor requests to an OpenAI-compatible API. The client patch can be reverted at any time." }
+            "name": "Which API endpoints can I use?",
+            "acceptedAnswer": { "@type": "Answer", "text": "AI Helper works with the BobAPI service. Every client panel offers two built-in nodes: the BobAPI official node (https://bob-api.com/, recommended) and the TaijiAI accelerated node (https://taijiai.online/, a backup line). Choose a node, then enter your API key and model by hand, or sign in to a Bob API account and use one-click setup. You can also fetch the model list from the selected node. There is no field for other URLs, and HTTPS is required. Keys picked from your Bob API account, and one-click setup, only work with the BobAPI official node. The first time you use a hand-entered key with a node, AI Helper asks you to confirm it for that node (确认用于此节点) before it can test, fetch models or save." }
           },
           {
             "@type": "Question",
-            "name": "Does configuring DeepSeek Harness touch my official DeepSeek account?",
-            "acceptedAnswer": { "@type": "Answer", "text": "No. AI Helper only writes its own aihelper-* routes and AIHELPER_* key references in the DeepSeek Harness desktop profile. The official DeepSeek account sign-in, the official API-key route (api.deepseek.com) and your own routes are left as they are, and a default model that points at an official model is kept." }
+            "name": "What does one-click setup configure, and what are the \"groups\"?",
+            "acceptedAnswer": { "@type": "Answer", "text": "One-click setup requires signing in to a Bob API account (Bob API is the related API service). For each client it picks an API key from the matching key group and a recommended model: Claude Code uses the CC-Kiro-Max group with claude-sonnet-5-5; Codex CLI and ChatGPT use the Codex-不降质 group with gpt-5.6-sol; Cursor, WorkBuddy and Accio Work use the 国产Token计划 (Chinese models) group with glm-5.3; DeepSeek Harness uses the 国产Token计划 key and writes every chat model available to it, with deepseek-v4.1-flash as the default. A group is simply the name of an API-key group inside a Bob API account, not a model name. If a group has no key yet, AI Helper creates one. With manual setup you don't need to sign in: type your API key and model yourself." }
+          },
+          {
+            "@type": "Question",
+            "name": "Will AI Helper overwrite my existing configuration?",
+            "acceptedAnswer": { "@type": "Answer", "text": "No. AI Helper only changes the fields it needs: API endpoint, key and model. Other settings in Claude Code, Codex and WorkBuddy are kept, and models you added to WorkBuddy yourself are not removed. For DeepSeek Harness it only writes aihelper-* routes and AIHELPER_* key references; your own routes, comments and official-account routes are kept byte for byte. A snapshot is saved before the first change and can be restored from Settings. Backing up important configs yourself is still a good idea." }
           },
           {
             "@type": "Question",
             "name": "Is my API key uploaded anywhere?",
-            "acceptedAnswer": { "@type": "Answer", "text": "No. Configuration is written locally. Session credentials are protected with DPAPI on Windows and Keychain on macOS. Your API key is only sent to the API endpoint you configure." }
+            "acceptedAnswer": { "@type": "Answer", "text": "No. All configuration is written locally, and session credentials are protected with DPAPI on Windows and the Keychain on macOS. Your API key is only sent to the BobAPI node you selected, when you run a connection test or when the AI coding client makes model requests." }
           },
           {
             "@type": "Question",
-            "name": "Is AI Helper free?",
-            "acceptedAnswer": { "@type": "Answer", "text": "Yes. AI Helper is open source under the MIT license and free to use. Model usage is billed by whichever API provider you configure." }
+            "name": "Why does Cursor need a local bridge?",
+            "acceptedAnswer": { "@type": "Answer", "text": "Part of Cursor's traffic uses Connect-RPC / HTTP2 and internal message formats, so changing an OpenAI base URL alone cannot fully connect a third-party model. AI Helper runs a bridge on your machine (127.0.0.1:8969 by default) that translates between Cursor's requests and the OpenAI-style API of the BobAPI node, with support for streaming, reasoning output and image input. The patch to the Cursor client can be reverted at any time." }
+          },
+          {
+            "@type": "Question",
+            "name": "Does configuring DeepSeek Harness touch my official DeepSeek account?",
+            "acceptedAnswer": { "@type": "Answer", "text": "No. AI Helper only configures the DeepSeek Harness desktop profile (~/.dsh/profiles/desktop/cordis.patch.yml, or under DSH_HOME if it is set) and only writes aihelper-* routes and AIHELPER_* key references. Your official DeepSeek account sign-in, the official API-key route (api.deepseek.com) and your own routes are left as they are, and a default model that points at an official model is kept. Launch DeepSeek Harness once before first use so it can initialize, and restart it after saving to see the new routes." }
+          },
+          {
+            "@type": "Question",
+            "name": "Is AI Helper free and open source?",
+            "acceptedAnswer": { "@type": "Answer", "text": "Yes. AI Helper is open source under the MIT license, with its source code on GitHub (TF49/AI-Helper), and free for both individuals and companies. The app itself costs nothing; model usage is billed by your BobAPI account." }
+          },
+          {
+            "@type": "Question",
+            "name": "Which macOS build should I download, and what if macOS says the app is damaged?",
+            "acceptedAnswer": { "@type": "Answer", "text": "Download the aarch64 DMG for Apple Silicon Macs (M1 to M5 series, including Pro, Max and Ultra) and the x64 DMG for Intel Macs; macOS 11 or later is required. If macOS says the app is damaged or that the developer cannot be verified, that is Gatekeeper quarantining an app that is not notarized by Apple. Run xattr -cr /Applications/AI\\ Helper.app in Terminal, or Control-click the app in Finder and choose Open." }
           }
+        ]
+      },
+      {
+        "@type": "ItemList",
+        "@id": "https://helper.bob-api.com/en/#guides",
+        "name": "Bob AI Helper guides",
+        "itemListElement": [
+          { "@type": "ListItem", "position": 1, "name": "How to use glm-5.3 and other third-party models in Cursor", "url": "https://helper.bob-api.com/en/guides/cursor-custom-model.html" },
+          { "@type": "ListItem", "position": 2, "name": "How to change the API endpoint and model in Claude Code", "url": "https://helper.bob-api.com/en/guides/claude-code-custom-api.html" },
+          { "@type": "ListItem", "position": 3, "name": "How to use a custom API endpoint with OpenAI Codex CLI", "url": "https://helper.bob-api.com/en/guides/codex-cli-custom-api.html" },
+          { "@type": "ListItem", "position": 4, "name": "How to connect DeepSeek Harness to Claude, GPT and Chinese models", "url": "https://helper.bob-api.com/en/guides/deepseek-harness-custom-api.html" },
+          { "@type": "ListItem", "position": 5, "name": "How to fix the \"AI Helper is damaged\" warning on macOS", "url": "https://helper.bob-api.com/en/guides/macos-app-damaged.html" }
         ]
       }
     ]
@@ -98,91 +147,189 @@
     <div class="doc-nav-inner">
       <a class="doc-brand" href="/en/"><img src="/assets/logo.png" alt="Bob AI Helper logo" width="28" height="28">Bob AI Helper</a>
       <nav class="doc-nav-links" aria-label="Main navigation">
-        <a href="#download">Download</a><a href="/">中文</a><a class="hide-sm" href="https://github.com/TF49/AI-Helper">GitHub</a>
+        <a href="/en/guides/">Guides</a><a href="#downloads">Download</a><a href="/" hreflang="zh-CN" lang="zh-CN">中文</a><a class="hide-sm" href="https://github.com/TF49/AI-Helper">GitHub</a>
       </nav>
     </div>
   </header>
 
   <main class="doc-main">
     <h1>Bob AI Helper: configure Cursor, Claude Code and Codex in one place</h1>
-    <p class="doc-meta">Version <span class="current-version-tag">v1.0.88</span> · Windows &amp; macOS · MIT license · Last updated <time class="last-updated" datetime="2026-11-22">2026-11-22</time></p>
+    <p class="doc-meta">Version <span class="current-version-tag">v1.0.88</span> · Windows &amp; macOS · MIT license · Last updated <time class="last-updated" datetime="2026-11-24">2026-11-24</time></p>
 
     <div class="tldr">
-      <p><strong>Bob AI Helper</strong> (shown in the app as AI Helper) is a free, open-source (MIT) desktop app for Windows and macOS that sets the API endpoint, API key and model for seven AI coding clients — <strong>Cursor</strong>, <strong>Claude Code</strong>, <strong>OpenAI Codex CLI</strong>, <strong>ChatGPT Desktop</strong>, <strong>WorkBuddy</strong>, <strong>Accio Work</strong> and <strong>DeepSeek Harness</strong>. It finds the clients installed on your machine, writes their config files, runs a real streaming connection test, and restarts the client so the change takes effect.</p>
+      <p><strong>Bob AI Helper</strong> (shown in the app as AI Helper) is a free, open-source (MIT) desktop app for Windows and macOS that sets the API endpoint, API key and model for seven AI coding clients — <strong>Cursor</strong>, <strong>Claude Code</strong>, <strong>OpenAI Codex CLI</strong>, <strong>ChatGPT Desktop</strong>, <strong>WorkBuddy</strong>, <strong>Accio Work</strong> and <strong>DeepSeek Harness</strong>. Pick the BobAPI official node (or the TaijiAI backup node), enter your API key and model, and AI Helper finds the clients installed on your machine, runs a real streaming connection test, writes their config files locally and restarts the client so the change takes effect. Your API traffic goes from the client (or AI Helper's local bridge) straight to the node you choose.</p>
     </div>
 
-    <p><a class="cta" href="#download">Download AI Helper</a></p>
+    <p><a class="cta" href="#downloads">Download AI Helper</a> &nbsp; <a href="/en/guides/">Read the guides →</a></p>
+    <p class="doc-meta">Windows 10 / 11 (x64) · macOS 11+ (Apple Silicon and Intel) · <a href="https://github.com/TF49/AI-Helper">Source on GitHub</a></p>
 
-    <h2>What it does</h2>
+    <h2 id="features">What it does</h2>
     <ul>
-      <li><strong>Detects clients automatically</strong> — scans PATH, the Windows registry, npm global installs, Microsoft Store apps, Homebrew and NVM on macOS.</li>
+      <li><strong>Detects clients automatically</strong> — scans PATH, the Windows registry, npm global installs and Microsoft Store apps, and on macOS also checks Homebrew and NVM install locations.</li>
+      <li><strong>Built-in BobAPI nodes</strong> — every client panel offers two nodes: the BobAPI official node (<code>https://bob-api.com/</code>, recommended) and the TaijiAI accelerated node (<code>https://taijiai.online/</code>, backup line). Enter your API key and model by hand, or sign in to a Bob API account for one-click setup, and fetch the model list from the selected node.</li>
       <li><strong>Writes config safely</strong> — only endpoint, key and model fields are changed; other settings are preserved. Files are written atomically with locking, and a snapshot is taken before the first change so you can restore it from Settings.</li>
       <li><strong>Tests before saving</strong> — sends a real streaming request and reports the HTTP status, time to first byte and common error hints.</li>
-      <li><strong>Connects Cursor to third-party models</strong> — a local bridge (default <code>127.0.0.1:8969</code>) translates Cursor's Connect-RPC / HTTP2 traffic to an OpenAI-compatible API, with streaming, reasoning output and image input.</li>
+      <li><strong>Connects Cursor to third-party models</strong> — a local bridge (default <code>127.0.0.1:8969</code>) translates Cursor's Connect-RPC / HTTP2 traffic to OpenAI-style requests to the BobAPI node, with streaming, reasoning output and image input.</li>
       <li><strong>Bridges Accio Work</strong> — a local bridge (default <code>127.0.0.1:8787</code>) adapts model lists, chat, image generation, the Responses API and MCP proxying.</li>
       <li><strong>Splits one key across DeepSeek Harness routes</strong> — fetches every chat model your API key can use and writes it to the matching route by protocol: <code>aihelper-claude</code> (Anthropic Messages), <code>aihelper-codex</code> (OpenAI Responses) or <code>aihelper-cn</code> (Chat Completions, for DeepSeek, Qwen, GLM and other Chinese models). Edits are line-level, so your own routes, comments, <code>!!js</code> tags and the official DeepSeek account are kept.</li>
       <li><strong>Signed updates</strong> — update manifests are signature-checked, SHA-256 verified and protected against rollback.</li>
     </ul>
 
-    <h2>Supported clients</h2>
+    <h2 id="clients">Supported clients</h2>
+    <p>AI Helper configures seven clients. The table shows what it manages for each one and which file it writes.</p>
     <div class="table-wrap">
-      <table>
+      <table style="min-width: 640px">
         <thead>
-          <tr><th>Client</th><th>What AI Helper manages</th><th>Config location</th></tr>
+          <tr><th>Client</th><th>What AI Helper does</th><th>Config location</th></tr>
         </thead>
         <tbody>
-          <tr><td>Claude Code</td><td><code>ANTHROPIC_BASE_URL</code>, <code>ANTHROPIC_AUTH_TOKEN</code>, <code>ANTHROPIC_MODEL</code>; launch / restart</td><td><code>~/.claude/settings.json</code></td></tr>
-          <tr><td>OpenAI Codex CLI</td><td>Custom <code>model_provider</code> base URL, API key, model; launch / restart</td><td><code>~/.codex/config.toml</code></td></tr>
-          <tr><td>Cursor</td><td>Custom models through the local bridge; reversible client patch</td><td><code>~/.ai-helper/cursor_config.json</code></td></tr>
-          <tr><td>WorkBuddy</td><td>Multiple models, recommended model first, user models kept</td><td><code>~/.workbuddy/models.json</code></td></tr>
-          <tr><td>Accio Work</td><td>Custom models through the local bridge</td><td><code>~/.ai-helper/accio_config.json</code></td></tr>
-          <tr><td>DeepSeek Harness (desktop)</td><td>Claude / GPT / Chinese-model routes split by protocol; multiple keys side by side; launch / restart</td><td><code>~/.dsh/profiles/desktop/cordis.patch.yml</code> (or under <code>DSH_HOME</code>)</td></tr>
-          <tr><td>ChatGPT Desktop</td><td>Install detection, launch, device management</td><td>System install directory</td></tr>
+          <tr><td>Claude Code</td><td>Detects the CLI; sets <code>ANTHROPIC_BASE_URL</code>, <code>ANTHROPIC_AUTH_TOKEN</code> and <code>ANTHROPIC_MODEL</code>; streaming test; launch / restart</td><td><code>~/.claude/settings.json</code> (<code>env</code> block)</td></tr>
+          <tr><td>OpenAI Codex CLI</td><td>Detects the CLI; writes a <code>model_provider</code> entry pointing at the selected BobAPI node, plus the API key and model; streaming test; launch / restart</td><td><code>~/.codex/config.toml</code></td></tr>
+          <tr><td>Cursor</td><td>Custom models through a local Connect-RPC / HTTP2 bridge (default <code>127.0.0.1:8969</code>); reversible client patch</td><td><code>~/.ai-helper/cursor_config.json</code></td></tr>
+          <tr><td>WorkBuddy</td><td>Maintains multiple models, puts the recommended model first, keeps models you added yourself</td><td><code>~/.workbuddy/models.json</code></td></tr>
+          <tr><td>Accio Work</td><td>Custom models through a local bridge (default <code>127.0.0.1:8787</code>); model list injection</td><td><code>~/.ai-helper/accio_config.json</code></td></tr>
+          <tr><td>DeepSeek Harness (desktop)</td><td>Fetches every chat model of a key and writes it by protocol to <code>aihelper-claude</code>, <code>aihelper-codex</code> or <code>aihelper-cn</code>; multiple keys side by side; launch / restart</td><td><code>~/.dsh/profiles/desktop/cordis.patch.yml</code> and <code>.credentials.yaml</code> (<code>refs.AIHELPER_*</code>); <code>DSH_HOME</code> overrides <code>~/.dsh</code></td></tr>
+          <tr><td>ChatGPT Desktop</td><td>Install detection, launch, device management (no API configuration)</td><td>System install directory</td></tr>
         </tbody>
       </table>
     </div>
 
-    <h2>Privacy and security</h2>
-    <p>All configuration is written on your machine. Session credentials are protected with DPAPI on Windows and Keychain on macOS. Your API key is only sent to the endpoint you configure, and endpoints outside the allow-list must be confirmed (HTTPS required by default). The Cursor bridge only accepts connections from processes owned by the same OS user.</p>
-
-    <h2 id="download">Download</h2>
-    <p>Current version: <strong class="current-version-tag">v1.0.88</strong>. Windows requires the Microsoft Edge WebView2 Runtime (preinstalled on Windows 11).</p>
+    <h2 id="compare">Manual setup vs AI Helper</h2>
+    <p>You can configure every one of these clients by hand — the <a href="/en/guides/">guides</a> show how. This is what that involves compared with letting AI Helper do it.</p>
     <div class="table-wrap">
-      <table>
+      <table style="min-width: 640px">
         <thead>
-          <tr><th>Platform</th><th>Package</th></tr>
+          <tr><th>Task</th><th>By hand</th><th>With AI Helper</th></tr>
         </thead>
         <tbody>
-          <tr><td>Windows 10 / 11 (x64)</td><td><a href="https://github.com/TF49/AI-Helper/releases/download/v1.0.88/AI-Helper-v1.0.88-Windows-x64-Setup.exe">Installer (.exe)</a> · <a href="https://github.com/TF49/AI-Helper/releases/download/v1.0.88/AI-Helper-v1.0.88-Windows-x64-Standalone.zip">Portable (.zip)</a></td></tr>
-          <tr><td>macOS 11+ Apple Silicon (M1–M5)</td><td><a href="https://github.com/TF49/AI-Helper/releases/download/v1.0.88/AI-Helper-v1.0.88-macOS-aarch64.dmg">aarch64 DMG</a></td></tr>
-          <tr><td>macOS 11+ Intel</td><td><a href="https://github.com/TF49/AI-Helper/releases/download/v1.0.88/AI-Helper-v1.0.88-macOS-x64.dmg">x64 DMG</a></td></tr>
+          <tr><td>Claude Code</td><td>Edit the <code>env</code> block in <code>~/.claude/settings.json</code>, keep the file valid JSON and keep your other fields</td><td>Writes the three <code>ANTHROPIC_*</code> values and the top-level <code>model</code>; everything else is left alone</td></tr>
+          <tr><td>Codex CLI</td><td>Add a <code>[model_providers.custom]</code> table to <code>~/.codex/config.toml</code> and set the <code>CUSTOM_OPENAI_API_KEY</code> environment variable yourself</td><td>Writes the provider and model; on Windows also sets the user environment variable (on macOS you still export it in your shell)</td></tr>
+          <tr><td>Cursor</td><td>Changing the OpenAI base URL does not cover Agent / Composer traffic (Connect-RPC / HTTP2); you would need your own protocol bridge</td><td>Built-in bridge on <code>127.0.0.1:8969</code> plus a client patch that can be reverted at any time</td></tr>
+          <tr><td>Accio Work</td><td>You would need your own adapter between Accio Work and the API</td><td>Built-in bridge on <code>127.0.0.1:8787</code> for model lists, chat, image generation, Responses API and MCP</td></tr>
+          <tr><td>DeepSeek Harness</td><td>Edit routes in <code>cordis.patch.yml</code> and key refs in <code>.credentials.yaml</code>, one route per protocol, without breaking comments or <code>!!js</code> tags</td><td>Sorts models into three routes by protocol, edits line by line and checks the result against the original before writing</td></tr>
+          <tr><td>WorkBuddy</td><td>Edit <code>~/.workbuddy/models.json</code> by hand</td><td>Adds the models, puts the recommended one first and keeps the models you added</td></tr>
+          <tr><td>Connection test</td><td>Send a streaming request yourself (for example with curl) and read the error</td><td>Built-in streaming test with HTTP status, time to first byte and error hints</td></tr>
+          <tr><td>Undo</td><td>Back up each file before editing and restore it yourself</td><td>Snapshot before the first change; one-click restore in Settings</td></tr>
+          <tr><td>Apply</td><td>Quit and relaunch the client, or open a new terminal</td><td>Restarts the client for you, waiting for its processes and file handles to be released</td></tr>
         </tbody>
       </table>
     </div>
-    <p>All releases and checksums: <a href="https://github.com/TF49/AI-Helper/releases">GitHub Releases</a>.</p>
 
-    <h2>FAQ</h2>
+    <h2 id="how-it-works">How it works</h2>
+    <ol>
+      <li><strong>Detect.</strong> AI Helper looks for each client in PATH, the Windows registry, npm global installs and Microsoft Store packages. GUI apps on macOS don't inherit your terminal's environment, so it also checks <code>/opt/homebrew/bin</code>, <code>/usr/local/bin</code> and the newest Node.js under <code>~/.nvm/versions/node</code> to find Claude Code and Codex CLI installed with npm.</li>
+      <li><strong>Test.</strong> When you pick a node and enter a key and model, AI Helper sends a real streaming request and shows the HTTP status, time to first byte and hints for common errors such as <code>401</code> or <code>model_not_found</code>.</li>
+      <li><strong>Write config.</strong> It writes only the endpoint, key and model fields to the client's own config file, atomically and under a file lock, after saving a snapshot of the original on the first change.</li>
+      <li><strong>Restart.</strong> It closes the client's process tree, waits for file handles to be released and relaunches it with the new settings. Electron clients such as DeepSeek Harness get a graceful shutdown request first.</li>
+    </ol>
+
+    <h3>Cursor: local Connect-RPC bridge (127.0.0.1:8969)</h3>
+    <pre><code>Cursor  →  AI Helper bridge (127.0.0.1:8969)  →  BobAPI node (OpenAI-style API)
+        Connect-RPC / HTTP2                OpenAI-compatible requests</code></pre>
+    <p>The bridge is built in Rust and speaks Cursor's Connect-RPC protocol, including gzip compression and h2c. A reversible patch points Cursor's Agent and Composer requests at the bridge, which translates them to OpenAI-style calls to the BobAPI node with streaming, reasoning output and image input, and serves your model list to Cursor. Details: <a href="/en/guides/cursor-custom-model.html">use third-party models in Cursor</a>.</p>
+
+    <h3>Accio Work: local bridge (127.0.0.1:8787)</h3>
+    <p>For Accio Work, AI Helper runs a separate local bridge that handles model lists, chat, image generation, the Responses API and MCP proxying, and injects your models into Accio Work's model list.</p>
+
+    <h3>DeepSeek Harness: routing by protocol</h3>
+    <p>Each DeepSeek Harness route speaks one protocol, so AI Helper fetches every chat model your key can use and sorts them into three managed routes in the desktop profile:</p>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th>Route</th><th>Protocol</th><th>Models</th></tr>
+        </thead>
+        <tbody>
+          <tr><td><code>aihelper-claude</code></td><td>Anthropic Messages</td><td>Claude family</td></tr>
+          <tr><td><code>aihelper-codex</code></td><td>OpenAI Responses</td><td>GPT / Codex family</td></tr>
+          <tr><td><code>aihelper-cn</code></td><td>OpenAI Chat Completions</td><td>DeepSeek, Qwen, GLM and other Chinese models</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>Every route is tested with its own protocol and the file is written only if all of them pass. Keys from several groups can sit side by side, and AI Helper shares DeepSeek Harness's write lock so the two never write the file at the same time. Details: <a href="/en/guides/deepseek-harness-custom-api.html">connect DeepSeek Harness to Claude, GPT and Chinese models</a>.</p>
+
+    <h2 id="security">Privacy and security</h2>
+    <ul>
+      <li><strong>Local only.</strong> All configuration is written on your machine. Your API key is only sent to the BobAPI node you selected — during a connection test, or when the client itself makes model requests.</li>
+      <li><strong>Protected session credentials.</strong> Session credentials are protected with DPAPI on Windows and stored in the Keychain on macOS.</li>
+      <li><strong>HTTPS only.</strong> Both built-in nodes (<code>https://bob-api.com/</code> and <code>https://taijiai.online/</code>) use HTTPS, and HTTPS is required.</li>
+      <li><strong>Locked-down bridges.</strong> Both bridges listen only on the loopback address. The Cursor bridge only accepts connections from processes owned by the same OS user and validates the Host, Origin and Content-Type headers. The Accio Work bridge requires a per-instance path token (<code>/i/&lt;token&gt;</code>), checks Host and Origin, and applies rate limits and a request size cap.</li>
+      <li><strong>Signed updates.</strong> Update manifests are signature-checked, each package is SHA-256 verified, and rollback to an older version is blocked. Updates come from the official site, a China mirror or GitHub Releases.</li>
+      <li><strong>Reversible.</strong> A snapshot is taken before AI Helper first changes a client, and one click in Settings restores it.</li>
+    </ul>
+
+    <section id="downloads" aria-labelledby="download">
+      <h2 id="download">Download</h2>
+      <p>Current version: <strong class="current-version-tag">v1.0.88</strong>. Windows requires the Microsoft Edge WebView2 Runtime (preinstalled on Windows 11).</p>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr><th>Platform</th><th>Package</th></tr>
+          </thead>
+          <tbody>
+            <tr><td>Windows 10 / 11 (x64)</td><td><a href="https://github.com/TF49/AI-Helper/releases/download/v1.0.88/AI-Helper-v1.0.88-Windows-x64-Setup.exe">Installer (.exe)</a> · <a href="https://github.com/TF49/AI-Helper/releases/download/v1.0.88/AI-Helper-v1.0.88-Windows-x64-Standalone.zip">Portable (.zip)</a></td></tr>
+            <tr><td>macOS 11+ Apple Silicon (M1–M5)</td><td><a href="https://github.com/TF49/AI-Helper/releases/download/v1.0.88/AI-Helper-v1.0.88-macOS-aarch64.dmg">aarch64 DMG</a></td></tr>
+            <tr><td>macOS 11+ Intel</td><td><a href="https://github.com/TF49/AI-Helper/releases/download/v1.0.88/AI-Helper-v1.0.88-macOS-x64.dmg">x64 DMG</a></td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>All releases and checksums: <a href="https://github.com/TF49/AI-Helper/releases">GitHub Releases</a>. On macOS, if the app won't open because it "is damaged", see <a href="/en/guides/macos-app-damaged.html">how to fix the macOS warning</a>.</p>
+      <p class="doc-meta">The app interface is currently in Chinese.</p>
+    </section>
+
+    <h2 id="faq">FAQ</h2>
     <h3>What is Bob AI Helper?</h3>
-    <p>Bob AI Helper (shown in the app as AI Helper) is a free, MIT-licensed desktop app for Windows and macOS that configures the API endpoint, API key and model for AI coding clients: Cursor, Claude Code, OpenAI Codex CLI, ChatGPT Desktop, WorkBuddy, Accio Work and DeepSeek Harness. It detects installed clients, writes their local config files, runs a streaming connection test and restarts the client.</p>
-    <h3>Can I use my own API endpoint and API key?</h3>
-    <p>Yes. Every client panel accepts a custom API base URL, API key and model, and can fetch the model list from that endpoint. Unknown origins must be confirmed and HTTPS is required by default.</p>
-    <h3>Why does Cursor need a local bridge?</h3>
-    <p>Cursor uses Connect-RPC / HTTP2 and internal message formats, so changing the OpenAI base URL alone cannot connect every third-party model. AI Helper runs a local bridge (default <code>127.0.0.1:8969</code>) that translates Cursor requests to an OpenAI-compatible API. The client patch can be reverted at any time.</p>
-    <h3>Does configuring DeepSeek Harness touch my official DeepSeek account?</h3>
-    <p>No. AI Helper only writes its own <code>aihelper-*</code> routes and <code>AIHELPER_*</code> key references in the DeepSeek Harness desktop profile. The official DeepSeek account sign-in, the official API-key route (<code>api.deepseek.com</code>) and your own routes are left as they are, and a default model that points at an official model is kept. Restart DeepSeek Harness after saving to load the new routes.</p>
+    <p>Bob AI Helper (shown in the app as AI Helper) is a free, MIT-licensed desktop app for Windows and macOS that sets the API endpoint, API key and model for AI coding clients: Cursor, Claude Code, OpenAI Codex CLI, ChatGPT Desktop, WorkBuddy, Accio Work and DeepSeek Harness. It finds the clients installed on your machine, runs a streaming connection test, writes their local config files once it passes, and launches or restarts the client when needed.</p>
+    <h3>Which AI coding clients are supported, and where does each config go?</h3>
+    <p>Seven clients: Claude Code (<code>~/.claude/settings.json</code>), OpenAI Codex CLI (<code>~/.codex/config.toml</code>), Cursor (<code>~/.ai-helper/cursor_config.json</code>, connected through a local bridge), WorkBuddy (<code>~/.workbuddy/models.json</code>), Accio Work (<code>~/.ai-helper/accio_config.json</code>, connected through a local bridge), DeepSeek Harness desktop (<code>~/.dsh/profiles/desktop/cordis.patch.yml</code>, or under <code>DSH_HOME</code> if it is set), and ChatGPT Desktop (install detection, launch and device management only).</p>
+    <h3>Which API endpoints can I use?</h3>
+    <p>AI Helper works with the BobAPI service. Every client panel offers two built-in nodes: the BobAPI official node (https://bob-api.com/, recommended) and the TaijiAI accelerated node (https://taijiai.online/, a backup line). Choose a node, then enter your API key and model by hand, or sign in to a Bob API account and use one-click setup. You can also fetch the model list from the selected node. There is no field for other URLs, and HTTPS is required. Keys picked from your Bob API account, and one-click setup, only work with the BobAPI official node. The first time you use a hand-entered key with a node, AI Helper asks you to confirm it for that node (确认用于此节点) before it can test, fetch models or save.</p>
+    <h3>What does one-click setup configure, and what are the "groups"?</h3>
+    <p>One-click setup requires signing in to a Bob API account (Bob API is the related API service). For each client it picks an API key from the matching key group and a recommended model: Claude Code uses the <code>CC-Kiro-Max</code> group with <code>claude-sonnet-5-5</code>; Codex CLI and ChatGPT use the <code>Codex-不降质</code> group with <code>gpt-5.6-sol</code>; Cursor, WorkBuddy and Accio Work use the <code>国产Token计划</code> (Chinese models) group with <code>glm-5.3</code>; DeepSeek Harness uses the <code>国产Token计划</code> key and writes every chat model available to it, with <code>deepseek-v4.1-flash</code> as the default. A group is simply the name of an API-key group inside a Bob API account, not a model name. If a group has no key yet, AI Helper creates one. With manual setup you don't need to sign in: type your API key and model yourself.</p>
+    <h3>Will AI Helper overwrite my existing configuration?</h3>
+    <p>No. AI Helper only changes the fields it needs: API endpoint, key and model. Other settings in Claude Code, Codex and WorkBuddy are kept, and models you added to WorkBuddy yourself are not removed. For DeepSeek Harness it only writes <code>aihelper-*</code> routes and <code>AIHELPER_*</code> key references; your own routes, comments and official-account routes are kept byte for byte. A snapshot is saved before the first change and can be restored from Settings. Backing up important configs yourself is still a good idea.</p>
     <h3>Is my API key uploaded anywhere?</h3>
-    <p>No. Configuration is written locally. Session credentials are protected with DPAPI on Windows and Keychain on macOS. Your API key is only sent to the API endpoint you configure.</p>
-    <h3>Is AI Helper free?</h3>
-    <p>Yes. AI Helper is open source under the MIT license and free to use. Model usage is billed by whichever API provider you configure.</p>
-    <h3>macOS says the app "is damaged and can't be opened". What do I do?</h3>
-    <p>The app is not damaged; it is not notarized by Apple, so Gatekeeper quarantines it. Run <code>xattr -cr /Applications/AI\ Helper.app</code> in Terminal, or right-click the app in Finder and choose Open.</p>
+    <p>No. All configuration is written locally, and session credentials are protected with DPAPI on Windows and the Keychain on macOS. Your API key is only sent to the BobAPI node you selected, when you run a connection test or when the AI coding client makes model requests.</p>
+    <h3>Why does Cursor need a local bridge?</h3>
+    <p>Part of Cursor's traffic uses Connect-RPC / HTTP2 and internal message formats, so changing an OpenAI base URL alone cannot fully connect a third-party model. AI Helper runs a bridge on your machine (<code>127.0.0.1:8969</code> by default) that translates between Cursor's requests and the OpenAI-style API of the BobAPI node, with support for streaming, reasoning output and image input. The patch to the Cursor client can be reverted at any time.</p>
+    <h3>Does configuring DeepSeek Harness touch my official DeepSeek account?</h3>
+    <p>No. AI Helper only configures the DeepSeek Harness desktop profile (<code>~/.dsh/profiles/desktop/cordis.patch.yml</code>, or under <code>DSH_HOME</code> if it is set) and only writes <code>aihelper-*</code> routes and <code>AIHELPER_*</code> key references. Your official DeepSeek account sign-in, the official API-key route (<code>api.deepseek.com</code>) and your own routes are left as they are, and a default model that points at an official model is kept. Launch DeepSeek Harness once before first use so it can initialize, and restart it after saving to see the new routes.</p>
+    <h3>Is AI Helper free and open source?</h3>
+    <p>Yes. AI Helper is open source under the MIT license, with its source code on GitHub (TF49/AI-Helper), and free for both individuals and companies. The app itself costs nothing; model usage is billed by your BobAPI account.</p>
+    <h3>Which macOS build should I download, and what if macOS says the app is damaged?</h3>
+    <p>Download the <code>aarch64</code> DMG for Apple Silicon Macs (M1 to M5 series, including Pro, Max and Ultra) and the <code>x64</code> DMG for Intel Macs; macOS 11 or later is required. If macOS says the app is damaged or that the developer cannot be verified, that is Gatekeeper quarantining an app that is not notarized by Apple. Run <code>xattr -cr /Applications/AI\ Helper.app</code> in Terminal, or Control-click the app in Finder and choose Open.</p>
 
-    <p class="doc-meta">The app interface is currently in Chinese. Source code, issues and release notes: <a href="https://github.com/TF49/AI-Helper">github.com/TF49/AI-Helper</a>.</p>
+    <h2 id="guides">Guides</h2>
+    <p>Step-by-step guides for specific setups. Each one also shows how to do it by hand.</p>
+    <ul class="guide-list">
+      <li>
+        <a href="/en/guides/cursor-custom-model.html">How to use glm-5.3 and other third-party models in Cursor</a>
+        <p>Why changing the OpenAI base URL isn't enough, and how the local bridge connects Cursor to glm-5.3 and other models available on BobAPI.</p>
+      </li>
+      <li>
+        <a href="/en/guides/claude-code-custom-api.html">How to change the API endpoint and model in Claude Code</a>
+        <p>Set <code>ANTHROPIC_BASE_URL</code>, <code>ANTHROPIC_AUTH_TOKEN</code> and <code>ANTHROPIC_MODEL</code> in <code>~/.claude/settings.json</code>.</p>
+      </li>
+      <li>
+        <a href="/en/guides/codex-cli-custom-api.html">How to use a custom API endpoint with OpenAI Codex CLI</a>
+        <p>Declare a custom <code>model_providers</code> entry in <code>~/.codex/config.toml</code>.</p>
+      </li>
+      <li>
+        <a href="/en/guides/deepseek-harness-custom-api.html">How to connect DeepSeek Harness to Claude, GPT and Chinese models</a>
+        <p>One BobAPI key, split by protocol across three routes, with your own routes and official account untouched.</p>
+      </li>
+      <li>
+        <a href="/en/guides/macos-app-damaged.html">macOS says AI Helper “is damaged and can't be opened” — how to fix it</a>
+        <p>Clear the Gatekeeper quarantine flag with <code>xattr -cr</code>, or Control-click and choose Open.</p>
+      </li>
+    </ul>
+    <p><a href="/en/guides/">All guides</a></p>
+
+    <p class="doc-meta">Maintained by <a href="https://github.com/TF49">TF49</a> (<a href="/about.html">about, in Chinese</a>). Not to be confused with other products called "AI Helper", such as the Discourse plugin or browser extensions. Source code, issues and release notes: <a href="https://github.com/TF49/AI-Helper">github.com/TF49/AI-Helper</a>.</p>
   </main>
 
   <footer class="doc-footer">
     <div class="doc-footer-inner">
-      <span><a href="/">中文首页</a><a href="/guides/">中文教程</a><a href="/llms.txt">llms.txt</a><a href="/about.html">About (中文)</a><a href="https://github.com/TF49/AI-Helper">GitHub</a></span>
+      <span><a href="/en/guides/">Guides</a><a href="/" hreflang="zh-CN" lang="zh-CN">中文首页</a><a href="/guides/" hreflang="zh-CN" lang="zh-CN">中文教程</a><a href="/llms.txt">llms.txt</a><a href="/about.html">About (中文)</a><a href="https://github.com/TF49/AI-Helper">GitHub</a></span>
       <span>© 2026 Bob AI Helper · MIT License</span>
     </div>
   </footer>

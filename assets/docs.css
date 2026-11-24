@@ -113,6 +113,8 @@ pre {
   line-height: 1.6;
 }
 pre code { padding: 0; background: none; color: inherit; }
+/* 长路径（如 ~/.dsh/profiles/desktop/cordis.patch.yml）在窄屏上允许断行，避免横向滚动 */
+:not(pre) > code { overflow-wrap: anywhere; }
 
 table { width: 100%; margin: 16px 0; border-collapse: collapse; font-size: 15px; }
 th, td { padding: 10px 12px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; }

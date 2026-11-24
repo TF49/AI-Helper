@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Claude Code 报 401 / 超时 / 连不上自定义 API 怎么办 | Bob AI Helper 教程</title>
+  <meta name="description"
+    content="Claude Code 接自定义 API 时报 401、403、404 或请求超时？逐项排查 API Key、ANTHROPIC_BASE_URL 末尾 /v1、ANTHROPIC_AUTH_TOKEN 与 ANTHROPIC_API_KEY 冲突、系统环境变量、代理与 HTTPS，并用 AI Helper 的连通性测试定位问题。">
+  <link rel="canonical" href="https://helper.bob-api.com/guides/claude-code-401-timeout.html">
+  <link rel="alternate" hreflang="zh-CN" href="https://helper.bob-api.com/guides/claude-code-401-timeout.html">
+  <meta name="robots" content="index, follow, max-snippet:-1">
+  <meta property="og:type" content="article">
+  <meta property="og:site_name" content="Bob AI Helper">
+  <meta property="og:title" content="Claude Code 报 401 / 超时 / 连不上自定义 API 怎么办">
+  <meta property="og:description" content="按状态码区分原因，逐项排查 Claude Code 自定义 API 的 Key、地址、环境变量与网络问题。">
+  <meta property="og:url" content="https://helper.bob-api.com/guides/claude-code-401-timeout.html">
+  <meta property="og:image" content="https://helper.bob-api.com/assets/app-preview.png">
+  <link rel="icon" type="image/x-icon" href="/assets/favicon.ico">
+  <link rel="stylesheet" href="/assets/docs.css?v=1.0.88-1">
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@graph": [
+      {
+        "@type": "TechArticle",
+        "name": "Claude Code 报 401 / 超时 / 连不上自定义 API 怎么办",
+        "headline": "Claude Code 报 401 / 超时 / 连不上自定义 API 怎么办",
+        "image": "https://helper.bob-api.com/assets/app-preview.png",
+        "description": "按 401、403、404、429、5xx 和超时区分 Claude Code 连接自定义 API 失败的原因，检查 ANTHROPIC_BASE_URL 格式、认证变量冲突、系统环境变量、代理与 HTTPS，并用 AI Helper 的连通性测试定位问题。",
+        "inLanguage": "zh-CN",
+        "datePublished": "2026-11-24",
+        "dateModified": "2026-11-24",
+        "author": { "@type": "Person", "@id": "https://helper.bob-api.com/about.html#maintainer", "name": "TF49", "url": "https://helper.bob-api.com/about.html", "sameAs": ["https://github.com/TF49"] },
+        "publisher": { "@type": "Organization", "@id": "https://helper.bob-api.com/#organization", "name": "Bob AI Helper" },
+        "about": [{ "@type": "SoftwareApplication", "name": "Claude Code" }, { "@type": "SoftwareApplication", "name": "Bob AI Helper" }]
+      },
+      {
+        "@type": "FAQPage",
+        "mainEntity": [
+          {
+            "@type": "Question",
+            "name": "ANTHROPIC_BASE_URL 要不要带 /v1？",
+            "acceptedAnswer": { "@type": "Answer", "text": "不要。Claude Code 会在 ANTHROPIC_BASE_URL 后面自己拼接 /v1/messages，所以应填写服务根地址，例如 https://bob-api.com。手动把 settings.json 改成 https://bob-api.com/v1 时，实际请求会变成 /v1/v1/messages，通常返回 404。去掉末尾的 /v1，或在 AI Helper 中切换回 BobAPI 官方节点重新保存即可，AI Helper 写入的是不带 /v1 的根地址。" }
+          },
+          {
+            "@type": "Question",
+            "name": "ANTHROPIC_AUTH_TOKEN 和 ANTHROPIC_API_KEY 有什么区别？能同时设置吗？",
+            "acceptedAnswer": { "@type": "Answer", "text": "ANTHROPIC_AUTH_TOKEN 以 Authorization: Bearer 请求头发送，ANTHROPIC_API_KEY 以 x-api-key 请求头发送。AI Helper 只写入 ANTHROPIC_AUTH_TOKEN。如果系统环境变量或 settings.json 里还留着另一个服务的 ANTHROPIC_API_KEY，两个凭据会同时存在，容易导致认证冲突或用错 Key，建议只保留一个。" }
+          },
+          {
+            "@type": "Question",
+            "name": "AI Helper 测试通过，但 Claude Code 里仍然 401 怎么办？",
+            "acceptedAnswer": { "@type": "Answer", "text": "AI Helper 的测试用 x-api-key 请求头发送 Key，而 Claude Code 使用 ANTHROPIC_AUTH_TOKEN 时发送的是 Authorization: Bearer 头。先检查系统环境变量里是否有另一组 ANTHROPIC_API_KEY 或 ANTHROPIC_AUTH_TOKEN，再确认网关同时接受这两种请求头；最后完全退出并重新启动 claude。" }
+          },
+          {
+            "@type": "Question",
+            "name": "一个节点超时或连不上，可以换节点吗？",
+            "acceptedAnswer": { "@type": "Answer", "text": "可以，但 TaijiAI 加速节点需要手动填写的 Key。AI Helper 的 Claude Code 面板提供两个接入节点：BobAPI 官方节点（https://bob-api.com/，推荐首选）和 TaijiAI 加速节点（https://taijiai.online/，备用专线），都使用 HTTPS。从 Bob API 账号选择的 Key、一键配置使用的 Key，以及已确认用于 BobAPI 官方节点的 Key，都只能发往 BobAPI 官方节点；改用 TaijiAI 加速节点时，需要手动填写 Key，并在密钥输入处点击「确认用于此节点」。切换节点后重新测试并保存，然后重新启动 claude。" }
+          }
+        ]
+      },
+      {
+        "@type": "BreadcrumbList",
+        "itemListElement": [
+          { "@type": "ListItem", "position": 1, "name": "Bob AI Helper", "item": "https://helper.bob-api.com/" },
+          { "@type": "ListItem", "position": 2, "name": "教程", "item": "https://helper.bob-api.com/guides/" },
+          { "@type": "ListItem", "position": 3, "name": "Claude Code 401/超时排查", "item": "https://helper.bob-api.com/guides/claude-code-401-timeout.html" }
+        ]
+      }
+    ]
+  }
+  </script>
+</head>
+
+<body>
+  <header class="doc-nav">
+    <div class="doc-nav-inner">
+      <a class="doc-brand" href="/"><img src="/assets/logo.png" alt="Bob AI Helper Logo" width="28" height="28">Bob AI Helper</a>
+      <nav class="doc-nav-links" aria-label="主导航">
+        <a href="/guides/">教程</a><a href="/#downloads">下载</a><a class="hide-sm" href="https://github.com/TF49/AI-Helper">GitHub</a>
+      </nav>
+    </div>
+  </header>
+
+  <main class="doc-main">
+    <p class="breadcrumb"><a href="/">Bob AI Helper</a> / <a href="/guides/">教程</a> / Claude Code 401/超时排查</p>
+    <article>
+      <h1>Claude Code 报 401 / 超时 / 连不上自定义 API 怎么办</h1>
+      <p class="doc-meta">适用于 AI Helper <span class="current-version-tag">v1.0.88</span> · Windows 与 macOS · 最后更新 <time class="last-updated" datetime="2026-11-24">2026-11-24</time> · 作者 <a href="/about.html">TF49</a></p>
+
+      <div class="tldr">
+        <p><strong>简短回答：</strong>先看状态码：401 是 Key 不对或被另一组环境变量覆盖；403 是账号无权访问该模型或被访问管控；404 多半是 <code>ANTHROPIC_BASE_URL</code> 多写了 <code>/v1</code> 或模型名不对；超时和连接失败是网络或代理问题。Claude Code 的 <code>ANTHROPIC_BASE_URL</code> 应填服务根地址（不带 <code>/v1</code>），Key 只保留 <code>ANTHROPIC_AUTH_TOKEN</code> 或 <code>ANTHROPIC_API_KEY</code> 其中一个。用 AI Helper 的连通性测试可以先排除 Key、地址和模型的问题，剩下的就是本机环境变量与网络。</p>
+      </div>
+
+      <h2>症状、原因与处理速查</h2>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr><th>症状</th><th>常见原因</th><th>处理方法</th></tr>
+          </thead>
+          <tbody>
+            <tr><td>HTTP 401</td><td>Key 填错、过期或被吊销；Key 与该 API 地址不匹配；系统环境变量中另一组 Key 生效；网关只接受某一种认证请求头</td><td>核对 Key；清理多余的 <code>ANTHROPIC_API_KEY</code> / <code>ANTHROPIC_AUTH_TOKEN</code>；重新启动 <code>claude</code></td></tr>
+            <tr><td>HTTP 403</td><td>账号无权访问该模型，或节点做了访问管控（如 IP 地域限制）</td><td>换有权限的 Key 或模型，在 Bob API 账号中确认 Key 所属分组</td></tr>
+            <tr><td>HTTP 404</td><td><code>ANTHROPIC_BASE_URL</code> 末尾多了 <code>/v1</code>，请求变成 <code>/v1/v1/messages</code>；地址拼错；模型名不存在</td><td>改成服务根地址，或在 AI Helper 中切换回 BobAPI 官方节点重新保存；核对模型名</td></tr>
+            <tr><td>错误中含 <code>model_not_found</code>（常伴随 503）</td><td>模型不在此 Key 当前所属分组中</td><td>重新拉取可用模型后再选</td></tr>
+            <tr><td>HTTP 429</td><td>触发频控或配额、余额不足</td><td>稍后重试，检查额度</td></tr>
+            <tr><td>HTTP 5xx</td><td>上游或代理节点异常</td><td>稍后重试，或在 AI Helper 中切换到另一个节点（TaijiAI 加速节点需手动填写 Key，见下方常见问题）</td></tr>
+            <tr><td>提示「受管 Key 不得发往未授权目标 …」</td><td>从 Bob API 账号选择的 Key（含一键配置）或已确认用于 BobAPI 官方节点的 Key 被用在了 TaijiAI 加速节点，这类 Key 只能发往 Bob API 域名</td><td>切换回 BobAPI 官方节点；要使用 TaijiAI 加速节点，改为手动填写可用于该节点的 Key 并确认</td></tr>
+            <tr><td>提示「此密钥尚未获准用于当前节点，请在密钥输入处确认目标」</td><td>手动填写的 Key 还没有确认用于当前节点</td><td>在密钥输入处点击「确认用于此节点」，然后再测试、获取模型或保存</td></tr>
+            <tr><td>请求超时、无法连接</td><td>网络不通、DNS 解析失败、代理设置不正确</td><td>检查网络与代理，确认终端里的代理环境变量</td></tr>
+            <tr><td>改了 <code>settings.json</code>，Claude Code 仍连旧地址</td><td>会话没有重启；系统环境变量或其他设置文件里还有同名变量</td><td>完全退出后重新运行 <code>claude</code>，清理重复的变量</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h2>一、先用连通性测试定位问题</h2>
+      <p>AI Helper（MIT 开源、在本机运行）在保存 Claude Code 配置之前会做一次连通性测试：向所选节点的 <code>/v1/messages</code> 发送一条 <code>max_tokens: 16</code> 的 “Hi” 消息，超时时间 60 秒。测试日志会显示目标端点、测试模型、打码后的 Key、HTTP 状态码、耗时和上游返回的错误详情，并针对状态码给出建议。<strong>测试不通过时，AI Helper 不会修改本地配置。</strong></p>
+      <p>判断方法很简单：</p>
+      <ul>
+        <li><strong>测试也失败：</strong>问题出在 Key、地址、模型或网络本身，按下面的状态码逐项处理。</li>
+        <li><strong>测试通过但 Claude Code 失败：</strong>问题通常出在本机——<code>ANTHROPIC_BASE_URL</code> 带了 <code>/v1</code>、另一组环境变量生效、会话没有重启，或终端的代理设置与 AI Helper 不同。</li>
+      </ul>
+      <div class="note">AI Helper 的测试用 <code>x-api-key</code> 请求头发送 Key，而它写入的 <code>ANTHROPIC_AUTH_TOKEN</code> 在 Claude Code 中以 <code>Authorization: Bearer</code> 请求头发送。绝大多数 Anthropic 兼容网关两种都接受；如果某个网关只接受其中一种，测试结果就可能与 Claude Code 中的实际表现不一致。</div>
+
+      <h2>二、401、403、404 分别是什么问题</h2>
+      <h3>401：身份认证失败</h3>
+      <ul>
+        <li>Key 是否完整复制、是否已过期或被禁用。登录 Bob API 账号后也可以用「一键配置」，由 AI Helper 从对应分组中选取 Key。</li>
+        <li>是否同时存在两组凭据：<code>ANTHROPIC_AUTH_TOKEN</code> 以 <code>Authorization: Bearer</code> 发送，<code>ANTHROPIC_API_KEY</code> 以 <code>x-api-key</code> 发送。AI Helper 只写入 <code>ANTHROPIC_AUTH_TOKEN</code>；如果系统环境变量或 <code>settings.json</code> 中还留着旧的 <code>ANTHROPIC_API_KEY</code>，容易出现认证冲突或用错 Key。建议只保留一个。</li>
+        <li>系统或终端里是否设置了另一个 <code>ANTHROPIC_AUTH_TOKEN</code>，见第四节。</li>
+      </ul>
+      <h3>403：访问被拒绝</h3>
+      <p>Key 本身有效，但当前账号没有权限访问该模型，或节点做了访问管控（例如 IP 地域限制）。换一个有权限的模型或 Key，或在 Bob API 账号中确认 Key 所属分组。</p>
+      <h3>404：端点或模型不存在</h3>
+      <p>最常见的原因是 <code>ANTHROPIC_BASE_URL</code> 格式不对，见下一节；其次是地址拼错，或模型名在该服务中不存在。</p>
+
+      <h2>三、ANTHROPIC_BASE_URL 的格式：不要带 /v1</h2>
+      <p>Claude Code 会在 <code>ANTHROPIC_BASE_URL</code> 后面自己拼接 <code>/v1/messages</code>，所以应填写服务的根地址：</p>
+      <pre><code>正确：https://bob-api.com
+正确：https://bob-api.com/
+错误：https://bob-api.com/v1      → 实际请求 /v1/v1/messages，通常返回 404</code></pre>
+      <p>这个问题通常出现在手动编辑 <code>~/.claude/settings.json</code> 之后。AI Helper 写入的是所选节点的根地址（<code>https://bob-api.com/</code> 或 <code>https://taijiai.online/</code>），不带 <code>/v1</code>。如果你手动改成了带 <code>/v1</code> 的地址，去掉末尾的 <code>/v1</code>，或在 AI Helper 中切换回 BobAPI 官方节点重新保存即可。另外，配置文件里原有的地址会在面板中显示为「当前自定义」；它带 <code>/v1</code> 时，AI Helper 的连通性测试会先去掉末尾的 <code>/v1</code>，可能出现“测试通过、Claude Code 报 404”，同样切换到 BobAPI 官方节点重新保存即可。</p>
+      <p>AI Helper 写入的内容如下，<code>settings.json</code> 中的其他字段（例如 <code>permissions</code>、<code>hooks</code>、<code>env</code> 中的其他变量）保持不变：</p>
+      <pre><code>{
+  "env": {
+    "ANTHROPIC_BASE_URL": "https://bob-api.com/",
+    "ANTHROPIC_AUTH_TOKEN": "你的 API Key",
+    "ANTHROPIC_MODEL": "claude-sonnet-5-5"
+  },
+  "model": "claude-sonnet-5-5"
+}</code></pre>
+
+      <h2>四、改了配置不生效：检查环境变量与会话</h2>
+      <ul>
+        <li><strong>重新启动会话。</strong>Claude Code 在启动时读取配置，已经打开的 <code>claude</code> 会话不会自动切换到新地址，需要完全退出后重新运行。</li>
+        <li><strong>检查同名的系统环境变量。</strong>如果系统或 shell 配置文件里也设置了 <code>ANTHROPIC_BASE_URL</code>、<code>ANTHROPIC_AUTH_TOKEN</code>、<code>ANTHROPIC_API_KEY</code> 或 <code>ANTHROPIC_MODEL</code>，两处取值不一致时很难判断哪一个在起作用。建议只在 <code>settings.json</code> 的 <code>env</code> 中保留一份。
+          <pre><code># Windows（PowerShell）
+Get-ChildItem Env: | Where-Object Name -like "ANTHROPIC*"
+
+# macOS
+env | grep ANTHROPIC</code></pre>
+        </li>
+        <li><strong>检查其他设置文件。</strong>Claude Code 还会读取项目目录下的 <code>.claude/settings.json</code> 和 <code>.claude/settings.local.json</code>，同名设置按官方文档中的优先级合并。在某个项目里“不生效”时，检查该项目目录下是否也写了 <code>env</code>。</li>
+        <li><strong>确认文件是合法 JSON。</strong>现有 <code>settings.json</code> 无法解析时，AI Helper 会停止写入并提示“现有 Claude 配置损坏，已停止写入以免丢失安全规则”，需要先修复格式。</li>
+      </ul>
+
+      <h2>五、超时与连接失败：检查网络、代理与 HTTPS</h2>
+      <p>AI Helper 测试中出现“请求超时 (超过 60 秒未收到响应)”或“网络连接失败: 无法连接至服务节点”时，说明请求没有拿到 HTTP 响应，与 Key 无关：</p>
+      <ul>
+        <li>确认本机能访问所选节点，例如在浏览器或 <code>curl</code> 中打开 <code>https://bob-api.com/</code>；一个节点不通时，可以在 AI Helper 中切换到 TaijiAI 加速节点后重新测试，但该节点只接受手动填写并已确认用于该节点的 Key，从 Bob API 账号选择的 Key 会被拒绝（见下方常见问题）。手动编辑过 <code>settings.json</code> 的，还要确认 <code>ANTHROPIC_BASE_URL</code> 拼写正确。</li>
+        <li>如果需要通过代理访问，Claude Code 会读取终端中的 <code>HTTPS_PROXY</code> / <code>HTTP_PROXY</code> 环境变量。AI Helper 测试通过但 Claude Code 超时，往往是终端里没有设置代理，或代理设置与系统不同。</li>
+        <li>连接必须使用 HTTPS，两个预置节点都满足。AI Helper 不会把 Key 发往 <code>http://</code> 开头的远程地址（例如配置文件中原有的 HTTP 地址），会提示“远程节点仅允许 HTTPS”。</li>
+      </ul>
+
+      <h2>常见问题</h2>
+      <h3>ANTHROPIC_BASE_URL 要不要带 /v1？</h3>
+      <p>不要。Claude Code 会在 <code>ANTHROPIC_BASE_URL</code> 后面自己拼接 <code>/v1/messages</code>，所以应填写服务根地址，例如 <code>https://bob-api.com</code>。手动把 <code>settings.json</code> 改成 <code>https://bob-api.com/v1</code> 时，实际请求会变成 <code>/v1/v1/messages</code>，通常返回 404。去掉末尾的 <code>/v1</code>，或在 AI Helper 中切换回 BobAPI 官方节点重新保存即可，AI Helper 写入的是不带 <code>/v1</code> 的根地址。</p>
+      <h3>ANTHROPIC_AUTH_TOKEN 和 ANTHROPIC_API_KEY 有什么区别？能同时设置吗？</h3>
+      <p><code>ANTHROPIC_AUTH_TOKEN</code> 以 <code>Authorization: Bearer</code> 请求头发送，<code>ANTHROPIC_API_KEY</code> 以 <code>x-api-key</code> 请求头发送。AI Helper 只写入 <code>ANTHROPIC_AUTH_TOKEN</code>。如果系统环境变量或 <code>settings.json</code> 里还留着另一个服务的 <code>ANTHROPIC_API_KEY</code>，两个凭据会同时存在，容易导致认证冲突或用错 Key，建议只保留一个。</p>
+      <h3>AI Helper 测试通过，但 Claude Code 里仍然 401 怎么办？</h3>
+      <p>AI Helper 的测试用 <code>x-api-key</code> 请求头发送 Key，而 Claude Code 使用 <code>ANTHROPIC_AUTH_TOKEN</code> 时发送的是 <code>Authorization: Bearer</code> 头。先检查系统环境变量里是否有另一组 <code>ANTHROPIC_API_KEY</code> 或 <code>ANTHROPIC_AUTH_TOKEN</code>，再确认网关同时接受这两种请求头；最后完全退出并重新启动 <code>claude</code>。</p>
+      <h3>一个节点超时或连不上，可以换节点吗？</h3>
+      <p>可以，但 TaijiAI 加速节点需要手动填写的 Key。AI Helper 的 Claude Code 面板提供两个接入节点：BobAPI 官方节点（<code>https://bob-api.com/</code>，推荐首选）和 TaijiAI 加速节点（<code>https://taijiai.online/</code>，备用专线），都使用 HTTPS。从 Bob API 账号选择的 Key、一键配置使用的 Key，以及已确认用于 BobAPI 官方节点的 Key，都只能发往 BobAPI 官方节点；改用 TaijiAI 加速节点时，需要手动填写 Key，并在密钥输入处点击「确认用于此节点」。切换节点后重新测试并保存，然后重新启动 <code>claude</code>。</p>
+
+      <h2>参考：Claude Code 官方文档</h2>
+      <ul>
+        <li><a href="https://code.claude.com/docs/zh-CN/settings">设置文件和优先级（settings.json 与 env 字段）</a></li>
+        <li><a href="https://code.claude.com/docs/zh-CN/llm-gateway">接入其他 LLM 网关（ANTHROPIC_BASE_URL 与认证变量）</a></li>
+      </ul>
+
+      <p><a class="cta" href="/#downloads">下载 AI Helper</a></p>
+      <p>相关教程：<a href="/guides/claude-code-custom-api.html">Claude Code 切换 API 地址</a> · <a href="/guides/codex-config-not-working.html">Codex config.toml 不生效排查</a> · <a href="/guides/cursor-custom-model-not-working.html">Cursor 自定义模型不生效排查</a></p>
+      <p>源码与问题反馈：<a href="https://github.com/TF49/AI-Helper">GitHub 仓库（MIT 开源）</a> · <a href="https://github.com/TF49/AI-Helper/issues">GitHub Issues</a></p>
+    </article>
+  </main>
+
+  <footer class="doc-footer">
+    <div class="doc-footer-inner">
+      <span><a href="/">首页</a><a href="/guides/">教程</a><a href="/about.html">关于</a><a href="/en/">English</a><a href="https://github.com/TF49/AI-Helper">GitHub</a></span>
+      <span>© 2026 Bob AI Helper · MIT License</span>
+    </div>
+  </footer>
+</body>
+
+</html>

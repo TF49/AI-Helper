@@ -6,16 +6,20 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Bob AI Helper 使用教程：Cursor、Claude Code、Codex 配置指南</title>
   <meta name="description"
-    content="Bob AI Helper 使用教程合集：给 Cursor 配置 glm-5.3 等第三方模型、Claude Code 切换 API 地址、Codex CLI 配置自定义 API、DeepSeek Harness 接入 Claude / GPT / 国产模型，以及 macOS 提示“已损坏”的解决方法。">
+    content="Bob AI Helper 使用教程合集：Cursor、Claude Code、Codex CLI、WorkBuddy、Accio Work、DeepSeek Harness 配置自定义 API 与模型的步骤，AI 编程客户端配置文件路径大全，以及 Cursor 自定义模型不生效、Claude Code 401 / 超时、Codex config.toml 不生效等常见问题排查。">
   <link rel="canonical" href="https://helper.bob-api.com/guides/">
+  <link rel="alternate" hreflang="zh-CN" href="https://helper.bob-api.com/guides/">
+  <link rel="alternate" hreflang="en" href="https://helper.bob-api.com/en/guides/">
+  <link rel="alternate" hreflang="x-default" href="https://helper.bob-api.com/guides/">
   <meta name="robots" content="index, follow, max-snippet:-1">
   <meta property="og:type" content="website">
   <meta property="og:site_name" content="Bob AI Helper">
   <meta property="og:title" content="Bob AI Helper 使用教程">
+  <meta property="og:description" content="Cursor、Claude Code、Codex CLI、WorkBuddy、Accio Work、DeepSeek Harness 的 API 配置教程、配置文件路径大全与常见问题排查。">
   <meta property="og:url" content="https://helper.bob-api.com/guides/">
   <meta property="og:image" content="https://helper.bob-api.com/assets/app-preview.png">
   <link rel="icon" type="image/x-icon" href="/assets/favicon.ico">
-  <link rel="stylesheet" href="/assets/docs.css?v=1.0.88">
+  <link rel="stylesheet" href="/assets/docs.css?v=1.0.88-1">
   <script type="application/ld+json">
   {
     "@context": "https://schema.org",
@@ -25,13 +29,19 @@
         "name": "Bob AI Helper 使用教程",
         "url": "https://helper.bob-api.com/guides/",
         "inLanguage": "zh-CN",
-        "dateModified": "2026-11-22",
+        "dateModified": "2026-11-24",
         "isPartOf": { "@id": "https://helper.bob-api.com/#website" },
         "hasPart": [
           { "@type": "HowTo", "name": "如何给 Cursor 配置 glm-5.3 等第三方模型", "url": "https://helper.bob-api.com/guides/cursor-custom-model.html" },
           { "@type": "HowTo", "name": "Claude Code 如何切换 API 地址与模型", "url": "https://helper.bob-api.com/guides/claude-code-custom-api.html" },
           { "@type": "HowTo", "name": "OpenAI Codex CLI 如何配置自定义 API 地址", "url": "https://helper.bob-api.com/guides/codex-cli-custom-api.html" },
           { "@type": "HowTo", "name": "DeepSeek Harness 怎么接入 Claude、GPT 和国产模型", "url": "https://helper.bob-api.com/guides/deepseek-harness-custom-api.html" },
+          { "@type": "HowTo", "name": "WorkBuddy 如何配置自定义 API 与多个模型", "url": "https://helper.bob-api.com/guides/workbuddy-custom-api.html" },
+          { "@type": "HowTo", "name": "Accio Work 如何接入第三方模型（本地 Bridge）", "url": "https://helper.bob-api.com/guides/accio-work-custom-api.html" },
+          { "@type": "TechArticle", "name": "AI 编程客户端配置文件路径与环境变量大全（Windows & macOS）", "url": "https://helper.bob-api.com/guides/ai-coding-config-paths.html" },
+          { "@type": "TechArticle", "name": "Cursor 自定义模型不生效 / 第三方模型连不上怎么排查", "url": "https://helper.bob-api.com/guides/cursor-custom-model-not-working.html" },
+          { "@type": "TechArticle", "name": "Claude Code 报 401 / 超时 / 连不上自定义 API 怎么办", "url": "https://helper.bob-api.com/guides/claude-code-401-timeout.html" },
+          { "@type": "TechArticle", "name": "Codex CLI 修改 config.toml 不生效怎么排查", "url": "https://helper.bob-api.com/guides/codex-config-not-working.html" },
           { "@type": "HowTo", "name": "macOS 打开 AI Helper 提示“已损坏”怎么办", "url": "https://helper.bob-api.com/guides/macos-app-damaged.html" }
         ]
       },
@@ -60,13 +70,14 @@
   <main class="doc-main">
     <p class="breadcrumb"><a href="/">Bob AI Helper</a> / 教程</p>
     <h1>Bob AI Helper 使用教程</h1>
-    <p class="doc-meta">最后更新 <time class="last-updated" datetime="2026-11-22">2026-11-22</time></p>
-    <p>Bob AI Helper（简称 AI Helper）是一款 MIT 开源的桌面工具，用于在 Windows 和 macOS 上一键配置 Cursor、Claude Code、OpenAI Codex CLI、ChatGPT Desktop、WorkBuddy、Accio Work 与 DeepSeek Harness 的 API 地址、API Key 和模型。下面每篇教程回答一个具体问题。</p>
+    <p class="doc-meta">最后更新 <time class="last-updated" datetime="2026-11-24">2026-11-24</time></p>
+    <p>Bob AI Helper（简称 AI Helper）是一款 MIT 开源、本地运行的桌面工具，用于在 Windows 和 macOS 上一键配置 Cursor、Claude Code、OpenAI Codex CLI、ChatGPT Desktop、WorkBuddy、Accio Work 与 DeepSeek Harness 的 API 地址、API Key 和模型。AI Helper 配合 Bob API 服务使用，可选 BobAPI 官方节点或 TaijiAI 备用节点。下面每篇教程回答一个具体问题。English guides: <a href="/en/guides/" hreflang="en">helper.bob-api.com/en/guides</a>.</p>
 
+    <h2>配置教程</h2>
     <ul class="guide-list">
       <li>
         <a href="/guides/cursor-custom-model.html">如何给 Cursor 配置 glm-5.3 等第三方模型</a>
-        <p>为什么只改 OpenAI Base URL 不够，以及如何通过本地 Bridge（127.0.0.1:8969）接入任意 OpenAI 兼容模型。</p>
+        <p>为什么只改 OpenAI Base URL 不够，以及如何通过本地 Bridge（127.0.0.1:8969）接入 BobAPI 上的 glm-5.3 等模型。</p>
       </li>
       <li>
         <a href="/guides/claude-code-custom-api.html">Claude Code 如何切换 API 地址与模型</a>
@@ -79,6 +90,34 @@
       <li>
         <a href="/guides/deepseek-harness-custom-api.html">DeepSeek Harness 怎么接入 Claude、GPT 和国产模型</a>
         <p>一个 API Key 按协议自动写入 <code>aihelper-claude</code>、<code>aihelper-codex</code>、<code>aihelper-cn</code> 三条路由，自建路由与 DeepSeek 官方账号原样保留。</p>
+      </li>
+      <li>
+        <a href="/guides/workbuddy-custom-api.html">WorkBuddy 如何配置自定义 API 与多个模型</a>
+        <p>在 <code>~/.workbuddy/models.json</code> 中维护多个模型，推荐模型排在最前，已有模型原样保留。</p>
+      </li>
+      <li>
+        <a href="/guides/accio-work-custom-api.html">Accio Work 如何接入第三方模型（本地 Bridge）</a>
+        <p>通过本地 Bridge（默认 <code>127.0.0.1:8787</code>）注入模型列表，把请求转换为 OpenAI / Anthropic 兼容接口。</p>
+      </li>
+    </ul>
+
+    <h2>参考与排错</h2>
+    <ul class="guide-list">
+      <li>
+        <a href="/guides/ai-coding-config-paths.html">AI 编程客户端配置文件路径与环境变量大全（Windows &amp; macOS）</a>
+        <p>7 款客户端与 AI Helper 自身的配置文件路径、关键字段、环境变量和 Bridge 端口速查表。</p>
+      </li>
+      <li>
+        <a href="/guides/cursor-custom-model-not-working.html">Cursor 自定义模型不生效 / 第三方模型连不上怎么排查</a>
+        <p>按 Bridge 运行状态、端口占用、补丁被 Cursor 更新覆盖、模型工具调用能力逐项排查。</p>
+      </li>
+      <li>
+        <a href="/guides/claude-code-401-timeout.html">Claude Code 报 401 / 超时 / 连不上自定义 API 怎么办</a>
+        <p>区分 401、403、404 与超时；检查 <code>ANTHROPIC_BASE_URL</code> 末尾 <code>/v1</code>、认证变量冲突与系统环境变量。</p>
+      </li>
+      <li>
+        <a href="/guides/codex-config-not-working.html">Codex CLI 修改 config.toml 不生效怎么排查</a>
+        <p>检查 <code>model_provider</code> 与 <code>model_providers</code>、<code>base_url</code>、<code>env_key</code> 环境变量、profile 覆盖与 TOML 语法。</p>
       </li>
       <li>
         <a href="/guides/macos-app-damaged.html">macOS 打开 AI Helper 提示“已损坏”怎么办</a>

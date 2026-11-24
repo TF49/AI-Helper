@@ -6,41 +6,125 @@
     <xhtml:link rel="alternate" hreflang="zh-CN" href="https://helper.bob-api.com/"/>
     <xhtml:link rel="alternate" hreflang="en" href="https://helper.bob-api.com/en/"/>
     <xhtml:link rel="alternate" hreflang="x-default" href="https://helper.bob-api.com/"/>
-    <lastmod>2026-11-22</lastmod>
+    <lastmod>2026-11-24</lastmod>
   </url>
   <url>
     <loc>https://helper.bob-api.com/en/</loc>
     <xhtml:link rel="alternate" hreflang="zh-CN" href="https://helper.bob-api.com/"/>
     <xhtml:link rel="alternate" hreflang="en" href="https://helper.bob-api.com/en/"/>
     <xhtml:link rel="alternate" hreflang="x-default" href="https://helper.bob-api.com/"/>
-    <lastmod>2026-11-22</lastmod>
-  </url>
-  <url>
-    <loc>https://helper.bob-api.com/about.html</loc>
-    <lastmod>2026-11-22</lastmod>
+    <lastmod>2026-11-24</lastmod>
   </url>
   <url>
     <loc>https://helper.bob-api.com/guides/</loc>
-    <lastmod>2026-11-22</lastmod>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://helper.bob-api.com/guides/"/>
+    <xhtml:link rel="alternate" hreflang="en" href="https://helper.bob-api.com/en/guides/"/>
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://helper.bob-api.com/guides/"/>
+    <lastmod>2026-11-24</lastmod>
+  </url>
+  <url>
+    <loc>https://helper.bob-api.com/en/guides/</loc>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://helper.bob-api.com/guides/"/>
+    <xhtml:link rel="alternate" hreflang="en" href="https://helper.bob-api.com/en/guides/"/>
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://helper.bob-api.com/guides/"/>
+    <lastmod>2026-11-24</lastmod>
   </url>
   <url>
     <loc>https://helper.bob-api.com/guides/cursor-custom-model.html</loc>
-    <lastmod>2026-11-22</lastmod>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://helper.bob-api.com/guides/cursor-custom-model.html"/>
+    <xhtml:link rel="alternate" hreflang="en" href="https://helper.bob-api.com/en/guides/cursor-custom-model.html"/>
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://helper.bob-api.com/guides/cursor-custom-model.html"/>
+    <lastmod>2026-11-24</lastmod>
+  </url>
+  <url>
+    <loc>https://helper.bob-api.com/en/guides/cursor-custom-model.html</loc>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://helper.bob-api.com/guides/cursor-custom-model.html"/>
+    <xhtml:link rel="alternate" hreflang="en" href="https://helper.bob-api.com/en/guides/cursor-custom-model.html"/>
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://helper.bob-api.com/guides/cursor-custom-model.html"/>
+    <lastmod>2026-11-24</lastmod>
   </url>
   <url>
     <loc>https://helper.bob-api.com/guides/claude-code-custom-api.html</loc>
-    <lastmod>2026-11-22</lastmod>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://helper.bob-api.com/guides/claude-code-custom-api.html"/>
+    <xhtml:link rel="alternate" hreflang="en" href="https://helper.bob-api.com/en/guides/claude-code-custom-api.html"/>
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://helper.bob-api.com/guides/claude-code-custom-api.html"/>
+    <lastmod>2026-11-24</lastmod>
+  </url>
+  <url>
+    <loc>https://helper.bob-api.com/en/guides/claude-code-custom-api.html</loc>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://helper.bob-api.com/guides/claude-code-custom-api.html"/>
+    <xhtml:link rel="alternate" hreflang="en" href="https://helper.bob-api.com/en/guides/claude-code-custom-api.html"/>
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://helper.bob-api.com/guides/claude-code-custom-api.html"/>
+    <lastmod>2026-11-24</lastmod>
   </url>
   <url>
     <loc>https://helper.bob-api.com/guides/codex-cli-custom-api.html</loc>
-    <lastmod>2026-11-22</lastmod>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://helper.bob-api.com/guides/codex-cli-custom-api.html"/>
+    <xhtml:link rel="alternate" hreflang="en" href="https://helper.bob-api.com/en/guides/codex-cli-custom-api.html"/>
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://helper.bob-api.com/guides/codex-cli-custom-api.html"/>
+    <lastmod>2026-11-24</lastmod>
+  </url>
+  <url>
+    <loc>https://helper.bob-api.com/en/guides/codex-cli-custom-api.html</loc>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://helper.bob-api.com/guides/codex-cli-custom-api.html"/>
+    <xhtml:link rel="alternate" hreflang="en" href="https://helper.bob-api.com/en/guides/codex-cli-custom-api.html"/>
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://helper.bob-api.com/guides/codex-cli-custom-api.html"/>
+    <lastmod>2026-11-24</lastmod>
   </url>
   <url>
     <loc>https://helper.bob-api.com/guides/deepseek-harness-custom-api.html</loc>
-    <lastmod>2026-11-22</lastmod>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://helper.bob-api.com/guides/deepseek-harness-custom-api.html"/>
+    <xhtml:link rel="alternate" hreflang="en" href="https://helper.bob-api.com/en/guides/deepseek-harness-custom-api.html"/>
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://helper.bob-api.com/guides/deepseek-harness-custom-api.html"/>
+    <lastmod>2026-11-24</lastmod>
+  </url>
+  <url>
+    <loc>https://helper.bob-api.com/en/guides/deepseek-harness-custom-api.html</loc>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://helper.bob-api.com/guides/deepseek-harness-custom-api.html"/>
+    <xhtml:link rel="alternate" hreflang="en" href="https://helper.bob-api.com/en/guides/deepseek-harness-custom-api.html"/>
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://helper.bob-api.com/guides/deepseek-harness-custom-api.html"/>
+    <lastmod>2026-11-24</lastmod>
   </url>
   <url>
     <loc>https://helper.bob-api.com/guides/macos-app-damaged.html</loc>
-    <lastmod>2026-11-22</lastmod>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://helper.bob-api.com/guides/macos-app-damaged.html"/>
+    <xhtml:link rel="alternate" hreflang="en" href="https://helper.bob-api.com/en/guides/macos-app-damaged.html"/>
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://helper.bob-api.com/guides/macos-app-damaged.html"/>
+    <lastmod>2026-11-24</lastmod>
+  </url>
+  <url>
+    <loc>https://helper.bob-api.com/en/guides/macos-app-damaged.html</loc>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://helper.bob-api.com/guides/macos-app-damaged.html"/>
+    <xhtml:link rel="alternate" hreflang="en" href="https://helper.bob-api.com/en/guides/macos-app-damaged.html"/>
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://helper.bob-api.com/guides/macos-app-damaged.html"/>
+    <lastmod>2026-11-24</lastmod>
+  </url>
+  <url>
+    <loc>https://helper.bob-api.com/about.html</loc>
+    <lastmod>2026-11-24</lastmod>
+  </url>
+  <url>
+    <loc>https://helper.bob-api.com/guides/workbuddy-custom-api.html</loc>
+    <lastmod>2026-11-24</lastmod>
+  </url>
+  <url>
+    <loc>https://helper.bob-api.com/guides/accio-work-custom-api.html</loc>
+    <lastmod>2026-11-24</lastmod>
+  </url>
+  <url>
+    <loc>https://helper.bob-api.com/guides/ai-coding-config-paths.html</loc>
+    <lastmod>2026-11-24</lastmod>
+  </url>
+  <url>
+    <loc>https://helper.bob-api.com/guides/cursor-custom-model-not-working.html</loc>
+    <lastmod>2026-11-24</lastmod>
+  </url>
+  <url>
+    <loc>https://helper.bob-api.com/guides/claude-code-401-timeout.html</loc>
+    <lastmod>2026-11-24</lastmod>
+  </url>
+  <url>
+    <loc>https://helper.bob-api.com/guides/codex-config-not-working.html</loc>
+    <lastmod>2026-11-24</lastmod>
   </url>
 </urlset>

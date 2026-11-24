@@ -8,6 +8,9 @@
   <meta name="description"
     content="macOS 打开 AI Helper 时提示“已损坏，无法打开，你应该将它移到废纸篓”或“无法验证开发者”，是 Gatekeeper 的隔离标记导致的。执行 xattr -cr /Applications/AI\ Helper.app 即可解决。">
   <link rel="canonical" href="https://helper.bob-api.com/guides/macos-app-damaged.html">
+  <link rel="alternate" hreflang="zh-CN" href="https://helper.bob-api.com/guides/macos-app-damaged.html">
+  <link rel="alternate" hreflang="en" href="https://helper.bob-api.com/en/guides/macos-app-damaged.html">
+  <link rel="alternate" hreflang="x-default" href="https://helper.bob-api.com/guides/macos-app-damaged.html">
   <meta name="robots" content="index, follow, max-snippet:-1">
   <meta property="og:type" content="article">
   <meta property="og:site_name" content="Bob AI Helper">
@@ -16,7 +19,7 @@
   <meta property="og:url" content="https://helper.bob-api.com/guides/macos-app-damaged.html">
   <meta property="og:image" content="https://helper.bob-api.com/assets/app-preview.png">
   <link rel="icon" type="image/x-icon" href="/assets/favicon.ico">
-  <link rel="stylesheet" href="/assets/docs.css?v=1.0.88">
+  <link rel="stylesheet" href="/assets/docs.css?v=1.0.88-1">
   <script type="application/ld+json">
   {
     "@context": "https://schema.org",
@@ -29,13 +32,38 @@
         "description": "清除 macOS Gatekeeper 隔离标记，使 AI Helper 可以正常打开。",
         "inLanguage": "zh-CN",
         "datePublished": "2026-11-20",
-        "dateModified": "2026-11-22",
+        "dateModified": "2026-11-24",
         "author": { "@type": "Person", "@id": "https://helper.bob-api.com/about.html#maintainer", "name": "TF49", "url": "https://helper.bob-api.com/about.html", "sameAs": ["https://github.com/TF49"] },
         "publisher": { "@type": "Organization", "@id": "https://helper.bob-api.com/#organization", "name": "Bob AI Helper" },
         "step": [
           { "@type": "HowToStep", "name": "拖入应用程序", "text": "打开 DMG，把 AI Helper 拖入「应用程序」文件夹。" },
           { "@type": "HowToStep", "name": "清除隔离标记", "text": "打开「终端」，执行 xattr -cr /Applications/AI\\ Helper.app。" },
           { "@type": "HowToStep", "name": "重新打开", "text": "再次双击 AI Helper 即可正常打开。" }
+        ]
+      },
+      {
+        "@type": "FAQPage",
+        "mainEntity": [
+          {
+            "@type": "Question",
+            "name": "为什么 macOS 会提示 AI Helper“已损坏”？",
+            "acceptedAnswer": { "@type": "Answer", "text": "安装包本身没有损坏。AI Helper 是 MIT 开源软件，没有经过 Apple 公证，macOS Gatekeeper 会给从网上下载的应用加上隔离标记并阻止打开。清除隔离标记后即可正常使用。" }
+          },
+          {
+            "@type": "Question",
+            "name": "执行 xattr -cr 命令安全吗？",
+            "acceptedAnswer": { "@type": "Answer", "text": "xattr -cr 只会递归删除应用包上的扩展属性（包括 com.apple.quarantine 隔离标记），不会修改应用本身的代码。请只对从 AI Helper 官网或 GitHub Releases 下载的安装包执行该命令，官网提供每个安装包的 SHA-256 校验值。" }
+          },
+          {
+            "@type": "Question",
+            "name": "不想用终端，还有别的办法吗？",
+            "acceptedAnswer": { "@type": "Answer", "text": "在「访达」中按住 Control 键点击（或右键点击）AI Helper，选择「打开」并再次确认。如果没有「打开」按钮，到「系统设置 → 隐私与安全性」页面底部点击「仍要打开」。" }
+          },
+          {
+            "@type": "Question",
+            "name": "Apple Silicon 和 Intel Mac 分别下载哪个 DMG？",
+            "acceptedAnswer": { "@type": "Answer", "text": "Apple Silicon 芯片（M1 至 M5 系列）的 Mac 请下载 aarch64 版 DMG，Intel 处理器的 Mac 请下载 x64 版 DMG，可以在「关于本机」中查看芯片类型。AI Helper 需要 macOS 11 或更高版本。" }
+          }
         ]
       },
       {
@@ -65,10 +93,10 @@
     <p class="breadcrumb"><a href="/">Bob AI Helper</a> / <a href="/guides/">教程</a> / macOS 提示已损坏</p>
     <article>
       <h1>macOS 打开 AI Helper 提示“已损坏，无法打开”怎么办</h1>
-      <p class="doc-meta">适用于 macOS 11 及以上 · Apple Silicon 与 Intel · 最后更新 <time class="last-updated" datetime="2026-11-22">2026-11-22</time> · 作者 <a href="/about.html">TF49</a></p>
+      <p class="doc-meta">适用于 macOS 11 及以上 · Apple Silicon 与 Intel · 最后更新 <time class="last-updated" datetime="2026-11-24">2026-11-24</time> · 作者 <a href="/about.html">TF49</a></p>
 
       <div class="tldr">
-        <p><strong>简短回答：</strong>安装包本身没有损坏。AI Helper 是开源软件，没有经过 Apple 公证，macOS Gatekeeper 会给从网上下载的文件加上隔离标记并阻止打开。打开「终端」执行下面这条命令清除标记，再双击打开即可：</p>
+        <p><strong>简短回答：</strong>安装包本身没有损坏。AI Helper 是 MIT 开源软件，没有经过 Apple 公证，macOS Gatekeeper 会给从网上下载的文件加上隔离标记并阻止打开。打开「终端」执行下面这条命令清除标记，再双击打开即可：</p>
         <pre><code>xattr -cr /Applications/AI\ Helper.app</code></pre>
       </div>
 
@@ -96,13 +124,24 @@
 
       <div class="note">请只从 <a href="/#downloads">AI Helper 官网</a> 或 <a href="https://github.com/TF49/AI-Helper/releases">GitHub Releases</a> 下载安装包，不要对来源不明的应用执行上面的命令。官网提供每个安装包的 SHA-256 校验值。</div>
 
+      <h2>常见问题</h2>
+      <h3>为什么 macOS 会提示 AI Helper“已损坏”？</h3>
+      <p>安装包本身没有损坏。AI Helper 是 MIT 开源软件，没有经过 Apple 公证，macOS Gatekeeper 会给从网上下载的应用加上隔离标记并阻止打开。清除隔离标记后即可正常使用。</p>
+      <h3>执行 xattr -cr 命令安全吗？</h3>
+      <p><code>xattr -cr</code> 只会递归删除应用包上的扩展属性（包括 <code>com.apple.quarantine</code> 隔离标记），不会修改应用本身的代码。请只对从 AI Helper 官网或 GitHub Releases 下载的安装包执行该命令，官网提供每个安装包的 SHA-256 校验值。</p>
+      <h3>不想用终端，还有别的办法吗？</h3>
+      <p>在「访达」中按住 Control 键点击（或右键点击）AI Helper，选择「打开」并再次确认。如果没有「打开」按钮，到「系统设置 → 隐私与安全性」页面底部点击「仍要打开」。</p>
+      <h3>Apple Silicon 和 Intel Mac 分别下载哪个 DMG？</h3>
+      <p>Apple Silicon 芯片（M1 至 M5 系列）的 Mac 请下载 <code>aarch64</code> 版 DMG，Intel 处理器的 Mac 请下载 <code>x64</code> 版 DMG，可以在「关于本机」中查看芯片类型。AI Helper 需要 macOS 11 或更高版本。</p>
+
       <h2>参考：Apple 官方说明</h2>
       <ul>
         <li><a href="https://support.apple.com/zh-cn/102445">在 Mac 上安全地打开 App（Gatekeeper）</a></li>
       </ul>
 
       <p><a class="cta" href="/#downloads">下载 AI Helper</a></p>
-      <p>相关教程：<a href="/guides/cursor-custom-model.html">Cursor 配置第三方模型</a> · <a href="/guides/claude-code-custom-api.html">Claude Code 切换 API 地址</a></p>
+      <p>相关教程：<a href="/guides/cursor-custom-model.html">Cursor 配置第三方模型</a> · <a href="/guides/claude-code-custom-api.html">Claude Code 切换 API 地址</a> · <a href="/guides/ai-coding-config-paths.html">AI 编程客户端配置文件路径大全</a></p>
+      <p>源码与问题反馈：<a href="https://github.com/TF49/AI-Helper">GitHub 仓库（MIT 开源）</a> · <a href="https://github.com/TF49/AI-Helper/issues">GitHub Issues</a> · <a href="/en/guides/macos-app-damaged.html" hreflang="en">English version</a></p>
     </article>
   </main>
 

@@ -6,17 +6,20 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>OpenAI Codex CLI 如何配置自定义 API 地址（config.toml model_providers）| Bob AI Helper 教程</title>
   <meta name="description"
-    content="Codex CLI 通过 ~/.codex/config.toml 中的 model_provider 和 model_providers 配置第三方 API 地址。本文给出手动配置示例，以及用 AI Helper 一键写入 API 地址、Key 与模型的步骤。">
+    content="Codex CLI 通过 ~/.codex/config.toml 中的 model_provider 和 model_providers 配置第三方 API 地址。本文给出手动配置示例，以及用 AI Helper 选择 BobAPI 节点、一键写入 Key 与模型的步骤。">
   <link rel="canonical" href="https://helper.bob-api.com/guides/codex-cli-custom-api.html">
+  <link rel="alternate" hreflang="zh-CN" href="https://helper.bob-api.com/guides/codex-cli-custom-api.html">
+  <link rel="alternate" hreflang="en" href="https://helper.bob-api.com/en/guides/codex-cli-custom-api.html">
+  <link rel="alternate" hreflang="x-default" href="https://helper.bob-api.com/guides/codex-cli-custom-api.html">
   <meta name="robots" content="index, follow, max-snippet:-1">
   <meta property="og:type" content="article">
   <meta property="og:site_name" content="Bob AI Helper">
   <meta property="og:title" content="OpenAI Codex CLI 如何配置自定义 API 地址">
-  <meta property="og:description" content="手动修改 ~/.codex/config.toml，或用 AI Helper 一键配置 Codex CLI 的 API 地址、Key 与模型。">
+  <meta property="og:description" content="手动修改 ~/.codex/config.toml，或用 AI Helper 一键把 Codex CLI 接入 BobAPI 节点并配置 Key 与模型。">
   <meta property="og:url" content="https://helper.bob-api.com/guides/codex-cli-custom-api.html">
   <meta property="og:image" content="https://helper.bob-api.com/assets/app-preview.png">
   <link rel="icon" type="image/x-icon" href="/assets/favicon.ico">
-  <link rel="stylesheet" href="/assets/docs.css?v=1.0.88">
+  <link rel="stylesheet" href="/assets/docs.css?v=1.0.88-1">
   <script type="application/ld+json">
   {
     "@context": "https://schema.org",
@@ -29,15 +32,40 @@
         "description": "在 ~/.codex/config.toml 中声明自定义 model_provider，或使用 AI Helper 自动写入。",
         "inLanguage": "zh-CN",
         "datePublished": "2026-11-20",
-        "dateModified": "2026-11-22",
+        "dateModified": "2026-11-24",
         "author": { "@type": "Person", "@id": "https://helper.bob-api.com/about.html#maintainer", "name": "TF49", "url": "https://helper.bob-api.com/about.html", "sameAs": ["https://github.com/TF49"] },
         "publisher": { "@type": "Organization", "@id": "https://helper.bob-api.com/#organization", "name": "Bob AI Helper" },
         "tool": [{ "@type": "HowToTool", "name": "Bob AI Helper" }, { "@type": "HowToTool", "name": "OpenAI Codex CLI" }],
         "step": [
           { "@type": "HowToStep", "name": "打开 Codex 面板", "text": "启动 AI Helper，进入 Codex 配置面板。" },
-          { "@type": "HowToStep", "name": "填写 API 地址、Key 与模型", "text": "填写 OpenAI 兼容的 API 地址、API Key，并选择模型，例如 gpt-5.6-sol。" },
-          { "@type": "HowToStep", "name": "测试并保存", "text": "流式连通性测试通过后保存，AI Helper 会在 ~/.codex/config.toml 中写入 model、model_provider = \"custom\" 和 [model_providers.custom]。" },
+          { "@type": "HowToStep", "name": "选择节点，填写 Key 与模型", "text": "选择 BobAPI 官方节点（或 TaijiAI 加速节点），填入 API Key，并选择模型，例如 gpt-5.6-sol。手动填写的 Key 首次用于某个节点时，需点击「确认用于此节点」；从 Bob API 账号选择的 Key 和一键配置只能用于 BobAPI 官方节点。" },
+          { "@type": "HowToStep", "name": "测试并保存", "text": "点击「确认并保存 Codex 配置」，流式连通性测试通过后，AI Helper 会在 ~/.codex/config.toml 中写入 model、model_provider = \"custom\" 和 [model_providers.custom]。" },
           { "@type": "HowToStep", "name": "重新启动 Codex", "text": "重新打开终端并运行 codex，使新的环境变量和配置生效。" }
+        ]
+      },
+      {
+        "@type": "FAQPage",
+        "mainEntity": [
+          {
+            "@type": "Question",
+            "name": "Codex 提示找不到 API Key？",
+            "acceptedAnswer": { "@type": "Answer", "text": "Codex 从 env_key 指定的环境变量读取 Key。已打开的终端不会自动获得新设置的环境变量，请关闭后重新打开终端。" }
+          },
+          {
+            "@type": "Question",
+            "name": "返回 model_not_found？",
+            "acceptedAnswer": { "@type": "Answer", "text": "说明当前 API Key 所在的分组不提供该模型。请从 AI Helper 读取到的模型列表中重新选择模型。" }
+          },
+          {
+            "@type": "Question",
+            "name": "macOS 上在终端运行 codex，为什么读不到 Key？",
+            "acceptedAnswer": { "@type": "Answer", "text": "只有在 Windows 上，AI Helper 才会把 Key 持久写入当前用户的 CUSTOM_OPENAI_API_KEY 环境变量。macOS 上 AI Helper 不会修改你的 shell 配置文件，请自行在 ~/.zshrc 等文件中加入 export CUSTOM_OPENAI_API_KEY=\"你的 API Key\"，然后重新打开终端。" }
+          },
+          {
+            "@type": "Question",
+            "name": "保存时提示“Codex 活动 profile 使用其他 provider”？",
+            "acceptedAnswer": { "@type": "Answer", "text": "说明 config.toml 顶层的 profile 指向了一个使用其他 model_provider 的 profile。为避免界面显示的配置与 Codex 实际运行的目标不一致，AI Helper 会停止保存。请先切换到使用 custom 的 profile，或移除顶层 profile 设置后再保存。" }
+          }
         ]
       },
       {
@@ -67,10 +95,10 @@
     <p class="breadcrumb"><a href="/">Bob AI Helper</a> / <a href="/guides/">教程</a> / Codex CLI 配置自定义 API</p>
     <article>
       <h1>OpenAI Codex CLI 如何配置自定义 API 地址</h1>
-      <p class="doc-meta">适用于 AI Helper <span class="current-version-tag">v1.0.88</span> · Windows 与 macOS · 最后更新 <time class="last-updated" datetime="2026-11-22">2026-11-22</time> · 作者 <a href="/about.html">TF49</a></p>
+      <p class="doc-meta">适用于 AI Helper <span class="current-version-tag">v1.0.88</span> · Windows 与 macOS · 最后更新 <time class="last-updated" datetime="2026-11-24">2026-11-24</time> · 作者 <a href="/about.html">TF49</a></p>
 
       <div class="tldr">
-        <p><strong>简短回答：</strong>在 <code>~/.codex/config.toml</code> 中声明一个自定义 provider（<code>[model_providers.custom]</code>，写入 <code>base_url</code> 和存放 Key 的环境变量名 <code>env_key</code>），再把顶层 <code>model_provider</code> 指向它、<code>model</code> 设为模型名。AI Helper 会自动写入这些字段，并把 API Key 放进 <code>CUSTOM_OPENAI_API_KEY</code> 环境变量。</p>
+        <p><strong>简短回答：</strong>在 <code>~/.codex/config.toml</code> 中声明 <code>[model_providers.custom]</code>（写入 <code>base_url</code> 和 <code>env_key</code>），把顶层 <code>model_provider</code> 指向它、<code>model</code> 设为模型名，Key 放进 <code>CUSTOM_OPENAI_API_KEY</code>。MIT 开源的 AI Helper 可以在选择 BobAPI 官方节点（或 TaijiAI 备用节点）并填入 API Key 和模型后，在本机自动写入这些字段。</p>
       </div>
 
       <h2>方法一：手动修改 config.toml</h2>
@@ -79,17 +107,32 @@
 model_provider = "custom"
 
 [model_providers.custom]
-base_url = "https://你的-api-地址/v1"
+base_url = "https://bob-api.com/v1"
 env_key = "CUSTOM_OPENAI_API_KEY"</code></pre>
       <p>然后把 API Key 设到环境变量 <code>CUSTOM_OPENAI_API_KEY</code> 中（Windows 可在「系统属性 → 环境变量」中添加用户变量；macOS / Linux 可写入 shell 配置文件），重新打开终端后运行 <code>codex</code>。</p>
 
       <h2>方法二：用 AI Helper 一键配置</h2>
       <ol>
         <li>启动 AI Helper，进入 <strong>Codex</strong> 面板，AI Helper 会自动探测 <code>codex</code> CLI 的位置。</li>
-        <li>选择预置节点或手动填写 API 地址，输入 API Key，选择模型（例如 <code>gpt-5.6-sol</code>）。</li>
-        <li>执行流式连通性测试，通过后保存。AI Helper 会写入上面示例中的字段；在 Windows 上，它还会把 Key 写入当前用户的 <code>CUSTOM_OPENAI_API_KEY</code> 环境变量并通知系统刷新。</li>
+        <li>选择接入节点：「BobAPI 官方节点」（<code>https://bob-api.com/</code>，推荐首选）或「TaijiAI 加速节点」（<code>https://taijiai.online/</code>，备用专线），输入 API Key，选择模型（例如 <code>gpt-5.6-sol</code>）。手动填写的 Key 首次用于某个节点时，需点击「确认用于此节点」；从 Bob API 账号选择的 Key 和一键配置只能用于 BobAPI 官方节点。</li>
+        <li>点击「确认并保存 Codex 配置」，流式连通性测试通过后写入。AI Helper 会写入上面示例中的字段；在 Windows 上，它还会把 Key 写入当前用户的 <code>CUSTOM_OPENAI_API_KEY</code> 环境变量并通知系统刷新。macOS 上不会修改 shell 配置文件，需要自行设置该环境变量（见下方常见问题）。</li>
         <li>重新打开终端并运行 <code>codex</code>，或直接在 AI Helper 中启动 Codex。</li>
       </ol>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr><th>config.toml 中的内容</th><th>AI Helper 的处理</th></tr>
+          </thead>
+          <tbody>
+            <tr><td><code>model</code></td><td>写入所选模型</td></tr>
+            <tr><td><code>model_provider</code></td><td>设为 <code>"custom"</code></td></tr>
+            <tr><td><code>[model_providers.custom]</code> 的 <code>base_url</code></td><td>写入所选节点的地址，自动补上 <code>/v1</code></td></tr>
+            <tr><td><code>[model_providers.custom]</code> 的 <code>env_key</code></td><td>固定为 <code>CUSTOM_OPENAI_API_KEY</code></td></tr>
+            <tr><td><code>custom</code> 中的 <code>experimental_bearer_token</code>、<code>Authorization</code> 等凭据请求头</td><td>移除，Key 只从环境变量读取</td></tr>
+            <tr><td>其他 provider、profile、sandbox 等设置</td><td>原样保留</td></tr>
+          </tbody>
+        </table>
+      </div>
       <div class="note">AI Helper 只管理名为 <code>custom</code> 的 provider。你在 <code>config.toml</code> 中定义的其他 provider、profile、sandbox 设置都会保留。登录 Bob API 账号使用「一键配置」时，Codex 会使用「Codex-不降质」分组（Bob API 账号下 Codex 专用的令牌分组，<a href="/about.html#groups">分组说明</a>）的 Key，推荐模型为 <code>gpt-5.6-sol</code>。</div>
 
       <h2>如何恢复原来的配置</h2>
@@ -99,7 +142,11 @@ env_key = "CUSTOM_OPENAI_API_KEY"</code></pre>
       <h3>Codex 提示找不到 API Key？</h3>
       <p>Codex 从 <code>env_key</code> 指定的环境变量读取 Key。已打开的终端不会自动获得新设置的环境变量，请关闭后重新打开终端。</p>
       <h3>返回 model_not_found？</h3>
-      <p>说明当前 API Key 所在的分组或服务商不提供该模型。请从 AI Helper 读取到的模型列表中重新选择模型。</p>
+      <p>说明当前 API Key 所在的分组不提供该模型。请从 AI Helper 读取到的模型列表中重新选择模型。</p>
+      <h3>macOS 上在终端运行 codex，为什么读不到 Key？</h3>
+      <p>只有在 Windows 上，AI Helper 才会把 Key 持久写入当前用户的 <code>CUSTOM_OPENAI_API_KEY</code> 环境变量。macOS 上 AI Helper 不会修改你的 shell 配置文件，请自行在 <code>~/.zshrc</code> 等文件中加入 <code>export CUSTOM_OPENAI_API_KEY="你的 API Key"</code>，然后重新打开终端。</p>
+      <h3>保存时提示“Codex 活动 profile 使用其他 provider”？</h3>
+      <p>说明 <code>config.toml</code> 顶层的 <code>profile</code> 指向了一个使用其他 <code>model_provider</code> 的 profile。为避免界面显示的配置与 Codex 实际运行的目标不一致，AI Helper 会停止保存。请先切换到使用 <code>custom</code> 的 profile，或移除顶层 <code>profile</code> 设置后再保存。</p>
 
       <h2>参考：Codex 官方文档</h2>
       <ul>
@@ -108,7 +155,8 @@ env_key = "CUSTOM_OPENAI_API_KEY"</code></pre>
       </ul>
 
       <p><a class="cta" href="/#downloads">下载 AI Helper</a></p>
-      <p>相关教程：<a href="/guides/claude-code-custom-api.html">Claude Code 切换 API 地址</a> · <a href="/guides/cursor-custom-model.html">Cursor 配置第三方模型</a></p>
+      <p>相关教程：<a href="/guides/codex-config-not-working.html">Codex config.toml 不生效排查</a> · <a href="/guides/ai-coding-config-paths.html">AI 编程客户端配置文件路径大全</a> · <a href="/guides/claude-code-custom-api.html">Claude Code 切换 API 地址</a> · <a href="/guides/cursor-custom-model.html">Cursor 配置第三方模型</a></p>
+      <p>源码与问题反馈：<a href="https://github.com/TF49/AI-Helper">GitHub 仓库（MIT 开源）</a> · <a href="https://github.com/TF49/AI-Helper/issues">GitHub Issues</a> · <a href="/en/guides/codex-cli-custom-api.html" hreflang="en">English version</a></p>
     </article>
   </main>
 

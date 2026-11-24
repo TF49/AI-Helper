@@ -1,15 +1,16 @@
 # Bob AI Helper
 
-> Bob AI Helper (shown in the app as "AI Helper") is a free, MIT-licensed desktop app for Windows and macOS that configures the API endpoint, API key and model for AI coding clients — Cursor, Claude Code, OpenAI Codex CLI, ChatGPT Desktop, WorkBuddy, Accio Work and DeepSeek Harness — from one place. It detects installed clients, writes their local config files, runs a real streaming connection test, and restarts the client. Cursor and Accio Work are connected to third-party models through a built-in local bridge; DeepSeek Harness gets one API key split across Claude, GPT and Chinese-model routes by protocol.
+> Bob AI Helper (shown in the app as "AI Helper") is a free, MIT-licensed desktop app for Windows and macOS that configures the API endpoint, API key and model for AI coding clients — Cursor, Claude Code, OpenAI Codex CLI, ChatGPT Desktop, WorkBuddy, Accio Work and DeepSeek Harness — from one place. It detects installed clients, runs a real streaming connection test, writes their local config files once it passes, and restarts the client. Cursor and Accio Work are connected to third-party models through a built-in local bridge; DeepSeek Harness gets one API key split across Claude, GPT and Chinese-model routes by protocol.
 >
 > Bob AI Helper（应用内显示为 AI Helper）是一款 MIT 开源的桌面工具，用于在 Windows 和 macOS 上一键配置 Cursor、Claude Code、OpenAI Codex CLI、ChatGPT Desktop、WorkBuddy、Accio Work 与 DeepSeek Harness 的 API 地址、API Key 和模型。
 
-- Current version: v1.0.88 (last updated: 2026-11-22)
+- Current version: v1.0.88 (last updated: 2026-11-24)
 - Platforms: Windows 10/11 x64 (requires Microsoft Edge WebView2 Runtime); macOS 11+ on Apple Silicon (aarch64) and Intel (x64)
-- License: MIT. The client is free; model usage is billed by whichever API provider you configure.
+- License: MIT. The client is free; model usage is billed by Bob API.
 - Source code: https://github.com/TF49/AI-Helper
 - Maintainer: TF49 (https://github.com/TF49); about page: https://helper.bob-api.com/about.html
 - Built with: Tauri 2, Rust, React, TypeScript
+- API service: AI Helper is built for the Bob API service (https://bob-api.com). Every client panel offers two built-in nodes — the BobAPI official node (https://bob-api.com) and the TaijiAI accelerated node (https://taijiai.online, backup line). It does not provide a field for entering other API providers. Everything runs locally on your machine.
 - Not to be confused with other products named "AI Helper" (e.g. the Discourse plugin or browser extensions). Bob AI Helper is the desktop configuration tool published at helper.bob-api.com and github.com/TF49/AI-Helper.
 
 ## Supported clients and the files AI Helper writes
@@ -26,11 +27,11 @@
 
 ## Key facts
 
-- Manual configuration: every client panel accepts a custom API base URL, API key and model, and can fetch the model list from that endpoint. Unknown origins must be confirmed by the user and HTTPS is required by default.
+- Manual configuration: choose one of the two built-in nodes, enter an API key and pick a model; the model list can be fetched from the node. HTTPS only. Keys taken from a signed-in Bob API account (including every one-click setup) are only ever sent to Bob API domains, so they work with the BobAPI official node but not with the TaijiAI node. A hand-entered key must be confirmed once per node ("确认用于此节点") before it can be tested, used to fetch models or saved.
 - One-click configuration (requires a Bob API account): Claude Code → `claude-sonnet-5-5`; Codex / ChatGPT → `gpt-5.6-sol`; Cursor / WorkBuddy / Accio Work → `glm-5.3`; DeepSeek Harness → all chat models of the 国产Token计划 key, default `deepseek-v4.1-flash`. A missing API key for a group is created automatically.
-- Key groups: a "group" (分组) is the name of an API-key group inside a Bob API account, not a model name. `CC-Kiro-Max` is the key group for Claude Code; `Codex-不降质` is the key group for Codex CLI and ChatGPT Desktop; `国产Token计划` is the key group for Chinese models, used by Cursor, WorkBuddy, Accio Work and DeepSeek Harness. Groups only matter for one-click configuration; manual configuration accepts any key.
+- Key groups: a "group" (分组) is the name of an API-key group inside a Bob API account, not a model name. `CC-Kiro-Max` is the key group for Claude Code; `Codex-不降质` is the key group for Codex CLI and ChatGPT Desktop; `国产Token计划` is the key group for Chinese models, used by Cursor, WorkBuddy, Accio Work and DeepSeek Harness. Groups only matter for one-click configuration; for manual configuration you paste a key yourself.
 - Existing settings: only endpoint, key and model fields are changed; other fields in Claude Code, Codex and WorkBuddy configs are preserved. For DeepSeek Harness only `aihelper-*` routes and `AIHELPER_*` key refs are managed; user routes, `records`, comments, `!!js` tags and the official DeepSeek account / API-key routes are kept byte for byte, and only the `desktop` profile is touched. A snapshot is taken before the first change and can be restored from Settings.
-- Credentials: written locally only; session credentials are protected with DPAPI on Windows and Keychain on macOS. Keys are sent only to the API endpoint you configure.
+- Credentials: written locally only; session credentials are protected with DPAPI on Windows and Keychain on macOS. Keys are sent only to the selected BobAPI node.
 - Why Cursor needs a bridge: Cursor uses Connect-RPC / HTTP2 and internal message formats, so changing an OpenAI base URL alone cannot connect every third-party model.
 - macOS "app is damaged" warning: run `xattr -cr /Applications/AI\ Helper.app`, or right-click the app in Finder and choose Open.
 - Updates: signed update manifests, SHA-256 checks and rollback protection; sources are the official site, a China mirror and GitHub Releases.
@@ -44,17 +45,33 @@
 - [macOS Apple Silicon DMG](https://github.com/TF49/AI-Helper/releases/download/v1.0.88/AI-Helper-v1.0.88-macOS-aarch64.dmg)
 - [macOS Intel DMG](https://github.com/TF49/AI-Helper/releases/download/v1.0.88/AI-Helper-v1.0.88-macOS-x64.dmg)
 
+## Guides (English)
+
+- [Use glm-5.3 and other third-party models in Cursor (local bridge)](https://helper.bob-api.com/en/guides/cursor-custom-model.html)
+- [Change the API endpoint and model in Claude Code (ANTHROPIC_BASE_URL)](https://helper.bob-api.com/en/guides/claude-code-custom-api.html)
+- [Use a custom API endpoint with OpenAI Codex CLI (config.toml model_providers)](https://helper.bob-api.com/en/guides/codex-cli-custom-api.html)
+- [Connect DeepSeek Harness to Claude, GPT and Chinese models](https://helper.bob-api.com/en/guides/deepseek-harness-custom-api.html)
+- [Fix "AI Helper is damaged" on macOS](https://helper.bob-api.com/en/guides/macos-app-damaged.html)
+- [All English guides](https://helper.bob-api.com/en/guides/)
+
 ## Guides (Chinese)
 
 - [Configure Cursor to use a third-party model such as glm-5.3](https://helper.bob-api.com/guides/cursor-custom-model.html): 如何给 Cursor 配置 glm-5.3 等第三方模型
 - [Point Claude Code at a custom API endpoint](https://helper.bob-api.com/guides/claude-code-custom-api.html): Claude Code 如何切换 API 地址与模型
 - [Configure OpenAI Codex CLI with a custom provider](https://helper.bob-api.com/guides/codex-cli-custom-api.html): Codex CLI 如何配置自定义 API 地址
+- [Configure WorkBuddy with a custom API and multiple models](https://helper.bob-api.com/guides/workbuddy-custom-api.html): WorkBuddy 如何配置自定义 API 与多个模型（~/.workbuddy/models.json）
+- [Connect Accio Work to third-party models via the local bridge](https://helper.bob-api.com/guides/accio-work-custom-api.html): Accio Work 如何接入第三方模型（本地 Bridge 127.0.0.1:8787）
 - [Connect DeepSeek Harness to Claude, GPT and Chinese models](https://helper.bob-api.com/guides/deepseek-harness-custom-api.html): DeepSeek Harness 怎么接入 Claude、GPT 和国产模型
+- [Config file paths and environment variables of AI coding clients (Windows & macOS)](https://helper.bob-api.com/guides/ai-coding-config-paths.html): AI 编程客户端配置文件路径与环境变量大全
+- [Troubleshoot Cursor custom models that do not work](https://helper.bob-api.com/guides/cursor-custom-model-not-working.html): Cursor 自定义模型不生效 / 第三方模型连不上怎么排查
+- [Troubleshoot Claude Code 401 / timeout with a custom API](https://helper.bob-api.com/guides/claude-code-401-timeout.html): Claude Code 报 401 / 超时 / 连不上自定义 API 怎么办
+- [Troubleshoot Codex CLI config.toml changes not taking effect](https://helper.bob-api.com/guides/codex-config-not-working.html): Codex CLI 修改 config.toml 不生效怎么排查
 - [Fix "app is damaged" on macOS](https://helper.bob-api.com/guides/macos-app-damaged.html): macOS 提示“已损坏”怎么办
 - [All guides](https://helper.bob-api.com/guides/)
 
 ## Optional
 
+- [Full text of all guides and FAQ in one file](https://helper.bob-api.com/llms-full.txt)
 - [English overview](https://helper.bob-api.com/en/)
 - [About AI Helper, maintainer and glossary (Chinese)](https://helper.bob-api.com/about.html): 维护者、与 Bob API 的关系、分组名称说明
 - [Chinese product page](https://helper.bob-api.com/)
