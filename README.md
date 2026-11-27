@@ -81,6 +81,16 @@ All versions are on [GitHub Releases](https://github.com/TF49/AI-Helper/releases
 - Windows needs the Microsoft Edge WebView2 Runtime (preinstalled on most Windows 11 systems).
 - If macOS says the app "is damaged and can't be opened", run `xattr -cr /Applications/AI\ Helper.app`, or right-click the app in Finder and choose **Open**.
 
+### Install from Terminal on macOS
+
+```bash
+curl -fsSLO https://raw.githubusercontent.com/TF49/AI-Helper/main/scripts/install-macos.sh && /bin/bash install-macos.sh
+```
+
+The [installer](./scripts/install-macos.sh) downloads the latest stable release for Apple Silicon or Intel, verifies its SHA-256, and installs to `~/Applications` without `sudo`. Run `open "$HOME/Applications/AI Helper.app"` to start it.
+
+To update an existing copy in `/Applications`, quit AI Helper and run `/bin/bash install-macos.sh --install-dir /Applications`. If macOS blocks the app on first launch, see how to check for Open Anyway. [Apple Support](https://support.apple.com/en-us/102445)
+
 ## Quick start
 
 1. Download and install the build for your OS and CPU architecture.

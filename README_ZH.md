@@ -99,6 +99,16 @@
 - macOS 首次打开如提示“已损坏，无法打开”，在终端执行 `xattr -cr /Applications/AI\ Helper.app`，或在访达中右键应用选择“打开”。详见 [macOS 提示“已损坏”怎么办](https://helper.bob-api.com/guides/macos-app-damaged.html)。
 - 请只从官网或 GitHub Releases 下载，不要运行来源不明的二次打包版本。
 
+### macOS 命令行安装
+
+```bash
+curl -fsSLO https://raw.githubusercontent.com/TF49/AI-Helper/main/scripts/install-macos.sh && /bin/bash install-macos.sh
+```
+
+[安装脚本](./scripts/install-macos.sh)自动识别 Apple Silicon 或 Intel，从 GitHub Releases 下载最新稳定版并核对 SHA-256。默认安装到 `~/Applications`，无需 `sudo`。运行 `open "$HOME/Applications/AI Helper.app"` 启动。
+
+如果应用已安装在 `/Applications`，先退出 AI Helper，再运行 `/bin/bash install-macos.sh --install-dir /Applications` 更新原位置的应用。如果首次启动被拦截，请查看系统设置中的「仍要打开」选项。[Apple 支持](https://support.apple.com/zh-cn/102445)
+
 ## 快速开始
 
 1. 📥 下载并安装适合当前系统架构的 AI Helper。
