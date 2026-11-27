@@ -67,34 +67,39 @@ English | [简体中文](./README_ZH.md)
 
 ## Download
 
-Current release: **<!--ver-->v1.0.88<!--/ver-->**
+Latest upstream release: **<!--ver-->v1.0.88<!--/ver-->**
 
-| Platform | Package | Official mirror | GitHub |
+| Platform | Package | Official mirror | Upstream GitHub |
 | --- | --- | --- | --- |
 | Windows 10/11 x64 | Installer `Setup.exe` | [Download](https://helper.bob-api.com/downloads/AI-Helper-v1.0.88-Windows-x64-Setup.exe) | [Download](https://github.com/TF49/AI-Helper/releases/download/v1.0.88/AI-Helper-v1.0.88-Windows-x64-Setup.exe) |
 | Windows 10/11 x64 | Portable `Standalone.zip` | [Download](https://helper.bob-api.com/downloads/AI-Helper-v1.0.88-Windows-x64-Standalone.zip) | [Download](https://github.com/TF49/AI-Helper/releases/download/v1.0.88/AI-Helper-v1.0.88-Windows-x64-Standalone.zip) |
-| macOS 11+ Apple Silicon | `aarch64.dmg` | [Download](https://helper.bob-api.com/downloads/AI-Helper-v1.0.88-macOS-aarch64.dmg) | [Download](https://github.com/TF49/AI-Helper/releases/download/v1.0.88/AI-Helper-v1.0.88-macOS-aarch64.dmg) |
-| macOS 11+ Intel | `x64.dmg` | [Download](https://helper.bob-api.com/downloads/AI-Helper-v1.0.88-macOS-x64.dmg) | [Download](https://github.com/TF49/AI-Helper/releases/download/v1.0.88/AI-Helper-v1.0.88-macOS-x64.dmg) |
+| macOS 11+ · Apple Silicon | Apple Silicon DMG | [Download](https://helper.bob-api.com/downloads/AI-Helper-v1.0.88-macOS-aarch64.dmg) | [Download](https://github.com/TF49/AI-Helper/releases/download/v1.0.88/AI-Helper-v1.0.88-macOS-aarch64.dmg) |
+| macOS 11+ · Intel | Intel DMG | [Download](https://helper.bob-api.com/downloads/AI-Helper-v1.0.88-macOS-x64.dmg) | [Download](https://github.com/TF49/AI-Helper/releases/download/v1.0.88/AI-Helper-v1.0.88-macOS-x64.dmg) |
 
-All versions are on [GitHub Releases](https://github.com/TF49/AI-Helper/releases). Only download from the official site or GitHub Releases.
-
-- Windows needs the Microsoft Edge WebView2 Runtime (preinstalled on most Windows 11 systems).
-- If macOS says the app "is damaged and can't be opened", run `xattr -cr /Applications/AI\ Helper.app`, or right-click the app in Finder and choose **Open**.
+Windows needs Microsoft Edge WebView2 Runtime, which is preinstalled on most Windows 11 systems. On macOS, open the DMG for your processor and drag AI Helper to Applications. [Upstream release archive](https://github.com/TF49/AI-Helper/releases)
 
 ### Install from Terminal on macOS
 
 ```bash
-curl -fsSLO https://raw.githubusercontent.com/TF49/AI-Helper/main/scripts/install-macos.sh && /bin/bash install-macos.sh
+curl -fsSL https://raw.githubusercontent.com/d100000/AI-Helper/main/scripts/install-macos.sh -o install-macos.sh && /bin/bash install-macos.sh
 ```
 
-The [installer](./scripts/install-macos.sh) downloads the latest stable release for Apple Silicon or Intel, verifies its SHA-256, and installs to `~/Applications` without `sudo`. Run `open "$HOME/Applications/AI Helper.app"` to start it.
+The installer detects Apple Silicon or Intel, downloads the latest stable upstream release, verifies its SHA-256 checksum, and installs to `~/Applications` without `sudo`. To update a copy in `/Applications`, quit AI Helper and run `/bin/bash install-macos.sh --install-dir /Applications`. [Installer source](./scripts/install-macos.sh)
 
-To update an existing copy in `/Applications`, quit AI Helper and run `/bin/bash install-macos.sh --install-dir /Applications`. If macOS blocks the app on first launch, see how to check for Open Anyway. [Apple Support](https://support.apple.com/en-us/102445)
+### Install from an Apple Silicon PKG
+
+If you already have `AI-Helper-v1.0.88-macOS-arm64.pkg`, open it in Installer or run the following from the directory containing the package.
+
+```bash
+/usr/sbin/installer -pkg ./AI-Helper-v1.0.88-macOS-arm64.pkg -target CurrentUserHomeDirectory
+```
+
+The PKG installs to `~/Applications` and has no Apple notarization. If Gatekeeper blocks the package or app, check **System Settings → Privacy & Security** after attempting to open it. [Apple Support](https://support.apple.com/en-us/102445)
 
 ## Quick start
 
-1. Download and install the build for your OS and CPU architecture.
-2. Launch AI Helper and let it detect installed clients.
+1. Install AI Helper using the download or terminal option for your system.
+2. Open AI Helper and let it detect installed clients. If you installed to your home folder, run `open "$HOME/Applications/AI Helper.app"`.
 3. Open a client panel and enter an API base URL, an API key and a model. Or sign in with a Bob API account and use one-click setup.
 4. Run the streaming connection test. Save once it passes; on failure your existing config is left as is.
 5. For Cursor and Accio Work, start the local bridge as the panel prompts. Then launch or restart the client.
