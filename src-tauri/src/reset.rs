@@ -1485,6 +1485,17 @@ fn restore_clients(
         })();
         match outcome {
             Ok((status, message)) => {
+                // Claude Code's sign-in flow was skipped outside the snapshot
+                // (see `claude::skip_cli_onboarding`); bring it back with the
+                // rest of the official state. Never against a real home in tests.
+                #[cfg(not(test))]
+                if client == "Claude Code" {
+                    if let Err(error) = crate::claude::restore_cli_onboarding() {
+                        result
+                            .warnings
+                            .push(format!("未能恢复 Claude Code 的首次登录引导：{error}"));
+                    }
+                }
                 let previous = state
                     .clients
                     .insert(client.into(), ClientBaseline::default());
