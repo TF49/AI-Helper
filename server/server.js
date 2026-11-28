@@ -94,6 +94,8 @@ const memoryStore = {
   devices: new Map(),
   errorLogs: [],
   usageEvents: [],
+  // 管理员配置项（MySQL 不可用时的暂存；重启后丢失，接口会如实告知未持久化）
+  settings: new Map(),
 };
 
 let isInitializing = false;
@@ -199,6 +201,16 @@ async function initDatabase(retryCount = 0, maxRetries = 8) {
         INDEX \`idx_device_created\` (\`device_id\`, \`created_at\`),
         INDEX \`idx_event_type\` (\`event_type\`)
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='使用频次与活跃度明细表';
+    `);
+
+    // 管理员在后台配置、客户端联网读取的应用设置（如社群二维码）
+    await conn.query(`
+      CREATE TABLE IF NOT EXISTS \`app_settings\` (
+        \`setting_key\` VARCHAR(64) NOT NULL COMMENT '设置项名称',
+        \`setting_value\` MEDIUMTEXT NOT NULL COMMENT '设置内容 (JSON)',
+        \`updated_at\` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '最后修改时间',
+        PRIMARY KEY (\`setting_key\`)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='管理员配置的应用设置';
     `);
 
     conn.release();
@@ -1008,6 +1020,146 @@ app.post('/api/telemetry/clear-test-data', adminLimiter, requireAdminAuth, async
 });
 
 // -----------------------------------------------------------------------------
+// 社群入口配置：QQ 群 / 微信群 / 抖音 的名称、账号与二维码
+//   GET  /api/app-config/community  公开，客户端联网读取
+//   PUT  /api/app-config/community  仅管理员，后台页面保存
+// 客户端只把这些内容当作文字和图片展示，所以这里只接受纯文本和内嵌图片，
+// 不接受外链图片地址（避免把用户的访问暴露给第三方）。
+// -----------------------------------------------------------------------------
+const COMMUNITY_SETTING_KEY = 'community';
+const COMMUNITY_CHANNEL_IDS = ['qq', 'wechat', 'douyin'];
+const COMMUNITY_TEXT_LIMITS = { name: 40, account: 60, hint: 80 };
+// 约 450KB 的图片；三张合计仍远低于请求体上限
+const COMMUNITY_IMAGE_MAX_CHARS = 600_000;
+const COMMUNITY_IMAGE_PATTERN = /^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/]+={0,2}$/;
+
+function defaultCommunityConfig() {
+  return {
+    channels: COMMUNITY_CHANNEL_IDS.map((id) => ({
+      id,
+      enabled: false,
+      name: '',
+      account: '',
+      hint: '',
+      qr_image: '',
+    })),
+    updated_at: null,
+  };
+}
+
+/**
+ * 校验并规整管理员提交的社群配置。返回 { config } 或 { error }。
+ * 未知渠道、未知字段一律丢弃。没有二维码的渠道可以保存，只是应用里不会显示。
+ */
+function sanitizeCommunityConfig(input) {
+  if (!input || typeof input !== 'object' || !Array.isArray(input.channels)) {
+    return { error: '配置格式无效：缺少 channels' };
+  }
+  const channels = [];
+  for (const id of COMMUNITY_CHANNEL_IDS) {
+    const raw = input.channels.find((item) => item && item.id === id) || {};
+    const channel = { id, enabled: raw.enabled === true };
+    for (const [field, limit] of Object.entries(COMMUNITY_TEXT_LIMITS)) {
+      const value = raw[field] === undefined || raw[field] === null ? '' : raw[field];
+      if (typeof value !== 'string') return { error: `${id}.${field} 必须是文字` };
+      const text = value.trim();
+      if (text.length > limit) return { error: `${id}.${field} 不能超过 ${limit} 个字` };
+      // 控制字符没有展示意义，直接拒绝
+      if (/[\u0000-\u001f\u007f]/.test(text)) return { error: `${id}.${field} 含有不可见字符` };
+      channel[field] = text;
+    }
+    const image = raw.qr_image === undefined || raw.qr_image === null ? '' : raw.qr_image;
+    if (typeof image !== 'string') return { error: `${id}.qr_image 必须是图片数据` };
+    if (image) {
+      if (image.length > COMMUNITY_IMAGE_MAX_CHARS) return { error: `${id} 的二维码图片过大，请压缩到 400KB 以内` };
+      if (!COMMUNITY_IMAGE_PATTERN.test(image)) return { error: `${id} 的二维码必须是 PNG、JPEG 或 WebP 图片` };
+    }
+    channel.qr_image = image;
+    channels.push(channel);
+  }
+  return { config: { channels } };
+}
+
+async function readCommunityConfig() {
+  let stored = null;
+  if (isDbConnected && pool) {
+    const [rows] = await pool.query(
+      'SELECT setting_value, updated_at FROM app_settings WHERE setting_key = ? LIMIT 1',
+      [COMMUNITY_SETTING_KEY],
+    );
+    if (rows.length > 0) {
+      stored = { value: rows[0].setting_value, updated_at: rows[0].updated_at };
+    }
+  } else {
+    stored = memoryStore.settings.get(COMMUNITY_SETTING_KEY) || null;
+  }
+  if (!stored) return defaultCommunityConfig();
+  try {
+    // 读出时再校验一次：库里的内容被手工改坏时，退回默认值而不是下发坏数据
+    const checked = sanitizeCommunityConfig(JSON.parse(stored.value));
+    if (checked.error) return defaultCommunityConfig();
+    return {
+      ...checked.config,
+      updated_at: stored.updated_at ? new Date(stored.updated_at).toISOString() : null,
+    };
+  } catch {
+    return defaultCommunityConfig();
+  }
+}
+
+// 速率限制：公开配置读取 (每 IP 每分钟最多 60 次)
+const publicConfigLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 60,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { success: false, error: 'Too many requests, please try again later' },
+});
+
+app.get('/api/app-config/community', publicConfigLimiter, async (req, res) => {
+  try {
+    const config = await readCommunityConfig();
+    // 允许客户端与中间缓存短暂复用，管理员改动后几分钟内生效
+    res.setHeader('Cache-Control', 'public, max-age=300');
+    return res.json({ success: true, config });
+  } catch (err) {
+    console.error('[Community Config Read Error]', err.message);
+    return res.status(500).json({ success: false, error: '读取社群配置失败' });
+  }
+});
+
+app.put('/api/app-config/community', adminLimiter, requireAdminAuth, async (req, res) => {
+  const checked = sanitizeCommunityConfig(req.body);
+  if (checked.error) {
+    return res.status(400).json({ success: false, error: checked.error });
+  }
+  const value = JSON.stringify(checked.config);
+  try {
+    let persisted = false;
+    if (isDbConnected && pool) {
+      await pool.query(
+        `INSERT INTO app_settings (setting_key, setting_value) VALUES (?, ?)
+         ON DUPLICATE KEY UPDATE setting_value = VALUES(setting_value)`,
+        [COMMUNITY_SETTING_KEY, value],
+      );
+      persisted = true;
+    } else {
+      memoryStore.settings.set(COMMUNITY_SETTING_KEY, { value, updated_at: new Date() });
+    }
+    const config = await readCommunityConfig();
+    return res.json({
+      success: true,
+      config,
+      persisted,
+      ...(persisted ? {} : { warning: '数据库未连接：配置只保存在内存里，服务重启后会丢失' }),
+    });
+  } catch (err) {
+    console.error('[Community Config Save Error]', err.message);
+    return res.status(500).json({ success: false, error: '保存社群配置失败' });
+  }
+});
+
+// -----------------------------------------------------------------------------
 // 启动服务并尝试连接数据库 (直接运行模式)
 // -----------------------------------------------------------------------------
 const isDirectRun = Boolean(process.argv[1]) && path.resolve(fileURLToPath(import.meta.url)) === path.resolve(process.argv[1]);
@@ -1038,6 +1190,8 @@ export {
   verifyPassword,
   extractToken,
   requireAdminAuth,
+  sanitizeCommunityConfig,
+  defaultCommunityConfig,
   loginHandler,
   meHandler,
   logoutHandler,

@@ -1463,6 +1463,46 @@ mod tests {
     }
 
     #[test]
+    fn single_client_reset_only_touches_workbuddy_and_keeps_user_models() {
+        let directory = tempfile::tempdir().unwrap();
+        let primary = directory.path().join(".workbuddy/models.json");
+        std::fs::create_dir_all(primary.parent().unwrap()).unwrap();
+        let contents = serde_json::to_vec(&serde_json::json!([
+            {"id":"managed", "vendor":"Custom", "url":"https://bob-api.com/v1", "apiKey":"secret"},
+            {"id":"native", "vendor":"Anthropic", "url":"https://api.anthropic.com"}
+        ]))
+        .unwrap();
+        std::fs::write(&primary, &contents).unwrap();
+
+        let state_path = directory.path().join("reset-state.json");
+        let result = crate::reset::with_test_state_path(&state_path, || {
+            in_profile(directory.path(), || {
+                crate::reset::restore_client("WorkBuddy", None).unwrap()
+            })
+        });
+
+        // Exactly one client is reported: the others were never visited.
+        assert_eq!(result.clients.len(), 1);
+        assert_eq!(result.clients[0].client, "WorkBuddy");
+        assert_eq!(result.clients[0].status, "cleaned");
+        let value: serde_json::Value =
+            serde_json::from_slice(&std::fs::read(&primary).unwrap()).unwrap();
+        assert_eq!(value.as_array().unwrap().len(), 1);
+        assert_eq!(value[0]["id"], "native");
+
+        let state: serde_json::Value =
+            serde_json::from_slice(&std::fs::read(&state_path).unwrap()).unwrap();
+        let clients = state["clients"].as_object().unwrap();
+        assert_eq!(clients.keys().collect::<Vec<_>>(), ["WorkBuddy"]);
+    }
+
+    #[test]
+    fn single_client_reset_rejects_an_unknown_client() {
+        assert!(crate::reset::restore_client("Nope", None).is_err());
+        assert!(crate::reset::preview_client("Nope").is_err());
+    }
+
+    #[test]
     fn legacy_reset_does_not_recreate_a_missing_primary_from_backup() {
         let directory = tempfile::tempdir().unwrap();
         let primary = directory.path().join(".workbuddy/models.json");

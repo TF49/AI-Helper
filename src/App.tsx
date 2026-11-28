@@ -31,10 +31,8 @@ import { SettingsView } from "./components/views/SettingsView";
 import { AnnouncementModal, LATEST_ANNOUNCEMENT_ID } from "./components/AnnouncementModal";
 import { QuickToolsModal } from "./components/QuickToolsModal";
 import { FeedbackModal } from "./components/FeedbackModal";
-import {
-  QqGroupModal,
-  QQ_GROUP_DISMISSED_KEY,
-} from "./components/QqGroupModal";
+import { CommunityModal, COMMUNITY_DISMISSED_KEY } from "./components/CommunityModal";
+import { useCommunityChannels } from "./lib/communityConfig";
 import { InitializationModal } from "./components/InitializationModal";
 import { LoginModal } from "./components/auth/LoginModal";
 import { TokenSelectModal } from "./components/auth/TokenSelectModal";
@@ -116,13 +114,17 @@ function AppContent() {
     setHasUnreadAnnouncement(false);
   };
 
+  // 社群渠道全部来自管理员后台；一个带二维码的渠道都没有时，所有入口都不显示
+  const communityChannels = useCommunityChannels(qqGroupModalOpen);
+  const hasCommunity = communityChannels.length > 0;
+
   const handleOpenQqGroup = () => {
     setQqGroupModalOpen(true);
   };
 
   const handleCloseQqGroup = () => {
     setQqGroupModalOpen(false);
-    localStorage.setItem(QQ_GROUP_DISMISSED_KEY, "true");
+    localStorage.setItem(COMMUNITY_DISMISSED_KEY, "true");
   };
   const [appVersion, setAppVersion] = useState("...");
   const { resolvedTheme } = useTheme();
@@ -266,17 +268,12 @@ function AppContent() {
 
     if (!isAuthReady) return;
 
-    // 阶段 2：环境初始化向导 (已登录且未完成初始化时引导)
-    if (authState.is_logged_in && !isInitialized) {
-      setInitModalOpen(true);
-      return;
-    }
+    // 环境初始化向导不再自动弹出：新用户直接进入首页，在卡片上一键配置。
+    // 向导仍可从「检查电脑环境」手动打开。
   }, [
     isBootCheckComplete,
     updatePhase,
     isAuthReady,
-    authState.is_logged_in,
-    isInitialized,
     setLoginModalOpen,
     setTokenModalOpen,
   ]);
@@ -307,7 +304,7 @@ function AppContent() {
     setInitModalOpen(false);
   };
 
-  // 初始化完成后自动提示售后 QQ 群；用户关闭后写入 localStorage，不再自动弹出
+  // 初始化完成后自动提示一次社群入口；用户关闭后写入 localStorage，不再自动弹出
   useEffect(() => {
     if (!isBootCheckComplete || !isAuthReady) return;
     if (
@@ -318,7 +315,9 @@ function AppContent() {
       return;
     }
     if (initModalOpen || !isInitialized) return;
-    if (localStorage.getItem(QQ_GROUP_DISMISSED_KEY) === "true") return;
+    // 后台没有可显示的渠道时不提示
+    if (!hasCommunity) return;
+    if (localStorage.getItem(COMMUNITY_DISMISSED_KEY) === "true") return;
 
     const timer = window.setTimeout(() => {
       setQqGroupModalOpen(true);
@@ -330,6 +329,7 @@ function AppContent() {
     updatePhase,
     initModalOpen,
     isInitialized,
+    hasCommunity,
   ]);
 
   const [isWindowMaximized, setIsWindowMaximized] = useState(false);
@@ -451,17 +451,19 @@ function AppContent() {
                     <Bell size={14} className="text-amber-500" />
                     <span>公告历史与版本日志</span>
                   </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      handleOpenQqGroup();
-                      setHelpMenuOpen(false);
-                    }}
-                    className="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-xl text-slate-700 dark:text-gray-200 hover:bg-slate-100 dark:hover:bg-white/10 cursor-pointer text-left"
-                  >
-                    <Users size={14} className="text-sky-500" />
-                    <span>官方售后 QQ 群</span>
-                  </button>
+                  {hasCommunity && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        handleOpenQqGroup();
+                        setHelpMenuOpen(false);
+                      }}
+                      className="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-xl text-slate-700 dark:text-gray-200 hover:bg-slate-100 dark:hover:bg-white/10 cursor-pointer text-left"
+                    >
+                      <Users size={14} className="text-sky-500" />
+                      <span>加入社群</span>
+                    </button>
+                  )}
                   <button
                     type="button"
                     onClick={() => {
@@ -788,6 +790,7 @@ function AppContent() {
                     activeTool={activeTool}
                     onSelectTool={handleSelectTool}
                     onOpenEnvironmentCheck={() => setInitModalOpen(true)}
+                    onOpenCommunity={hasCommunity ? handleOpenQqGroup : undefined}
                   />
                 </motion.div>
               ) : mainNav === "logs" ? (
@@ -881,7 +884,11 @@ function AppContent() {
         onRefreshAuth={refreshState}
       />
 
-      <QqGroupModal open={qqGroupModalOpen} onClose={handleCloseQqGroup} />
+      <CommunityModal
+        open={qqGroupModalOpen}
+        onClose={handleCloseQqGroup}
+        channels={communityChannels}
+      />
 
       <AnnouncementModal
         open={announcementModalOpen}

@@ -1,6 +1,6 @@
 use crate::error::AppError;
 use serde_json::Value;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 #[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
 pub struct ClaudeConfig {
@@ -17,6 +17,122 @@ pub fn claude_config_path() -> Result<PathBuf, AppError> {
     let home = dirs::home_dir()
         .ok_or_else(|| AppError::ConfigNotFound("无法获取用户主目录".to_string()))?;
     Ok(home.join(".claude").join("settings.json"))
+}
+
+// ---------------------------------------------------------------------------
+// Claude Code CLI first-run onboarding
+//
+// A fresh Claude Code CLI starts with an onboarding flow that asks the user to
+// sign in to an Anthropic account. Someone who only configured a third-party
+// endpoint has no such account, so the CLI looks broken right after "已配置好".
+// Claude Code skips the flow when `~/.claude.json` has
+// `hasCompletedOnboarding: true` (the same switch cc-switch offers).
+//
+// `~/.claude.json` is Claude Code's own state file: large, rewritten by the
+// CLI all the time, and full of things AI Helper must never roll back. So it
+// is never snapshotted. Only this one field is touched, and a marker file
+// records that AI Helper was the one who set it, so a reset removes the field
+// only in that case.
+// ---------------------------------------------------------------------------
+
+const ONBOARDING_FIELD: &str = "hasCompletedOnboarding";
+
+#[cfg_attr(test, allow(dead_code))]
+fn claude_state_path() -> Result<PathBuf, AppError> {
+    let home = dirs::home_dir()
+        .ok_or_else(|| AppError::ConfigNotFound("无法获取用户主目录".to_string()))?;
+    Ok(home.join(".claude.json"))
+}
+
+#[cfg_attr(test, allow(dead_code))]
+fn onboarding_marker_path() -> Result<PathBuf, AppError> {
+    let home = dirs::home_dir()
+        .ok_or_else(|| AppError::ConfigNotFound("无法获取用户主目录".to_string()))?;
+    Ok(home.join(".ai-helper").join("claude_onboarding_skipped"))
+}
+
+/// Set `hasCompletedOnboarding: true` in the state file at `state`, keeping
+/// every other field and their order. Returns whether the file was changed.
+/// A file that is not a JSON object is left alone and reported as an error.
+fn mark_onboarding_complete_at(state: &Path) -> Result<bool, AppError> {
+    crate::safe_fs::with_file_lock(state, || {
+        let raw = crate::safe_fs::read_optional_no_recovery_locked(state)?;
+        let mut root = match raw.as_deref() {
+            Some(bytes) if !bytes.iter().all(u8::is_ascii_whitespace) => {
+                serde_json::from_slice::<Value>(bytes)
+                    .map_err(|_| AppError::Other("~/.claude.json 不是有效的 JSON，未修改".into()))?
+            }
+            _ => Value::Object(serde_json::Map::new()),
+        };
+        let object = root
+            .as_object_mut()
+            .ok_or_else(|| AppError::Other("~/.claude.json 不是 JSON 对象，未修改".into()))?;
+        if object.get(ONBOARDING_FIELD).and_then(Value::as_bool) == Some(true) {
+            return Ok(false);
+        }
+        object.insert(ONBOARDING_FIELD.into(), Value::Bool(true));
+        crate::safe_fs::atomic_write_locked(state, serde_json::to_vec_pretty(&root)?)?;
+        Ok(true)
+    })
+}
+
+/// Remove `hasCompletedOnboarding` from the state file at `state`, so the
+/// CLI shows its sign-in flow again. Returns whether the file was changed.
+fn clear_onboarding_at(state: &Path) -> Result<bool, AppError> {
+    crate::safe_fs::with_file_lock(state, || {
+        let Some(raw) = crate::safe_fs::read_optional_no_recovery_locked(state)? else {
+            return Ok(false);
+        };
+        let mut root: Value = serde_json::from_slice(&raw)
+            .map_err(|_| AppError::Other("~/.claude.json 不是有效的 JSON，未修改".into()))?;
+        let Some(object) = root.as_object_mut() else {
+            return Ok(false);
+        };
+        if object.remove(ONBOARDING_FIELD).is_none() {
+            return Ok(false);
+        }
+        crate::safe_fs::atomic_write_locked(state, serde_json::to_vec_pretty(&root)?)?;
+        Ok(true)
+    })
+}
+
+/// Skip the CLI's first-run sign-in flow, remembering in `marker` when it was
+/// AI Helper that did so. A user who had already completed onboarding is not
+/// marked: that state is theirs, and a later reset must not undo it.
+fn skip_onboarding_at(state: &Path, marker: &Path) -> Result<bool, AppError> {
+    if !mark_onboarding_complete_at(state)? {
+        return Ok(false);
+    }
+    if let Some(parent) = marker.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    std::fs::write(marker, b"")?;
+    Ok(true)
+}
+
+/// Undo `skip_onboarding_at`, only when the marker says AI Helper set the
+/// field. Returns whether the sign-in flow was restored.
+fn restore_onboarding_at(state: &Path, marker: &Path) -> Result<bool, AppError> {
+    if !marker.exists() {
+        return Ok(false);
+    }
+    let changed = clear_onboarding_at(state)?;
+    std::fs::remove_file(marker)?;
+    Ok(changed)
+}
+
+/// After configuring Claude Code: make a fresh CLI start straight into the
+/// configured endpoint instead of asking for an Anthropic sign-in.
+#[cfg_attr(test, allow(dead_code))]
+pub fn skip_cli_onboarding() -> Result<bool, AppError> {
+    skip_onboarding_at(&claude_state_path()?, &onboarding_marker_path()?)
+}
+
+/// When Claude Code is reset to official: bring the sign-in flow back if AI
+/// Helper was the one who skipped it.
+#[cfg_attr(test, allow(dead_code))]
+pub fn restore_cli_onboarding() -> Result<bool, AppError> {
+    restore_onboarding_at(&claude_state_path()?, &onboarding_marker_path()?)
 }
 
 fn parse_claude_content(
@@ -231,9 +347,112 @@ fn set_claude_config_inner(
         })
     };
     if let Some(generation) = generation {
-        crate::reset::with_config_write_at_generation(generation, operation)
+        crate::reset::with_config_write_at_generation(generation, operation)?;
     } else {
-        crate::reset::with_config_write(operation)
+        crate::reset::with_config_write(operation)?;
+    }
+
+    // The endpoint is saved. Skipping the CLI's sign-in flow is a convenience
+    // on top: if it fails the configuration still stands, and the worst case
+    // is the onboarding screen the user would have seen anyway.
+    // Tests exercise the path-taking helpers; they must never reach the real
+    // `~/.claude.json` of whoever runs them.
+    #[cfg(not(test))]
+    if !api_key.trim().is_empty() {
+        if let Err(error) = skip_cli_onboarding() {
+            log::warn!("未能跳过 Claude Code 首次启动引导: {error}");
+        }
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+mod onboarding_tests {
+    use super::*;
+
+    fn read(path: &Path) -> Value {
+        serde_json::from_slice(&std::fs::read(path).unwrap()).unwrap()
+    }
+
+    #[test]
+    fn skipping_sets_only_the_flag_and_keeps_field_order() {
+        let dir = tempfile::tempdir().unwrap();
+        let state = dir.path().join(".claude.json");
+        let marker = dir.path().join(".ai-helper/claude_onboarding_skipped");
+        std::fs::write(
+            &state,
+            r#"{"zeta": 1, "projects": {"/a": {"x": true}}, "alpha": "keep"}"#,
+        )
+        .unwrap();
+
+        assert!(skip_onboarding_at(&state, &marker).unwrap());
+
+        let value = read(&state);
+        assert_eq!(value["hasCompletedOnboarding"], true);
+        assert_eq!(value["projects"]["/a"]["x"], true);
+        let keys: Vec<_> = value.as_object().unwrap().keys().cloned().collect();
+        assert_eq!(
+            keys,
+            ["zeta", "projects", "alpha", "hasCompletedOnboarding"]
+        );
+        assert!(marker.exists());
+    }
+
+    #[test]
+    fn a_missing_state_file_is_created() {
+        let dir = tempfile::tempdir().unwrap();
+        let state = dir.path().join(".claude.json");
+        let marker = dir.path().join("marker");
+
+        assert!(skip_onboarding_at(&state, &marker).unwrap());
+        assert_eq!(read(&state)["hasCompletedOnboarding"], true);
+    }
+
+    #[test]
+    fn onboarding_the_user_already_finished_is_not_claimed_or_undone() {
+        let dir = tempfile::tempdir().unwrap();
+        let state = dir.path().join(".claude.json");
+        let marker = dir.path().join("marker");
+        let original = r#"{"hasCompletedOnboarding": true, "oauthAccount": {"id": "u"}}"#;
+        std::fs::write(&state, original).unwrap();
+
+        assert!(!skip_onboarding_at(&state, &marker).unwrap());
+        assert!(!marker.exists());
+        // Without the marker a reset leaves the user's own state alone.
+        assert!(!restore_onboarding_at(&state, &marker).unwrap());
+        assert_eq!(std::fs::read_to_string(&state).unwrap(), original);
+    }
+
+    #[test]
+    fn reset_brings_the_sign_in_flow_back_only_when_ai_helper_skipped_it() {
+        let dir = tempfile::tempdir().unwrap();
+        let state = dir.path().join(".claude.json");
+        let marker = dir.path().join("marker");
+        std::fs::write(&state, r#"{"theme": "dark"}"#).unwrap();
+
+        assert!(skip_onboarding_at(&state, &marker).unwrap());
+        assert!(restore_onboarding_at(&state, &marker).unwrap());
+
+        let value = read(&state);
+        assert!(value.get("hasCompletedOnboarding").is_none());
+        assert_eq!(value["theme"], "dark");
+        assert!(!marker.exists());
+        // A second reset has nothing left to do.
+        assert!(!restore_onboarding_at(&state, &marker).unwrap());
+    }
+
+    #[test]
+    fn a_state_file_that_is_not_a_json_object_is_left_untouched() {
+        let dir = tempfile::tempdir().unwrap();
+        let marker = dir.path().join("marker");
+        for content in ["not json at all", "[1, 2, 3]"] {
+            let state = dir.path().join(".claude.json");
+            std::fs::write(&state, content).unwrap();
+
+            assert!(skip_onboarding_at(&state, &marker).is_err());
+            assert_eq!(std::fs::read_to_string(&state).unwrap(), content);
+            assert!(!marker.exists());
+        }
     }
 }
 

@@ -24,6 +24,8 @@ interface WorkspaceViewProps {
   activeTool: AgentTool;
   onSelectTool: (tool: AgentTool) => void;
   onOpenEnvironmentCheck?: () => void;
+  /** 打开「加入社群」弹窗 */
+  onOpenCommunity?: () => void;
 }
 
 const TOOLS: {
@@ -74,6 +76,7 @@ export function WorkspaceView({
   activeTool,
   onSelectTool,
   onOpenEnvironmentCheck,
+  onOpenCommunity,
 }: WorkspaceViewProps) {
   // 视图模式：默认展示极具沉浸感的 Agent 接入大厅 (与参考设计图 100% 对齐)
   const [viewMode, setViewMode] = useState<"matrix" | "detail">("matrix");
@@ -201,6 +204,7 @@ export function WorkspaceView({
                 onOpenEnvironmentCheck={
                   onOpenEnvironmentCheck || (() => {})
                 }
+                onOpenCommunity={onOpenCommunity}
               />
             </motion.div>
           ) : (

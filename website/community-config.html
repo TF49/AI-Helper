@@ -1,0 +1,355 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="robots" content="noindex, nofollow" />
+  <title>社群二维码配置 · AI Helper 管理后台</title>
+  <link rel="icon" href="assets/favicon.ico" />
+  <style>
+    :root {
+      --bg: #f5f7fb; --card: #ffffff; --line: #e2e8f0; --text: #0f172a; --muted: #64748b;
+      --accent: #0284c7; --danger: #dc2626; --ok: #059669;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root { --bg: #0b1020; --card: #121a2e; --line: #26324d; --text: #e5e9f2; --muted: #94a3b8; }
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.6 -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif; }
+    main { max-width: 1080px; margin: 0 auto; padding: 28px 20px 60px; }
+    h1 { font-size: 22px; margin: 0 0 4px; }
+    .sub { color: var(--muted); margin: 0 0 20px; }
+    .bar { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-bottom: 18px; }
+    .bar .grow { flex: 1; }
+    a { color: var(--accent); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    .card { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 18px; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 16px; }
+    .card h2 { font-size: 16px; margin: 0; }
+    .head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+    label { display: block; font-size: 12px; color: var(--muted); margin: 10px 0 4px; }
+    input[type="text"], input[type="password"] {
+      width: 100%; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px;
+      background: transparent; color: inherit; font: inherit;
+    }
+    input:focus-visible, button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+    .switch { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--text); margin: 0; cursor: pointer; }
+    .qr { margin-top: 10px; display: flex; gap: 12px; align-items: flex-start; }
+    .qr img, .qr .empty {
+      width: 132px; height: 132px; border: 1px dashed var(--line); border-radius: 10px;
+      object-fit: contain; background: #fff; flex-shrink: 0;
+    }
+    .qr .empty { display: flex; align-items: center; justify-content: center; color: #94a3b8; font-size: 12px; }
+    .qr .ops { display: flex; flex-direction: column; gap: 8px; }
+    button {
+      padding: 8px 14px; border-radius: 8px; border: 1px solid var(--line); background: transparent;
+      color: inherit; font: inherit; cursor: pointer;
+    }
+    button.primary { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
+    button:disabled { opacity: .5; cursor: not-allowed; }
+    .hint { font-size: 12px; color: var(--muted); margin: 6px 0 0; }
+    .msg { padding: 10px 12px; border-radius: 8px; margin-bottom: 14px; border: 1px solid var(--line); }
+    .msg.error { border-color: var(--danger); color: var(--danger); }
+    .msg.ok { border-color: var(--ok); color: var(--ok); }
+    .msg.warn { border-color: #d97706; color: #b45309; }
+    .login { max-width: 380px; margin: 40px auto; }
+    [hidden] { display: none !important; }
+  </style>
+</head>
+<body>
+<main>
+  <h1>社群二维码配置</h1>
+  <p class="sub">这里配置的名称、账号和二维码会显示在 AI Helper 应用的「加入社群」里。保存后，应用会在几分钟内读到新内容，不需要发新版本。</p>
+
+  <div id="message" class="msg" hidden role="status"></div>
+
+  <!-- 登录 -->
+  <section id="login" class="card login" hidden>
+    <h2>管理员登录</h2>
+    <form id="login-form">
+      <label for="login-user">账号</label>
+      <input id="login-user" type="text" autocomplete="username" required />
+      <label for="login-pass">密码</label>
+      <input id="login-pass" type="password" autocomplete="current-password" required />
+      <label for="login-server">服务地址</label>
+      <input id="login-server" type="text" placeholder="留空则使用当前网址" />
+      <p class="hint">这个页面和监控后台用同一套账号。</p>
+      <div style="margin-top: 14px"><button class="primary" type="submit">登录</button></div>
+    </form>
+  </section>
+
+  <!-- 配置 -->
+  <section id="editor" hidden>
+    <div class="bar">
+      <a href="diagnostics.html">← 返回监控后台</a>
+      <span class="grow"></span>
+      <span id="updated" class="hint"></span>
+      <button id="logout" type="button">退出登录</button>
+      <button id="save" class="primary" type="button">保存</button>
+    </div>
+    <div id="channels" class="grid"></div>
+    <p class="hint" style="margin-top: 16px">
+      二维码支持 PNG、JPEG、WebP，单张不超过 400KB。没有二维码的渠道不会在应用里显示。
+      微信群二维码 7 天后会失效，请记得定期来这里更换。
+    </p>
+  </section>
+</main>
+
+<script>
+(function () {
+  'use strict';
+
+  // 与监控后台共用登录态和服务地址
+  var KEYS = {
+    TOKEN: 'ai_helper_auth_token',
+    USER: 'ai_helper_auth_user',
+    EXPIRES: 'ai_helper_auth_expires',
+    LEGACY_TOKEN: 'ai_helper_admin_token',
+    SERVER: 'ai_helper_telemetry_server_base',
+  };
+  var IMAGE_MAX_BYTES = 400 * 1024;
+  var CHANNELS = [
+    { id: 'qq', title: 'QQ 群', nameLabel: '群名称', accountLabel: '群号', hintExample: '使用手机 QQ 扫一扫，加入售后服务群' },
+    { id: 'wechat', title: '微信群', nameLabel: '群名称', accountLabel: '微信号（选填，群满时用来加好友）', hintExample: '使用微信扫一扫，加入交流群' },
+    { id: 'douyin', title: '抖音', nameLabel: '抖音名称', accountLabel: '抖音号', hintExample: '使用抖音扫一扫，关注我们' },
+  ];
+
+  var state = {};
+  var $ = function (id) { return document.getElementById(id); };
+
+  function serverBase() {
+    var saved = localStorage.getItem(KEYS.SERVER);
+    if (saved) return saved.trim().replace(/\/+$/, '');
+    if (location.protocol.indexOf('http') === 0) return location.origin;
+    return 'http://localhost:3001';
+  }
+
+  function token() {
+    return localStorage.getItem(KEYS.TOKEN) || sessionStorage.getItem(KEYS.TOKEN) ||
+      localStorage.getItem(KEYS.LEGACY_TOKEN) || '';
+  }
+
+  function clearAuth() {
+    [KEYS.TOKEN, KEYS.USER, KEYS.EXPIRES, KEYS.LEGACY_TOKEN].forEach(function (key) {
+      localStorage.removeItem(key);
+      sessionStorage.removeItem(key);
+    });
+  }
+
+  function showMessage(text, kind) {
+    var box = $('message');
+    box.textContent = text;
+    box.className = 'msg ' + (kind || '');
+    box.hidden = !text;
+  }
+
+  function showLogin() {
+    $('editor').hidden = true;
+    $('login').hidden = false;
+    $('login-server').value = localStorage.getItem(KEYS.SERVER) || '';
+  }
+
+  function el(tag, attrs, children) {
+    var node = document.createElement(tag);
+    Object.keys(attrs || {}).forEach(function (name) {
+      if (name === 'text') node.textContent = attrs[name];
+      else if (name === 'className') node.className = attrs[name];
+      else node.setAttribute(name, attrs[name]);
+    });
+    (children || []).forEach(function (child) { node.appendChild(child); });
+    return node;
+  }
+
+  // 应用里的显示规则：勾选了「在应用里显示」并且有二维码
+  function renderStatus(meta) {
+    var line = $('status-' + meta.id);
+    var item = state[meta.id];
+    if (!item.enabled) {
+      line.textContent = '未勾选显示，应用里不会出现';
+      line.style.color = '';
+    } else if (!item.qr_image) {
+      line.textContent = '还没有二维码，应用里不会显示这个渠道';
+      line.style.color = '#b45309';
+    } else {
+      line.textContent = '应用里会显示这个渠道';
+      line.style.color = '#059669';
+    }
+  }
+
+  function renderPreview(meta) {
+    renderStatus(meta);
+    var holder = $('qr-' + meta.id);
+    holder.textContent = '';
+    var image = state[meta.id].qr_image;
+    if (image) {
+      holder.appendChild(el('img', { src: image, alt: meta.title + '二维码预览' }));
+    } else {
+      holder.appendChild(el('div', { className: 'empty', text: '还没有二维码' }));
+    }
+  }
+
+  function renderEditor(config) {
+    var root = $('channels');
+    root.textContent = '';
+    CHANNELS.forEach(function (meta) {
+      var saved = (config.channels || []).find(function (item) { return item.id === meta.id; }) || {};
+      state[meta.id] = {
+        id: meta.id,
+        enabled: saved.enabled === true,
+        name: saved.name || '',
+        account: saved.account || '',
+        hint: saved.hint || '',
+        qr_image: saved.qr_image || '',
+      };
+
+      var enabled = el('input', { type: 'checkbox', id: 'enabled-' + meta.id });
+      enabled.checked = state[meta.id].enabled;
+      enabled.addEventListener('change', function () {
+        state[meta.id].enabled = enabled.checked;
+        renderStatus(meta);
+      });
+
+      function textField(field, labelText, placeholder, max) {
+        var input = el('input', { type: 'text', id: field + '-' + meta.id, maxlength: String(max), placeholder: placeholder || '' });
+        input.value = state[meta.id][field];
+        input.addEventListener('input', function () { state[meta.id][field] = input.value; });
+        return [el('label', { for: field + '-' + meta.id, text: labelText }), input];
+      }
+
+      var file = el('input', { type: 'file', accept: 'image/png,image/jpeg,image/webp', id: 'file-' + meta.id, hidden: '' });
+      file.addEventListener('change', function () {
+        var picked = file.files && file.files[0];
+        file.value = '';
+        if (!picked) return;
+        if (['image/png', 'image/jpeg', 'image/webp'].indexOf(picked.type) < 0) {
+          showMessage(meta.title + '：只支持 PNG、JPEG、WebP 图片', 'error');
+          return;
+        }
+        if (picked.size > IMAGE_MAX_BYTES) {
+          showMessage(meta.title + '：图片有 ' + Math.round(picked.size / 1024) + 'KB，请压缩到 400KB 以内', 'error');
+          return;
+        }
+        var reader = new FileReader();
+        reader.onload = function () {
+          state[meta.id].qr_image = String(reader.result);
+          renderPreview(meta);
+          showMessage('', '');
+        };
+        reader.onerror = function () { showMessage(meta.title + '：图片读取失败', 'error'); };
+        reader.readAsDataURL(picked);
+      });
+
+      var upload = el('button', { type: 'button', text: '上传二维码' });
+      upload.addEventListener('click', function () { file.click(); });
+      var remove = el('button', { type: 'button', text: '移除二维码' });
+      remove.addEventListener('click', function () {
+        state[meta.id].qr_image = '';
+        renderPreview(meta);
+      });
+
+      var card = el('div', { className: 'card' }, [
+        el('div', { className: 'head' }, [
+          el('h2', { text: meta.title }),
+          el('label', { className: 'switch', for: 'enabled-' + meta.id }, [enabled, document.createTextNode('在应用里显示')]),
+        ]),
+      ].concat(
+        textField('name', meta.nameLabel, '', 40),
+        textField('account', meta.accountLabel, '', 60),
+        textField('hint', '二维码下方的说明（选填）', meta.hintExample, 80),
+        [
+          el('div', { className: 'qr' }, [
+            el('div', { id: 'qr-' + meta.id }),
+            el('div', { className: 'ops' }, [upload, remove, file]),
+          ]),
+          el('p', { className: 'hint', id: 'status-' + meta.id, role: 'status' }),
+        ],
+      ));
+      root.appendChild(card);
+      renderPreview(meta);
+    });
+
+    $('updated').textContent = config.updated_at
+      ? '上次保存：' + new Date(config.updated_at).toLocaleString('zh-CN')
+      : '还没有保存过';
+    $('login').hidden = true;
+    $('editor').hidden = false;
+  }
+
+  function authHeaders() {
+    var value = token();
+    return { 'Content-Type': 'application/json', Authorization: 'Bearer ' + value, 'x-admin-token': value };
+  }
+
+  function load() {
+    if (!token()) { showLogin(); return; }
+    // 先确认登录态有效，再读配置（读取接口是公开的，不能用它判断是否已登录）
+    fetch(serverBase() + '/api/auth/me', { headers: authHeaders() })
+      .then(function (res) {
+        if (res.status === 401) { clearAuth(); showLogin(); return null; }
+        return fetch(serverBase() + '/api/app-config/community', { cache: 'no-store' }).then(function (r) { return r.json(); });
+      })
+      .then(function (body) {
+        if (!body) return;
+        if (!body.success) throw new Error(body.error || '读取失败');
+        renderEditor(body.config);
+      })
+      .catch(function (error) {
+        showMessage('没能连接到服务：' + error.message, 'error');
+        showLogin();
+      });
+  }
+
+  $('login-form').addEventListener('submit', function (event) {
+    event.preventDefault();
+    var server = $('login-server').value.trim().replace(/\/+$/, '');
+    if (server) localStorage.setItem(KEYS.SERVER, server);
+    else localStorage.removeItem(KEYS.SERVER);
+    fetch(serverBase() + '/api/auth/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username: $('login-user').value.trim(), password: $('login-pass').value, rememberMe: false }),
+    })
+      .then(function (res) { return res.json().then(function (body) { return { ok: res.ok, body: body }; }); })
+      .then(function (result) {
+        if (!result.ok || !result.body.token) throw new Error(result.body.error || '账号或密码不正确');
+        clearAuth();
+        sessionStorage.setItem(KEYS.TOKEN, result.body.token);
+        $('login-pass').value = '';
+        showMessage('', '');
+        load();
+      })
+      .catch(function (error) { showMessage('登录失败：' + error.message, 'error'); });
+  });
+
+  $('logout').addEventListener('click', function () {
+    clearAuth();
+    showMessage('已退出登录', '');
+    showLogin();
+  });
+
+  $('save').addEventListener('click', function () {
+    var button = $('save');
+    button.disabled = true;
+    var payload = { channels: CHANNELS.map(function (meta) { return state[meta.id]; }) };
+    fetch(serverBase() + '/api/app-config/community', {
+      method: 'PUT',
+      headers: authHeaders(),
+      body: JSON.stringify(payload),
+    })
+      .then(function (res) { return res.json().then(function (body) { return { status: res.status, body: body }; }); })
+      .then(function (result) {
+        if (result.status === 401) { clearAuth(); showLogin(); throw new Error('登录已过期，请重新登录'); }
+        if (!result.body.success) throw new Error(result.body.error || '保存失败');
+        renderEditor(result.body.config);
+        if (result.body.warning) showMessage('已保存，但' + result.body.warning, 'warn');
+        else showMessage('已保存。应用会在几分钟内显示新内容。', 'ok');
+      })
+      .catch(function (error) { showMessage('没能保存：' + error.message, 'error'); })
+      .finally(function () { button.disabled = false; });
+  });
+
+  load();
+})();
+</script>
+</body>
+</html>

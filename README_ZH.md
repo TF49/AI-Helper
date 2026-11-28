@@ -84,25 +84,39 @@
 
 ## 下载与安装
 
-当前稳定版本：**<!--ver-->v1.0.88<!--/ver-->**
+上游最新稳定版本 **<!--ver-->v1.0.88<!--/ver-->**
 
-| 平台                       | 安装包                  | 官网直链                                                                                                 | GitHub                                                                                                                  |
-| -------------------------- | ----------------------- | -------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
-| 🪟 Windows 10 / 11 x64     | 安装版 `Setup.exe`      | [下载](https://helper.bob-api.com/downloads/AI-Helper-v1.0.88-Windows-x64-Setup.exe)                    | [下载](https://github.com/TF49/AI-Helper/releases/download/v1.0.88/AI-Helper-v1.0.88-Windows-x64-Setup.exe)             |
-| 🪟 Windows 10 / 11 x64     | 便携版 `Standalone.zip` | [下载](https://helper.bob-api.com/downloads/AI-Helper-v1.0.88-Windows-x64-Standalone.zip)               | [下载](https://github.com/TF49/AI-Helper/releases/download/v1.0.88/AI-Helper-v1.0.88-Windows-x64-Standalone.zip)        |
-| 🍎 macOS 11+ Apple Silicon | `aarch64.dmg`           | [下载](https://helper.bob-api.com/downloads/AI-Helper-v1.0.88-macOS-aarch64.dmg)                        | [下载](https://github.com/TF49/AI-Helper/releases/download/v1.0.88/AI-Helper-v1.0.88-macOS-aarch64.dmg)                 |
-| 🍎 macOS 11+ Intel         | `x64.dmg`               | [下载](https://helper.bob-api.com/downloads/AI-Helper-v1.0.88-macOS-x64.dmg)                            | [下载](https://github.com/TF49/AI-Helper/releases/download/v1.0.88/AI-Helper-v1.0.88-macOS-x64.dmg)                     |
+| 平台 | 安装包 | 官网 | 上游 GitHub |
+| --- | --- | --- | --- |
+| Windows 10/11 x64 | 安装版 `Setup.exe` | [下载](https://helper.bob-api.com/downloads/AI-Helper-v1.0.88-Windows-x64-Setup.exe) | [下载](https://github.com/TF49/AI-Helper/releases/download/v1.0.88/AI-Helper-v1.0.88-Windows-x64-Setup.exe) |
+| Windows 10/11 x64 | 便携版 `Standalone.zip` | [下载](https://helper.bob-api.com/downloads/AI-Helper-v1.0.88-Windows-x64-Standalone.zip) | [下载](https://github.com/TF49/AI-Helper/releases/download/v1.0.88/AI-Helper-v1.0.88-Windows-x64-Standalone.zip) |
+| macOS 11+ · Apple 芯片 | Apple Silicon DMG | [下载](https://helper.bob-api.com/downloads/AI-Helper-v1.0.88-macOS-aarch64.dmg) | [下载](https://github.com/TF49/AI-Helper/releases/download/v1.0.88/AI-Helper-v1.0.88-macOS-aarch64.dmg) |
+| macOS 11+ · Intel 芯片 | Intel DMG | [下载](https://helper.bob-api.com/downloads/AI-Helper-v1.0.88-macOS-x64.dmg) | [下载](https://github.com/TF49/AI-Helper/releases/download/v1.0.88/AI-Helper-v1.0.88-macOS-x64.dmg) |
 
-国内用户也可以在 [官网下载页](https://helper.bob-api.com/#downloads) 选择阿里云 OSS 等加速镜像。所有版本见 [GitHub Releases](https://github.com/TF49/AI-Helper/releases)。
+Windows 版依赖 Microsoft Edge WebView2 Runtime，Windows 11 通常已预装。macOS 用户打开对应芯片的 DMG 后，将 AI Helper 拖到「应用程序」。[官网下载与加速镜像](https://helper.bob-api.com/#downloads) · [上游所有版本](https://github.com/TF49/AI-Helper/releases)
 
-- Windows 版依赖 Microsoft Edge WebView2 Runtime，Windows 11 通常已预装。
-- macOS 首次打开如提示“已损坏，无法打开”，在终端执行 `xattr -cr /Applications/AI\ Helper.app`，或在访达中右键应用选择“打开”。详见 [macOS 提示“已损坏”怎么办](https://helper.bob-api.com/guides/macos-app-damaged.html)。
-- 请只从官网或 GitHub Releases 下载，不要运行来源不明的二次打包版本。
+### macOS 命令行安装
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/d100000/AI-Helper/main/scripts/install-macos.sh -o install-macos.sh && /bin/bash install-macos.sh
+```
+
+脚本会自动识别芯片类型并验证下载文件的 SHA-256。默认安装到 `~/Applications`，无需 `sudo`。Apple 芯片安装的是本仓库的最新构建（见 [Releases](https://github.com/d100000/AI-Helper/releases)），包含简化后的首页和 macOS 上的修复；Intel 芯片安装的是上游最新稳定版，不包含这些改动。本仓库的构建不会自动更新，升级时重新运行这条命令即可。若要更新 `/Applications` 中的应用，请先退出 AI Helper，然后运行 `/bin/bash install-macos.sh --install-dir /Applications`。[安装脚本源码](./scripts/install-macos.sh)
+
+### Apple 芯片 Mac 的离线 PKG 安装
+
+如果已经拿到 `AI-Helper-v1.0.88-macos.2-macOS-arm64.pkg`，可以双击打开，或在安装包所在目录运行以下命令。
+
+```bash
+/usr/sbin/installer -pkg ./AI-Helper-v1.0.88-macos.2-macOS-arm64.pkg -target CurrentUserHomeDirectory
+```
+
+这个 PKG 会将应用安装到 `~/Applications`，尚未经过 Apple 公证。若首次打开安装包或应用时被拦截，可在尝试打开后查看「系统设置 → 隐私与安全性」。[Apple 支持](https://support.apple.com/zh-cn/102445)
 
 ## 快速开始
 
-1. 📥 下载并安装适合当前系统架构的 AI Helper。
-2. 🔍 启动客户端，等待环境检测识别已安装的 Agent。
+1. 选择适合当前系统的下载包或命令行安装方式。
+2. 打开 AI Helper，等待它检测已安装的客户端。安装在用户目录时，可以运行 `open "$HOME/Applications/AI Helper.app"`。
 3. 🔑 进入具体 Agent 面板，填写 API 地址、API Key 并选择模型；登录 Bob API 账号后也可以使用一键配置。
 4. 🧪 执行流式连通性测试，测试通过后保存，失败时原配置保持不变。
 5. 🚀 Cursor 和 Accio Work 按面板提示启动本地 Bridge，然后启动或重启目标客户端。
@@ -269,7 +283,7 @@ Claude Code 从 `~/.claude/settings.json` 的 `env` 字段读取 `ANTHROPIC_BASE
 
 ### Codex CLI 怎么配置自定义 API 地址？
 
-在 `~/.codex/config.toml` 中声明 `[model_providers.custom]`（`base_url` 与 `env_key`），并把顶层 `model_provider` 指向它。AI Helper 会自动写入这些字段，并把 Key 放进 `CUSTOM_OPENAI_API_KEY` 环境变量。详见 [Codex CLI 配置教程](https://helper.bob-api.com/guides/codex-cli-custom-api.html)。
+在 `~/.codex/config.toml` 中声明 `[model_providers.custom]`，并把顶层 `model_provider` 指向它。AI Helper 会自动写入服务地址和模型。Windows 上 Key 放进 `CUSTOM_OPENAI_API_KEY` 用户环境变量（`env_key`）；macOS 上 Key 直接写在该 provider 条目里（`experimental_bearer_token`），因为环境变量传不到 ChatGPT 桌面端，也传不到你自己终端里启动的 Codex。详见 [Codex CLI 配置教程](https://helper.bob-api.com/guides/codex-cli-custom-api.html)。
 
 ### 配置 DeepSeek Harness 会影响我的 DeepSeek 官方账号吗？
 

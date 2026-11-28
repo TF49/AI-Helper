@@ -36,6 +36,34 @@ pub struct CandidateMirror {
     pub url: String,
 }
 
+/// Whether the app may update itself.
+///
+/// This repository publishes its own macOS builds (tags `vX.Y.Z-macos.N`)
+/// with changes upstream does not have. The updater below only knows
+/// upstream's endpoints and signing key, so an "update" would replace such a
+/// build with an upstream one and silently drop those changes. Until this
+/// repository has a signed update channel of its own, updates are installed
+/// by running `scripts/install-macos.sh` again.
+pub const SELF_UPDATE_ENABLED: bool = false;
+
+/// What the update check reports while self-update is off: nothing newer.
+pub fn no_update_available() -> UpdateInfo {
+    let current = env!("CARGO_PKG_VERSION").to_string();
+    UpdateInfo {
+        current_version: current.clone(),
+        latest_version: current,
+        has_update: false,
+        download_url: String::new(),
+        release_notes: String::new(),
+        published_at: String::new(),
+        // The UI reads this to say how to upgrade instead of "up to date".
+        source: Some("self_update_disabled".to_string()),
+        proxy_url: None,
+        candidate_mirrors: Vec::new(),
+        manifest_verified: false,
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UpdateInfo {
     pub current_version: String,
