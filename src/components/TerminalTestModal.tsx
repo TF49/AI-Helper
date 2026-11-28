@@ -62,6 +62,13 @@ export interface TerminalTestModalProps {
   /** DeepSeek Harness：逐个测试已启用的分组路由，全部通过后一次写入 */
   dshPayload?: DshSavePayload;
   onSuccess?: () => void | Promise<void>;
+  /** 测试未通过或执行异常时回调（本地配置未被修改或未确认已保存） */
+  onFailure?: (message: string) => void;
+  /**
+   * 安静模式：照常执行测试与写入，但不渲染终端窗口，也不弹出提示。
+   * 首页卡片用它在卡片内显示一句进度；切回 false 即可展开完整技术日志。
+   */
+  quiet?: boolean;
   isSessionCurrent?: () => boolean;
 }
 
@@ -84,8 +91,17 @@ export function TerminalTestModal({
   cursorPayload,
   dshPayload,
   onSuccess,
+  onFailure,
+  quiet = false,
   isSessionCurrent = () => true,
 }: TerminalTestModalProps) {
+  // 测试是长流程，期间父组件可能切换安静模式或更换回调，统一读取最新值
+  const quietRef = useRef(quiet);
+  const onFailureRef = useRef(onFailure);
+  useEffect(() => {
+    quietRef.current = quiet;
+    onFailureRef.current = onFailure;
+  });
   const [status, setStatus] = useState<"running" | "success" | "error">(
     "running",
   );
@@ -545,7 +561,9 @@ export function TerminalTestModal({
         );
         setStatus("success");
         setShowRestartCard(true);
-        toast.success(`${platformName} 连通性测试通过，配置已成功保存！`);
+        if (!quietRef.current) {
+          toast.success(`${platformName} 连通性测试通过，配置已成功保存！`);
+        }
         // 在所有本地状态更新完成后再通知父组件（避免父组件立即重渲染导致倒计时 effect 冲突）
         successTaskRef.current = Promise.resolve()
           .then(async () => {
@@ -561,7 +579,8 @@ export function TerminalTestModal({
           `✗ 连通性测试未通过，本地配置未修改。请根据提示调整配置后重试。`,
           "error",
         );
-        toast.error(`连通性测试失败，未保存配置`);
+        if (!quietRef.current) toast.error(`连通性测试失败，未保存配置`);
+        onFailureRef.current?.("模型暂时连不上，原来的设置没有变");
       }
     } catch (err) {
       if (!openRef.current) return;
@@ -569,7 +588,8 @@ export function TerminalTestModal({
       const msg = err instanceof Error ? err.message : String(err);
       addLog(`❌ 执行过程发生异常: ${msg}`, "error");
       addLog(`✗ 未确认本地配置已保存，请重新读取配置后再试。`, "error");
-      toast.error(`测试异常: ${msg}`);
+      if (!quietRef.current) toast.error(`测试异常: ${msg}`);
+      onFailureRef.current?.(msg);
     }
   };
 
@@ -610,7 +630,7 @@ export function TerminalTestModal({
     }
   };
 
-  if (!open) return null;
+  if (!open || quiet) return null;
 
   return (
     <div className="fixed inset-0 top-11 z-50 flex items-center justify-center p-4 bg-black/65 backdrop-blur-sm animate-fade-in">

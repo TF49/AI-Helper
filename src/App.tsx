@@ -266,17 +266,12 @@ function AppContent() {
 
     if (!isAuthReady) return;
 
-    // 阶段 2：环境初始化向导 (已登录且未完成初始化时引导)
-    if (authState.is_logged_in && !isInitialized) {
-      setInitModalOpen(true);
-      return;
-    }
+    // 环境初始化向导不再自动弹出：新用户直接进入首页，在卡片上一键配置。
+    // 向导仍可从「检查电脑环境」手动打开。
   }, [
     isBootCheckComplete,
     updatePhase,
     isAuthReady,
-    authState.is_logged_in,
-    isInitialized,
     setLoginModalOpen,
     setTokenModalOpen,
   ]);

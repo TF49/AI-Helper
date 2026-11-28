@@ -81,7 +81,7 @@ export const VoxelMorphHero: React.FC<VoxelMorphHeroProps> = ({
       <div className="flex items-center gap-2 pt-1 z-20">
         <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-sky-50 dark:bg-sky-500/10 border border-sky-200/60 dark:border-sky-400/20 text-[10px] font-semibold text-sky-700 dark:text-sky-300 transition-colors">
           <span className="w-1.5 h-1.5 rounded-full bg-sky-500 animate-pulse" />
-          <span>AI-Helper Engine Ready</span>
+          <span>AI Helper 已就绪</span>
         </div>
         <span className="text-[10px] text-slate-400 dark:text-slate-500 truncate transition-opacity duration-300">
           · {activeModel.name}

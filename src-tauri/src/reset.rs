@@ -1365,6 +1365,35 @@ pub fn restore_all(
     cursor_bridge_error: Option<String>,
     accio_bridge_error: Option<String>,
 ) -> Result<ResetResult, AppError> {
+    restore_clients(None, cursor_bridge_error, accio_bridge_error)
+}
+
+/// Reset a single client and leave every other client's configuration,
+/// snapshot and gateway untouched. Caller holds the exclusive configuration
+/// gate and has stopped that client's gateway (if it has one).
+pub fn restore_client(client: &str, bridge_error: Option<String>) -> Result<ResetResult, AppError> {
+    let client = known_client(client)?;
+    let (cursor_bridge_error, accio_bridge_error) = match client {
+        "Cursor" => (bridge_error, None),
+        "Accio Work" => (None, bridge_error),
+        _ => (None, None),
+    };
+    restore_clients(Some(client), cursor_bridge_error, accio_bridge_error)
+}
+
+/// Map a caller-supplied name onto the canonical entry of `CLIENTS`.
+pub fn known_client(client: &str) -> Result<&'static str, AppError> {
+    CLIENTS
+        .into_iter()
+        .find(|known| *known == client)
+        .ok_or_else(|| AppError::Other("未知客户端".into()))
+}
+
+fn restore_clients(
+    only: Option<&str>,
+    cursor_bridge_error: Option<String>,
+    accio_bridge_error: Option<String>,
+) -> Result<ResetResult, AppError> {
     let baseline_path = state_path()?;
     let mut state = crate::safe_fs::with_file_lock(&baseline_path, || load_locked(&baseline_path))?;
     let mut result = ResetResult {
@@ -1372,6 +1401,9 @@ pub fn restore_all(
         ..ResetResult::default()
     };
     for client in CLIENTS {
+        if only.is_some_and(|only| only != client) {
+            continue;
+        }
         let bridge_error = match client {
             "Cursor" => cursor_bridge_error.as_ref(),
             "Accio Work" => accio_bridge_error.as_ref(),
@@ -1381,7 +1413,7 @@ pub fn restore_all(
             result.record(
                 client,
                 "failed",
-                format!("本地网关停止失败，已保留配置：{error}"),
+                format!("本地连接服务停止失败，已保留配置：{error}"),
             );
             continue;
         }
@@ -1531,11 +1563,23 @@ fn baseline_client_plan(client: &str, baseline: &ClientBaseline) -> ClientResetP
 
 /// Preview what will happen during a reset without actually performing it
 pub fn preview_reset() -> Result<ResetPreview, AppError> {
+    preview_clients(None)
+}
+
+/// Preview of `restore_client`: the plan for that one client only.
+pub fn preview_client(client: &str) -> Result<ResetPreview, AppError> {
+    preview_clients(Some(known_client(client)?))
+}
+
+fn preview_clients(only: Option<&str>) -> Result<ResetPreview, AppError> {
     let baseline_path = state_path()?;
     let state = crate::safe_fs::with_file_lock(&baseline_path, || load_locked(&baseline_path))?;
     let mut plans = Vec::new();
 
     for client in CLIENTS {
+        if only.is_some_and(|only| only != client) {
+            continue;
+        }
         let mut plan = ClientResetPlan {
             client: client.to_string(),
             action: String::new(),

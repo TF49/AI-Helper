@@ -65,7 +65,135 @@ export function confirmCredentialDestination(apiKey: string, destination: string
   return invoke<CredentialStatus>("confirm_credential_destination", { apiKey, destination });
 }
 
+/**
+ * 浏览器预览专用（不在桌面端生效）：在控制台写入
+ * localStorage.ai_helper_preview_scenario = JSON，例如
+ * {"loggedIn":true,"installed":["workbuddy","acciowork"],"configured":["workbuddy"],"running":["workbuddy"],"bridgeDown":true}
+ * 即可不启动桌面端就检查首页卡片的各个状态。
+ */
+interface PreviewScenario {
+  loggedIn?: boolean;
+  installed?: string[];
+  configured?: string[];
+  running?: string[];
+  bridgeDown?: boolean;
+  /** 模拟连接测试失败（目前只作用于 WorkBuddy） */
+  failTest?: boolean;
+}
+
+const PREVIEW_SCENARIO_KEY = "ai_helper_preview_scenario";
+const PREVIEW_APP_TYPES = ["claude", "codex", "chatgpt", "workbuddy", "acciowork", "cursor", "dsh"];
+const PREVIEW_RESET_CLIENTS: Record<string, string> = {
+  WorkBuddy: "workbuddy",
+  "Accio Work": "acciowork",
+};
+
+function readPreviewScenario(): PreviewScenario | null {
+  try {
+    const raw = localStorage.getItem(PREVIEW_SCENARIO_KEY);
+    return raw ? (JSON.parse(raw) as PreviewScenario) : null;
+  } catch {
+    return null;
+  }
+}
+
+function previewScenarioResponse(
+  scenario: PreviewScenario,
+  cmd: string,
+  args?: Record<string, unknown>,
+): { value: unknown } | null {
+  const configured = (name: string) => Boolean(scenario.configured?.includes(name));
+  switch (cmd) {
+    case "get_auth_state":
+      return scenario.loggedIn
+        ? { value: { is_logged_in: true, user: { id: 1, username: "preview", display_name: "预览用户" } } }
+        : null;
+    case "detect_all_app_paths":
+      return {
+        value: PREVIEW_APP_TYPES.map((app_type) => ({
+          app_type,
+          path: scenario.installed?.includes(app_type) ? `/Applications/${app_type}.app` : "",
+          exists: Boolean(scenario.installed?.includes(app_type)),
+          source: "preview",
+          is_running: Boolean(scenario.running?.includes(app_type)),
+        })),
+      };
+    case "get_workbuddy_config":
+      return configured("workbuddy")
+        ? {
+            value: {
+              config_exists: true,
+              config_path: "~/.workbuddy/models.json",
+              base_url: "https://bob-api.com/v1",
+              api_key: "preview-key",
+              model: "glm-5.3",
+              configured_models: [{ id: "glm-5.3", name: "glm-5.3" }],
+            },
+          }
+        : null;
+    case "get_accio_config":
+      return configured("acciowork")
+        ? {
+            value: {
+              config_exists: true,
+              config_path: "~/.ai-helper/accio_config.json",
+              base_url: "https://bob-api.com/",
+              api_key: "preview-key",
+              model: "glm-5.3",
+              bridge_port: 8787,
+            },
+          }
+        : null;
+    case "get_accio_bridge_status":
+      return { value: { is_running: !scenario.bridgeDown, port: 8787 } };
+    case "start_accio_bridge": {
+      localStorage.setItem(PREVIEW_SCENARIO_KEY, JSON.stringify({ ...scenario, bridgeDown: false }));
+      return { value: 8787 };
+    }
+    case "restore_client_to_official": {
+      const client = String(args?.client ?? "");
+      const app = PREVIEW_RESET_CLIENTS[client];
+      if (!app) return null;
+      localStorage.setItem(
+        PREVIEW_SCENARIO_KEY,
+        JSON.stringify({
+          ...scenario,
+          configured: (scenario.configured ?? []).filter((name) => name !== app),
+        }),
+      );
+      return {
+        value: {
+          clients: [{ client, status: "cleaned", message: "预览模式：已模拟恢复" }],
+          warnings: [],
+          requires_restart: false,
+        },
+      };
+    }
+    case "set_workbuddy_config":
+    case "set_accio_config": {
+      const app = cmd === "set_workbuddy_config" ? "workbuddy" : "acciowork";
+      localStorage.setItem(
+        PREVIEW_SCENARIO_KEY,
+        JSON.stringify({
+          ...scenario,
+          configured: [...new Set([...(scenario.configured ?? []), app])],
+        }),
+      );
+      return { value: undefined };
+    }
+    case "restart_target_app":
+      return { value: "预览模式：未真正打开软件" };
+    default:
+      return null;
+  }
+}
+
 function getMockResponse<T>(cmd: string, _args?: Record<string, unknown>): T {
+  const scenario = readPreviewScenario();
+  if (scenario) {
+    const override = previewScenarioResponse(scenario, cmd, _args);
+    if (override) return override.value as T;
+  }
   switch (cmd) {
     case "get_credential_status":
     case "confirm_credential_destination":
@@ -199,6 +327,29 @@ function getMockResponse<T>(cmd: string, _args?: Record<string, unknown>): T {
         })),
         warnings: ["当前是浏览器预览，未修改本机客户端文件。"],
         requires_restart: true,
+      } as unknown as T;
+    case "restore_client_to_official":
+      return {
+        clients: [
+          {
+            client: String(_args?.client ?? ""),
+            status: "skipped",
+            message: "预览模式：未修改本机配置",
+          },
+        ],
+        warnings: [],
+        requires_restart: false,
+      } as unknown as T;
+    case "preview_client_restore":
+      return {
+        clients: [
+          {
+            client: String(_args?.client ?? ""),
+            action: "clean_managed_fields",
+            reason: "预览模式示例：只清理 AI Helper 写入的设置",
+            files: [],
+          },
+        ],
       } as unknown as T;
     case "preview_client_reset":
       return {
@@ -656,6 +807,24 @@ export async function previewClientReset(): Promise<ResetPreview> {
   return invoke<ResetPreview>("preview_client_reset");
 }
 
+/** 后端恢复模块识别的客户端名称（与 reset.rs 的 CLIENTS 一致）。 */
+export type ResetClient =
+  | "Codex / ChatGPT"
+  | "Claude Code"
+  | "WorkBuddy"
+  | "Accio Work"
+  | "Cursor"
+  | "DeepSeek Harness";
+
+/** 只把一款软件恢复为官方，其余软件的配置与连接服务不受影响。 */
+export async function restoreClientToOfficial(client: ResetClient): Promise<ResetResult> {
+  return invoke<ResetResult>("restore_client_to_official", { client });
+}
+
+export async function previewClientRestore(client: ResetClient): Promise<ResetPreview> {
+  return invoke<ResetPreview>("preview_client_restore", { client });
+}
+
 export type AppType = "claude" | "codex" | "chatgpt" | "workbuddy" | "acciowork" | "cursor" | "dsh";
 
 export async function detectAppPath(
@@ -821,6 +990,11 @@ export async function testWorkbuddyStream(
 ): Promise<ApiTestResult> {
   if (!isTauri) {
     onEvent({ type: "log", data: { text: "[Web Preview] 模拟发起 WorkBuddy 连接测试...", level: "info" } });
+    if (readPreviewScenario()?.failTest) {
+      const message = "预览模式：模拟模型连不上";
+      onEvent({ type: "finish", data: { success: false, message, latency_ms: 60, status_code: 503 } });
+      return { success: false, message, latencyMs: 60, statusCode: 503 };
+    }
     onEvent({ type: "finish", data: { success: true, message: "测试连接成功", latency_ms: 60, status_code: 200 } });
     return { success: true, message: "测试连接成功", latencyMs: 60, statusCode: 200 };
   }

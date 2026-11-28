@@ -252,6 +252,63 @@ async fn preview_client_reset() -> Result<reset::ResetPreview, String> {
         .map_err(|error| error.to_string())
 }
 
+/// Reset one client back to its own (official) login. Other clients keep
+/// their configuration, snapshots and running gateways. The reset gate is
+/// global, so a write another client had in flight (for example a model-list
+/// cache refresh) is rejected once and simply retried on its next refresh.
+#[tauri::command]
+async fn restore_client_to_official(client: String) -> Result<reset::ResetResult, String> {
+    let client = reset::known_client(&client).map_err(|error| error.to_string())?;
+    let reset_guard = reset::begin_reset().map_err(|error| error.to_string())?;
+    // Only this client's gateway is stopped, before its files are touched, so
+    // no in-process cache can rewrite the configuration just removed.
+    let bridge_error = match client {
+        "Accio Work" => accio::stop_bridge_for_reset().await.err(),
+        "Cursor" => cursor::stop_bridge_for_reset().await.err(),
+        _ => None,
+    };
+    let bridge_warning = bridge_error
+        .as_ref()
+        .map(|error| format!("{client} 本地连接服务停止失败: {error}"));
+
+    tokio::task::spawn_blocking(move || {
+        let _reset_guard = reset_guard;
+        let mut result = reset::with_reset(|| reset::restore_client(client, bridge_error))?;
+        result.warnings.extend(bridge_warning);
+        result.warnings.extend(remaining_override_warning(client));
+        Ok::<_, error::AppError>(result)
+    })
+    .await
+    .map_err(|error| format!("恢复任务执行异常: {error}"))?
+    .map_err(|error| error.to_string())
+}
+
+/// After a reset, an endpoint override that AI Helper does not own may still
+/// be in effect (it was there before the first takeover). It is reported, not
+/// removed: only the user can decide about settings AI Helper never wrote.
+fn remaining_override_warning(client: &str) -> Option<String> {
+    let base_url = match client {
+        "Claude Code" => claude::get_claude_config().ok()?.base_url,
+        "Codex / ChatGPT" => codex::get_codex_config().ok()?.base_url,
+        _ => return None,
+    };
+    let base_url = base_url.trim();
+    if base_url.is_empty() || reset::managed_url(base_url) {
+        return None;
+    }
+    Some(format!(
+        "{client} 仍在使用其他服务地址 {base_url}。它不是 AI Helper 写入的，已保留。"
+    ))
+}
+
+#[tauri::command]
+async fn preview_client_restore(client: String) -> Result<reset::ResetPreview, String> {
+    tokio::task::spawn_blocking(move || reset::preview_client(&client))
+        .await
+        .map_err(|error| format!("预览任务执行异常: {error}"))?
+        .map_err(|error| error.to_string())
+}
+
 #[tauri::command]
 async fn get_claude_config() -> Result<claude::ClaudeConfig, error::AppError> {
     run_blocking(claude::get_claude_config)
@@ -945,6 +1002,8 @@ pub fn run() {
             set_codex_config,
             reset_all_client_configs,
             preview_client_reset,
+            restore_client_to_official,
+            preview_client_restore,
             get_claude_config,
             set_claude_config,
             get_workbuddy_config,
