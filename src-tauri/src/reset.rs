@@ -1124,6 +1124,11 @@ fn clean_legacy_claude(raw: &[u8]) -> Result<Option<Vec<u8>>, AppError> {
     Ok(Some(serde_json::to_vec_pretty(&root)?))
 }
 
+#[cfg(test)]
+pub fn clean_legacy_codex_for_test(raw: &[u8]) -> Result<Option<Vec<u8>>, AppError> {
+    clean_legacy_codex(raw)
+}
+
 fn clean_legacy_codex(raw: &[u8]) -> Result<Option<Vec<u8>>, AppError> {
     use toml_edit::{DocumentMut, Item};
     let text =

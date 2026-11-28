@@ -283,7 +283,7 @@ Claude Code 从 `~/.claude/settings.json` 的 `env` 字段读取 `ANTHROPIC_BASE
 
 ### Codex CLI 怎么配置自定义 API 地址？
 
-在 `~/.codex/config.toml` 中声明 `[model_providers.custom]`（`base_url` 与 `env_key`），并把顶层 `model_provider` 指向它。AI Helper 会自动写入这些字段，并把 Key 放进 `CUSTOM_OPENAI_API_KEY` 环境变量。详见 [Codex CLI 配置教程](https://helper.bob-api.com/guides/codex-cli-custom-api.html)。
+在 `~/.codex/config.toml` 中声明 `[model_providers.custom]`，并把顶层 `model_provider` 指向它。AI Helper 会自动写入服务地址和模型。Windows 上 Key 放进 `CUSTOM_OPENAI_API_KEY` 用户环境变量（`env_key`）；macOS 上 Key 直接写在该 provider 条目里（`experimental_bearer_token`），因为环境变量传不到 ChatGPT 桌面端，也传不到你自己终端里启动的 Codex。详见 [Codex CLI 配置教程](https://helper.bob-api.com/guides/codex-cli-custom-api.html)。
 
 ### 配置 DeepSeek Harness 会影响我的 DeepSeek 官方账号吗？
 

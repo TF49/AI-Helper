@@ -155,7 +155,7 @@ Cursor uses Connect-RPC / HTTP2 and internal message formats, so changing an Ope
 Claude Code reads `ANTHROPIC_BASE_URL`, `ANTHROPIC_AUTH_TOKEN` and `ANTHROPIC_MODEL` from the `env` block of `~/.claude/settings.json`. AI Helper merges those three fields and keeps everything else. See the [Claude Code guide](https://helper.bob-api.com/en/guides/claude-code-custom-api.html).
 
 **How do I set a custom endpoint for Codex CLI?**
-Codex reads `[model_providers.custom]` (`base_url` and `env_key`) from `~/.codex/config.toml`, with the top-level `model_provider` pointing at it. AI Helper writes these fields and stores the key in the `CUSTOM_OPENAI_API_KEY` variable. See the [Codex CLI guide](https://helper.bob-api.com/en/guides/codex-cli-custom-api.html).
+Codex reads `[model_providers.custom]` from `~/.codex/config.toml`, with the top-level `model_provider` pointing at it. AI Helper writes the provider's `base_url` and model for you. On Windows the key goes into the `CUSTOM_OPENAI_API_KEY` user variable (`env_key`); on macOS it is stored in the provider entry itself (`experimental_bearer_token`), because a variable would not reach ChatGPT Desktop or a Codex started from your own terminal. See the [Codex CLI guide](https://helper.bob-api.com/en/guides/codex-cli-custom-api.html).
 
 **Does configuring DeepSeek Harness affect my official DeepSeek account?**
 No. Only `aihelper-*` routes and `AIHELPER_*` key refs in the desktop profile are managed; the official account login, official API-key routes (`api.deepseek.com`) and your own routes are kept. Launch DeepSeek Harness once to initialize it before configuring, then restart it to see the new routes. See the [DeepSeek Harness guide](https://helper.bob-api.com/en/guides/deepseek-harness-custom-api.html).

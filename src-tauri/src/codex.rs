@@ -4,6 +4,33 @@ use toml_edit::{DocumentMut, Item, TableLike};
 
 const MANAGED_PROVIDER: &str = "custom";
 const LEGACY_ENV_KEY: &str = "CUSTOM_OPENAI_API_KEY";
+/// Provider field Codex reads a bearer token from directly.
+const INLINE_KEY_FIELD: &str = "experimental_bearer_token";
+
+/// How the managed provider gets its API key.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum KeyBinding<'a> {
+    /// `env_key` names a user-level environment variable. Used on Windows,
+    /// where a registry environment variable reaches every new process.
+    Environment,
+    /// The key is stored in the provider entry itself. Used on macOS and
+    /// Linux: a variable set in this process never reaches a Codex started
+    /// from the Dock or from the user's own terminal, so `env_key` would
+    /// leave Codex failing with "Missing environment variable".
+    Inline(&'a str),
+}
+
+impl<'a> KeyBinding<'a> {
+    /// The binding this platform uses for `api_key`. An empty key keeps the
+    /// environment form, which carries no secret.
+    pub fn for_platform(api_key: &'a str) -> Self {
+        if cfg!(target_os = "windows") || api_key.is_empty() {
+            Self::Environment
+        } else {
+            Self::Inline(api_key)
+        }
+    }
+}
 
 #[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
 pub struct CodexConfig {
@@ -185,7 +212,17 @@ fn parse_codex_content(
                             base_url = format!("{stripped}/");
                         }
                     }
-                    if custom.get("env_key").and_then(Item::as_str) == Some(LEGACY_ENV_KEY)
+                    // The inline key counts only in the form this helper writes:
+                    // no `env_key` beside it. With `env_key` present Codex takes
+                    // the key from the environment, so a leftover token is stale.
+                    let inline_key = custom
+                        .get(INLINE_KEY_FIELD)
+                        .and_then(Item::as_str)
+                        .map(str::trim)
+                        .filter(|key| !key.is_empty() && custom.get("env_key").is_none());
+                    if let Some(key) = inline_key {
+                        api_key = key.to_string();
+                    } else if custom.get("env_key").and_then(Item::as_str) == Some(LEGACY_ENV_KEY)
                         || custom.get("env_key").is_none()
                     {
                         api_key = legacy_api_key.clone();
@@ -421,9 +458,30 @@ pub fn merge_codex_managed_fields(
     if custom.get("name").is_none() {
         custom.insert("name", toml_edit::value("Custom"));
     }
-    if custom.get("api").is_none() {
-        custom.insert("api", toml_edit::value("openai-responses"));
+    // Older builds wrote `api = "openai-responses"`. Codex has no such field
+    // and warns about it on every start; the supported spelling is `wire_api`.
+    if custom.get("api").and_then(Item::as_str) == Some("openai-responses") {
+        custom.remove("api");
     }
+    if custom.get("wire_api").is_none() {
+        custom.insert("wire_api", toml_edit::value("responses"));
+    }
+    Ok(())
+}
+
+/// Move the managed provider from the environment form `merge` leaves it in
+/// to the requested key binding.
+fn apply_key_binding(doc: &mut DocumentMut, binding: KeyBinding<'_>) -> Result<(), AppError> {
+    let KeyBinding::Inline(key) = binding else {
+        return Ok(());
+    };
+    let custom = doc
+        .get_mut("model_providers")
+        .and_then(|providers| providers.get_mut(MANAGED_PROVIDER))
+        .and_then(Item::as_table_like_mut)
+        .ok_or_else(|| AppError::Toml("Codex custom provider 缺失".into()))?;
+    custom.remove("env_key");
+    custom.insert(INLINE_KEY_FIELD, toml_edit::value(key));
     Ok(())
 }
 
@@ -431,6 +489,7 @@ fn edited_codex_contents(
     previous: Option<&[u8]>,
     base_url: &str,
     model: Option<&str>,
+    binding: KeyBinding<'_>,
 ) -> Result<Vec<u8>, AppError> {
     let raw = std::str::from_utf8(previous.unwrap_or_default())
         .map_err(|_| AppError::Toml("现有 Codex 配置不是 UTF-8，已停止写入".into()))?;
@@ -444,18 +503,26 @@ fn edited_codex_contents(
         validate_managed_binding(&doc)?;
     }
     merge_codex_managed_fields(&mut doc, base_url, model)?;
+    apply_key_binding(&mut doc, binding)?;
     let text = doc.to_string();
     let check = text
         .parse::<DocumentMut>()
         .map_err(|_| AppError::Toml("Codex 配置序列化校验失败，已停止保存".into()))?;
     let custom = custom_provider(&check)
         .ok_or_else(|| AppError::Toml("Codex custom provider 缺失".into()))?;
+    let env_key = custom.get("env_key").and_then(Item::as_str);
+    let inline_key = custom.get(INLINE_KEY_FIELD).and_then(Item::as_str);
+    // Exactly one key source, bound to the URL written in this same document.
+    let key_bound = match binding {
+        KeyBinding::Environment => env_key == Some(LEGACY_ENV_KEY) && inline_key.is_none(),
+        KeyBinding::Inline(key) => env_key.is_none() && inline_key == Some(key),
+    };
     if check.get("model_provider").and_then(Item::as_str) != Some(MANAGED_PROVIDER)
         || custom.get("base_url").and_then(Item::as_str) != Some(base_url)
-        || custom.get("env_key").and_then(Item::as_str) != Some(LEGACY_ENV_KEY)
+        || !key_bound
     {
         return Err(AppError::Toml(
-            "Codex URL 与环境变量引用未能在同一配置中绑定，已停止保存".into(),
+            "Codex URL 与密钥未能在同一配置中绑定，已停止保存".into(),
         ));
     }
     Ok(text.into_bytes())
@@ -464,7 +531,7 @@ fn edited_codex_contents(
 #[cfg_attr(not(test), allow(dead_code))]
 fn write_codex_config_at(path: &Path, base_url: &str, model: Option<&str>) -> Result<(), AppError> {
     crate::safe_fs::update_file(path, |previous| {
-        edited_codex_contents(previous, base_url, model)
+        edited_codex_contents(previous, base_url, model, KeyBinding::Environment)
     })
 }
 
@@ -668,8 +735,12 @@ fn set_codex_config_inner(
             let prepared = (|| {
                 let previous_file = crate::safe_fs::read_optional_locked(&path)?;
                 let previous_env = EnvironmentSnapshot::capture(LEGACY_ENV_KEY)?;
-                let expected =
-                    edited_codex_contents(previous_file.as_deref(), &base_url, model.as_deref())?;
+                let expected = edited_codex_contents(
+                    previous_file.as_deref(),
+                    &base_url,
+                    model.as_deref(),
+                    KeyBinding::for_platform(api_key.trim()),
+                )?;
                 Ok::<_, AppError>((previous_file, previous_env, expected))
             })();
             let (previous_file, previous_env, expected) = match prepared {
@@ -939,9 +1010,13 @@ requires_openai_auth = true
 http_headers = { Authorization = "fake-other-key", X-Other = "keep-other" }
 "#;
         let original = previous.parse::<DocumentMut>().unwrap();
-        let bytes =
-            edited_codex_contents(Some(previous.as_bytes()), "https://new.example/v1", None)
-                .unwrap();
+        let bytes = edited_codex_contents(
+            Some(previous.as_bytes()),
+            "https://new.example/v1",
+            None,
+            KeyBinding::Environment,
+        )
+        .unwrap();
         let doc = std::str::from_utf8(&bytes)
             .unwrap()
             .parse::<DocumentMut>()
@@ -988,9 +1063,13 @@ http_headers = { Authorization = "fake-other-key", X-Other = "keep-other" }
             r#"model_providers = { custom = { base_url = "https://old.example/v1", env_key = "OLD", requires_openai_auth = true, auth = { command = "fake" }, http_headers = { Authorization = "old", X-Keep = "yes" } }, other = { env_key = "OTHER" } }"#,
             r#"model_providers = { other = { env_key = "OTHER" } }"#,
         ] {
-            let bytes =
-                edited_codex_contents(Some(previous.as_bytes()), "https://new.example/v1", None)
-                    .unwrap();
+            let bytes = edited_codex_contents(
+                Some(previous.as_bytes()),
+                "https://new.example/v1",
+                None,
+                KeyBinding::Environment,
+            )
+            .unwrap();
             let doc = std::str::from_utf8(&bytes)
                 .unwrap()
                 .parse::<DocumentMut>()
@@ -1036,8 +1115,13 @@ http_headers = { Authorization = "fake-other-key", X-Other = "keep-other" }
             } else {
                 format!("[model_providers.custom]\nbase_url='https://old.example/v1'\n[model_providers.custom.http_headers]\n{}\n[model_providers.custom.env_http_headers]\n{}\n[model_providers.other.http_headers]\nCookie='fake-other-cookie'\n", assignments.join("\n"), assignments.join("\n"))
             };
-            let bytes = edited_codex_contents(Some(raw.as_bytes()), "https://new.example/v1", None)
-                .unwrap();
+            let bytes = edited_codex_contents(
+                Some(raw.as_bytes()),
+                "https://new.example/v1",
+                None,
+                KeyBinding::Environment,
+            )
+            .unwrap();
             let doc = std::str::from_utf8(&bytes)
                 .unwrap()
                 .parse::<DocumentMut>()
@@ -1066,8 +1150,13 @@ http_headers = { Authorization = "fake-other-key", X-Other = "keep-other" }
 base_url = "https://new.example:443/v1"
 query_params = { api_key = "fake-old", key = "fake-old", token = "fake-old", access_token = "fake-old", auth = "fake-old", signature = "fake-old", region = "keep" }
 "#;
-        let bytes =
-            edited_codex_contents(Some(raw.as_bytes()), "https://new.example/v1", None).unwrap();
+        let bytes = edited_codex_contents(
+            Some(raw.as_bytes()),
+            "https://new.example/v1",
+            None,
+            KeyBinding::Environment,
+        )
+        .unwrap();
         let doc = std::str::from_utf8(&bytes)
             .unwrap()
             .parse::<DocumentMut>()
@@ -1099,6 +1188,7 @@ query_params = { api_key = "fake-old", key = "fake-old", token = "fake-old", acc
             Some(credential_only.as_bytes()),
             "https://new.example/v1",
             None,
+            KeyBinding::Environment,
         )
         .unwrap();
         let doc = std::str::from_utf8(&bytes)
@@ -1223,6 +1313,7 @@ model = "unrelated-model"
             Some(previous.as_bytes()),
             "https://new.example/v1",
             Some("new-model"),
+            KeyBinding::Environment,
         )
         .unwrap();
         let doc = std::str::from_utf8(&bytes)
@@ -1266,14 +1357,15 @@ model = "unrelated-model"
             assert!(edited_codex_contents(
                 Some(previous.as_bytes()),
                 "https://new.example/v1",
-                Some("new-model")
+                Some("new-model"),
+                KeyBinding::Environment,
             )
             .is_err());
         }
     }
 
     #[test]
-    fn actual_set_codex_config_writes_env_key_and_updates_environment() {
+    fn actual_set_codex_config_binds_the_key_the_way_this_platform_delivers_it() {
         let key = "fake-managed-codex-env-key";
         crate::credential_policy::register_managed_key(key);
         let previous = read_registry_env(LEGACY_ENV_KEY).unwrap_or_default();
@@ -1289,14 +1381,20 @@ model = "unrelated-model"
             doc["model_providers"]["custom"]["base_url"].as_str(),
             Some("https://bob-api.com/v1")
         );
-        assert_eq!(
-            doc["model_providers"]["custom"]["env_key"].as_str(),
-            Some(LEGACY_ENV_KEY)
-        );
-        assert!(doc["model_providers"]["custom"]
-            .get("experimental_bearer_token")
-            .is_none());
+        let custom = &doc["model_providers"]["custom"];
+        if cfg!(target_os = "windows") {
+            // A registry variable reaches every new process.
+            assert_eq!(custom["env_key"].as_str(), Some(LEGACY_ENV_KEY));
+            assert!(custom.get(INLINE_KEY_FIELD).is_none());
+        } else {
+            // No user-level variable reaches a Dock- or terminal-started
+            // Codex here, so the key travels in the provider entry.
+            assert!(custom.get("env_key").is_none());
+            assert_eq!(custom[INLINE_KEY_FIELD].as_str(), Some(key));
+        }
         assert_eq!(read_registry_env(LEGACY_ENV_KEY).unwrap(), key);
+        // Whatever the binding, the saved key reads back.
+        assert_eq!(get_codex_config().unwrap().api_key, key);
 
         // Clean up
         if previous.is_empty() {
@@ -1399,6 +1497,79 @@ base_url = "https://api.openai.com/v1"
     }
 
     #[test]
+    fn inline_binding_stores_the_key_in_the_provider_and_drops_env_key() {
+        // A provider written by an older build in the environment form.
+        let previous = "model_provider = \"custom\"\n[model_providers.custom]\nbase_url = \"https://old.example/v1\"\nenv_key = \"CUSTOM_OPENAI_API_KEY\"\napi = \"openai-responses\"\n\n[model_providers.other]\nenv_key = \"OTHER_KEY\"\n";
+        let bytes = edited_codex_contents(
+            Some(previous.as_bytes()),
+            "https://new.example/v1",
+            Some("new-model"),
+            KeyBinding::Inline("sk-inline"),
+        )
+        .unwrap();
+        let text = String::from_utf8(bytes).unwrap();
+        let doc: DocumentMut = text.parse().unwrap();
+        let custom = &doc["model_providers"]["custom"];
+        assert_eq!(
+            custom["experimental_bearer_token"].as_str(),
+            Some("sk-inline")
+        );
+        assert!(custom.get("env_key").is_none());
+        assert!(custom.get("api").is_none());
+        assert_eq!(custom["wire_api"].as_str(), Some("responses"));
+        // Another provider's key reference is not ours to touch.
+        assert_eq!(
+            doc["model_providers"]["other"]["env_key"].as_str(),
+            Some("OTHER_KEY")
+        );
+
+        // The key is read back from the file, not from the environment.
+        let parsed = parse_codex_content(&text, "", true, String::new(), false, None);
+        assert_eq!(parsed.api_key, "sk-inline");
+        assert_eq!(parsed.base_url, "https://new.example/");
+    }
+
+    #[test]
+    fn environment_binding_removes_a_previously_inlined_key() {
+        let previous = "model_provider = \"custom\"\n[model_providers.custom]\nbase_url = \"https://new.example/v1\"\nexperimental_bearer_token = \"sk-inline\"\n";
+        let bytes = edited_codex_contents(
+            Some(previous.as_bytes()),
+            "https://new.example/v1",
+            None,
+            KeyBinding::Environment,
+        )
+        .unwrap();
+        let text = String::from_utf8(bytes).unwrap();
+        assert!(!text.contains("sk-inline"));
+        let doc: DocumentMut = text.parse().unwrap();
+        assert_eq!(
+            doc["model_providers"]["custom"]["env_key"].as_str(),
+            Some("CUSTOM_OPENAI_API_KEY")
+        );
+    }
+
+    #[test]
+    fn platform_binding_never_inlines_an_empty_key() {
+        assert_eq!(KeyBinding::for_platform(""), KeyBinding::Environment);
+        if cfg!(target_os = "windows") {
+            assert_eq!(KeyBinding::for_platform("sk"), KeyBinding::Environment);
+        } else {
+            assert_eq!(KeyBinding::for_platform("sk"), KeyBinding::Inline("sk"));
+        }
+    }
+
+    #[test]
+    fn reset_removes_an_inlined_key_with_the_managed_provider() {
+        let current = "model = \"m\"\nmodel_provider = \"custom\"\n[model_providers.custom]\nbase_url = \"https://bob-api.com/v1\"\nexperimental_bearer_token = \"sk-inline\"\n";
+        let cleaned = crate::reset::clean_legacy_codex_for_test(current.as_bytes())
+            .unwrap()
+            .expect("managed provider is recognized without env_key");
+        let text = String::from_utf8(cleaned).unwrap();
+        assert!(!text.contains("sk-inline"));
+        assert!(!text.contains("model_provider"));
+    }
+
+    #[test]
     fn test_prepare_codex_doc_with_model() {
         let doc = prepare_codex_doc("https://api.example.com/v1", Some("o1")).unwrap();
         assert_eq!(doc["model"].as_str(), Some("o1"));
@@ -1408,9 +1579,10 @@ base_url = "https://api.openai.com/v1"
             Some("https://api.example.com/v1")
         );
         assert_eq!(
-            doc["model_providers"]["custom"]["api"].as_str(),
-            Some("openai-responses")
+            doc["model_providers"]["custom"]["wire_api"].as_str(),
+            Some("responses")
         );
+        assert!(doc["model_providers"]["custom"].get("api").is_none());
         assert_eq!(
             doc["model_providers"]["custom"]["env_key"].as_str(),
             Some("CUSTOM_OPENAI_API_KEY")
@@ -1529,8 +1701,12 @@ custom = { name = "Old", base_url = "https://old.example/v1", api = "openai-resp
             "Error should mention invalid env_key: {err_msg}"
         );
 
-        let edit_res =
-            edited_codex_contents(Some(malformed.as_bytes()), "https://new.example/v1", None);
+        let edit_res = edited_codex_contents(
+            Some(malformed.as_bytes()),
+            "https://new.example/v1",
+            None,
+            KeyBinding::Environment,
+        );
         assert!(edit_res.is_err(), "Malformed env_key must fail on edit");
 
         // An unsupported string binding must also fail
@@ -1540,7 +1716,8 @@ custom = { name = "Old", base_url = "https://old.example/v1", api = "openai-resp
         assert!(edited_codex_contents(
             Some(unsupported.as_bytes()),
             "https://new.example/v1",
-            None
+            None,
+            KeyBinding::Environment,
         )
         .is_err());
 
