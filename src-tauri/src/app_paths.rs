@@ -128,6 +128,61 @@ fn find_cli_in_macos(cmd_name: &str) -> Option<PathBuf> {
     None
 }
 
+/// macOS: the `.app` bundle whose *main* executable directory holds `exe`
+/// (`X.app/Contents/MacOS/<binary>`). Helper apps live under
+/// `X.app/Contents/Frameworks/<Y Helper>.app/...` and resolve to their own
+/// bundle, so they never count as the main app.
+///
+/// The bundle name identifies the app; the binary name does not. Electron
+/// apps may keep the stock name: WorkBuddy's main binary is
+/// `WorkBuddy.app/Contents/MacOS/Electron`.
+fn mac_main_bundle_of(exe: &Path) -> Option<PathBuf> {
+    let macos_dir = exe.parent()?;
+    if macos_dir.file_name()? != "MacOS" {
+        return None;
+    }
+    let contents = macos_dir.parent()?;
+    if contents.file_name()? != "Contents" {
+        return None;
+    }
+    let bundle = contents.parent()?;
+    (bundle.extension()? == "app").then(|| bundle.to_path_buf())
+}
+
+/// Whether `exe` is the main executable of a macOS bundle named one of
+/// `names` (lowercase, without `.app`).
+fn in_mac_bundle_named(exe: Option<&Path>, names: &[&str]) -> bool {
+    exe.and_then(mac_main_bundle_of)
+        .and_then(|bundle| {
+            bundle
+                .file_stem()
+                .map(|stem| stem.to_string_lossy().to_lowercase())
+        })
+        .is_some_and(|stem| names.contains(&stem.as_str()))
+}
+
+/// macOS: the path to report for a detected app. A binary inside a bundle is
+/// reported as the bundle itself, which is what `open` expects; opening the
+/// inner binary would start it in a Terminal window instead.
+#[cfg(target_os = "macos")]
+fn mac_launch_path(exe: PathBuf) -> PathBuf {
+    mac_main_bundle_of(&exe).unwrap_or(exe)
+}
+
+/// macOS: first existing bundle among `names` in /Applications or
+/// ~/Applications, where the terminal installer and many users put apps.
+#[cfg(target_os = "macos")]
+fn find_mac_bundle(names: &[&str]) -> Option<PathBuf> {
+    let mut roots = vec![PathBuf::from("/Applications")];
+    if let Some(home) = dirs::home_dir() {
+        roots.push(home.join("Applications"));
+    }
+    roots
+        .iter()
+        .flat_map(|root| names.iter().map(move |name| root.join(name)))
+        .find(|bundle| bundle.is_dir())
+}
+
 fn matches_process(
     target: &str,
     name_lower: &str,
@@ -177,6 +232,7 @@ fn matches_process(
                 || name_lower == "workbuddy"
                 || cmd_line.contains("workbuddyai.exe")
                 || cmd_line.contains("workbuddy.exe")
+                || in_mac_bundle_named(exe_path, &["workbuddy", "workbuddyai"])
         }
         "acciowork" => {
             if name_lower.contains("crashpad")
@@ -191,6 +247,7 @@ fn matches_process(
                 || name_lower == "accio work"
                 || cmd_line.contains("accio.exe")
                 || cmd_line.contains("accio work.exe")
+                || in_mac_bundle_named(exe_path, &["accio", "accio work"])
         }
         "cursor" => {
             if name_lower.contains("crashpad")
@@ -518,10 +575,17 @@ fn find_chatgpt_via_powershell() -> Option<PathBuf> {
 /// macOS 下通过 Spotlight (mdfind) 依据官方 Bundle ID 探测非标准目录安装的 ChatGPT
 #[cfg(target_os = "macos")]
 fn find_chatgpt_via_mdfind() -> Option<PathBuf> {
+    find_app_via_mdfind("com.openai.chat")
+}
+
+/// macOS 下通过 Spotlight (mdfind) 依据 Bundle ID 查找装在非标准目录的应用。
+/// `bundle_id` 只接受代码里写死的常量。
+#[cfg(target_os = "macos")]
+fn find_app_via_mdfind(bundle_id: &str) -> Option<PathBuf> {
     use std::process::Command;
 
     let output = Command::new("mdfind")
-        .arg("kMDItemCFBundleIdentifier == 'com.openai.chat'")
+        .arg(format!("kMDItemCFBundleIdentifier == '{bundle_id}'"))
         .output()
         .ok()?;
 
@@ -839,6 +903,8 @@ pub fn detect_workbuddy_client_path_internal(
 ) -> DetectedPathInfo {
     // 1. 尝试从运行中进程获取真实可执行路径
     if let Some(path) = running_exe {
+        #[cfg(target_os = "macos")]
+        let path = mac_launch_path(path);
         let is_store = path.to_string_lossy().contains("WindowsApps");
         return DetectedPathInfo {
             app_type: "workbuddy".to_string(),
@@ -1021,21 +1087,27 @@ pub fn detect_workbuddy_client_path_internal(
 
     #[cfg(target_os = "macos")]
     {
-        let mac_candidates = [
-            "/Applications/WorkBuddy.app/Contents/MacOS/WorkBuddy",
-            "/Applications/WorkBuddyAI.app/Contents/MacOS/WorkBuddyAI",
-        ];
-        for cand in mac_candidates {
-            if Path::new(cand).exists() {
-                return DetectedPathInfo {
-                    app_type: "workbuddy".to_string(),
-                    path: cand.to_string(),
-                    exists: true,
-                    source: "standard_dir".to_string(),
-                    is_running,
-                    extra_info: Some("macOS 应用目录 (/Applications)".to_string()),
-                };
-            }
+        // 按应用包（.app）查找，不假设包内主程序的文件名：
+        // WorkBuddy 的主程序叫 Electron，不叫 WorkBuddy。
+        if let Some(bundle) = find_mac_bundle(&["WorkBuddy.app", "WorkBuddyAI.app"]) {
+            return DetectedPathInfo {
+                app_type: "workbuddy".to_string(),
+                path: bundle.to_string_lossy().to_string(),
+                exists: true,
+                source: "standard_dir".to_string(),
+                is_running,
+                extra_info: Some("macOS 应用目录".to_string()),
+            };
+        }
+        if let Some(bundle) = find_app_via_mdfind("com.tencent.workbuddy.mac") {
+            return DetectedPathInfo {
+                app_type: "workbuddy".to_string(),
+                path: bundle.to_string_lossy().to_string(),
+                exists: true,
+                source: "spotlight".to_string(),
+                is_running,
+                extra_info: Some("通过 Spotlight 定位的应用".to_string()),
+            };
         }
     }
 
@@ -1288,21 +1360,16 @@ pub fn detect_accio_client_path_internal(
 
     #[cfg(target_os = "macos")]
     {
-        let mac_candidates = [
-            "/Applications/Accio.app/Contents/MacOS/Accio",
-            "/Applications/Accio Work.app/Contents/MacOS/Accio Work",
-        ];
-        for cand in mac_candidates {
-            if Path::new(cand).exists() {
-                return DetectedPathInfo {
-                    app_type: "acciowork".to_string(),
-                    path: cand.to_string(),
-                    exists: true,
-                    source: "standard_dir".to_string(),
-                    is_running,
-                    extra_info: Some("macOS 应用目录 (/Applications)".to_string()),
-                };
-            }
+        // 同样按应用包查找，不假设包内主程序的文件名
+        if let Some(bundle) = find_mac_bundle(&["Accio Work.app", "Accio.app"]) {
+            return DetectedPathInfo {
+                app_type: "acciowork".to_string(),
+                path: bundle.to_string_lossy().to_string(),
+                exists: true,
+                source: "standard_dir".to_string(),
+                is_running,
+                extra_info: Some("macOS 应用目录".to_string()),
+            };
         }
     }
 
@@ -1734,6 +1801,42 @@ mod tests {
     fn test_detect_dsh_client_path_does_not_panic() {
         let detected = detect_dsh_client_path();
         assert_eq!(detected.app_type, "dsh");
+    }
+
+    #[test]
+    fn mac_bundle_identifies_the_app_whatever_its_binary_is_called() {
+        // WorkBuddy 5.11 on macOS: the main binary keeps Electron's stock name.
+        let main = Path::new("/Applications/WorkBuddy.app/Contents/MacOS/Electron");
+        assert_eq!(
+            mac_main_bundle_of(main),
+            Some(PathBuf::from("/Applications/WorkBuddy.app"))
+        );
+        assert!(matches_process("workbuddy", "electron", "", Some(main)));
+
+        // A helper resolves to its own bundle and is not the app.
+        let helper = Path::new(
+            "/Applications/WorkBuddy.app/Contents/Frameworks/WorkBuddy Helper (GPU).app/Contents/MacOS/WorkBuddy Helper (GPU)",
+        );
+        assert!(!matches_process(
+            "workbuddy",
+            "workbuddy helper (gpu)",
+            "",
+            Some(helper)
+        ));
+
+        // Some other Electron app must not be mistaken for WorkBuddy.
+        let other = Path::new("/Applications/Other.app/Contents/MacOS/Electron");
+        assert!(!matches_process("workbuddy", "electron", "", Some(other)));
+        assert!(!matches_process("workbuddy", "electron", "", None));
+
+        // Not inside a bundle's MacOS directory at all.
+        assert_eq!(
+            mac_main_bundle_of(Path::new("/usr/local/bin/electron")),
+            None
+        );
+
+        let accio = Path::new("/Applications/Accio Work.app/Contents/MacOS/Electron");
+        assert!(matches_process("acciowork", "electron", "", Some(accio)));
     }
 
     #[test]
