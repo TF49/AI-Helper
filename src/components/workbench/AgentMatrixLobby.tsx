@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
-import { MousePointerClick, ShieldCheck, ChevronDown, Loader2 } from "lucide-react";
+import { MousePointerClick, ShieldCheck, ChevronDown, Loader2, Users } from "lucide-react";
 import { toast } from "sonner";
 import { VoxelMorphHero } from "./VoxelMorphHero";
 import { AgentCard, type AgentCardItem, type CardPhase } from "./AgentCard";
@@ -45,6 +45,11 @@ import {
   type ResetClient,
 } from "../../lib/api";
 import { useAuth } from "../../lib/useAuth";
+import {
+  resolveWorkbuddyQuickModels,
+  saveWorkbuddyExtraModels,
+  workbuddyQuickPayload,
+} from "../../lib/workbuddyQuick";
 import type {
   AgentTool,
   TokenItem,
@@ -64,6 +69,8 @@ interface AgentMatrixLobbyProps {
   onSelectTool: (tool: AgentTool) => void;
   onOpenEnvironmentCheck: () => void;
   onOpenAppInstaller?: (appName: string) => void;
+  /** 打开「加入社群」弹窗（QQ 群 / 微信群 / 抖音） */
+  onOpenCommunity?: () => void;
 }
 
 // 缓存已探测到的客户端状态与配置，跨页面切换时直接复用，消除由于初始态不一致导致的异步闪烁
@@ -88,11 +95,14 @@ const RESET_CLIENT_BY_CARD: Record<string, ResetClient> = {
   "dsh-app": "DeepSeek Harness",
 };
 
-// 未安装时直接跳到官网下载的软件；其余沿用应用内的安装引导
+// 未安装时在默认浏览器里打开的官网下载页（Claude Code 是命令行工具，打开官方安装指南）
 const OFFICIAL_DOWNLOAD_URL: Record<string, string> = {
   "workbuddy-app": "https://www.workbuddy.cn/",
   "accio-work": "https://www.accio.com/work",
   "cursor-ide": "https://cursor.com/download",
+  "codex-cli": "https://chatgpt.com/download/",
+  "dsh-app": "https://www.deepseek.com/zh/download/",
+  "claude-cli": "https://code.claude.com/docs/zh-CN/quickstart",
 };
 
 // 恢复为官方时，确认框里用一句话说清楚会清理什么、保留什么
@@ -189,6 +199,7 @@ export const AgentMatrixLobby: React.FC<AgentMatrixLobbyProps> = ({
   onSelectTool,
   onOpenEnvironmentCheck,
   onOpenAppInstaller,
+  onOpenCommunity,
 }) => {
   const [openingAgentId, setOpeningAgentId] = useState<string | null>(null);
   const [restoringId, setRestoringId] = useState<string | null>(null);
@@ -236,6 +247,8 @@ export const AgentMatrixLobby: React.FC<AgentMatrixLobbyProps> = ({
     cursorPayload?: CursorConfig;
     accioPayload?: AccioConfig;
     workbuddyPayload?: WorkbuddySavePayload;
+    /** WorkBuddy：默认模型检查通过后一并写入的其余模型 */
+    workbuddyExtraModels?: string[];
     dshPayload?: DshSavePayload;
   } | null>(null);
 
@@ -299,7 +312,7 @@ export const AgentMatrixLobby: React.FC<AgentMatrixLobbyProps> = ({
     },
     {
       id: "claude-cli",
-      installLabel: "查看安装方法",
+      installLabel: "查看安装指南",
       name: "Claude Code",
       subtitle: "Anthropic 的命令行编程助手",
       category: "cli",
@@ -312,7 +325,6 @@ export const AgentMatrixLobby: React.FC<AgentMatrixLobbyProps> = ({
     },
     {
       id: "codex-cli",
-      installLabel: "查看安装方法",
       name: "ChatGPT（含 Codex）",
       subtitle: "OpenAI 的桌面端与命令行",
       category: "desktop",
@@ -337,7 +349,6 @@ export const AgentMatrixLobby: React.FC<AgentMatrixLobbyProps> = ({
     },
     {
       id: "dsh-app",
-      installLabel: "查看安装方法",
       name: "DeepSeek Harness",
       subtitle: "DeepSeek 的桌面工作台",
       category: "desktop",
@@ -478,6 +489,13 @@ export const AgentMatrixLobby: React.FC<AgentMatrixLobbyProps> = ({
               status: (hasKey ? "installed" : exists ? "unconfigured" : "uninstalled") as AgentCardItem["status"],
               appExists: exists,
               running: isRunning("workbuddy"),
+              // 与当前模型同一服务地址的条目数，即 AI Helper 一并写入的模型数
+              configuredModelCount: (() => {
+                const models = workbuddyCfg?.configured_models ?? [];
+                const current = models.find((m) => m.id === wbModel || m.name === wbModel);
+                if (!current?.url) return undefined;
+                return models.filter((m) => m.url === current.url).length;
+              })(),
               configuredKey: workbuddyCfg?.api_key?.trim() || null,
               configuredModel: wbModel,
             };
@@ -627,7 +645,9 @@ export const AgentMatrixLobby: React.FC<AgentMatrixLobbyProps> = ({
       // 映射到 TerminalTestModal 对应的 target type
       const modalType: "codex" | "claude" | "workbuddy" | "acciowork" | "cursor" | "dsh" =
         target === "chatgpt" ? "codex" : target;
-      const defaultModel = TARGET_DEFAULT_MODEL[target];
+      let defaultModel = TARGET_DEFAULT_MODEL[target];
+      // WorkBuddy：检查通过后一并写入的其余模型（分组下的全部对话模型）
+      let workbuddyExtraModels: string[] = [];
 
       let targetUrl =
         target === "workbuddy" ? "https://bob-api.com/v1" : "https://bob-api.com/";
@@ -684,21 +704,14 @@ export const AgentMatrixLobby: React.FC<AgentMatrixLobbyProps> = ({
         if (wbCfg?.base_url?.trim()) {
           targetUrl = wbCfg.base_url.trim();
         }
-        workbuddyPayload = {
-          url: targetUrl,
-          api_key: resolved.key.trim(),
-          model: defaultModel,
-          supports_tool_call: true,
-          supports_images: true,
-          supports_reasoning: true,
-          only_reasoning: false,
-          can_disable_thinking: true,
-          use_custom_protocol: false,
-          default_effort: null,
-          supported_efforts: ["medium"],
-          max_input_tokens: 262144,
-          max_output_tokens: 32768,
-        };
+        // 默认配置这把密钥所在分组的全部对话模型；列表拿不到时只配首选模型
+        const quick = await resolveWorkbuddyQuickModels(targetUrl, resolved.key, defaultModel);
+        defaultModel = quick.defaultModel;
+        workbuddyExtraModels = quick.extraModels;
+        if (quick.fetchError) {
+          console.warn("WorkBuddy 模型列表获取失败，只配置首选模型:", quick.fetchError);
+        }
+        workbuddyPayload = workbuddyQuickPayload(targetUrl, resolved.key, defaultModel);
       } else if (modalType === "claude") {
         const cCfg = await getClaudeConfig().catch(() => null);
         if (cCfg?.base_url?.trim()) {
@@ -737,6 +750,7 @@ export const AgentMatrixLobby: React.FC<AgentMatrixLobbyProps> = ({
         cursorPayload,
         accioPayload,
         workbuddyPayload,
+        workbuddyExtraModels,
         dshPayload,
       });
     } catch (err) {
@@ -1016,8 +1030,8 @@ export const AgentMatrixLobby: React.FC<AgentMatrixLobbyProps> = ({
     .filter((agent) => PRIMARY_CARD_IDS.includes(agent.id))
     .sort((a, b) => rank(a) - rank(b));
   const moreAgents = agents.filter((agent) => !PRIMARY_CARD_IDS.includes(agent.id));
-  // 「更多软件」默认收起；其中已有配置好的软件时默认展开，避免老用户找不到
-  const moreOpen = moreExpanded ?? moreAgents.some((agent) => agent.status === "installed");
+  // 「更多软件」默认全部展开；用户手动收起后记住这个选择
+  const moreOpen = moreExpanded ?? true;
 
   const openAdvanced = (target: AgentCardItem) => {
     if (target.toolKey) onSelectTool(target.toolKey);
@@ -1095,6 +1109,27 @@ export const AgentMatrixLobby: React.FC<AgentMatrixLobbyProps> = ({
               </div>
             </div>
           </div>
+
+          {/* 社群入口：遇到问题时能直接找到人 */}
+          {onOpenCommunity && (
+            <button
+              type="button"
+              onClick={onOpenCommunity}
+              className="flex items-center gap-3 p-3 xl:p-3.5 rounded-2xl bg-white/75 dark:bg-slate-900/60 backdrop-blur-md border border-white/90 dark:border-white/10 shadow-[0_2px_12px_rgba(0,0,0,0.02)] hover:border-emerald-300/70 dark:hover:border-emerald-400/30 text-left cursor-pointer transition-colors"
+            >
+              <span className="w-8 h-8 xl:w-9 xl:h-9 rounded-xl bg-emerald-50 dark:bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 flex items-center justify-center flex-shrink-0">
+                <Users size={17} />
+              </span>
+              <span className="flex-1 min-w-0">
+                <span className="block text-xs xl:text-[13px] font-semibold text-slate-800 dark:text-slate-200">
+                  加入社群
+                </span>
+                <span className="block text-[11px] xl:text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                  扫码找到我们，遇到问题来这里问
+                </span>
+              </span>
+            </button>
+          )}
 
           {/* 高级入口：批量配置与环境检查不再占据首页主操作 */}
           <div className="flex items-center justify-between gap-3 text-[11px] xl:text-xs text-slate-500 dark:text-slate-400 px-1 pt-3">
@@ -1212,6 +1247,23 @@ export const AgentMatrixLobby: React.FC<AgentMatrixLobbyProps> = ({
               localStorage.setItem(LAST_CONFIGURED_KEY, cardId);
             } catch {}
 
+            // WorkBuddy：默认模型已检查并写入，再把分组下其余模型一并写入
+            let modelSummary = "";
+            const { workbuddyPayload, workbuddyExtraModels, session } = activeTerminalTarget;
+            if (workbuddyPayload && workbuddyExtraModels && workbuddyExtraModels.length > 0) {
+              const { saved, failed } = await saveWorkbuddyExtraModels(
+                workbuddyPayload,
+                workbuddyExtraModels,
+                () => session === sessionRef.current,
+              );
+              modelSummary = `共添加 ${saved + 1} 个模型`;
+              if (failed.length > 0) {
+                toast.warning(`有 ${failed.length} 个模型没能添加`, {
+                  description: failed.slice(0, 5).join("、"),
+                });
+              }
+            }
+
             let connected = true;
             if (activeTerminalTarget.target === "cursor") {
               try {
@@ -1239,7 +1291,10 @@ export const AgentMatrixLobby: React.FC<AgentMatrixLobbyProps> = ({
                 });
               }
             } else if (connected) {
-              toast.success(`${cardName} 已配置好`);
+              toast.success(
+                `${cardName} 已配置好`,
+                modelSummary ? { description: modelSummary } : undefined,
+              );
             }
             if (!mountedRef.current) return;
             setCardPhase((prev) => ({ ...prev, [cardId]: undefined }));

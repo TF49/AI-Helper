@@ -25,6 +25,8 @@ export interface AgentCardItem {
   configuredKey?: string | null;
   /** 当前已配置的模型名称（若未配置为 null 或空） */
   configuredModel?: string | null;
+  /** 一并配置的模型总数（WorkBuddy 会写入分组下的全部模型）；只有一个时不填 */
+  configuredModelCount?: number;
   /** 本机是否检测到这款软件（已卸载但留有配置时为 false） */
   appExists?: boolean;
   /** 软件当前是否正在运行 */
@@ -128,7 +130,10 @@ function describe(agent: AgentCardItem, phase: CardPhase | null, opening: boolea
     };
   }
   if (configured) {
-    const model = agent.configuredModel ? `「${agent.configuredModel}」` : "";
+    const count = agent.configuredModelCount ?? 0;
+    const model = agent.configuredModel
+      ? `「${agent.configuredModel}」${count > 1 ? `等 ${count} 个模型` : ""}`
+      : "";
     if (agent.attention) {
       return {
         badge: "差一步",
@@ -170,7 +175,10 @@ function describe(agent: AgentCardItem, phase: CardPhase | null, opening: boolea
     return {
       badge: "未配置",
       badgeDot: amber,
-      sentence: `在 ${agent.name} 里使用${agent.modelFamily}模型`,
+      // 中英文之间留空格：「使用 Claude 模型」「使用国产模型」
+      sentence: `在 ${agent.name} 里使用${
+        agent.modelFamily === "国产" ? "国产" : ` ${agent.modelFamily} `
+      }模型`,
       tone: "normal",
       mainLabel: "一键配置模型",
       mainAction: "configure",

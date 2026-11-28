@@ -43,10 +43,14 @@ import type {
   TokenItem,
   CursorConfig,
   AccioConfig,
-  WorkbuddySavePayload,
   DshSavePayload,
 } from "../../types";
 import { maskApiKey } from "./AgentCard";
+import {
+  resolveWorkbuddyQuickModels,
+  saveWorkbuddyExtraModels,
+  workbuddyQuickPayload,
+} from "../../lib/workbuddyQuick";
 import {
   buildDshQuickPayload,
   runDshConnectivityTests,
@@ -277,6 +281,8 @@ export function BatchTerminalModal({
       const target = targets[i];
       const targetName = TARGET_DISPLAY_NAMES[target];
       let model = TARGET_MODELS[target];
+      // WorkBuddy：检查通过后一并写入的其余模型（分组下的全部对话模型）
+      let workbuddyExtraModels: string[] = [];
       const group = TARGET_GROUPS[target];
       let defaultUrl =
         target === "workbuddy" ? "https://bob-api.com/v1" : "https://bob-api.com/";
@@ -379,6 +385,14 @@ export function BatchTerminalModal({
             () => openRef.current && isSessionCurrent(),
           );
         } else if (target === "workbuddy") {
+          const quick = await resolveWorkbuddyQuickModels(defaultUrl, resolved.key, model);
+          model = quick.defaultModel;
+          workbuddyExtraModels = quick.extraModels;
+          if (quick.fetchError) {
+            addLog(`⚠ 没能获取模型列表，只配置 ${model}：${quick.fetchError}`, "warn");
+          } else {
+            addLog(`该分组共有 ${workbuddyExtraModels.length + 1} 个可用模型，将全部添加`, "info");
+          }
           testResult = await testWorkbuddyStream(
             defaultUrl,
             resolved.key.trim(),
@@ -423,23 +437,17 @@ export function BatchTerminalModal({
             await setCodexConfig(defaultUrl, resolved.key.trim(), model.trim());
             addLog(`✓ ~/.codex/config.toml 配置已更新`, "success");
           } else if (target === "workbuddy") {
-            const payload: WorkbuddySavePayload = {
-              url: defaultUrl,
-              api_key: resolved.key.trim(),
-              model: model.trim(),
-              supports_tool_call: true,
-              supports_images: true,
-              supports_reasoning: true,
-              only_reasoning: false,
-              can_disable_thinking: true,
-              use_custom_protocol: false,
-              default_effort: null,
-              supported_efforts: ["medium"],
-              max_input_tokens: 262144,
-              max_output_tokens: 32768,
-            };
+            const payload = workbuddyQuickPayload(defaultUrl, resolved.key, model);
             await setWorkbuddyConfig(payload);
-            addLog(`✓ ~/.workbuddy/models.json 推荐模型已提升首项`, "success");
+            const { saved, failed } = await saveWorkbuddyExtraModels(
+              payload,
+              workbuddyExtraModels,
+              () => openRef.current && isSessionCurrent(),
+            );
+            addLog(`✓ ~/.workbuddy/models.json 已添加 ${saved + 1} 个模型`, "success");
+            if (failed.length > 0) {
+              addLog(`⚠ 有 ${failed.length} 个模型没能添加：${failed.join("、")}`, "warn");
+            }
           } else if (target === "acciowork") {
             const accCfg = await getAccioConfig().catch(() => null);
             const payload: AccioConfig = {
