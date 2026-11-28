@@ -101,14 +101,14 @@ Windows 版依赖 Microsoft Edge WebView2 Runtime，Windows 11 通常已预装�
 curl -fsSL https://raw.githubusercontent.com/d100000/AI-Helper/main/scripts/install-macos.sh -o install-macos.sh && /bin/bash install-macos.sh
 ```
 
-脚本会自动识别 Apple 芯片或 Intel 芯片，从上游 GitHub Releases 下载最新稳定版并验证 SHA-256。默认安装到 `~/Applications`，无需 `sudo`。若要更新 `/Applications` 中的应用，请先退出 AI Helper，然后运行 `/bin/bash install-macos.sh --install-dir /Applications`。[安装脚本源码](./scripts/install-macos.sh)
+脚本会自动识别芯片类型并验证下载文件的 SHA-256。默认安装到 `~/Applications`，无需 `sudo`。Apple 芯片安装的是本仓库的最新构建（见 [Releases](https://github.com/d100000/AI-Helper/releases)），包含简化后的首页和 macOS 上的修复；Intel 芯片安装的是上游最新稳定版，不包含这些改动。本仓库的构建不会自动更新，升级时重新运行这条命令即可。若要更新 `/Applications` 中的应用，请先退出 AI Helper，然后运行 `/bin/bash install-macos.sh --install-dir /Applications`。[安装脚本源码](./scripts/install-macos.sh)
 
 ### Apple 芯片 Mac 的离线 PKG 安装
 
-如果已经拿到 `AI-Helper-v1.0.88-macOS-arm64.pkg`，可以双击打开，或在安装包所在目录运行以下命令。
+如果已经拿到 `AI-Helper-v1.0.88-macos.2-macOS-arm64.pkg`，可以双击打开，或在安装包所在目录运行以下命令。
 
 ```bash
-/usr/sbin/installer -pkg ./AI-Helper-v1.0.88-macOS-arm64.pkg -target CurrentUserHomeDirectory
+/usr/sbin/installer -pkg ./AI-Helper-v1.0.88-macos.2-macOS-arm64.pkg -target CurrentUserHomeDirectory
 ```
 
 这个 PKG 会将应用安装到 `~/Applications`，尚未经过 Apple 公证。若首次打开安装包或应用时被拦截，可在尝试打开后查看「系统设置 → 隐私与安全性」。[Apple 支持](https://support.apple.com/zh-cn/102445)

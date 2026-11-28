@@ -152,9 +152,16 @@ export function useAppUpdater() {
         setIsBootCheckComplete(true);
         if (manual) {
           setIsManualChecking(false);
-          toast.success(
-            `当前已是最新版本 (v${info.current_version})，无需更新`,
-          );
+          if (info.source === "self_update_disabled") {
+            // 这个版本不在应用内更新：不能说「已是最新」，要告诉用户怎么升级
+            toast.info(`当前版本 v${info.current_version}`, {
+              description: "这个版本不在应用内更新。要升级，请重新运行安装脚本或下载新的安装包。",
+            });
+          } else {
+            toast.success(
+              `当前已是最新版本 (v${info.current_version})，无需更新`,
+            );
+          }
         }
         return;
       }

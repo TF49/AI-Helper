@@ -1,7 +1,11 @@
 #!/bin/bash
 set -euo pipefail
 
-repo_url="https://github.com/TF49/AI-Helper"
+# Apple Silicon: this repository's own builds (tags vX.Y.Z-macos.N), which carry
+# changes upstream does not have. Intel: this repository publishes no Intel
+# build, so those Macs get the upstream release.
+fork_repo_url="https://github.com/d100000/AI-Helper"
+upstream_repo_url="https://github.com/TF49/AI-Helper"
 app_name="AI Helper.app"
 bundle_id="com.aihelper.app"
 install_dir="$HOME/Applications"
@@ -82,11 +86,24 @@ main() {
   trap 'exit 130' INT
   trap 'exit 143' TERM
 
-  local release_url tag asset_name asset_root expected_hash actual_hash
+  local repo_url tag_pattern
+  if [[ "$asset_arch" == aarch64 ]]; then
+    repo_url="$fork_repo_url"
+    tag_pattern='^v[0-9]+\.[0-9]+\.[0-9]+-macos\.[0-9]+$'
+  else
+    repo_url="$upstream_repo_url"
+    tag_pattern='^v[0-9]+\.[0-9]+\.[0-9]+$'
+    printf 'Intel Mac: installing the upstream build, which does not include the changes in %s.\n' "$fork_repo_url"
+  fi
+
+  local release_url tag app_version asset_name asset_root expected_hash actual_hash
   release_url="$(download --head --output /dev/null --write-out '%{url_effective}' "$repo_url/releases/latest")" ||
     fail "Could not resolve the latest GitHub release."
   tag="${release_url#"$repo_url/releases/tag/"}"
-  [[ "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || fail "Unrecognized GitHub release URL."
+  [[ "$tag" =~ $tag_pattern ]] || fail "Unrecognized GitHub release URL."
+  # vX.Y.Z-macos.N packages app version X.Y.Z.
+  app_version="${tag#v}"
+  app_version="${app_version%%-*}"
   asset_name="AI-Helper-$tag-macOS-$asset_arch.dmg"
   asset_root="$repo_url/releases/download/$tag"
 
@@ -114,7 +131,7 @@ main() {
     -x "$binary" && ! -L "$binary" ]] ||
     fail "The DMG does not contain the expected application bundle."
   [[ "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$plist")" == "$bundle_id" &&
-    "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$plist")" == "${tag#v}" &&
+    "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$plist")" == "$app_version" &&
     "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' "$plist")" == ai-helper &&
     "$(LC_ALL=C file -b "$binary")" == "Mach-O 64-bit executable $binary_arch" ]] ||
     fail "Application identity, version, or architecture did not match the release."

@@ -374,6 +374,9 @@ fn delete_workbuddy_model(
 
 #[tauri::command]
 async fn check_for_updates() -> Result<updater::UpdateInfo, String> {
+    if !updater::SELF_UPDATE_ENABLED {
+        return Ok(updater::no_update_available());
+    }
     updater::check_for_updates().await
 }
 
@@ -382,6 +385,9 @@ async fn download_and_install_update(
     version: String,
     on_event: tauri::ipc::Channel<updater::UpdateDownloadEvent>,
 ) -> Result<(), String> {
+    if !updater::SELF_UPDATE_ENABLED {
+        return Err("这个版本不支持应用内更新，请重新运行安装脚本来升级".to_string());
+    }
     updater::download_and_install_update(version, on_event).await
 }
 

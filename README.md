@@ -84,14 +84,14 @@ Windows needs Microsoft Edge WebView2 Runtime, which is preinstalled on most Win
 curl -fsSL https://raw.githubusercontent.com/d100000/AI-Helper/main/scripts/install-macos.sh -o install-macos.sh && /bin/bash install-macos.sh
 ```
 
-The installer detects Apple Silicon or Intel, downloads the latest stable upstream release, verifies its SHA-256 checksum, and installs to `~/Applications` without `sudo`. To update a copy in `/Applications`, quit AI Helper and run `/bin/bash install-macos.sh --install-dir /Applications`. [Installer source](./scripts/install-macos.sh)
+The installer detects your processor, verifies the download's SHA-256 checksum, and installs to `~/Applications` without `sudo`. On Apple Silicon it installs this repository's latest build ([releases](https://github.com/d100000/AI-Helper/releases)), which includes the simplified home page and macOS fixes; on Intel it installs the latest upstream release, which does not. Run it again to upgrade: this repository's builds do not update themselves. To update a copy in `/Applications`, quit AI Helper and run `/bin/bash install-macos.sh --install-dir /Applications`. [Installer source](./scripts/install-macos.sh)
 
 ### Install from an Apple Silicon PKG
 
-If you already have `AI-Helper-v1.0.88-macOS-arm64.pkg`, open it in Installer or run the following from the directory containing the package.
+If you already have `AI-Helper-v1.0.88-macos.2-macOS-arm64.pkg`, open it in Installer or run the following from the directory containing the package.
 
 ```bash
-/usr/sbin/installer -pkg ./AI-Helper-v1.0.88-macOS-arm64.pkg -target CurrentUserHomeDirectory
+/usr/sbin/installer -pkg ./AI-Helper-v1.0.88-macos.2-macOS-arm64.pkg -target CurrentUserHomeDirectory
 ```
 
 The PKG installs to `~/Applications` and has no Apple notarization. If Gatekeeper blocks the package or app, check **System Settings → Privacy & Security** after attempting to open it. [Apple Support](https://support.apple.com/en-us/102445)
