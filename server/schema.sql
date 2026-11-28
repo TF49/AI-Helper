@@ -73,3 +73,11 @@ CREATE TABLE IF NOT EXISTS `usage_events` (
   INDEX `idx_device_created` (`device_id`, `created_at`),
   INDEX `idx_event_type` (`event_type`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='使用频次与活跃度明细表';
+
+-- 4. 管理员配置的应用设置 (如社群二维码；客户端通过 /api/app-config/* 联网读取)
+CREATE TABLE IF NOT EXISTS `app_settings` (
+  `setting_key` VARCHAR(64) NOT NULL COMMENT '设置项名称',
+  `setting_value` MEDIUMTEXT NOT NULL COMMENT '设置内容 (JSON)',
+  `updated_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '最后修改时间',
+  PRIMARY KEY (`setting_key`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='管理员配置的应用设置';
